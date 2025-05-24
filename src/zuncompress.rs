@@ -304,7 +304,7 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
 
         if lzw.insize < INBUF_EXTRA {
             rsize = unsafe {
-                libc::fread(
+                fread(
                     lzw.inbuf[lzw.insize..].as_mut_ptr() as *mut c_void,
                     1,
                     INBUFSIZ,
@@ -493,6 +493,7 @@ mod tests {
 
     use crate::c_types::{c_char, c_int};
     use bytemuck::cast_slice;
+    use libc::{fdopen, realloc};
 
     use crate::zuncompress::zuncompress2mem;
 
@@ -514,7 +515,7 @@ mod tests {
 
                 let handle = compressed_file.into_raw_handle();
                 let fd = open_osfhandle(handle as isize, 0);
-                libc::fdopen(fd, c"rb".as_ptr() as *const c_char)
+                fdopen(fd, c"rb".as_ptr() as *const c_char)
             }
 
             #[cfg(unix)]
@@ -523,7 +524,7 @@ mod tests {
 
                 let fd = compressed_file.as_raw_fd();
 
-                libc::fdopen(fd, c"rb".as_ptr() as *const c_char)
+                fdopen(fd, c"rb".as_ptr() as *const c_char)
             }
         };
 
@@ -544,7 +545,7 @@ mod tests {
                 compressed_file_ptr,
                 &mut decompressed_buffer.as_mut_ptr(),
                 &mut buffer_size,
-                Some(libc::realloc),
+                Some(realloc),
                 &mut decompressed_size,
                 &mut status,
             )
