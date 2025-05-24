@@ -1,3 +1,21 @@
+# Contributing to rsfitsio
+
+`rsfitsio` welcomes contributions from everyone
+
+## PR Checking
+
+1. Make sure tests pass
+2. Run `cargo fmt`
+3. Run `cargo fix`
+4. Fix new warnings
+5. Keep PRs small, and if required split into multiple explainable commits
+
+## Aims
+
+Initially we are trying to stay close to the `cfitsio` implementation so that its easier to sync fixes. 
+
+This means usage the same function names, variable names, parameter order, etc. In time this will be relaxed.
+
 ## Testing
 
 Testing is still very limited and automated testing vs the C-API still needs to be added. In the meantime, it is suggested to compile and run testprog.c and verify that the output matches.
