@@ -1,0 +1,12133 @@
+/*  This file, fitscore.c, contains the core set of FITSIO routines.       */
+
+/*  The FITSIO software was written by William Pence at the High Energy    */
+/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
+/*  Goddard Space Flight Center.                                           */
+/*
+
+Copyright (Unpublished--all rights reserved under the copyright laws of
+the United States), U.S. Government as represented by the Administrator
+of the National Aeronautics and Space Administration.  No copyright is
+claimed in the United States under Title 17, U.S. Code.
+
+Permission to freely use, copy, modify, and distribute this software
+and its documentation without fee is hereby granted, provided that this
+copyright notice and disclaimer of warranty appears in all copies.
+
+DISCLAIMER:
+
+THE SOFTWARE IS PROVIDED 'AS IS' WITHOUT ANY WARRANTY OF ANY KIND,
+EITHER EXPRESSED, IMPLIED, OR STATUTORY, INCLUDING, BUT NOT LIMITED TO,
+ANY WARRANTY THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS, ANY
+IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND FREEDOM FROM INFRINGEMENT, AND ANY WARRANTY THAT THE
+DOCUMENTATION WILL CONFORM TO THE SOFTWARE, OR ANY WARRANTY THAT THE
+SOFTWARE WILL BE ERROR FREE.  IN NO EVENT SHALL NASA BE LIABLE FOR ANY
+DAMAGES, INCLUDING, BUT NOT LIMITED TO, DIRECT, INDIRECT, SPECIAL OR
+CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN ANY WAY
+CONNECTED WITH THIS SOFTWARE, WHETHER OR NOT BASED UPON WARRANTY,
+CONTRACT, TORT , OR OTHERWISE, WHETHER OR NOT INJURY WAS SUSTAINED BY
+PERSONS OR PROPERTY OR OTHERWISE, AND WHETHER OR NOT LOSS WAS SUSTAINED
+FROM, OR AROSE OUT OF THE RESULTS OF, OR USE OF, THE SOFTWARE OR
+SERVICES PROVIDED HEREUNDER."
+
+*/
+
+use core::{slice, str};
+use std::borrow::BorrowMut;
+use std::ffi::CStr;
+use std::num::{ParseFloatError, ParseIntError};
+use std::ptr::addr_of;
+use std::{cmp, ptr};
+
+use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
+
+use bytemuck::{cast_slice, cast_slice_mut};
+use cstr::cstr;
+
+use crate::BL;
+use crate::aliases::safer::fits_read_key_dbl;
+use crate::aliases::{ffclos_safer, ffurlt_safe};
+use crate::cfileio::{STREAM_DRIVER, ffinit_safer, fftrun, urltype2driver};
+use crate::editcol::ffirow_safe;
+use crate::edithdu::ffcopy_safer;
+use crate::fitsio2::*;
+use crate::getkey::{
+    ffghsp_safe, ffgky_safe, ffgkyj_safe, ffgkyjj_safe, ffgkyl_safe, ffgkyn_safe, ffgkys_safe,
+    ffgphd, ffgrec_safe, ffgttb, ffmaky_safe,
+};
+use crate::imcompress::TILE_STRUCTS;
+use crate::modkey::{ffdkey_safe, ffmkyj_safe, ffmrec_safe};
+use crate::putkey::ffprec_safe;
+use crate::relibc::header::stdio::sscanf;
+use crate::{FFLOCK, FFUNLOCK, fitsio::*};
+use crate::{atoi, bb, cs, int_snprintf};
+use crate::{buffers::*, raw_to_slice};
+use crate::{slice_to_str, wrappers::*};
+
+pub const ERRMSGSIZ: usize = 25;
+pub const ESMARKER: c_char = 27; /* Escape character is used as error stack marker */
+
+pub const DEL_ALL: c_int = 1; /* delete all messages on the error stack */
+pub const DEL_MARK: c_int = 2; /* delete newest messages back to and including marker */
+pub const DEL_NEWEST: c_int = 3; /* delete the newest message from the stack */
+pub const GET_MESG: c_int = 4; /* pop and return oldest message, ignoring marks */
+pub const PUT_MESG: c_int = 5; /* add a new message to the stack */
+pub const PUT_MARK: c_int = 6; /* add a marker to the stack */
+
+/*--------------------------------------------------------------------------*/
+/// return the current version number of the FITSIO software
+///
+///  Note that this method of calculation limits minor/micro fields to < 100.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffvers(version: *mut f32 /* IO - version number */) -> f32 {
+    unsafe {
+        *version = (CFITSIO_MAJOR as f32)
+            + (0.01 * (CFITSIO_MINOR as f32))
+            + (0.0001 * (CFITSIO_MICRO as f32));
+
+        /*
+              *version = 4.6.2      Mar 2025 (autotools change only)
+
+           Previous releases:
+              *version = 4.6.1      Mar 2025 (autotools/cmake config changes only)
+              *version = 4.6.0      Mar 2025
+              *version = 4.5.0      Aug 2024
+              *version = 4.4.1      Jun 2024 (license change)
+              *version = 4.4.0      Feb 2024
+              *version = 4.3.1      Nov 2023 (patch)
+              *version = 4.3.0      Jul 2023
+              *version = 4.2.0      Nov 2022
+              *version = 4.1.0      Feb 2022
+              *version = 4.0.0      May 2021
+              *version = 3.49       Aug 2020
+              *version = 3.48       Apr 2020
+              *version = 3.47       May 2019
+              *version = 3.46       Oct 2018
+              *version = 3.45       May 2018
+              *version = 3.44       Apr 2018
+              *version = 3.43       Mar 2018
+              *version = 3.42       Mar 2017
+              *version = 3.41       Nov 2016
+              *version = 3.40       Oct 2016
+              *version = 3.39       Apr 2016
+              *version = 3.38       Feb 2016
+              *version = 3.37     3 Jun 2014
+              *version = 3.36     6 Dec 2013
+              *version = 3.35    23 May 2013
+              *version = 3.34    20 Mar 2013
+              *version = 3.33    14 Feb 2013
+              *version = 3.32       Oct 2012
+              *version = 3.31    18 Jul 2012
+              *version = 3.30    11 Apr 2012
+              *version = 3.29    22 Sep 2011
+              *version = 3.28    12 May 2011
+              *version = 3.27     3 Mar 2011
+              *version = 3.26    30 Dec 2010
+              *version = 3.25    9 June 2010
+              *version = 3.24    26 Jan 2010
+              *version = 3.23     7 Jan 2010
+              *version = 3.22    28 Oct 2009
+              *version = 3.21    24 Sep 2009
+              *version = 3.20    31 Aug 2009
+              *version = 3.18    12 May 2009 (beta version)
+              *version = 3.14    18 Mar 2009
+              *version = 3.13     5 Jan 2009
+              *version = 3.12     8 Oct 2008
+              *version = 3.11    19 Sep 2008
+              *version = 3.10    20 Aug 2008
+              *version = 3.09     3 Jun 2008
+              *version = 3.08    15 Apr 2007  (internal release)
+              *version = 3.07     5 Nov 2007  (internal release)
+              *version = 3.06    27 Aug 2007
+              *version = 3.05    12 Jul 2007  (internal release)
+              *version = 3.03    11 Dec 2006
+              *version = 3.02    18 Sep 2006
+              *version = 3.01       May 2006 included in FTOOLS 6.1 release
+              *version = 3.006   20 Feb 2006
+              *version = 3.005   20 Dec 2005 (beta, in heasoft swift release
+              *version = 3.004   16 Sep 2005 (beta, in heasoft swift release
+              *version = 3.003   28 Jul 2005 (beta, in heasoft swift release
+              *version = 3.002   15 Apr 2005 (beta)
+              *version = 3.001   15 Mar 2005 (beta) released with heasoft 6.0
+              *version = 3.000   1 Mar 2005 (internal release only)
+              *version = 2.51     2 Dec 2004
+              *version = 2.50    28 Jul 2004
+              *version = 2.49    11 Feb 2004
+              *version = 2.48    28 Jan 2004
+              *version = 2.470   18 Aug 2003
+              *version = 2.460   20 May 2003
+              *version = 2.450   30 Apr 2003  (internal release only)
+              *version = 2.440    8 Jan 2003
+              *version = 2.430;   4 Nov 2002
+              *version = 2.420;  19 Jul 2002
+              *version = 2.410;  22 Apr 2002 used in ftools v5.2
+              *version = 2.401;  28 Jan 2002
+              *version = 2.400;  18 Jan 2002
+              *version = 2.301;   7 Dec 2001
+              *version = 2.300;  23 Oct 2001
+              *version = 2.204;  26 Jul 2001
+              *version = 2.203;  19 Jul 2001 used in ftools v5.1
+              *version = 2.202;  22 May 2001
+              *version = 2.201;  15 Mar 2001
+              *version = 2.200;  26 Jan 2001
+              *version = 2.100;  26 Sep 2000
+              *version = 2.037;   6 Jul 2000
+              *version = 2.036;   1 Feb 2000
+              *version = 2.035;   7 Dec 1999 (internal release only)
+              *version = 2.034;  23 Nov 1999
+              *version = 2.033;  17 Sep 1999
+              *version = 2.032;  25 May 1999
+              *version = 2.031;  31 Mar 1999
+              *version = 2.030;  24 Feb 1999
+              *version = 2.029;  11 Feb 1999
+              *version = 2.028;  26 Jan 1999
+              *version = 2.027;  12 Jan 1999
+              *version = 2.026;  23 Dec 1998
+              *version = 2.025;   1 Dec 1998
+              *version = 2.024;   9 Nov 1998
+              *version = 2.023;   1 Nov 1998 first full release of V2.0
+              *version = 1.42;   30 Apr 1998
+              *version = 1.40;    6 Feb 1998
+              *version = 1.33;   16 Dec 1997 (internal release only)
+              *version = 1.32;   21 Nov 1997 (internal release only)
+              *version = 1.31;    4 Nov 1997 (internal release only)
+              *version = 1.30;   11 Sep 1997
+              *version = 1.27;    3 Sep 1997 (internal release only)
+              *version = 1.25;    2 Jul 1997
+              *version = 1.24;    2 May 1997
+              *version = 1.23;   24 Apr 1997
+              *version = 1.22;   18 Apr 1997
+              *version = 1.21;   26 Mar 1997
+              *version = 1.2;    29 Jan 1997
+              *version = 1.11;   04 Dec 1996
+              *version = 1.101;  13 Nov 1996
+              *version = 1.1;     6 Nov 1996
+              *version = 1.04;   17 Sep 1996
+              *version = 1.03;   20 Aug 1996
+              *version = 1.02;   15 Aug 1996
+              *version = 1.01;   12 Aug 1996
+        */
+        *version
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  return the name of the FITS file
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffflnm(
+    fptr: *mut fitsfile,   /* I - FITS file pointer  */
+    filename: *mut c_char, /* O - name of the file   */
+    status: *mut c_int,    /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        strcpy(filename, fptr.Fptr.filename);
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// return the access mode of the FITS file
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffflmd(
+    fptr: *mut fitsfile,  /* I - FITS file pointer  */
+    filemode: *mut c_int, /* O - open mode of the file  */
+    status: *mut c_int,   /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        *filemode = fptr.Fptr.writemode;
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return a short descriptive error message that corresponds to the input
+/// error status value.  The message may be up to 30 characters long, plus
+/// the terminating null character.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgerr(
+    status: c_int,        /* I - error status value */
+    errtext: *mut c_char, /* O - error message (max 30 char long + null) */
+) {
+    unsafe {
+        let errtext = slice::from_raw_parts_mut(errtext, 31);
+
+        ffgerr_safe(status, errtext)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return a short descriptive error message that corresponds to the input
+/// error status value.  The message may be up to 30 characters long, plus
+/// the terminating null character.
+pub fn ffgerr_safe(
+    status: c_int,          /* I - error status value */
+    errtext: &mut [c_char], /* O - error message (max 30 char long + null) */
+) {
+    errtext[0] = 0;
+    let t = if status >= 0 && status < 300 {
+        match status {
+            0 => cstr!(b"OK - no error"),
+            1 => cstr!(b"non-CFITSIO program error"),
+            101 => cstr!(b"same input and output files"),
+            103 => cstr!(b"attempt to open too many files"),
+            104 => cstr!(b"could not open the named file"),
+            105 => cstr!(b"couldn't create the named file"),
+            106 => cstr!(b"error writing to FITS file"),
+            107 => cstr!(b"tried to move past end of file"),
+            108 => cstr!(b"error reading from FITS file"),
+            110 => cstr!(b"could not close the file"),
+            111 => cstr!(b"array dimensions too big"),
+            112 => cstr!(b"cannot write to readonly file"),
+            113 => cstr!(b"could not allocate memory"),
+            114 => cstr!(b"invalid fitsfile pointer"),
+            115 => cstr!(b"NULL input pointer"),
+            116 => cstr!(b"error seeking file position"),
+            117 => cstr!(b"bad value for file download timeout setting"),
+            121 => cstr!(b"invalid URL prefix"),
+            122 => cstr!(b"too many I/O drivers"),
+            123 => cstr!(b"I/O driver init failed"),
+            124 => cstr!(b"no I/O driver for this URLtype"),
+            125 => cstr!(b"parse error in input file URL"),
+            126 => cstr!(b"parse error in range list"),
+            151 => cstr!(b"bad argument (shared mem drvr)"),
+            152 => cstr!(b"null ptr arg (shared mem drvr)"),
+            153 => cstr!(b"no free shared memory handles"),
+            154 => cstr!(b"share mem drvr not initialized"),
+            155 => cstr!(b"IPC system error (shared mem)"),
+            156 => cstr!(b"no memory (shared mem drvr)"),
+            157 => cstr!(b"share mem resource deadlock"),
+            158 => cstr!(b"lock file open/create failed"),
+            159 => cstr!(b"can't resize share mem block"),
+            201 => cstr!(b"header already has keywords"),
+            202 => cstr!(b"keyword not found in header"),
+            203 => cstr!(b"keyword number out of bounds"),
+            204 => cstr!(b"keyword value is undefined"),
+            205 => cstr!(b"string missing closing quote"),
+            206 => cstr!(b"error in indexed keyword name"),
+            207 => cstr!(b"illegal character in keyword"),
+            208 => cstr!(b"required keywords out of order"),
+            209 => cstr!(b"keyword value not positive int"),
+            210 => cstr!(b"END keyword not found"),
+            211 => cstr!(b"illegal BITPIX keyword value"),
+            212 => cstr!(b"illegal NAXIS keyword value"),
+            213 => cstr!(b"illegal NAXISn keyword value"),
+            214 => cstr!(b"illegal PCOUNT keyword value"),
+            215 => cstr!(b"illegal GCOUNT keyword value"),
+            216 => cstr!(b"illegal TFIELDS keyword value"),
+            217 => cstr!(b"negative table row size"),
+            218 => cstr!(b"negative number of rows"),
+            219 => cstr!(b"named column not found"),
+            220 => cstr!(b"illegal SIMPLE keyword value"),
+            221 => cstr!(b"first keyword not SIMPLE"),
+            222 => cstr!(b"second keyword not BITPIX"),
+            223 => cstr!(b"third keyword not NAXIS"),
+            224 => cstr!(b"missing NAXISn keywords"),
+            225 => cstr!(b"first keyword not XTENSION"),
+            226 => cstr!(b"CHDU not an ASCII table"),
+            227 => cstr!(b"CHDU not a binary table"),
+            228 => cstr!(b"PCOUNT keyword not found"),
+            229 => cstr!(b"GCOUNT keyword not found"),
+            230 => cstr!(b"TFIELDS keyword not found"),
+            231 => cstr!(b"missing TBCOLn keyword"),
+            232 => cstr!(b"missing TFORMn keyword"),
+            233 => cstr!(b"CHDU not an IMAGE extension"),
+            234 => cstr!(b"illegal TBCOLn keyword value"),
+            235 => cstr!(b"CHDU not a table extension"),
+            236 => cstr!(b"column exceeds width of table"),
+            237 => cstr!(b"more than 1 matching col. name"),
+            241 => cstr!(b"row width not = field widths"),
+            251 => cstr!(b"unknown FITS extension type"),
+            252 => cstr!(b"1st key not SIMPLE or XTENSION"),
+            253 => cstr!(b"END keyword is not blank"),
+            254 => cstr!(b"Header fill area not blank"),
+            255 => cstr!(b"Data fill area invalid"),
+            261 => cstr!(b"illegal TFORM format code"),
+            262 => cstr!(b"unknown TFORM datatype code"),
+            263 => cstr!(b"illegal TDIMn keyword value"),
+            264 => cstr!(b"invalid BINTABLE heap pointer"),
+            _ => cstr!(b"unknown error status"),
+        }
+    } else if status < 600 {
+        match status {
+            301 => cstr!(b"illegal HDU number"),
+            302 => cstr!(b"column number < 1 or > tfields"),
+            304 => cstr!(b"negative byte address"),
+            306 => cstr!(b"negative number of elements"),
+            307 => cstr!(b"bad first row number"),
+            308 => cstr!(b"bad first element number"),
+            309 => cstr!(b"not an ASCII (A) column"),
+            310 => cstr!(b"not a logical (L) column"),
+            311 => cstr!(b"bad ASCII table datatype"),
+            312 => cstr!(b"bad binary table datatype"),
+            314 => cstr!(b"null value not defined"),
+            317 => cstr!(b"not a variable length column"),
+            320 => cstr!(b"illegal number of dimensions"),
+            321 => cstr!(b"1st pixel no. > last pixel no."),
+            322 => cstr!(b"BSCALE or TSCALn = 0."),
+            323 => cstr!(b"illegal axis length < 1"),
+            340 => cstr!(b"not group table"),
+            341 => cstr!(b"HDU already member of group"),
+            342 => cstr!(b"group member not found"),
+            343 => cstr!(b"group not found"),
+            344 => cstr!(b"bad group id"),
+            345 => cstr!(b"too many HDUs tracked"),
+            346 => cstr!(b"HDU alread tracked"),
+            347 => cstr!(b"bad Grouping option"),
+            348 => cstr!(b"identical pointers (groups)"),
+            360 => cstr!(b"malloc failed in parser"),
+            361 => cstr!(b"file read error in parser"),
+            362 => cstr!(b"null pointer arg (parser)"),
+            363 => cstr!(b"empty line (parser)"),
+            364 => cstr!(b"cannot unread > 1 line"),
+            365 => cstr!(b"parser too deeply nested"),
+            366 => cstr!(b"file open failed (parser)"),
+            367 => cstr!(b"hit EOF (parser)"),
+            368 => cstr!(b"bad argument (parser)"),
+            369 => cstr!(b"unexpected token (parser)"),
+            401 => cstr!(b"bad int to string conversion"),
+            402 => cstr!(b"bad float to string conversion"),
+            403 => cstr!(b"keyword value not integer"),
+            404 => cstr!(b"keyword value not logical"),
+            405 => cstr!(b"keyword value not floating pt"),
+            406 => cstr!(b"keyword value not double"),
+            407 => cstr!(b"bad string to int conversion"),
+            408 => cstr!(b"bad string to float conversion"),
+            409 => cstr!(b"bad string to double convert"),
+            410 => cstr!(b"illegal datatype code value"),
+            411 => cstr!(b"illegal no. of decimals"),
+            412 => cstr!(b"datatype conversion overflow"),
+            413 => cstr!(b"error compressing image"),
+            414 => cstr!(b"error uncompressing image"),
+            420 => cstr!(b"bad date or time conversion"),
+            431 => cstr!(b"syntax error in expression"),
+            432 => cstr!(b"expression result wrong type"),
+            433 => cstr!(b"vector result too large"),
+            434 => cstr!(b"missing output column"),
+            435 => cstr!(b"bad data in parsed column"),
+            436 => cstr!(b"output extension of wrong type"),
+            501 => cstr!(b"WCS angle too large"),
+            502 => cstr!(b"bad WCS coordinate"),
+            503 => cstr!(b"error in WCS calculation"),
+            504 => cstr!(b"bad WCS projection type"),
+            505 => cstr!(b"WCS keywords not found"),
+            _ => cstr!(b"unknown error status"),
+        }
+    } else {
+        cstr!(b"unknown error status")
+    };
+
+    strcpy_safe(errtext, cast_slice(t.to_bytes_with_nul()));
+}
+
+/*--------------------------------------------------------------------------*/
+/// put message on to error stack
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
+    unsafe {
+        ffxmsg(PUT_MESG, err_message as *mut c_char);
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// put message on to error stack
+pub unsafe fn ffpmsg_safer(err_message: &[c_char]) {
+    unsafe {
+        ffxmsg(PUT_MESG, err_message.as_ptr() as *mut c_char);
+    }
+}
+
+pub fn ffpmsg_cstr(err_message: &CStr) {
+    ffpmsg_slice(cast_slice(err_message.to_bytes_with_nul()))
+}
+
+pub(crate) fn ffpmsg_slice(err_message: &[c_char]) {
+    unsafe { ffpmsg_safer(err_message) }
+}
+
+pub(crate) fn ffpmsg_str(err_message: &str) {
+    let err_message = std::ffi::CString::new(err_message).unwrap();
+    ffpmsg_cstr(&err_message);
+}
+
+/*--------------------------------------------------------------------------*/
+///  write a marker to the stack.  It is then possible to pop only those
+///  messages following the marker off of the stack, leaving the previous
+///  messages unaffected.
+///
+///  The marker is ignored by the ffgmsg routine.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffpmrk() {
+    ffpmrk_safe();
+}
+
+/*--------------------------------------------------------------------------*/
+///  write a marker to the stack.  It is then possible to pop only those
+///  messages following the marker off of the stack, leaving the previous
+///  messages unaffected.
+///
+///  The marker is ignored by the ffgmsg routine.
+pub fn ffpmrk_safe() {
+    ffxmsg_safer(PUT_MARK, None);
+}
+
+/*--------------------------------------------------------------------------*/
+/// get oldest message from error stack, ignoring markers
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
+    unsafe {
+        ffxmsg(GET_MESG, err_message);
+        (*err_message) as c_int
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get oldest message from error stack, ignoring markers
+pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
+    ffxmsg_safer(GET_MESG, Some(err_message));
+    err_message[0] as c_int
+}
+
+/*--------------------------------------------------------------------------*/
+///  erase all messages in the error stack
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcmsg() {
+    unsafe {
+        let dummy = ptr::null_mut();
+        ffxmsg(DEL_ALL, dummy);
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  erase all messages in the error stack
+pub fn ffcmsg_safe() {
+    let dummy = ptr::null_mut();
+    unsafe { ffxmsg(DEL_ALL, dummy) };
+}
+
+/*--------------------------------------------------------------------------*/
+/// erase newest messages in the error stack, stopping if a marker is found.
+/// The marker is also erased in this case.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcmrk() {
+    ffxmsg_safer(DEL_MARK, None);
+}
+
+/*--------------------------------------------------------------------------*/
+/// erase newest messages in the error stack, stopping if a marker is found.
+/// The marker is also erased in this case.
+pub fn ffcmrk_safe() {
+    ffxmsg_safer(DEL_MARK, None);
+}
+
+/*--------------------------------------------------------------------------*/
+/// general routine to get, put, or clear the error message stack.
+/// Use a static array rather than allocating memory as needed for
+/// the error messages because it is likely to be more efficient
+/// and simpler to implement.
+///
+/// Action Code:
+/// DelAll     1  delete all messages on the error stack
+/// DelMark    2  delete messages back to and including the 1st marker
+/// DelNewest  3  delete the newest message from the stack
+/// GetMesg    4  pop and return oldest message, ignoring marks
+/// PutMesg    5  add a new message to the stack
+/// PutMark    6  add a marker to the stack
+pub(crate) fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
+    // SAFETY: `errmsg` is a valid pointer to a mutable array of `c_char` with length `FLEN_ERRMSG
+    unsafe {
+        ffxmsg(
+            action,
+            errmsg.map(|x| x.as_mut_ptr()).unwrap_or(ptr::null_mut()),
+        );
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// general routine to get, put, or clear the error message stack.
+/// Use a static array rather than allocating memory as needed for
+/// the error messages because it is likely to be more efficient
+/// and simpler to implement.
+///
+/// Action Code:
+/// DelAll     1  delete all messages on the error stack
+/// DelMark    2  delete messages back to and including the 1st marker
+/// DelNewest  3  delete the newest message from the stack
+/// GetMesg    4  pop and return oldest message, ignoring marks
+/// PutMesg    5  add a new message to the stack
+/// PutMark    6  add a marker to the stack
+pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
+    unsafe {
+        pub static mut TXTBUFF: [*mut c_char; ERRMSGSIZ] = [ptr::null_mut(); ERRMSGSIZ]; /* shift remaining pointers */
+        pub static mut TMPBUFF: *mut c_char = ptr::null_mut(); /* set pointer for the new message */
+        pub static mut MSGPTR: *mut c_char = ptr::null_mut(); /* find first empty buffer */
+        pub static mut ERRBUFF: [[c_char; FLEN_ERRMSG]; ERRMSGSIZ] = [[0; FLEN_ERRMSG]; ERRMSGSIZ]; /* put a marker on the stack */
+        pub static mut NUMMSG: usize = 0; /* buffers full; reuse oldest buffer */
+
+        let mut ii: usize;
+        let mut markflag: c_char;
+
+        let lock = FFLOCK();
+
+        if action == DEL_ALL {
+            /* clear the whole message stack */
+            ii = 0;
+            while ii < NUMMSG {
+                *(TXTBUFF[ii]) = 0;
+                ii += 1
+            }
+
+            NUMMSG = 0;
+        } else if action == DEL_MARK {
+            /* clear up to and including first marker */
+            while NUMMSG > 0 {
+                NUMMSG -= 1;
+                markflag = *(TXTBUFF[NUMMSG]); /* store possible marker character */
+                *(TXTBUFF[NUMMSG]) = 0; /* clear the buffer for this msg */
+
+                if markflag == ESMARKER {
+                    break; /* found a marker, so quit */
+                };
+            }
+        } else if action == DEL_NEWEST {
+            /* remove newest message from stack */
+            if NUMMSG > 0 {
+                NUMMSG -= 1;
+                *(TXTBUFF[NUMMSG]) = 0; /* clear the buffer for this msg */
+            };
+        } else if action == GET_MESG {
+            /* pop and return oldest message from stack */
+            /* ignoring markers */
+
+            while NUMMSG > 0 {
+                strcpy(errmsg, TXTBUFF[0]); /* copy oldest message to output */
+
+                *(TXTBUFF[0]) = 0; /* clear the buffer for this msg */
+
+                NUMMSG -= 1;
+                ii = 0;
+                while ii < NUMMSG {
+                    TXTBUFF[ii] = TXTBUFF[ii + 1]; /* shift remaining pointers */
+                    ii += 1
+                }
+
+                if *errmsg.offset(0) != ESMARKER {
+                    /* quit if this is not a marker */
+                    return;
+                };
+            }
+
+            *errmsg.offset(0) = 0; /*  no messages in the stack */
+        } else if action == PUT_MESG {
+            /* add new message to stack */
+            MSGPTR = errmsg;
+            while strlen(MSGPTR) != 0 {
+                if NUMMSG == ERRMSGSIZ {
+                    TMPBUFF = TXTBUFF[0]; /* buffers full; reuse oldest buffer */
+                    *(TXTBUFF[0]) = 0; /* clear the buffer for this msg */
+
+                    NUMMSG -= 1;
+                    ii = 0;
+                    while ii < NUMMSG {
+                        TXTBUFF[ii] = TXTBUFF[ii + 1]; /* shift remaining pointers */
+                        ii += 1
+                    }
+
+                    TXTBUFF[NUMMSG] = TMPBUFF; /* set pointer for the new message */
+                } else {
+                    ii = 0;
+                    while ii < ERRMSGSIZ {
+                        if (ERRBUFF[ii])[0] == 0 {
+                            /* find first empty buffer */
+                            TXTBUFF[NUMMSG] = ERRBUFF[ii].as_mut_ptr();
+                            break;
+                        };
+                        ii += 1
+                    }
+                }
+                strncat(TXTBUFF[NUMMSG], MSGPTR, 80);
+                NUMMSG += 1;
+                MSGPTR = MSGPTR.add(if 80 < strlen(MSGPTR) {
+                    80
+                } else {
+                    strlen(MSGPTR)
+                });
+            }
+        } else if action == PUT_MARK {
+            /* put a marker on the stack */
+            if NUMMSG == ERRMSGSIZ {
+                TMPBUFF = TXTBUFF[0]; /* buffers full; reuse oldest buffer */
+                *(TXTBUFF[0]) = 0; /* clear the buffer for this msg */
+
+                NUMMSG -= 1;
+                ii = 0;
+                while ii < NUMMSG {
+                    TXTBUFF[ii] = TXTBUFF[ii + 1]; /* shift remaining pointers */
+                    ii += 1
+                }
+
+                TXTBUFF[NUMMSG] = TMPBUFF; /* set pointer for the new message */
+            } else {
+                ii = 0;
+                while ii < ERRMSGSIZ {
+                    if (ERRBUFF[ii][0]) == 0 {
+                        /* find first empty buffer */
+                        TXTBUFF[NUMMSG] = ERRBUFF[ii].as_mut_ptr();
+                        break;
+                    };
+                    ii += 1
+                }
+            }
+
+            *(TXTBUFF[NUMMSG]) = ESMARKER; /* write the marker */
+            *(TXTBUFF[NUMMSG]).offset(1) = 0;
+            NUMMSG += 1;
+        }
+
+        FFUNLOCK(lock);
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// return the number of bytes per pixel associated with the datatype
+pub(crate) fn ffpxsz(datatype: c_int) -> usize {
+    if datatype == TBYTE {
+        std::mem::size_of::<i8>()
+    } else if datatype == TUSHORT {
+        std::mem::size_of::<c_ushort>()
+    } else if datatype == TSHORT {
+        std::mem::size_of::<c_short>()
+    } else if datatype == TULONG {
+        std::mem::size_of::<c_ulong>()
+    } else if datatype == TLONG {
+        std::mem::size_of::<c_long>()
+    } else if datatype == TINT {
+        std::mem::size_of::<c_int>()
+    } else if datatype == TUINT {
+        std::mem::size_of::<c_uint>()
+    } else if datatype == TFLOAT {
+        std::mem::size_of::<f32>()
+    } else if datatype == TDOUBLE {
+        std::mem::size_of::<f64>()
+    } else if datatype == TLOGICAL {
+        std::mem::size_of::<i8>()
+    } else {
+        0
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Test that the keyword name conforms to the FITS standard.  Must contain
+/// only capital letters, digits, minus or underscore chars.  Trailing spaces
+/// are allowed.  If the input status value is less than zero, then the test
+/// is modified so that upper or lower case letters are allowed, and no
+/// error messages are printed if the keyword is not legal.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fftkey(
+    keyword: *const c_char, /* I -  keyword name */
+    status: *mut c_int,     /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        raw_to_slice!(keyword);
+
+        fftkey_safe(keyword, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Test that the keyword name conforms to the FITS standard.  Must contain
+/// only capital letters, digits, minus or underscore chars.  Trailing spaces
+/// are allowed.  If the input status value is less than zero, then the test
+/// is modified so that upper or lower case letters are allowed, and no
+/// error messages are printed if the keyword is not legal.
+pub fn fftkey_safe(
+    keyword: &[c_char], /* I -  keyword name */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut maxchr: usize = 0;
+    let mut spaces: c_int = 0;
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut testchar = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    maxchr = strlen_safe(keyword);
+    if maxchr > 8 {
+        maxchr = 8;
+    }
+
+    for ii in 0..maxchr {
+        if *status == 0 {
+            testchar = keyword[ii] as u8;
+        } else {
+            testchar = toupper(keyword[ii]) as u8;
+        }
+        if (testchar >= b'A' && testchar <= b'Z')
+            || (testchar >= b'0' && testchar <= b'9')
+            || testchar == b'-'
+            || testchar == b'_'
+        {
+            if spaces > 0 {
+                if *status == 0 {
+                    /* don't print error message if status < 0  */
+
+                    int_snprintf!(
+                        &mut msg,
+                        FLEN_ERRMSG,
+                        "Keyword name contains embedded space(s): {:.8}",
+                        slice_to_str!(keyword),
+                    );
+
+                    ffpmsg_slice(&msg);
+                }
+                *status = BAD_KEYCHAR;
+                return *status;
+            }
+        } else if keyword[ii] == bb(b' ') {
+            spaces = 1;
+        } else {
+            if *status == 0 {
+                /* don't print error message if status < 0  */
+
+                int_snprintf!(
+                    &mut msg,
+                    FLEN_ERRMSG,
+                    "Character {} in this keyword is illegal: {:.8}",
+                    ii + 1,
+                    slice_to_str!(keyword),
+                );
+
+                ffpmsg_slice(&msg);
+
+                /* explicitly flag the 2 most common cases */
+                if keyword[ii] == 0 {
+                    ffpmsg_str(" (This a NULL (0) character).");
+                } else if keyword[ii] == 9 {
+                    ffpmsg_str(" (This an ASCII TAB (9) character).");
+                }
+            }
+
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Test that the keyword card conforms to the FITS standard.  Must contain
+/// only printable ASCII characters;
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fftrec(
+    card: *mut c_char,  /* I -  keyword card to test */
+    status: *mut c_int, /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        raw_to_slice!(card);
+
+        fftrec_safe(card, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Test that the keyword card conforms to the FITS standard.  Must contain
+/// only printable ASCII characters;
+pub fn fftrec_safe(
+    card: &[c_char],    /* I -  keyword card to test */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    let maxchr = strlen_safe(card);
+
+    for ii in 8..maxchr {
+        if card[ii] < 32 || card[ii] > 126 {
+            int_snprintf!(
+                &mut msg,
+                FLEN_ERRMSG,
+                "Character {} in this keyword is illegal. Hex Value = {:X}",
+                (ii + 1) as c_int,
+                card[ii] as c_int,
+            );
+
+            let len = strlen_safe(&msg);
+            if card[ii] == 0 {
+                strncat_safe(&mut msg, cs!(b" (NULL char.)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 9 {
+                strncat_safe(&mut msg, cs!(b" (TAB char.)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 10 {
+                strncat_safe(&mut msg, cs!(b" (Line Feed char.)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 11 {
+                strncat_safe(&mut msg, cs!(b" (Vertical Tab)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 12 {
+                strncat_safe(&mut msg, cs!(b" (Form Feed char.)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 13 {
+                strncat_safe(&mut msg, cs!(b" (Carriage Return)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 27 {
+                strncat_safe(&mut msg, cs!(b" (Escape char.)"), FLEN_ERRMSG - len - 1);
+            } else if card[ii] == 127 {
+                strncat_safe(&mut msg, cs!(b" (Delete char.)"), FLEN_ERRMSG - len - 1);
+            }
+            ffpmsg_slice(&msg);
+            strncpy_safe(&mut msg, card, 80);
+            msg[80] = 0;
+            ffpmsg_slice(&msg);
+
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert string to upper case, in place.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffupch(string: *mut c_char) {
+    unsafe {
+        if !string.is_null() {
+            let len = strlen(string);
+            let s = slice::from_raw_parts_mut(string, len + 1); //+1 for null char
+
+            ffupch_safe(s);
+        }
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert string to upper case, in place.
+pub(crate) fn ffupch_safe(string: &mut [c_char]) {
+    let len = strlen_safe(string);
+    for ii in 0..(len) {
+        string[ii] = toupper(string[ii])
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Make a complete FITS 80-byte keyword card from the input name, value and
+/// comment strings. Output card is null terminated without any trailing blanks.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffmkky(
+    keyname: *const c_char, /* I - keyword name    */
+    value: *const c_char,   /* I - keyword value   */
+    comm: *const c_char,    /* I - keyword comment */
+    card: *mut c_char,      /* O - constructed keyword card */
+    status: *mut c_int,     /* IO - status value   */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        let card = slice::from_raw_parts_mut(card, FLEN_CARD);
+        let value = cast_slice(CStr::from_ptr(value).to_bytes_with_nul());
+        let keyname: &[c_char] = cast_slice(CStr::from_ptr(keyname).to_bytes_with_nul());
+
+        let comm = match comm.is_null() {
+            true => None,
+            false => Some(cast_slice(CStr::from_ptr(comm).to_bytes_with_nul())),
+        };
+
+        ffmkky_safe(keyname, value, comm, card, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Make a complete FITS 80-byte keyword card from the input name, value and
+/// comment strings. Output card is null terminated without any trailing blanks.
+pub fn ffmkky_safe(
+    keyname: &[c_char],      /* I - keyword name    */
+    value: &[c_char],        /* I - keyword value   */
+    comm: Option<&[c_char]>, /* I - keyword comment */
+    card: &mut [c_char],     /* O - constructed keyword card */
+    status: &mut c_int,      /* IO - status value   */
+) -> c_int {
+    let mut namelen: usize = 0;
+    let mut len: usize = 0;
+    let mut ii: usize = 0;
+    let mut tmpname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tmpname2: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+
+    let mut tstatus: c_int = -(1);
+    let mut nblank = 0;
+    let mut ntoken = 0;
+    let mut maxlen = 0;
+    let mut specialchar: c_int = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    card[0] = 0;
+
+    /* skip leading blanks in the name */
+    while (keyname[nblank as usize]) == bb(b' ') {
+        nblank += 1;
+    }
+
+    strncat_safe(
+        &mut tmpname,
+        &keyname[(nblank as usize)..],
+        FLEN_KEYWORD - 1,
+    );
+
+    len = strlen_safe(value);
+    namelen = strlen_safe(&tmpname);
+
+    /* delete non-significant trailing blanks in the name */
+    let mut j;
+    if namelen > 0 {
+        j = namelen - 1;
+        while tmpname[j] == bb(b' ') {
+            tmpname[j] = 0;
+            j -= 1;
+        }
+
+        namelen = j + 1;
+    }
+
+    /* check that the name does not contain an '=' (equals sign) */
+    if strchr_safe(&tmpname, bb(b'=')).is_some() {
+        ffpmsg_str("Illegal keyword name; contains an equals sign (=)");
+        ffpmsg_slice(&tmpname);
+        *status = BAD_KEYCHAR;
+        return *status;
+    }
+
+    if namelen <= 8 && fftkey_safe(&tmpname, &mut tstatus) <= 0 {
+        /* a normal 8-char (or less) FITS keyword. */
+        strcat_safe(card, &tmpname); /* copy keyword name to buffer */
+
+        ii = namelen;
+        while ii < 8 {
+            card[ii] = bb(b' '); /* pad keyword name with spaces */
+            ii += 1;
+        }
+        card[8] = bb(b'='); /* append '= ' in columns 9-10 */
+        card[9] = bb(b' ');
+        card[10] = 0; /* terminate the partial string */
+        namelen = 10;
+    } else if (FSTRNCMP(&tmpname, cs!("HIERARCH "), 9) == 0)
+        || (FSTRNCMP(&tmpname, cs!("hierarch "), 9) == 0)
+    {
+        /* this is an explicit ESO HIERARCH keyword */
+
+        strcat_safe(card, &tmpname); /* copy keyword name to buffer */
+
+        if namelen + 3 + len > 80 {
+            /* save 1 char by not putting a space before the equals sign */
+            strcat_safe(card, cs!("= "));
+            namelen += 2;
+        } else {
+            strcat_safe(card, cs!(" = "));
+            namelen += 3;
+        }
+    } else {
+        /* scan the keyword name to determine the number and max length of the tokens */
+        /* and test if any of the tokens contain nonstandard characters */
+
+        strncat_safe(&mut tmpname2, &tmpname, FLEN_KEYWORD - 1);
+
+        // NEW VERSION
+        let tmpname3 = CStr::from_bytes_until_nul(cast_slice(&tmpname2))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        tmpname3.split(' ').for_each(|token| {
+            if token.len() > maxlen {
+                maxlen = token.len();
+            }
+
+            /* name contains special characters? */
+            tstatus = -1; /* suppress any error message */
+
+            if fftkey_safe(cast_slice(token.as_bytes()), &mut tstatus) > 0 {
+                specialchar = 1;
+            }
+
+            ntoken += 1;
+        });
+
+        tstatus = -1; /* suppress any error message */
+
+        /*      if (ntoken > 1) { */
+        if ntoken > 0 {
+            /*  temporarily change so that this case should always be true  */
+            /* for now at least, treat all cases as an implicit ESO HIERARCH keyword. */
+            /* This could  change if FITS is ever expanded to directly support longer keywords. */
+
+            if namelen + 11 > FLEN_CARD - 1 {
+                ffpmsg_str("The following keyword is too long to fit on a card:");
+                ffpmsg_slice(keyname);
+                *status = BAD_KEYCHAR;
+                return *status;
+            }
+            strcat_safe(card, cs!("HIERARCH "));
+            strcat_safe(card, &tmpname);
+            namelen += 9;
+
+            if namelen + 3 + len > 80 {
+                /* save 1 char by not putting a space before the equals sign */
+                strcat_safe(card, cs!("= "));
+                namelen += 2;
+            } else {
+                strcat_safe(card, cs!(" = "));
+                namelen += 3;
+            }
+        } else if fftkey_safe(&tmpname, &mut tstatus) <= 0 {
+            /* should never get here (at least for now) */
+            /* allow keyword names longer than 8 characters */
+
+            strncat_safe(card, &tmpname, FLEN_KEYWORD - 1);
+            strcat_safe(card, cs!("= "));
+            namelen += 2;
+        } else {
+            /* should never get here (at least for now) */
+            ffpmsg_str("Illegal keyword name:");
+            ffpmsg_slice(&tmpname);
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+    }
+
+    if len > 0 {
+        /* now process the value string */
+
+        if value[0] == bb(b'\'') {
+            /* is this a quoted string value? */
+            if namelen > 77 {
+                ffpmsg_str("The following keyword + value is too long to fit on a card:");
+                ffpmsg_slice(keyname);
+                ffpmsg_slice(value);
+                *status = BAD_KEYCHAR;
+                return *status;
+            }
+
+            strncat_safe(card, value, 80 - namelen); /* append the value string */
+            len = cmp::min(80, namelen + len);
+
+            /* restore the closing quote if it got truncated */
+            if len == 80 {
+                card[79] = bb(b'\'');
+            }
+
+            if let Some(comm) = comm {
+                if comm[0] != 0 && len < 30 {
+                    ii = len;
+                    while ii < 30 {
+                        card[ii] = bb(b' '); /* fill with spaces to col 30 */
+                        ii += 1;
+                    }
+                    card[30] = 0;
+                    len = 30;
+                }
+            }
+        } else {
+            if namelen + len > 80 {
+                ffpmsg_str("The following keyword + value is too long to fit on a card:");
+                ffpmsg_slice(keyname);
+                ffpmsg_slice(value);
+                *status = BAD_KEYCHAR;
+                return *status;
+            } else if namelen + len < 30 {
+                /* add spaces so field ends at least in col 30 */
+                strncat_safe(card, cs!("                    "), 30 - (namelen + len));
+            }
+
+            strncat_safe(card, value, 80 - namelen); /* append the value string */
+            len = cmp::min(80, namelen + len);
+            len = cmp::max(30, len);
+        }
+        if let Some(comm) = comm {
+            if (len < 77) && (strlen_safe(comm) > 0) {
+                /* room for a comment? */
+                strcat_safe(card, cs!(" / ")); /* append comment separator */
+                strncat_safe(card, comm, 77 - len); /* append comment (what fits) */
+            }
+        }
+    } else if namelen == 10
+    /* This case applies to normal keywords only */
+    {
+        card[8] = b' ' as c_char; /* keywords with no value have no '=' */
+        if let Some(comm) = comm {
+            strncat_safe(card, comm, 80 - namelen); /* append comment (what fits) */
+        }
+    }
+
+    /* issue a warning if this keyword does not strictly conform to the standard
+      HIERARCH convention, which requires,
+        1) at least 2 tokens in the name,
+    2) no tokens longer than 8 characters, and
+    3) no special characters in any of the tokens */
+
+    if ntoken == 1 || specialchar == 1 {
+        ffpmsg_str("Warning: the following keyword does not conform to the HIERARCH convention");
+        /*  ffpmsg(" (e.g., name is not hierarchical or contains non-standard characters)."); */
+        ffpmsg_slice(card);
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// replace the previously read card (i.e. starting 80 bytes before the
+/// fptr.Fptr.nextkey position) with the contents of the input card.
+pub(crate) fn ffmkey(
+    fptr: &mut fitsfile, /* I - FITS file pointer  */
+    card: &[c_char],     /* I - card string value  */
+    status: &mut c_int,  /* IO - error status      */
+) -> c_int {
+    let mut tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut keylength = 8;
+
+    let card_len = FLEN_CARD - 1;
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+    strncpy_safe(&mut tcard, card, card_len);
+    tcard[card_len] = 0;
+    let len = strlen_safe(&tcard);
+
+    /* silently replace any illegal characters with a space */
+    for ii in 0..len {
+        if tcard[ii] < bb(b' ') || tcard[ii] > 126 {
+            tcard[ii] = bb(b' ');
+        }
+    }
+
+    let mut ii = len;
+    /* fill card with spaces if necessary */
+    while ii < card_len {
+        tcard[ii] = bb(b' ');
+        ii += 1
+    }
+
+    keylength = strcspn_safe(&tcard, cs!("="));
+    if keylength == card_len {
+        keylength = 8;
+    }
+
+    let mut ii = 0;
+    /* make sure keyword name is uppercase */
+    while ii < keylength {
+        tcard[ii] = toupper(tcard[ii]);
+        ii += 1
+    }
+
+    fftkey_safe(&tcard, status); /* test keyword name contains legal chars */
+
+    /*  no need to do this any more, since any illegal characters have been removed
+    fftrec(tcard, status);   */
+    /* test rest of keyword for legal chars   */
+
+    /* move position of keyword to be over written */
+
+    ffmbyt_safe(
+        fptr,
+        (fptr.Fptr.nextkey) - card_len as LONGLONG,
+        REPORT_EOF,
+        status,
+    );
+
+    ffpbyt(
+        fptr,
+        card_len as LONGLONG,
+        cast_slice_mut(&mut tcard),
+        status,
+    ); /* write the 80 byte card */
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Construct a keyword name string by appending the index number to the root.
+/// e.g., if root = "TTYPE" and value = 12 then keyname = "TTYPE12".
+pub(crate) fn ffkeyn_safe(
+    keyroot: &[c_char],     /* I - root string for keyword name */
+    value: c_int,           /* I - index number to be appended to root name */
+    keyname: &mut [c_char], /* O - output root + index keyword name */
+    status: &mut c_int,     /* IO - error status  */
+) -> c_int {
+    let mut suffix: [c_char; 16] = [0; 16]; /* initialize output name to null */
+
+    keyname[0] = 0; /* initialize output name to null */
+    let mut rootlen = strlen_safe(keyroot) as isize;
+    if rootlen == 0 || value < 0 {
+        *status = BAD_INDEX_KEY;
+        return *status;
+    }
+
+    int_snprintf!(&mut suffix, 16, "{}", value); /* construct keyword suffix */
+
+    strcpy_safe(keyname, keyroot); /* copy root string to name string */
+
+    while rootlen > 0 && keyname[(rootlen - 1) as usize] == bb(b' ') {
+        rootlen -= 1; /* remove trailing spaces in root name */
+        keyname[rootlen as usize] = 0;
+    }
+
+    if strlen_safe(&suffix) + strlen_safe(keyname) > 8 {
+        *status = BAD_INDEX_KEY;
+        return *status;
+    }
+
+    strcat_safe(keyname, &suffix); /* append suffix to the root */
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Construct a keyword name string by appending the index number to the root.
+/// e.g., if root = "TTYPE" and value = 12 then keyname = "TTYPE12".
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffkeyn(
+    keyroot: *const c_char, /* I - root string for keyword name */
+    value: c_int,           /* I - index number to be appended to root name */
+    keyname: *mut c_char,   /* O - output root + index keyword name */
+    status: *mut c_int,     /* IO - error status  */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let keyname = slice::from_raw_parts_mut(keyname, FLEN_KEYWORD);
+
+        raw_to_slice!(keyroot);
+
+        ffkeyn_safe(keyroot, value, keyname, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Construct a keyword name string by appending the root string to the index
+/// number. e.g., if root = "TTYPE" and value = 12 then keyname = "12TTYPE".
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffnkey(
+    value: c_int,           /* I - index number to be appended to root name */
+    keyroot: *const c_char, /* I - root string for keyword name */
+    keyname: *mut c_char,   /* O - output root + index keyword name */
+    status: *mut c_int,     /* IO - error status  */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let keyname = slice::from_raw_parts_mut(keyname, 9); //Max 8 characters from bottom condition statement
+        raw_to_slice!(keyroot);
+
+        ffnkey_safe(value, keyroot, keyname, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Construct a keyword name string by appending the root string to the index
+/// number. e.g., if root = "TTYPE" and value = 12 then keyname = "12TTYPE".
+pub fn ffnkey_safe(
+    value: c_int,           /* I - index number to be appended to root name */
+    keyroot: &[c_char],     /* I - root string for keyword name */
+    keyname: &mut [c_char], /* O - output root + index keyword name */
+    status: &mut c_int,     /* IO - error status  */
+) -> c_int {
+    keyname[0] = 0; /* initialize output name to null */
+    let rootlen = strlen_safe(keyroot);
+
+    if rootlen == 0 || rootlen > 7 || value < 0 {
+        *status = 206;
+        return *status;
+    }
+
+    int_snprintf!(keyname, FLEN_VALUE, "{}", value,); /* construct keyword prefix */
+
+    if rootlen + strlen_safe(keyname) > 8 {
+        *status = 206;
+        return *status;
+    }
+
+    strcat_safe(keyname, keyroot); /* append root to the prefix */
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// ParSe the Value and Comment strings from the input header card string.
+///
+/// If the card contains a quoted string value, the returned value string
+/// includes the enclosing quote characters.  If comm = NULL, don't return
+/// the comment string.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffpsvc(
+    card: *const c_char, /* I - FITS header card (nominally 80 bytes long) */
+    value: *mut c_char,  /* O - value string parsed from the card */
+    comm: *mut c_char,   /* O - comment string parsed from the card */
+    status: *mut c_int,  /* IO - error status   */
+) -> c_int {
+    unsafe {
+        let card: &[c_char] = slice::from_raw_parts(card, FLEN_CARD);
+        let value: &mut [c_char] = slice::from_raw_parts_mut(value, FLEN_VALUE);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        let comm: Option<&mut [c_char; FLEN_COMMENT]> = match comm.is_null() {
+            true => None,
+            false => Some(
+                slice::from_raw_parts_mut(comm, FLEN_COMMENT)
+                    .try_into()
+                    .unwrap(),
+            ),
+        };
+
+        ffpsvc_safe(card, value, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// ParSe the Value and Comment strings from the input header card string.
+/// If the card contains a quoted string value, the returned value string
+/// includes the enclosing quote characters.  If comm = NULL, don't return
+/// the comment string.
+pub(crate) fn ffpsvc_safe(
+    card: &[c_char],      /* I - FITS header card (nominally 80 bytes long) */
+    value: &mut [c_char], /* O - value string parsed from the card */
+    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - comment string parsed from the card */
+    status: &mut c_int,   /* IO - error status   */
+) -> c_int {
+    let jj: isize = 0;
+    let mut valpos: usize = 0;
+    let mut strbuf: [c_char; 21] = [0; 21];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    value[0] = 0;
+
+    let mut comm = comm;
+    if let Some(comm) = comm.as_deref_mut() {
+        comm[0] = 0;
+    }
+
+    let cardlen = strlen_safe(card);
+
+    if cardlen >= FLEN_CARD {
+        strncpy_safe(&mut strbuf, card, 20);
+        strbuf[20] = 0;
+        ffpmsg_str("The card string starting with the chars below is too long:");
+        ffpmsg_slice(&strbuf);
+
+        *status = BAD_KEYCHAR;
+        return *status;
+    }
+
+    /* support for ESO HIERARCH keywords; find the '=' */
+    if FSTRNCMP(card, cs!(b"HIERARCH "), 9) == 0 {
+        valpos = strcspn_safe(card, cs!(b"="));
+
+        if valpos == cardlen {
+            /* no value indicator ??? */
+            if let Some(ref mut comm) = comm {
+                if cardlen > 8 {
+                    //strcpy_safe(*comm, &card[8..]);
+
+                    for jj in (0..(cardlen - 8)).rev() {
+                        /* replace trailing blanks with nulls */
+                        if comm[jj] == bb(b' ') as c_char {
+                            comm[jj] = 0;
+                        } else {
+                            break;
+                        };
+                    }
+                };
+            }
+            return *status; /* no value indicator */
+        }
+        valpos += 1;
+    } else if cardlen < 9
+        || FSTRNCMP(card, cs!(b"COMMENT "), 8) == 0
+        || FSTRNCMP(card, cs!(b"HISTORY "), 8) == 0
+        || FSTRNCMP(card, cs!(b"END     "), 8) == 0
+        || FSTRNCMP(card, cs!(b"CONTINUE"), 8) == 0
+        || FSTRNCMP(card, cs!(b"        "), 8) == 0
+    {
+        /* keywords with no value */
+
+        /*  no value, so the comment extends from cols 9 - 80  */
+        if let Some(comm) = comm {
+            if cardlen > 8 {
+                strcpy_safe(comm, &card[8..]);
+
+                for jj in (0..(cardlen - 8)).rev() {
+                    /* replace trailing blanks with nulls */
+                    if comm[jj] == bb(b' ') {
+                        comm[jj] = 0;
+                    } else {
+                        break;
+                    };
+                }
+            };
+        }
+
+        return *status;
+    } else if FSTRNCMP(&card[8..], cs!(b"= "), 2) == 0 {
+        /* normal keyword with '= ' in cols 9-10 */
+
+        valpos = 10; /* starting position of the value field */
+    } else {
+        valpos = strcspn_safe(card, cs!(b"="));
+        if valpos == cardlen {
+            /* no value indicator ??? */
+            if let Some(comm) = comm {
+                if cardlen > 8 {
+                    strcpy_safe(comm, &card[8..]);
+
+                    for jj in (0..(cardlen - 8)).rev() {
+                        /* replace trailing blanks with nulls */
+                        if comm[jj] == bb(b' ') {
+                            comm[jj] = 0;
+                        } else {
+                            break;
+                        };
+                    }
+                };
+            }
+            return *status; /* no value indicator */
+        }
+        valpos += 1; /* point to the position after the '=' */
+    }
+
+    let mut nblank = strspn_safe(&card[valpos..], cs!(b" ")); /* find number of leading blanks */
+
+    if nblank + valpos == cardlen {
+        /* the absence of a value string is legal, and simply indicates
+           that the keyword value is undefined.  Don't write an error
+           message in this case.
+        */
+        return *status;
+    }
+
+    let mut ii = valpos + nblank;
+
+    if card[ii] == bb(b'/') {
+        /* slash indicates start of the comment */
+        ii += 1;
+    } else if card[ii] == bb(b'\'') {
+        /* is this a quoted string value? */
+
+        value[0] = card[ii];
+        let mut jj: usize = 1;
+        ii += 1;
+        while ii < cardlen && jj < FLEN_VALUE - 1 {
+            if card[ii] == bb(b'\'') {
+                /*  is this the closing quote?  */
+                if card[ii + 1] == bb(b'\'') {
+                    /* 2 successive quotes? */
+                    value[jj] = card[ii];
+                    ii += 1;
+                    jj += 1;
+                } else {
+                    value[jj] = card[ii];
+                    break; /* found the closing quote, so exit this loop  */
+                };
+            }
+
+            if jj < FLEN_VALUE - 1 {
+                value[jj] = card[ii]; /* copy the next character to the output */
+            }
+
+            ii += 1;
+            jj += 1
+        }
+
+        if ii == cardlen || jj >= FLEN_VALUE - 1 {
+            jj = cmp::min(jj, FLEN_VALUE - 2); /* don't exceed 70 char string length */
+            value[jj] = bb(b'\''); /*  close the bad value string  */
+            value[jj + 1] = 0; /*  terminate the bad value string  */
+            ffpmsg_str("This keyword string value has no closing quote:");
+            ffpmsg_slice(card);
+            /*  May 2008 - modified to not fail on this minor error  */
+            /*            return(*status = NO_QUOTE);  */
+        } else {
+            value[jj + 1] = 0; /*  terminate the good value string  */
+            ii += 1; /*  point to the character following the value  */
+        };
+    } else if card[ii] == bb(b'(') {
+        /* is this a complex value? */
+
+        nblank = strcspn_safe(&card[ii..], cs!(b")")); /* find closing ) */
+
+        if nblank == strlen_safe(&card[ii..]) || nblank >= FLEN_VALUE - 1 {
+            ffpmsg_str("This complex keyword value has no closing ')' within range:");
+            ffpmsg_slice(card);
+
+            *status = NO_QUOTE;
+            return *status;
+        }
+        nblank += 1;
+
+        strncpy_safe(value, &card[ii..], nblank);
+        value[nblank] = 0;
+        ii += nblank;
+    } else {
+        /*  an integer, floating point, or logical FITS value string  */
+
+        nblank = strcspn_safe(&card[ii..], cs!(b" /")); /* find the end of the token */
+
+        if nblank >= FLEN_VALUE {
+            /* This should not happen for correct input */
+            nblank = FLEN_VALUE - 1;
+        }
+        strncpy_safe(value, &card[ii..], nblank);
+        value[nblank] = 0;
+        ii += nblank;
+    }
+
+    /*  now find the comment string, if any  */
+    if let Some(comm) = comm {
+        nblank = strspn_safe(&card[ii..], cs!(b" ")); /*  find next non-space character  */
+        ii += nblank;
+
+        if ii < 80 {
+            if card[ii] == bb(b'/') {
+                /*  ignore the slash separator  */
+                ii += 1;
+                if card[ii] == bb(b' ') {
+                    /*  also ignore the following space  */
+                    ii += 1;
+                };
+            }
+            strncpy_safe(comm, &card[ii..], FLEN_COMMENT - 1); /*  copy the remaining characters  */
+            comm[FLEN_COMMENT - 1] = 0;
+
+            for jj in (0..strlen_safe(comm)).rev() {
+                /* replace trailing blanks with nulls */
+                if comm[jj] == bb(b' ') {
+                    comm[jj] = 0;
+                } else {
+                    break;
+                };
+            }
+        };
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// 'Get Template HeaDer'
+/// parse a template header line and create a formated
+/// character string which is suitable for appending to a FITS header
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgthd(
+    tmplt: *const c_char, /* I - input header template string */
+    card: *mut c_char,    /* O - returned FITS header record */
+    hdtype: *mut c_int,   /* O - how to interpreter the returned card string */
+    /*
+      -2 = modify the name of a keyword; the old keyword name
+           is returned starting at address chars[0]; the new name
+           is returned starting at address char[40] (to be consistent
+           with the Fortran version).  Both names are null terminated.
+      -1 = card contains the name of a keyword that is to be deleted
+       0 = append this keyword if it doesn't already exist, or
+           modify the value if the keyword already exists.
+       1 = append this comment keyword ('HISTORY',
+           'COMMENT', or blank keyword name)
+       2  =  this is the END keyword; do not write it to the header
+    */
+    status: *mut c_int, /* IO - error status   */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let hdtype = hdtype.as_mut().expect(NULL_MSG);
+        raw_to_slice!(tmplt);
+
+        let card = slice::from_raw_parts_mut(card, FLEN_CARD)
+            .try_into()
+            .unwrap();
+
+        ffgthd_safe(tmplt, card, hdtype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// 'Get Template HeaDer'
+/// parse a template header line and create a formated
+/// character string which is suitable for appending to a FITS header
+pub fn ffgthd_safe(
+    tmplt: &[c_char],               /* I - input header template string */
+    card: &mut [c_char; FLEN_CARD], /* O - returned FITS header record */
+    hdtype: &mut c_int,             /* O - how to interpreter the returned card string */
+    /*
+      -2 = modify the name of a keyword; the old keyword name
+           is returned starting at address chars[0]; the new name
+           is returned starting at address char[40] (to be consistent
+           with the Fortran version).  Both names are null terminated.
+      -1 = card contains the name of a keyword that is to be deleted
+       0 = append this keyword if it doesn't already exist, or
+           modify the value if the keyword already exists.
+       1 = append this comment keyword ('HISTORY',
+           'COMMENT', or blank keyword name)
+       2  =  this is the END keyword; do not write it to the header
+    */
+    status: &mut c_int, /* IO - error status   */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; 140] = [0; 140];
+    let mut comment: [c_char; 140] = [0; 140];
+    let mut tok: usize = 0;
+    let mut suffix: c_char = 0;
+
+    let mut tvalue: [c_char; 140] = [0; 140];
+    let mut len = 0;
+    let mut vlen = 0;
+    let mut more: bool = false;
+    let mut tstatus: c_int = 0;
+    let mut lentok1 = 0;
+    let mut remainlen = 0;
+    let mut dval: f64 = 0.0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    card[0] = 0;
+    *hdtype = 0;
+
+    if FSTRNCMP(tmplt, cs!("        "), 8) == 0 {
+        /* if first 8 chars of template are blank, then this is a comment */
+        strncat_safe(card, tmplt, 80);
+        *hdtype = 1;
+        return *status;
+    }
+
+    tok = 0; /* point to start of template string 'tmplt' */
+
+    keyname[0] = 0;
+    value[0] = 0;
+    comment[0] = 0;
+
+    len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before keyword */
+    tok += len;
+
+    /* test for pecular case where token is a string of dashes */
+    if strncmp_safe(&tmplt[tok..], cs!("--------------------"), 20) == 0 {
+        *status = BAD_KEYCHAR;
+        return *status;
+    }
+
+    if tmplt[tok] == bb(b'-') {
+        /* is there a leading minus sign? */
+        /* first token is name of keyword to be deleted or renamed */
+        *hdtype = -1;
+        tok += 1;
+        len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before keyword */
+        tok += len;
+
+        len = strcspn_safe(&tmplt[tok..], cs!(" =+")); /* length of name */
+        if len >= FLEN_KEYWORD {
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+
+        lentok1 = len;
+        strncat_safe(card, &tmplt[tok..], len);
+
+        /*
+          The HIERARCH convention supports non-standard characters
+          in the keyword name, so don't always convert to upper case or
+          abort if there are illegal characters in the name or if the
+          name is greater than 8 characters long.
+        */
+
+        if len < 9
+        /* this is possibly a normal FITS keyword name */
+        {
+            ffupch_safe(card);
+            tstatus = 0;
+            if fftkey_safe(card, &mut tstatus) > 0 {
+                /* name contained non-standard characters, so reset */
+                card[0] = 0;
+                strncat_safe(card, &tmplt[tok..], len);
+            }
+        }
+
+        tok += len;
+
+        /* Check optional "+" indicator to delete multiple keywords */
+        if tmplt[tok] == bb(b'+') && len < FLEN_KEYWORD {
+            strcat_safe(card, cs!("+"));
+            return *status;
+        }
+
+        /* second token, if present, is the new name for the keyword */
+
+        len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before next token */
+        tok += len;
+
+        if tmplt[tok] == 0 || tmplt[tok] == bb(b'=') {
+            return *status; /* no second token */
+        }
+
+        *hdtype = -2;
+        len = strcspn_safe(&tmplt[tok..], cs!(" ")); /* length of new name */
+        /* this name has to fit on columns 41-80 of card,
+        and first name must now fit in 1-40 */
+        if lentok1 > 40 {
+            card[0] = 0;
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+        if len > 40 {
+            card[0] = 0;
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+
+        /* copy the new name to card + 40;  This is awkward, */
+        /* but is consistent with the way the Fortran FITSIO works */
+        strcat_safe(card, cs!("                                        "));
+        strncpy_safe(&mut card[40..], &tmplt[tok..], len);
+        card[80] = 0; /* necessary to add terminator in case len = 40 */
+
+        /*
+            The HIERARCH convention supports non-standard characters
+            in the keyword name, so don't always convert to upper case or
+            abort if there are illegal characters in the name or if the
+            name is greater than 8 characters long.
+        */
+
+        if len < 9
+        /* this is possibly a normal FITS keyword name */
+        {
+            ffupch_safe(&mut card[40..]);
+            tstatus = 0;
+            if fftkey_safe(&card[40..], &mut tstatus) > 0 {
+                /* name contained non-standard characters, so reset */
+                strncpy_safe(&mut card[40..], &tmplt[tok..], len);
+            }
+        }
+    } else
+    /* no negative sign at beginning of template */
+    {
+        /* get the keyword name token */
+
+        len = strcspn_safe(&tmplt[tok..], cs!(" =")); /* length of keyword name */
+        if len >= FLEN_KEYWORD {
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+
+        strncat_safe(&mut keyname, &tmplt[tok..], len);
+
+        /*
+         The HIERARCH convention supports non-standard characters
+         in the keyword name, so don't always convert to upper case or
+         abort if there are illegal characters in the name or if the
+         name is greater than 8 characters long.
+        */
+
+        if len < 9
+        /* this is possibly a normal FITS keyword name */
+        {
+            ffupch_safe(&mut keyname);
+            tstatus = 0;
+            if fftkey_safe(&keyname, &mut tstatus) > 0 {
+                /* name contained non-standard characters, so reset */
+                keyname[0] = 0;
+                strncat_safe(&mut keyname, &tmplt[tok..], len);
+            }
+        }
+
+        if FSTRCMP(&keyname, cs!("END")) == 0 {
+            strcpy_safe(card, cs!("END"));
+            *hdtype = 2;
+            return *status;
+        }
+
+        tok += len; /* move token pointer to end of the keyword */
+
+        if FSTRCMP(&keyname, cs!("COMMENT")) == 0
+            || FSTRCMP(&keyname, cs!("HISTORY")) == 0
+            || FSTRCMP(&keyname, cs!("HIERARCH")) == 0
+        {
+            *hdtype = 1; /* simply append COMMENT and HISTORY keywords */
+            strcpy_safe(card, &keyname);
+            strncat_safe(card, &tmplt[tok..], FLEN_CARD - strlen_safe(&keyname) - 1);
+            return *status;
+        }
+
+        /* look for the value token */
+        len = strspn_safe(&tmplt[tok..], cs!(" =")); /* spaces or = between name and value */
+        tok += len;
+
+        if tmplt[tok] == bb(b'\'') {
+            /* is value enclosed in quotes? */
+            more = true;
+            remainlen = 139;
+            while more {
+                tok += 1; /* temporarily move past the quote char */
+                len = strcspn_safe(&tmplt[tok..], cs!("'")); /* length of quoted string */
+                tok -= 1;
+                if len + 2 > remainlen {
+                    *status = BAD_KEYCHAR;
+                    return *status;
+                }
+                strncat_safe(&mut value, &tmplt[tok..], len + 2);
+                remainlen -= len + 2;
+
+                tok += len + 1;
+                if tmplt[tok] != bb(b'\'') {
+                    /* NO_QUOTE */
+                    *status = NO_QUOTE;
+                    return *status;
+                }
+
+                tok += 1;
+                if tmplt[tok] != bb(b'\'') {
+                    /* 2 quote chars = literal quote */
+                    more = false;
+                }
+            }
+        } else if tmplt[tok] == bb(b'/') || tmplt[tok] == 0
+        /* There is no value */
+        {
+            strcat_safe(&mut value, cs!(" "));
+        } else
+        /* not a quoted string value */
+        {
+            len = strcspn_safe(&tmplt[tok..], cs!(" /")); /* length of value string */
+            if len > 139 {
+                *status = BAD_KEYCHAR;
+                return *status;
+            }
+            strncat_safe(&mut value, &tmplt[tok..], len);
+            if !((tmplt[tok] == bb(b'T') || tmplt[tok] == bb(b'F'))
+                && (tmplt[tok + 1] == bb(b' ')
+                    || tmplt[tok + 1] == bb(b'/')
+                    || tmplt[tok + 1] == 0))
+            {
+                /* not a logical value */
+
+                let mut tmp_suffix = 0;
+                dval = strtod_safe(&value, &mut tmp_suffix); /* try to read value as number */
+                suffix = value[tmp_suffix];
+
+                if suffix != 0 && suffix != bb(b' ') && suffix != bb(b'/') {
+                    /* value not recognized as a number; might be because it */
+                    /* contains a 'd' or 'D' exponent character  */
+                    strcpy_safe(&mut tvalue, &value);
+
+                    if let Some(loc) = strchr_safe(&tvalue, bb(b'D')) {
+                        tvalue[loc] = bb(b'E'); /*  replace D's with E's. */
+                        dval = strtod_safe(&tvalue, &mut tmp_suffix); /* read value again */
+                        suffix = value[tmp_suffix];
+                    } else if let Some(loc) = strchr_safe(&tvalue, bb(b'd')) {
+                        tvalue[loc] = bb(b'E'); /*  replace d's with E's. */
+                        dval = strtod_safe(&tvalue, &mut tmp_suffix); /* read value again */
+                        suffix = value[tmp_suffix];
+                    } else if let Some(loc) = strchr_safe(&tvalue, bb(b'.')) {
+                        tvalue[loc] = bb(b','); /*  replace period with a comma */
+                        dval = strtod_safe(&tvalue, &mut tmp_suffix); /* read value again */
+                        suffix = value[tmp_suffix];
+                    }
+                }
+
+                if suffix != 0 && suffix != bb(b' ') && suffix != bb(b'/') {
+                    /* value is not a number; must enclose it in quotes */
+                    if len > 137 {
+                        *status = BAD_KEYCHAR;
+                        return *status;
+                    }
+                    strcpy_safe(&mut value, cs!("'"));
+                    strncat_safe(&mut value, &tmplt[tok..], len);
+                    strcat_safe(&mut value, cs!("'"));
+
+                    /* the following useless statement stops the compiler warning */
+                    /* that dval is not used anywhere */
+                    if dval == 0.0 {
+                        len += dval as usize;
+                    }
+                } else {
+                    /* value is a number; convert any 'e' to 'E', or 'd' to 'D' */
+                    let loc = strchr_safe(&value, bb(b'e'));
+                    match loc {
+                        Some(l) => {
+                            value[l] = bb(b'E');
+                        }
+                        None => {
+                            let loc_inner = strchr_safe(&value, bb(b'd'));
+                            if let Some(loc_inner) = loc_inner {
+                                value[loc_inner] = bb(b'D');
+                            }
+                        }
+                    }
+                }
+            }
+            tok += len;
+        }
+
+        len = strspn_safe(&tmplt[tok..], cs!(" /")); /* no. of spaces between value and comment */
+        tok += len;
+
+        vlen = strlen_safe(&value);
+        if vlen > 0 && vlen < 10 && value[0] == bb(b'\'') {
+            /* pad quoted string with blanks so it is at least 8 chars long */
+            value[vlen - 1] = 0;
+            strncat_safe(&mut value, cs!("        "), 10 - vlen);
+            strcat_safe(&mut value[9..], cs!("'"));
+        }
+
+        /* get the comment string */
+        strncat_safe(&mut comment, &tmplt[tok..], 70);
+
+        /* construct the complete FITS header card */
+        ffmkky_safe(&keyname, &value, Some(&comment), card, status);
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Translate a keyword name to a new name, based on a set of patterns.
+///
+/// The user passes an array of patterns to be matched.  Input pattern
+/// number i is pattern[i][0], and output pattern number i is
+/// pattern[i][1].  Keywords are matched against the input patterns.  If a
+/// match is found then the keyword is re-written according to the output
+/// pattern.
+///
+/// Order is important.  The first match is accepted.  The fastest match
+/// will be made when templates with the same first character are grouped
+/// together.
+///
+/// Several characters have special meanings:
+///
+///    i,j - single digits, preserved in output template
+///    n - column number of one or more digits, preserved in output template
+///    m - generic number of one or more digits, preserved in output template
+///    a - coordinate designator, preserved in output template
+///    # - number of one or more digits
+///    ? - any character
+///    * - only allowed in first character position, to match all
+///        keywords; only useful as last pattern in the list
+///
+/// i, j, n, and m are returned by the routine.
+///
+/// For example, the input pattern "iCTYPn" will match "1CTYP5" (if n_value
+/// is 5); the output pattern "CTYPEi" will be re-written as "CTYPE1".
+/// Notice that "i" is preserved.
+///
+/// The following output patterns are special
+///
+/// Special output pattern characters:
+///
+///   "-" - do not copy a keyword that matches the corresponding input pattern
+///
+///   "+" - copy the input unchanged
+///
+/// The inrec string could be just the 8-char keyword name, or the entire
+/// 80-char header record.  Characters 9 = 80 in the input string simply get
+/// appended to the translated keyword name.
+///
+/// If n_range = 0, then only keywords with 'n' equal to n_value will be
+/// considered as a pattern match.  If n_range = +1, then all values of
+/// 'n' greater than or equal to n_value will be a match, and if -1,
+/// then values of 'n' less than or equal to n_value will match.
+///
+/// This routine was written by Craig Markwardt, GSFC
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_translate_keyword(
+    inrec: *mut c_char,  /* I - input string */
+    outrec: *mut c_char, /* O - output converted string, or */
+    /*     a null string if input does not  */
+    /*     match any of the patterns */
+    patterns: *const [*const c_char; 2], /* I - pointer to input / output string */
+    /*     templates */
+    npat: c_int,     /* I - number of templates passed */
+    n_value: c_int,  /* I - base 'n' template value of interest */
+    n_offset: c_int, /* I - offset to be applied to the 'n' */
+    /*     value in the output string */
+    n_range: c_int, /* I - controls range of 'n' template */
+    /*     values of interest (-1,0, or +1) */
+    pat_num: *mut c_int, /* O - matched pattern number (0 based) or -1 */
+    i: *mut c_int,       /* O - value of i, if any, else 0 */
+    j: *mut c_int,       /* O - value of j, if any, else 0 */
+    m: *mut c_int,       /* O - value of m, if any, else 0 */
+    n: *mut c_int,       /* O - value of n, if any, else 0 */
+
+    status: *mut c_int, /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let pat_num = pat_num.as_mut();
+        let i = i.as_mut();
+        let j = j.as_mut();
+        let m = m.as_mut();
+        let n = n.as_mut();
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if (inrec.is_null()) || (outrec.is_null()) {
+            *status = NULL_INPUT_PTR;
+            return *status;
+        }
+
+        let outrec = slice::from_raw_parts_mut(outrec, FLEN_CARD); // By definition must be a full record size
+        let patterns = slice::from_raw_parts(patterns, npat as usize);
+        let inrec = slice::from_raw_parts_mut(inrec, FLEN_CARD);
+
+        let patterns_vec = patterns
+            .iter()
+            .map(|&p| [CStr::from_ptr(p[0]), CStr::from_ptr(p[1])])
+            .collect::<Vec<_>>();
+
+        fits_translate_keyword_safer(
+            inrec,
+            outrec,
+            &patterns_vec,
+            npat,
+            n_value,
+            n_offset,
+            n_range,
+            pat_num,
+            i,
+            j,
+            m,
+            n,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+pub(crate) fn fits_translate_keyword_safer(
+    inrec: &mut [c_char],  /* I - input string */
+    outrec: &mut [c_char], /* O - output converted string, or */
+    /*     a null string if input does not  */
+    /*     match any of the patterns */
+    patterns: &[[&CStr; 2]], /* I - pointer to input / output string */
+    /*     templates */
+    npat: c_int,     /* I - number of templates passed */
+    n_value: c_int,  /* I - base 'n' template value of interest */
+    n_offset: c_int, /* I - offset to be applied to the 'n' */
+    /*     value in the output string */
+    n_range: c_int, /* I - controls range of 'n' template */
+    /*     values of interest (-1,0, or +1) */
+    pat_num: Option<&mut c_int>, /* O - matched pattern number (0 based) or -1 */
+    i: Option<&mut c_int>,       /* O - value of i, if any, else 0 */
+    j: Option<&mut c_int>,       /* O - value of j, if any, else 0 */
+    m: Option<&mut c_int>,       /* O - value of m, if any, else 0 */
+    n: Option<&mut c_int>,       /* O - value of n, if any, else 0 */
+
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut i1: c_int = 0;
+    let mut j1: c_int = 0;
+    let mut n1: c_int = 0;
+    let mut m1: c_int = 0;
+    let mut fac: c_int = 0;
+    let mut a: c_char = bb(b' ');
+    let mut oldp: c_char = 0;
+    let mut c: c_char = 0;
+    let mut s: c_char = 0;
+    let mut ip: usize = 0;
+    let mut ic: usize = 0;
+    let pat: c_int = 0;
+    let mut pass = false;
+    let mut firstfail = false;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    outrec[0] = 0;
+
+    /*
+      if (*inrec == 0) return 0;
+    */
+
+    if inrec[0] == 0 {
+        /* expand to full 8 char blank keyword name */
+        strcpy_safe(inrec, cs!("        "));
+    }
+
+    oldp = 0;
+    firstfail = false;
+
+    let mut spat;
+
+    /* ===== Pattern match stage */
+    for pat in 0..(npat as usize) {
+        spat = cast_slice(patterns[pat][0].to_bytes_with_nul());
+
+        i1 = 0;
+        j1 = 0;
+        m1 = -1;
+        n1 = -1;
+        a = bb(b' '); /* Initialize the place-holders */
+        pass = false;
+
+        /* Pass the wildcard pattern */
+        if spat[0] == bb(b'*') {
+            pass = true;
+            break;
+        }
+
+        /* Optimization: if we have seen this initial pattern character before,
+        then it must have failed, and we can skip the pattern */
+        if firstfail && spat[0] == oldp {
+            continue;
+        }
+        oldp = spat[0];
+
+        /*
+        ip = index of pattern character being matched
+        ic = index of keyname character being matched
+        firstfail = 1 if we fail on the first characteor (0=not)
+         */
+        ip = 0;
+        ic = 0;
+        firstfail = true;
+        while (spat[ip] != 0) && (ic < 8) {
+            c = inrec[ic];
+            s = spat[ip];
+
+            if s == bb(b'i') {
+                /* Special pattern: 'i' placeholder */
+                if isdigit_safe(c) {
+                    i1 = (c - bb(b'0')) as c_int;
+                    pass = true;
+                }
+            } else if s == bb(b'j') {
+                /* Special pattern: 'j' placeholder */
+                if isdigit_safe(c) {
+                    j1 = (c - bb(b'0')) as c_int;
+                    pass = true;
+                }
+            } else if (s == bb(b'n')) || (s == bb(b'm')) || (s == bb(b'#')) {
+                /* Special patterns: multi-digit number */
+                let mut val: c_int = 0;
+                pass = false;
+                if isdigit_safe(c) {
+                    pass = true; /* NOTE, could fail below */
+
+                    /* Parse decimal number */
+                    while ic < 8 && isdigit_safe(c) {
+                        val = val * 10 + (c - bb(b'0')) as c_int;
+                        ic += 1;
+                        c = inrec[ic];
+                    }
+                    ic -= 1;
+                    c = inrec[ic];
+
+                    if s == bb(b'n') {
+                        /* Is it a column number? */
+                        if val >= 1 && val <= 999 &&                    /* Row range check */
+         (((n_range == 0) && (val == n_value)) ||     /* Strict equality */
+          ((n_range == -1) && (val <= n_value)) ||    /* n <= n_value */
+          ((n_range == 1) && (val >= n_value)))
+                        {
+                            /* n >= n_value */
+                            n1 = val;
+                        } else {
+                            pass = false;
+                        }
+                    } else if s == bb(b'm') {
+                        /* Generic number */
+                        m1 = val;
+                    }
+                }
+            } else if s == bb(b'a') {
+                /* Special pattern: coordinate designator */
+                if isupper(c) || c == bb(b' ') {
+                    a = c;
+                    pass = true;
+                }
+            } else if s == bb(b'?') {
+                /* Match any individual character */
+                pass = true;
+            } else if c == s {
+                /* Match a specific character */
+                pass = true;
+            } else {
+                /* FAIL */
+                pass = false;
+            }
+            if !pass {
+                break;
+            }
+            ip += 1;
+            ic += 1;
+            firstfail = false;
+        }
+
+        /* Must pass to the end of the keyword.  No partial matches allowed */
+        if pass && (ic >= 8 || inrec[ic] == bb(b' ')) {
+            break;
+        }
+    }
+
+    /* Transfer the pattern-matched numbers to the output parameters */
+
+    if let Some(i) = i {
+        *i = i1;
+    }
+    if let Some(j) = j {
+        *j = j1;
+    }
+    if let Some(n) = n {
+        *n = n1;
+    }
+    if let Some(m) = m {
+        *m = m1;
+    }
+    if let Some(pat_num) = pat_num {
+        *pat_num = pat;
+    }
+
+    /* ===== Keyword rewriting and output stage */
+    spat = cast_slice((patterns[pat as usize][1]).to_bytes_with_nul());
+
+    /* Return case: explicit deletion, return '-' */
+    if pass && strcmp_safe(spat, cs!("--")) == 0 {
+        strcpy_safe(outrec, cs!("-"));
+        strncat_safe(outrec, inrec, 8);
+        outrec[9] = 0;
+
+        i1 = 8;
+        while i1 > 1 && outrec[i1 as usize] == bb(b' ') {
+            outrec[i1 as usize] = 0;
+            i1 -= 1;
+        }
+        return 0;
+    }
+
+    /* Return case: no match, or do-not-transfer pattern */
+    if !pass || spat[0] == 0 || strcmp_safe(spat, cs!("-")) == 0 {
+        return 0;
+    }
+    /* A match: we start by copying the input record to the output */
+    strcpy_safe(outrec, inrec);
+
+    /* Return case: return the input record unchanged */
+    if spat[0] == bb(b'+') {
+        return 0;
+    }
+
+    /* Final case: a new output pattern */
+    ic = 0;
+    ip = 0;
+    while spat[ip] != 0 {
+        s = spat[ip];
+        if s == bb(b'i') {
+            outrec[ic] = (i1 + bb(b'0') as c_int) as c_char;
+        } else if s == bb(b'j') {
+            outrec[ic] = (j1 + bb(b'0') as c_int) as c_char;
+        } else if s == bb(b'n') {
+            if n1 == -1 {
+                n1 = n_value;
+            }
+            if n1 > 0 {
+                n1 += n_offset;
+                fac = 1;
+                while n1 / fac > 0 {
+                    fac *= 10
+                }
+
+                fac /= 10;
+                while fac > 0 {
+                    outrec[ic] = (((n1 / fac) % 10) + bb(b'0') as c_int) as c_char;
+                    fac /= 10;
+                    ic += 1;
+                }
+                ic -= 1;
+            }
+        } else if s == bb(b'm') && m1 >= 0 {
+            fac = 1;
+            while m1 / fac > 0 {
+                fac *= 10
+            }
+            fac /= 10;
+            while fac > 0 {
+                outrec[ic] = (((m1 / fac) % 10) + bb(b'0') as c_int) as c_char;
+                fac /= 10;
+                ic += 1;
+            }
+            ic -= 1;
+        } else if s == bb(b'a') {
+            outrec[ic] = a;
+        } else {
+            outrec[ic] = s;
+        }
+
+        ip += 1;
+        ic += 1;
+    }
+
+    /* Pad the keyword name with spaces */
+    while ic < 8 {
+        outrec[ic] = bb(b' ');
+        ic += 1;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Copy relevant keywords from the table header into the newly
+/// created primary array header.  Convert names of keywords where
+/// appropriate.  See fits_translate_keyword() for the definitions.
+///
+/// Translation begins at header record number 'firstkey', and
+/// continues to the end of the header.
+///
+/// This routine was written by Craig Markwardt, GSFC
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_translate_keywords(
+    infptr: *mut fitsfile,               /* I - pointer to input HDU */
+    outfptr: *mut fitsfile,              /* I - pointer to output HDU */
+    firstkey: c_int,                     /* I - first HDU record number to start with */
+    patterns: *const [*const c_char; 2], /* I - pointer to input / output keyword templates */
+    npat: c_int,                         /* I - number of templates passed */
+    n_value: c_int,                      /* I - base 'n' template value of interest */
+    n_offset: c_int, /* I - offset to be applied to the 'n' value in the output string */
+    n_range: c_int,  /* I - controls range of 'n' template values of interest (-1,0, or +1) */
+    status: *mut c_int, /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let outfptr = outfptr.as_mut().expect(NULL_MSG);
+
+        let patterns = slice::from_raw_parts(patterns, npat as usize);
+
+        let patterns_vec = patterns
+            .iter()
+            .map(|&p| [CStr::from_ptr(p[0]), CStr::from_ptr(p[1])])
+            .collect::<Vec<_>>();
+
+        fits_translate_keywords_safer(
+            infptr,
+            outfptr,
+            firstkey,
+            &patterns_vec,
+            npat,
+            n_value,
+            n_offset,
+            n_range,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Copy relevant keywords from the table header into the newly
+/// created primary array header.  Convert names of keywords where
+/// appropriate.  See fits_translate_keyword() for the definitions.
+///
+/// Translation begins at header record number 'firstkey', and
+/// continues to the end of the header.
+///
+/// This routine was written by Craig Markwardt, GSFC
+pub(crate) fn fits_translate_keywords_safer(
+    infptr: &mut fitsfile,   /* I - pointer to input HDU */
+    outfptr: &mut fitsfile,  /* I - pointer to output HDU */
+    firstkey: c_int,         /* I - first HDU record number to start with */
+    patterns: &[[&CStr; 2]], /* I - pointer to input / output keyword templates */
+    npat: c_int,             /* I - number of templates passed */
+    n_value: c_int,          /* I - base 'n' template value of interest */
+    n_offset: c_int,         /* I - offset to be applied to the 'n' value in the output string */
+    n_range: c_int, /* I - controls range of 'n' template values of interest (-1,0, or +1) */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut nkeys: c_int = 0;
+    let mut nmore: c_int = 0;
+    let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut i: c_int = 0;
+    let mut j: c_int = 0;
+    let mut n: c_int = 0;
+    let mut m: c_int = 0;
+    let mut pat_num: c_int = 0;
+    let mut maxchr: usize = 0;
+    let ii: c_int = 0;
+    let mut outrec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords */
+
+    let mut nrec = firstkey;
+    while (*status == 0) && (nrec <= nkeys) {
+        outrec[0] = 0;
+
+        ffgrec_safe(infptr, nrec, Some(&mut rec), status);
+
+        /* silently overlook any illegal ASCII characters in the value or */
+        /* comment fields of the record. It is usually not appropriate to */
+        /* abort the process because of this minor transgression of the FITS rules. */
+        /* Set the offending character to a blank */
+
+        maxchr = strlen_safe(&rec);
+        for ii in 8..maxchr {
+            if rec[ii] < 32 || rec[ii] > 126 {
+                rec[ii] = bb(b' ');
+            }
+        }
+
+        fits_translate_keyword_safer(
+            &mut rec,
+            &mut outrec,
+            patterns,
+            npat,
+            n_value,
+            n_offset,
+            n_range,
+            Some(&mut pat_num),
+            Some(&mut i),
+            Some(&mut j),
+            Some(&mut m),
+            Some(&mut n),
+            status,
+        );
+
+        if *status == 0 {
+            if outrec[0] == bb(b'-') {
+                /* prefix -KEYNAME means delete */
+
+                /* Preserve only the keyword portion of name */
+                outrec[9] = 0;
+                let mut i1 = 8;
+                while i1 > 1 && outrec[i1] == bb(b' ') {
+                    outrec[i1] = 0;
+                    i1 -= 1;
+                }
+
+                ffpmrk_safe();
+                ffdkey_safe(outfptr, &outrec[1..], status); /* delete the keyword */
+                if *status == 0 {
+                    let mut nkeys1 = 0;
+                    /* get number of keywords again in case of change*/
+                    ffghsp_safe(infptr, Some(&mut nkeys1), Some(&mut nmore), status);
+                    if nkeys1 != nkeys {
+                        nrec -= 1;
+                        nkeys = nkeys1;
+                    }
+                }
+                *status = 0;
+                ffcmrk_safe();
+            } else if outrec[0] != 0 {
+                ffprec_safe(outfptr, &outrec, status); /* copy the keyword */
+            }
+        }
+        rec[8] = 0;
+        outrec[8] = 0;
+        nrec += 1;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Copy relevant keywords from the pixel list table header into a newly
+/// created primary array header.  Convert names of keywords where
+/// appropriate.  See fits_translate_pixkeyword() for the definitions.
+///
+/// Translation begins at header record number 'firstkey', and
+/// continues to the end of the header.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_copy_pixlist2image(
+    infptr: *mut fitsfile,  /* I - pointer to input HDU */
+    outfptr: *mut fitsfile, /* I - pointer to output HDU */
+    firstkey: c_int,        /* I - first HDU record number to start with */
+    naxis: c_int,           /* I - number of axes in the image */
+    colnum: *const c_int,   /* I - numbers of the columns to be binned  */
+    status: *mut c_int,     /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let outfptr = outfptr.as_mut().expect(NULL_MSG);
+        let col_num = slice::from_raw_parts(colnum, 4);
+
+        fits_copy_pixlist2image_safe(infptr, outfptr, firstkey, naxis, col_num, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Copy relevant keywords from the pixel list table header into a newly
+/// created primary array header.  Convert names of keywords where
+/// appropriate.  See fits_translate_pixkeyword() for the definitions.
+///
+/// Translation begins at header record number 'firstkey', and
+/// continues to the end of the header.
+pub fn fits_copy_pixlist2image_safe(
+    infptr: &mut fitsfile,  /* I - pointer to input HDU */
+    outfptr: &mut fitsfile, /* I - pointer to output HDU */
+    firstkey: c_int,        /* I - first HDU record number to start with */
+    naxis: c_int,           /* I - number of axes in the image */
+    colnum: &[c_int],       /* I - numbers of the columns to be binned  */
+    status: &mut c_int,     /* IO - error status */
+) -> c_int {
+    let nrec: c_int = 0;
+    let mut nkeys: c_int = 0;
+    let mut nmore: c_int = 0;
+    let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut outrec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut pat_num: c_int = 0;
+    let mut iret: c_int = 0;
+    let mut jret: c_int = 0;
+    let mut nret: c_int = 0;
+    let mut mret: c_int = 0;
+    let mut lret: c_int = 0;
+
+    let patterns: [[*const c_char; 2]; 99] = [
+        [cstr!("TCTYPn").as_ptr(), cstr!("CTYPEn").as_ptr()],
+        [cstr!("TCTYna").as_ptr(), cstr!("CTYPEna").as_ptr()],
+        [cstr!("TCUNIn").as_ptr(), cstr!("CUNITn").as_ptr()],
+        [cstr!("TCUNna").as_ptr(), cstr!("CUNITna").as_ptr()],
+        [cstr!("TCRVLn").as_ptr(), cstr!("CRVALn").as_ptr()],
+        [cstr!("TCRVna").as_ptr(), cstr!("CRVALna").as_ptr()],
+        [cstr!("TCDLTn").as_ptr(), cstr!("CDELTn").as_ptr()],
+        [cstr!("TCDEna").as_ptr(), cstr!("CDELTna").as_ptr()],
+        [cstr!("TCRPXn").as_ptr(), cstr!("CRPIXn").as_ptr()],
+        [cstr!("TCRPna").as_ptr(), cstr!("CRPIXna").as_ptr()],
+        [cstr!("TCROTn").as_ptr(), cstr!("CROTAn").as_ptr()],
+        [cstr!("TPn_ma").as_ptr(), cstr!("PCn_ma").as_ptr()],
+        [cstr!("TPCn_m").as_ptr(), cstr!("PCn_ma").as_ptr()],
+        [cstr!("TCn_ma").as_ptr(), cstr!("CDn_ma").as_ptr()],
+        [cstr!("TCDn_m").as_ptr(), cstr!("CDn_ma").as_ptr()],
+        [cstr!("TVn_la").as_ptr(), cstr!("PVn_la").as_ptr()],
+        [cstr!("TPVn_l").as_ptr(), cstr!("PVn_la").as_ptr()],
+        [cstr!("TSn_la").as_ptr(), cstr!("PSn_la").as_ptr()],
+        [cstr!("TPSn_l").as_ptr(), cstr!("PSn_la").as_ptr()],
+        [cstr!("TWCSna").as_ptr(), cstr!("WCSNAMEa").as_ptr()],
+        [cstr!("TCNAna").as_ptr(), cstr!("CNAMEna").as_ptr()],
+        [cstr!("TCRDna").as_ptr(), cstr!("CRDERna").as_ptr()],
+        [cstr!("TCSYna").as_ptr(), cstr!("CSYERna").as_ptr()],
+        [cstr!("LONPna").as_ptr(), cstr!("LONPOLEa").as_ptr()],
+        [cstr!("LATPna").as_ptr(), cstr!("LATPOLEa").as_ptr()],
+        [cstr!("EQUIna").as_ptr(), cstr!("EQUINOXa").as_ptr()],
+        [cstr!("MJDOBn").as_ptr(), cstr!("MJD-OBS").as_ptr()],
+        [cstr!("MJDAn").as_ptr(), cstr!("MJD-AVG").as_ptr()],
+        [cstr!("DAVGn").as_ptr(), cstr!("DATE-AVG").as_ptr()],
+        [cstr!("RADEna").as_ptr(), cstr!("RADESYSa").as_ptr()],
+        [cstr!("RFRQna").as_ptr(), cstr!("RESTFRQa").as_ptr()],
+        [cstr!("RWAVna").as_ptr(), cstr!("RESTWAVa").as_ptr()],
+        [cstr!("SPECna").as_ptr(), cstr!("SPECSYSa").as_ptr()],
+        [cstr!("SOBSna").as_ptr(), cstr!("SSYSOBSa").as_ptr()],
+        [cstr!("SSRCna").as_ptr(), cstr!("SSYSSRCa").as_ptr()],
+        /* preserve common keywords */
+        [cstr!("LONPOLEa").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("LATPOLEa").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("EQUINOXa").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("EPOCH").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("MJD-????").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("DATE????").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("TIME????").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("RADESYSa").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("RADECSYS").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("TELESCOP").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("INSTRUME").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("OBSERVER").as_ptr(), cstr!("+").as_ptr()],
+        [cstr!("OBJECT").as_ptr(), cstr!("+").as_ptr()],
+        /* Delete general table column keywords */
+        [cstr!("XTENSION").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("BITPIX").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("NAXIS").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("NAXISi").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("PCOUNT").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("GCOUNT").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("TFIELDS").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("TDIM#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("THEAP").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("EXTNAME").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("EXTVER").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("EXTLEVEL").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("CHECKSUM").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("DATASUM").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("NAXLEN").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("AXLEN#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("CPREF").as_ptr(), cstr!("-").as_ptr()],
+        /* Delete table keywords related to other columns */
+        [cstr!("T????#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("TC??#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("T??#_#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("TWCS#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("LONP#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("LATP#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("EQUI#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("MJDOB#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("MJDA#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("RADE#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("DAVG#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCTYP#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCTY#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCUNI#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCUN#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCRVL#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCDLT#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCRPX#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCTY#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCUN#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCRV#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCDE#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCRP#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("ijPC#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("ijCD#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iV#_#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iS#_#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCRD#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCSY#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCROT#").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("WCAX#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("WCSN#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("iCNA#a").as_ptr(), cstr!("-").as_ptr()],
+        [cstr!("*").as_ptr(), cstr!("+").as_ptr()],
+    ]; /* copy all other keywords */
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let npat = patterns.len(); // sizeof(patterns)/sizeof(patterns[0][0])/2
+
+    ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords */
+
+    for nrec in firstkey..=nkeys {
+        outrec[0] = 0;
+
+        ffgrec_safe(infptr, nrec, Some(&mut rec), status);
+
+        fits_translate_pixkeyword(
+            &rec,
+            &mut outrec,
+            &patterns,
+            npat,
+            naxis,
+            colnum,
+            &mut pat_num,
+            &mut iret,
+            &mut jret,
+            &mut nret,
+            &mut mret,
+            &mut lret,
+            status,
+        );
+
+        if outrec[0] != 0 {
+            ffprec_safe(outfptr, &outrec, status); /* copy the keyword */
+        }
+
+        rec[8] = 0;
+        outrec[8] = 0;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Translate a keyword name to a new name, based on a set of patterns.
+/// The user passes an array of patterns to be matched.  Input pattern
+/// number i is pattern[i][0], and output pattern number i is
+/// pattern[i][1].  Keywords are matched against the input patterns.  If a
+/// match is found then the keyword is re-written according to the output
+/// pattern.
+///
+/// Order is important.  The first match is accepted.  The fastest match
+/// will be made when templates with the same first character are grouped
+/// together.
+///
+/// Several characters have special meanings:
+///
+///    i,j - single digits, preserved in output template
+///    n, m - column number of one or more digits, preserved in output template
+///    k - generic number of one or more digits, preserved in output template
+///    a - coordinate designator, preserved in output template
+///    # - number of one or more digits
+///    ? - any character
+///    * - only allowed in first character position, to match all
+///        keywords; only useful as last pattern in the list
+///
+/// i, j, n, and m are returned by the routine.
+///
+/// For example, the input pattern "iCTYPn" will match "1CTYP5" (if n_value
+/// is 5); the output pattern "CTYPEi" will be re-written as "CTYPE1".
+/// Notice that "i" is preserved.
+///
+/// The following output patterns are special
+///
+/// Special output pattern characters:
+///
+///   "-" - do not copy a keyword that matches the corresponding input pattern
+///
+///   "+" - copy the input unchanged
+///
+/// The inrec string could be just the 8-char keyword name, or the entire
+/// 80-char header record.  Characters 9 = 80 in the input string simply get
+/// appended to the translated keyword name.
+///
+/// If n_range = 0, then only keywords with 'n' equal to n_value will be
+/// considered as a pattern match.  If n_range = +1, then all values of
+/// 'n' greater than or equal to n_value will be a match, and if -1,
+/// then values of 'n' less than or equal to n_value will match.
+pub(crate) fn fits_translate_pixkeyword(
+    inrec: &[c_char],      /* I - input string */
+    outrec: &mut [c_char], /* O - output converted string, or */
+    /*     a null string if input does not  */
+    /*     match any of the patterns */
+    patterns: &[[*const c_char; 2]], /* I - pointer to input / output string */
+    /*     templates */
+    npat: usize,         /* I - number of templates passed */
+    naxis: c_int,        /* I - number of columns to be binned */
+    colnum: &[c_int],    /* I - numbers of the columns to be binned */
+    pat_num: &mut c_int, /* O - matched pattern number (0 based) or -1 */
+    i: &mut c_int,
+    j: &mut c_int,
+    n: &mut c_int,
+    m: &mut c_int,
+    l: &mut c_int,
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut i1: c_int = 0;
+    let mut j1: c_int = 0;
+    let mut val: c_int = 0;
+    let mut fac: c_int = 0;
+    let mut nval: c_int = 0;
+    let mut mval: c_int = 0;
+    let mut lval: c_int = 0;
+    let mut a: c_char = b' ' as c_char;
+    let mut oldp: c_char = 0;
+    let mut c: c_char = 0;
+    let mut s: c_char = 0;
+    let mut ip: c_int = 0;
+    let mut ic: c_int = 0;
+    let pat: c_int = 0;
+    let mut pass: bool = false;
+    let mut firstfail: bool = false;
+    let mut spat;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /*
+    if ((inrec.is_null()) || (outrec.is_null())) {
+        *status = NULL_INPUT_PTR;
+        return *status;
+    }
+    */
+
+    outrec[0] = 0;
+    if inrec[0] == 0 {
+        return 0;
+    }
+
+    oldp = 0;
+    firstfail = false;
+
+    /* ===== Pattern match stage */
+    for pat in 0..(npat) {
+        spat = unsafe { cast_slice(CStr::from_ptr(patterns[pat][0]).to_bytes_with_nul()) };
+
+        i1 = 0;
+        j1 = 0;
+        a = bb(b' '); /* Initialize the place-holders */
+        pass = false;
+
+        /* Pass the wildcard pattern */
+        if spat[0] == bb(b'*') {
+            pass = true;
+            break;
+        }
+
+        /* Optimization: if we have seen this initial pattern character before,
+        then it must have failed, and we can skip the pattern */
+        if firstfail && spat[0] == oldp {
+            continue;
+        }
+        oldp = spat[0];
+
+        /*
+        ip = index of pattern character being matched
+        ic = index of keyname character being matched
+        firstfail = 1 if we fail on the first characteor (0=not)
+         */
+        ip = 0;
+        ic = 0;
+        firstfail = true;
+        while (spat[ip as usize] != 0) && (ic < 8) {
+            c = inrec[ic as usize];
+            s = spat[ip as usize];
+
+            if s == bb(b'i') {
+                /* Special pattern: 'i' placeholder */
+                if isdigit_safe(c) {
+                    i1 = (c - bb(b'0')) as c_int;
+                    pass = true;
+                }
+            } else if s == bb(b'j') {
+                /* Special pattern: 'j' placeholder */
+                if isdigit_safe(c) {
+                    j1 = (c - bb(b'0')) as c_int;
+                    pass = true;
+                }
+            } else if (s == bb(b'n')) || (s == bb(b'm')) || (s == bb(b'l')) || (s == bb(b'#')) {
+                /* Special patterns: multi-digit number */
+                val = 0;
+                pass = false;
+                if isdigit_safe(c) {
+                    pass = true; /* NOTE, could fail below */
+
+                    /* Parse decimal number */
+                    while ic < 8 && isdigit_safe(c) {
+                        val = val * 10 + (c - bb(b'0')) as c_int;
+                        ic += 1;
+                        c = inrec[ic as usize];
+                    }
+                    ic -= 1;
+                    c = inrec[ic as usize];
+
+                    if s == bb(b'n') || s == bb(b'm') {
+                        /* Is it a column number? */
+                        if val >= 1 && val <= 999 {
+                            if val == colnum[0] {
+                                val = 1;
+                            } else if val == colnum[1] {
+                                val = 2;
+                            } else if val == colnum[2] {
+                                val = 3;
+                            } else if val == colnum[3] {
+                                val = 4;
+                            } else {
+                                pass = false;
+                                val = 0;
+                            }
+
+                            if s == bb(b'n') {
+                                nval = val;
+                            } else {
+                                mval = val;
+                            }
+                        } else {
+                            pass = false;
+                        }
+                    } else if s == bb(b'l') {
+                        /* Generic number */
+                        lval = val;
+                    }
+                }
+            } else if s == bb(b'a') {
+                /* Special pattern: coordinate designator */
+                if isupper(c) || c == bb(b' ') {
+                    a = c;
+                    pass = true;
+                }
+            } else if s == bb(b'?') {
+                /* Match any individual character */
+                pass = true;
+            } else if c == s {
+                /* Match a specific character */
+                pass = true;
+            } else {
+                /* FAIL */
+                pass = false;
+            }
+
+            if !pass {
+                break;
+            }
+
+            ip += 1;
+            ic += 1;
+            firstfail = false;
+        }
+
+        /* Must pass to the end of the keyword.  No partial matches allowed */
+        if pass && (ic >= 8 || inrec[ic as usize] == bb(b' ')) {
+            break;
+        }
+    }
+
+    /* Transfer the pattern-matched numbers to the output parameters */
+    //if (i != 0) {
+    *i = i1;
+    //}
+    //if (j != 0) {
+    *j = j1;
+    //}
+    //if (n != 0) {
+    *n = nval;
+    //}
+    //if (m != 0) {
+    *m = mval;
+    //}
+    //if (l != 0) {
+    *l = lval;
+    //}
+    //if (pat_num) {
+    *pat_num = pat;
+    //}
+
+    /* ===== Keyword rewriting and output stage */
+    spat = unsafe { cast_slice(CStr::from_ptr(patterns[pat as usize][1]).to_bytes_with_nul()) };
+
+    /* Return case: no match, or explicit deletion pattern */
+    if !pass || spat[0] == 0 || spat[0] == bb(b'-') {
+        return 0;
+    }
+
+    /* A match: we start by copying the input record to the output */
+    strcpy_safe(outrec, inrec);
+
+    /* Return case: return the input record unchanged */
+    if spat[0] == bb(b'+') {
+        return 0;
+    }
+
+    /* Final case: a new output pattern */
+    ip = 0;
+    ic = 0;
+    while spat[ip as usize] != 0 {
+        s = spat[ip as usize];
+        if s == bb(b'i') {
+            outrec[ic as usize] = i1 as c_char + bb(b'0');
+        } else if s == bb(b'j') {
+            outrec[ic as usize] = j1 as c_char + bb(b'0');
+        } else if s == bb(b'n') && nval > 0 {
+            fac = 1;
+            while nval / fac > 0 {
+                fac *= 10
+            }
+
+            fac /= 10;
+            while fac > 0 {
+                outrec[ic as usize] = (((nval / fac) % 10) as c_char) + bb(b'0');
+                fac /= 10;
+                ic += 1;
+            }
+            ic -= 1;
+        } else if s == bb(b'm') && mval > 0 {
+            fac = 1;
+            while mval / fac > 0 {
+                fac *= 10
+            }
+            fac /= 10;
+            while fac > 0 {
+                outrec[ic as usize] = (((mval / fac) % 10) as c_char) + bb(b'0');
+                fac /= 10;
+                ic += 1;
+            }
+            ic -= 1;
+        } else if s == bb(b'l') && lval >= 0 {
+            fac = 1;
+            while lval / fac > 0 {
+                fac *= 10
+            }
+            fac /= 10;
+            while fac > 0 {
+                outrec[ic as usize] = (((lval / fac) % 10) as c_char) + bb(b'0');
+                fac /= 10;
+                ic += 1;
+            }
+            ic -= 1;
+        } else if s == bb(b'a') {
+            outrec[ic as usize] = a;
+        } else {
+            outrec[ic as usize] = s;
+        }
+        ip += 1;
+        ic += 1;
+    }
+
+    /* Pad the keyword name with spaces */
+    while ic < 8 {
+        outrec[ic as usize] = bb(b' ');
+        ic += 1;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the ASCII table TFORM column format to determine the data
+/// type, the field width, and number of decimal places (if relevant)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffasfm(
+    tform: *const c_char, /* I - format code from the TFORMn keyword */
+    dtcode: *mut c_int,   /* O - numerical datatype code */
+    twidth: *mut c_long,  /* O - width of the field, in chars */
+    decimals: *mut c_int, /* O - number of decimal places (F, E, D format) */
+    status: *mut c_int,   /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let dtcode = dtcode.as_mut();
+        let twidth = twidth.as_mut();
+        let decimals = decimals.as_mut();
+
+        raw_to_slice!(tform);
+
+        ffasfm_safe(tform, dtcode, twidth, decimals, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the ASCII table TFORM column format to determine the data
+/// type, the field width, and number of decimal places (if relevant)
+pub(crate) fn ffasfm_safe(
+    tform: &[c_char],             /* I - format code from the TFORMn keyword */
+    dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
+    twidth: Option<&mut c_long>,  /* O - width of the field, in chars */
+    decimals: Option<&mut c_int>, /* O - number of decimal places (F, E, D format) */
+    status: &mut c_int,           /* IO - error status      */
+) -> c_int {
+    let mut datacode;
+    let mut longval: c_long = 0;
+    let mut width: c_long = 0;
+    let mut fwidth: f32 = 0.0;
+    let mut form;
+    let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    let mut dtcode = dtcode;
+    let mut twidth = twidth;
+    let mut decimals = decimals;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if let Some(ref mut dtcode) = dtcode {
+        **dtcode = 0;
+    }
+
+    if let Some(ref mut twidth) = twidth {
+        **twidth = 0;
+    }
+
+    if let Some(ref mut decimals) = decimals {
+        **decimals = 0;
+    }
+
+    let mut ii = 0;
+    while tform[ii] != 0 && tform[ii] == bb(b' ') {
+        /* find first non-blank char */
+        ii += 1;
+    }
+
+    if strlen_safe(&tform[ii..]) > FLEN_VALUE - 1 {
+        ffpmsg_str("Error: ASCII table TFORM code is too long (ffasfm)");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
+    ffupch_safe(&mut temp); /* make sure it is in upper case */
+    form = 0; /* point to start of format string */
+
+    if temp[form] == 0 {
+        ffpmsg_str("Error: ASCII table TFORM code is blank");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    /*-----------------------------------------------*/
+    /*       determine default datatype code         */
+    /*-----------------------------------------------*/
+    if temp[form] == bb(b'A') {
+        datacode = TSTRING;
+    } else if temp[form] == bb(b'I') {
+        datacode = TLONG;
+    } else if temp[form] == bb(b'F') {
+        datacode = TFLOAT;
+    } else if temp[form] == bb(b'E') {
+        datacode = TFLOAT;
+    } else if temp[form] == bb(b'D') {
+        datacode = TDOUBLE;
+    } else {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Illegal ASCII table TFORMn datatype: '{}'",
+            slice_to_str!(&tform),
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_TFORM_DTYPE;
+        return *status;
+    }
+
+    if let Some(ref mut dtcode) = dtcode {
+        **dtcode = datacode;
+    }
+
+    form += 1; /* point to the start of field width */
+
+    if datacode == TSTRING || datacode == TLONG {
+        /*-----------------------------------------------*/
+        /*              A or I data formats:             */
+        /*-----------------------------------------------*/
+
+        if ffc2ii(&temp[form..], &mut width, status) <= 0 {
+            /* read the width field */
+            if width <= 0 {
+                width = 0;
+                *status = BAD_TFORM;
+            } else {
+                /* set to shorter precision if I4 or less */
+                if width <= 4 && datacode == TLONG {
+                    datacode = TSHORT;
+                }
+            }
+        }
+    } else {
+        /*-----------------------------------------------*/
+        /*              F, E or D data formats:          */
+        /*-----------------------------------------------*/
+
+        if ffc2rr(&temp[form..], &mut fwidth, status) <= 0 {
+            /* read ww.dd width field */
+            if fwidth <= 0. {
+                *status = BAD_TFORM;
+            } else {
+                width = fwidth as c_long; /* convert from float to long */
+
+                if width > 7 && temp[0] == bb(b'F') {
+                    datacode = TDOUBLE; /* type double if >7 digits */
+                }
+                if width < 10 {
+                    form += 1; /* skip 1 digit  */
+                } else {
+                    form += 2; /* skip 2 digits */
+                }
+                if temp[form] == bb(b'.') {
+                    /* should be a decimal point here */
+
+                    form += 1; /*  point to start of decimals field */
+
+                    if ffc2ii(&temp[form..], &mut longval, status) <= 0 {
+                        /* read decimals */
+                        if let Some(ref mut decimals) = decimals {
+                            **decimals = longval as c_int; /* long to short convertion */
+                        }
+
+                        if longval >= width {
+                            /* width < no. of decimals */
+                            *status = BAD_TFORM;
+                        }
+
+                        if longval > 6 && temp[0] == bb(b'E') {
+                            datacode = TDOUBLE; /* type double if >6 digits */
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if *status > 0 {
+        *status = BAD_TFORM;
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Illegal ASCII table TFORMn code: '{}'",
+            slice_to_str!(&tform),
+        );
+        ffpmsg_slice(&message);
+    }
+
+    if let Some(ref mut dtcode) = dtcode {
+        **dtcode = datacode;
+    }
+
+    if let Some(ref mut twidth) = twidth {
+        **twidth = width;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the binary table TFORM column format to determine the data
+/// type, repeat count, and the field width (if it is an ASCII (A) field)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffbnfm(
+    tform: *const c_char, /* I - format code from the TFORMn keyword */
+    dtcode: *mut c_int,   /* O - numerical datatype code */
+    trepeat: *mut c_long, /* O - repeat count of the field  */
+    twidth: *mut c_long,  /* O - width  of the field, in chars */
+    status: *mut c_int,   /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let dtcode = dtcode.as_mut();
+        let twidth = twidth.as_mut();
+        let trepeat = trepeat.as_mut();
+
+        raw_to_slice!(tform);
+
+        ffbnfm_safe(tform, dtcode, trepeat, twidth, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the binary table TFORM column format to determine the data
+/// type, repeat count, and the field width (if it is an ASCII (A) field)
+pub(crate) fn ffbnfm_safe(
+    tform: &[c_char],                 /* I - format code from the TFORMn keyword */
+    mut dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
+    mut trepeat: Option<&mut c_long>, /* O - repeat count of the field  */
+    mut twidth: Option<&mut c_long>,  /* O - width  of the field, in chars */
+    status: &mut c_int,               /* IO - error status      */
+) -> c_int {
+    let mut datacode = 0; /* flag variable cols w/ neg type code */
+    let mut variable = 0;
+    let mut iread = 0;
+    let mut width: c_long = 0;
+    let mut repeat: c_long = 0;
+    let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if let Some(dtcode) = dtcode.as_deref_mut() {
+        *dtcode = 0;
+    }
+
+    if let Some(trepeat) = trepeat.as_deref_mut() {
+        *trepeat = 0;
+    }
+
+    if let Some(twidth) = twidth.as_deref_mut() {
+        *twidth = 0;
+    }
+
+    let nchar = strlen_safe(tform);
+
+    let mut ii = 0;
+    while ii < nchar {
+        if tform[ii] != bb(b' ') {
+            /* find first non-space char */
+            break;
+        }
+        ii += 1;
+    }
+
+    if ii == nchar {
+        ffpmsg_str("Error: binary table TFORM code is blank (ffbnfm).");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    if nchar - ii > FLEN_VALUE - 1 {
+        ffpmsg_str("Error: binary table TFORM code is too long (ffbnfm).");
+        *status = BAD_TFORM;
+        return *status;
+    }
+    strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
+    ffupch_safe(&mut temp); /* make sure it is in upper case */
+
+    /*-----------------------------------------------*/
+    /*       get the repeat count                    */
+    /*-----------------------------------------------*/
+
+    let mut ii = 0;
+    while isdigit_safe(temp[ii]) {
+        ii += 1; /* look for leading digits in the field */
+    }
+
+    if ii == 0 {
+        repeat = 1; /* no explicit repeat count */
+    } else {
+        let tmp: Result<c_long, ParseIntError> =
+            str::from_utf8(cast_slice(&temp[..ii])).unwrap().parse();
+
+        match tmp {
+            Ok(x) => {
+                repeat = x;
+            }
+            Err(x) => {
+                /* read repeat count */
+                ffpmsg_str("Error: Bad repeat format in TFORM (ffbnfm).");
+                *status = BAD_TFORM;
+                return *status;
+            }
+        }
+
+        /*
+        unsafe {
+            if sscanf(temp.as_ptr(), cstr!("%ld").as_ptr(), &repeat) != 1 {
+                /* read repeat count */
+
+                ffpmsg_str("Error: Bad repeat format in TFORM (ffbnfm).");
+                *status = BAD_TFORM;
+                return *status;
+            }
+        }
+        */
+    }
+
+    /*-----------------------------------------------*/
+    /*             determine datatype code           */
+    /*-----------------------------------------------*/
+    let mut fi = ii;
+    /* skip over the repeat field */
+
+    if temp[fi] == bb(b'P') || temp[fi] == bb(b'Q') {
+        variable = 1; /* this is a variable length column */
+        /*        repeat = 1;  */
+        /* disregard any other repeat value */
+        fi += 1; /* move to the next data type code char */
+    } else {
+        variable = 0;
+    }
+
+    if temp[fi] == bb(b'U') {
+        /* internal code to signify unsigned short integer */
+        datacode = TUSHORT;
+        width = 2;
+    } else if temp[fi] == bb(b'I') {
+        datacode = TSHORT;
+        width = 2;
+    } else if temp[fi] == bb(b'V') {
+        /* internal code to signify unsigned integer */
+        datacode = TULONG;
+        width = 4;
+    } else if temp[fi] == bb(b'W') {
+        /* internal code to signify unsigned long long integer */
+        datacode = TULONGLONG;
+        width = 8;
+    } else if temp[fi] == bb(b'J') {
+        datacode = TLONG;
+        width = 4;
+    } else if temp[fi] == bb(b'K') {
+        datacode = TLONGLONG;
+        width = 8;
+    } else if temp[fi] == bb(b'E') {
+        datacode = TFLOAT;
+        width = 4;
+    } else if temp[fi] == bb(b'D') {
+        datacode = TDOUBLE;
+        width = 8;
+    } else if temp[fi] == bb(b'A') {
+        datacode = TSTRING;
+
+        /*
+          the following code is used to support the non-standard
+          datatype of the form rAw where r = total width of the field
+          and w = width of fixed-length substrings within the field.
+        */
+        iread = 0;
+        if temp[fi + 1] != 0 {
+            if temp[fi + 1] == bb(b'(') {
+                /* skip parenthesis around */
+                fi += 1; /* variable length column width */
+            }
+
+            /*
+            iread = unsafe { sscanf(temp[(fi + 1)..].as_ptr(), cstr!("%ld").as_ptr(), &width) };
+            */
+
+            let tmp: Result<c_long, ParseIntError> =
+                atoi(str::from_utf8(cast_slice(&temp[(fi + 1)..])).unwrap());
+
+            match tmp {
+                Ok(x) => {
+                    width = x;
+                    iread = 1;
+                }
+                Err(_) => {
+                    iread = 0;
+                }
+            }
+        }
+
+        if iread != 1 || (variable == 0 && (width > repeat)) {
+            width = repeat;
+        }
+    } else if temp[fi] == bb(b'L') {
+        datacode = TLOGICAL;
+        width = 1;
+    } else if temp[fi] == bb(b'X') {
+        datacode = TBIT;
+        width = 1;
+    } else if temp[fi] == bb(b'B') {
+        datacode = TBYTE;
+        width = 1;
+    } else if temp[fi] == bb(b'S')
+    /* internal code to signify signed byte */
+    {
+        datacode = TSBYTE;
+        width = 1;
+    } else if temp[fi] == bb(b'C') {
+        datacode = TCOMPLEX;
+        width = 8;
+    } else if temp[fi] == bb(b'M') {
+        datacode = TDBLCOMPLEX;
+        width = 16;
+    } else {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Illegal binary table TFORMn datatype: '{}' ",
+            slice_to_str!(&tform),
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_TFORM_DTYPE;
+        return *status;
+    }
+
+    if variable > 0 {
+        datacode = -datacode; /* flag variable cols w/ neg type code */
+    }
+    if let Some(dtcode) = dtcode {
+        *dtcode = datacode;
+    }
+    if let Some(trepeat) = trepeat {
+        *trepeat = repeat;
+    }
+    if let Some(twidth) = twidth {
+        *twidth = width;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the binary table TFORM column format to determine the data
+/// type, repeat count, and the field width (if it is an ASCII (A) field)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffbnfmll(
+    tform: *const c_char,   /* I - format code from the TFORMn keyword */
+    dtcode: *mut c_int,     /* O - numerical datatype code */
+    trepeat: *mut LONGLONG, /* O - repeat count of the field  */
+    twidth: *mut c_long,    /* O - width of the field, in chars */
+    status: *mut c_int,     /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let mut datacode: c_int = 0;
+        let mut variable: c_int = 0;
+        let mut iread: c_int = 0;
+        let mut width: c_long = 0;
+        let mut repeat: LONGLONG = 0;
+        let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+        let mut drepeat: f64 = 0.0;
+
+        let status = status.as_mut().expect(NULL_MSG);
+        let mut dtcode = dtcode.as_mut();
+        let mut trepeat = trepeat.as_mut();
+        let mut twidth = twidth.as_mut();
+        raw_to_slice!(tform);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if let Some(ref mut dtcode) = dtcode {
+            **dtcode = 0;
+        }
+
+        if let Some(ref mut trepeat) = trepeat {
+            **trepeat = 0;
+        }
+
+        if let Some(ref mut twidth) = twidth {
+            **twidth = 0;
+        }
+
+        let nchar = strlen_safe(tform);
+        let mut ii = 0;
+        while ii < nchar {
+            if tform[ii] != bb(b' ') {
+                /* find first non-space char */
+                break;
+            }
+            ii += 1;
+        }
+
+        if ii == nchar {
+            ffpmsg_str("Error: binary table TFORM code is blank (ffbnfmll).");
+            *status = BAD_TFORM;
+            return *status;
+        }
+
+        if strlen_safe(&tform[ii..]) > FLEN_VALUE - 1 {
+            ffpmsg_str("Error: binary table TFORM code is too long (ffbnfmll).");
+            *status = BAD_TFORM;
+            return *status;
+        }
+        strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
+        ffupch_safe(&mut temp); /* make sure it is in upper case */
+        let mut fi: usize = 0; /* point to start of format string */
+
+        /*-----------------------------------------------*/
+        /*       get the repeat count                    */
+        /*-----------------------------------------------*/
+
+        let mut ii = 0;
+        while isdigit_safe(temp[fi + ii]) {
+            ii += 1; /* look for leading digits in the field */
+        }
+
+        if ii == 0 {
+            repeat = 1; /* no explicit repeat count */
+        } else {
+            /* read repeat count */
+
+            /* print as double, because the string-to-64-bit int conversion */
+            /* character is platform dependent (%lld, %ld, %I64d)           */
+
+            sscanf(temp[fi..].as_ptr(), cstr!("%lf").as_ptr(), &mut drepeat);
+            repeat = (drepeat + 0.1) as LONGLONG;
+        }
+        /*-----------------------------------------------*/
+        /*             determine datatype code           */
+        /*-----------------------------------------------*/
+
+        fi += ii; /* skip over the repeat field */
+
+        if temp[fi] == bb(b'P') || temp[fi] == bb(b'Q') {
+            variable = 1; /* this is a variable length column */
+            /*        repeat = 1;  */
+            /* disregard any other repeat value */
+            fi += 1; /* move to the next data type code char */
+        } else {
+            variable = 0;
+        }
+
+        if temp[fi] == bb(b'U')
+        /* internal code to signify unsigned integer */
+        {
+            datacode = TUSHORT;
+            width = 2;
+        } else if temp[fi] == bb(b'I') {
+            datacode = TSHORT;
+            width = 2;
+        } else if temp[fi] == bb(b'V')
+        /* internal code to signify unsigned integer */
+        {
+            datacode = TULONG;
+            width = 4;
+        } else if temp[fi] == bb(b'W')
+        /* internal code to signify unsigned long long integer */
+        {
+            datacode = TULONGLONG;
+            width = 8;
+        } else if temp[fi] == bb(b'J') {
+            datacode = TLONG;
+            width = 4;
+        } else if temp[fi] == bb(b'K') {
+            datacode = TLONGLONG;
+            width = 8;
+        } else if temp[fi] == bb(b'E') {
+            datacode = TFLOAT;
+            width = 4;
+        } else if temp[fi] == bb(b'D') {
+            datacode = TDOUBLE;
+            width = 8;
+        } else if temp[fi] == bb(b'A') {
+            datacode = TSTRING;
+
+            /*
+              the following code is used to support the non-standard
+              datatype of the form rAw where r = total width of the field
+              and w = width of fixed-length substrings within the field.
+            */
+            iread = 0;
+            if temp[1 + fi] != 0 {
+                if temp[1 + fi] == bb(b'(') {
+                    /* skip parenthesis around */
+                    fi += 1; /* variable length column width */
+                }
+
+                iread = sscanf(temp[(1 + fi)..].as_ptr(), cstr!("%ld").as_ptr(), &mut width);
+            }
+
+            if iread != 1 || (variable == 0 && (width as LONGLONG > repeat)) {
+                width = repeat as c_long;
+            }
+        } else if temp[fi] == bb(b'L') {
+            datacode = TLOGICAL;
+            width = 1;
+        } else if temp[fi] == bb(b'X') {
+            datacode = TBIT;
+            width = 1;
+        } else if temp[fi] == bb(b'B') {
+            datacode = TBYTE;
+            width = 1;
+        } else if temp[fi] == bb(b'S')
+        /* internal code to signify signed byte */
+        {
+            datacode = TSBYTE;
+            width = 1;
+        } else if temp[fi] == bb(b'C') {
+            datacode = TCOMPLEX;
+            width = 8;
+        } else if temp[fi] == bb(b'M') {
+            datacode = TDBLCOMPLEX;
+            width = 16;
+        } else {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Illegal binary table TFORMn datatype: '{}' ",
+                slice_to_str!(&tform),
+            );
+            ffpmsg_slice(&message);
+            *status = BAD_TFORM_DTYPE;
+            return *status;
+        }
+
+        if variable != 0 {
+            datacode = -datacode; /* flag variable cols w/ neg type code */
+        }
+
+        if let Some(dtcode) = dtcode {
+            *dtcode = datacode;
+        }
+
+        if let Some(trepeat) = trepeat {
+            *trepeat = repeat;
+        }
+
+        if let Some(twidth) = twidth {
+            *twidth = width;
+        }
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert the FITS format string for an ASCII Table extension column into the
+/// equivalent C format string that can be used in a printf statement, after
+/// the values have been read as a double.
+pub(crate) fn ffcfmt(
+    tform: &[c_char],     /* value of an ASCII table TFORMn keyword */
+    cform: &mut [c_char], /* equivalent format code in C language syntax */
+) {
+    cform[0] = 0;
+    let mut ii = 0;
+    while tform[ii] != 0 && tform[ii] == bb(b' ') {
+        /* find first non-blank char */
+        ii += 1;
+    }
+
+    if tform[ii] == 0 {
+        return; /* input format string was blank */
+    }
+
+    let istart = ii;
+    let mut isgood = true;
+    let mut npt: usize = 0;
+
+    if tform[ii] != bb(b'A')
+        && tform[ii] != bb(b'I')
+        && tform[ii] != bb(b'F')
+        && tform[ii] != bb(b'E')
+        && tform[ii] != bb(b'D')
+    {
+        isgood = false;
+    }
+
+    ii += 1;
+
+    while isgood && tform[ii] != 0 {
+        /* one period is allowed */
+        if tform[ii] == bb(b'.') {
+            if npt > 0 {
+                isgood = false;
+            } else {
+                npt += 1;
+            }
+        } else if !isdigit_safe(tform[ii]) {
+            isgood = false;
+        }
+        ii += 1;
+    }
+    if !isgood {
+        return;
+    }
+
+    cform[0] = bb(b'%'); /* start the format string */
+
+    strcpy_safe(&mut cform[1..], &tform[(istart + 1)..]); /* append the width and decimal code */
+
+    if tform[istart] == bb(b'A') {
+        strcat_safe(cform, cs!("s"));
+    } else if tform[istart] == bb(b'I') {
+        strcat_safe(cform, cs!(".0f")); /*  0 precision to suppress decimal point */
+    }
+    if tform[istart] == bb(b'F') {
+        strcat_safe(cform, cs!("f"));
+    }
+    if tform[istart] == bb(b'E') {
+        strcat_safe(cform, cs!("E"));
+    }
+    if tform[istart] == bb(b'D') {
+        strcat_safe(cform, cs!("E"));
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert the FITS TDISPn display format into the equivalent C format
+/// suitable for use in a printf statement.
+pub(crate) fn ffcdsp(
+    tform: &[c_char],     /* value of an ASCII table TFORMn keyword */
+    cform: &mut [c_char], /* equivalent format code in C language syntax */
+) {
+    let mut ii: usize = 0;
+
+    cform[0] = 0;
+    ii = 0;
+
+    while tform[ii] != 0 && tform[ii] == bb(b' ') {
+        /* find first non-blank char */
+        ii += 1;
+    }
+
+    if tform[ii] == 0 {
+        cform[0] = 0;
+        return; /* input format string was blank */
+    }
+
+    if strchr_safe(&tform[ii..], bb(b'%')).is_some() {
+        /* is there a % character in the string?? */
+        cform[0] = 0;
+        return; /* illegal TFORM string (possibly even harmful) */
+    }
+
+    cform[0] = bb(b'%'); /* start the format string */
+
+    strcpy_safe(&mut cform[1..], &tform[(ii + 1)..]); /* append the width and decimal code */
+
+    if tform[ii] == bb(b'A') || tform[ii] == bb(b'a') {
+        strcat_safe(cform, cs!("s"));
+    } else if tform[ii] == bb(b'I') || tform[ii] == bb(b'i') {
+        strcat_safe(cform, cs!("d"));
+    } else if tform[ii] == bb(b'O') || tform[ii] == bb(b'o') {
+        strcat_safe(cform, cs!("o"));
+    } else if tform[ii] == bb(b'Z') || tform[ii] == bb(b'z') {
+        strcat_safe(cform, cs!("X"));
+    } else if tform[ii] == bb(b'F') || tform[ii] == bb(b'f') {
+        strcat_safe(cform, cs!("f"));
+    } else if tform[ii] == bb(b'E') || tform[ii] == bb(b'e') {
+        strcat_safe(cform, cs!("E"));
+    } else if tform[ii] == bb(b'D') || tform[ii] == bb(b'd') {
+        strcat_safe(cform, cs!("E"));
+    } else if tform[ii] == bb(b'G') || tform[ii] == bb(b'g') {
+        strcat_safe(cform, cs!("G"));
+    } else {
+        cform[0] = 0; /* unrecognized tform code */
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Determine the column number corresponding to an input column name.
+/// The first column of the table = column 1;  
+/// This supports the * and ? wild cards in the input template.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgcno(
+    fptr: *mut fitsfile,   /* I - FITS file pionter                       */
+    casesen: c_int,        /* I - case sensitive string comparison? 0=no  */
+    templt: *const c_char, /* I - input name of column (w/wildcards)      */
+    colnum: *mut c_int,    /* O - number of the named column; 1=first col */
+    status: *mut c_int,    /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let colnum = colnum.as_mut().expect(NULL_MSG);
+        raw_to_slice!(templt);
+
+        ffgcno_safe(fptr, casesen, templt, colnum, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Determine the column number corresponding to an input column name.
+/// The first column of the table = column 1;  
+/// This supports the * and ? wild cards in the input template.
+pub fn ffgcno_safe(
+    fptr: &mut fitsfile, /* I - FITS file pionter                       */
+    casesen: c_int,      /* I - case sensitive string comparison? 0=no  */
+    templt: &[c_char],   /* I - input name of column (w/wildcards)      */
+    colnum: &mut c_int,  /* O - number of the named column; 1=first col */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    let mut colname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE]; /*  temporary string to hold column name  */
+
+    ffgcnn_safe(fptr, casesen, templt, &mut colname, colnum, status);
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the full column name and column number of the next column whose
+/// TTYPEn keyword value matches the input template string.
+/// The template may contain the * and ? wildcards.  Status = 237 is
+/// returned if the match is not unique.  If so, one may call this routine
+/// again with input status=237  to get the next match.  A status value of
+/// 219 is returned when there are no more matching columns.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgcnn(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
+    casesen: c_int,        /* I - case sensitive string comparison? 0=no  */
+    templt: *const c_char, /* I - input name of column (w/wildcards)      */
+    colname: *mut c_char,  /* O - full column name up to 68 + 1 chars long*/
+    colnum: *mut c_int,    /* O - number of the named column; 1=first col */
+    status: *mut c_int,    /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let colnum = colnum.as_mut().expect(NULL_MSG);
+        let colname = slice::from_raw_parts_mut(colname, 69);
+
+        raw_to_slice!(templt);
+
+        ffgcnn_safe(fptr, casesen, templt, colname, colnum, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the full column name and column number of the next column whose
+/// TTYPEn keyword value matches the input template string.
+/// The template may contain the * and ? wildcards.  Status = 237 is
+/// returned if the match is not unique.  If so, one may call this routine
+/// again with input status=237  to get the next match.  A status value of
+/// 219 is returned when there are no more matching columns.
+pub fn ffgcnn_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                       */
+    casesen: c_int,         /* I - case sensitive string comparison? 0=no  */
+    templt: &[c_char],      /* I - input name of column (w/wildcards)      */
+    colname: &mut [c_char], /* O - full column name up to 68 + 1 chars long*/
+    colnum: &mut c_int,     /* O - number of the named column; 1=first col */
+    status: &mut c_int,     /* IO - error status                           */
+) -> c_int {
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut tstatus: c_int = 0;
+    let ii: c_int = 0;
+    let mut founde: bool = false; /* initialize 'found exact match' flag */
+    let mut foundw: bool = false; /* initialize 'found wildcard match' flag */
+    let mut matchi = 0;
+    let mut exact = 0;
+    let mut unique: bool = false;
+    let mut ivalue: c_long = 0;
+
+    if *status <= 0 {
+        fptr.Fptr.startcol = 0; /* start search with first column */
+        tstatus = 0;
+    } else if *status == COL_NOT_UNIQUE {
+        /* start search from previous spot */
+        tstatus = COL_NOT_UNIQUE;
+        *status = 0;
+    } else {
+        return *status; /* bad input status value */
+    }
+
+    colname[0] = 0; /* initialize null return */
+    *colnum = 0;
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header to get col struct */
+        return *status;
+    }
+
+    let c =
+        FITSfile::get_tableptr_as_slice_unlinked(&fptr.Fptr.tableptr, fptr.Fptr.tfield as usize);
+    let mut ci = (fptr.Fptr.startcol) as usize; /* offset to starting column */
+
+    let mut ii = fptr.Fptr.startcol;
+    while ii < fptr.Fptr.tfield {
+        ffcmps_safe(templt, &c[ci].ttype, casesen, &mut matchi, &mut exact);
+        if matchi > 0 {
+            if founde && exact > 0 {
+                /* warning: this is the second exact match we've found     */
+                /*reset pointer to first match so next search starts there */
+                fptr.Fptr.startcol = *colnum;
+                *status = COL_NOT_UNIQUE;
+                return *status;
+            } else if founde { /* a wildcard match */
+                /* already found exact match so ignore this non-exact match */
+            } else if exact > 0 {
+                /* this is the first exact match we have found, so save it. */
+                strcpy_safe(colname, &c[ci].ttype);
+                *colnum = ii + 1;
+                founde = true;
+            } else if foundw {
+                /* we have already found a wild card match, so not unique */
+                /* continue searching for other matches                   */
+                unique = false;
+            } else {
+                /* this is the first wild card match we've found. save it */
+                strcpy_safe(colname, &c[ci].ttype);
+                *colnum = ii + 1;
+                fptr.Fptr.startcol = *colnum;
+                foundw = true;
+                unique = true;
+            }
+        }
+        ii += 1;
+        ci += 1;
+    }
+
+    /* OK, we've checked all the names now see if we got any matches */
+    if founde {
+        if tstatus == COL_NOT_UNIQUE {
+            /* we did find 1 exact match but */
+            *status = COL_NOT_UNIQUE; /* there was a previous match too */
+        }
+    } else if foundw {
+        /* found one or more wildcard matches; report error if not unique */
+        if !unique || tstatus == COL_NOT_UNIQUE {
+            *status = COL_NOT_UNIQUE;
+        }
+    } else {
+        /* didn't find a match; check if template is a positive integer */
+
+        ffc2ii(templt, &mut ivalue, &mut tstatus);
+        if tstatus == 0 && ivalue <= fptr.Fptr.tfield as c_long && ivalue > 0 {
+            *colnum = ivalue as c_int;
+
+            let c = fptr.Fptr.get_tableptr_as_slice();
+            let ci = (ivalue - 1) as usize; /* offset to correct column */
+
+            strcpy_safe(colname, &c[ci].ttype);
+        } else {
+            *status = COL_NOT_FOUND;
+            if tstatus != COL_NOT_UNIQUE {
+                int_snprintf!(
+                    &mut errmsg,
+                    FLEN_ERRMSG,
+                    "ffgcnn could not find column: {:.45}",
+                    slice_to_str!(&templt),
+                );
+
+                ffpmsg_slice(&errmsg);
+            }
+        }
+    }
+
+    fptr.Fptr.startcol = *colnum; /* save pointer for next time */
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+///  compare the template to the string and test if they match.
+///
+///  The strings are limited to 68 characters or less (the max. length
+///  of a FITS string keyword value.  This routine reports whether
+///  the two strings match and whether the match is exact or
+///  involves wildcards.
+///
+///  This algorithm is very similar to the way unix filename wildcards
+///  work except that this first treats a wild card as a literal character
+///  when looking for a match.  If there is no literal match, then
+///  it interpretes it as a wild card.  So the template 'AB*DE'
+///  is considered to be an exact rather than a wild card match to
+///  the string 'AB*DE'.  The '#' wild card in the template string will
+///  match any consecutive string of decimal digits in the colname.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcmps(
+    templt: *const c_char,  /* I - input template (may have wildcards)      */
+    colname: *const c_char, /* I - full column name up to 68 + 1 chars long */
+    casesen: c_int,         /* I - case sensitive string comparison? 1=yes  */
+    matchi: *mut c_int,     /* O - do template and colname match? 1=yes     */
+    exact: *mut c_int,      /* O - do strings exactly match, or wildcards   */
+) {
+    unsafe {
+        // WARNING: This is not checked in the original code
+        let matchi = matchi.as_mut().expect(NULL_MSG);
+        let exact = exact.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(templt);
+        raw_to_slice!(colname);
+
+        ffcmps_safe(templt, colname, casesen, matchi, exact);
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  compare the template to the string and test if they match.
+///
+///  The strings are limited to 68 characters or less (the max. length
+///  of a FITS string keyword value.  This routine reports whether
+///  the two strings match and whether the match is exact or
+///  involves wildcards.
+///
+///  This algorithm is very similar to the way unix filename wildcards
+///  work except that this first treats a wild card as a literal character
+///  when looking for a match.  If there is no literal match, then
+///  it interpretes it as a wild card.  So the template 'AB*DE'
+///  is considered to be an exact rather than a wild card match to
+///  the string 'AB*DE'.  The '#' wild card in the template string will
+///  match any consecutive string of decimal digits in the colname.
+pub fn ffcmps_safe(
+    templt: &[c_char],  /* I - input template (may have wildcards)      */
+    colname: &[c_char], /* I - full column name up to 68 + 1 chars long */
+    casesen: c_int,     /* I - case sensitive string comparison? 1=yes  */
+    matchi: &mut c_int, /* O - do template and colname match? 1=yes     */
+    exact: &mut c_int,  /* O - do strings exactly match, or wildcards   */
+) {
+    let ii = 0;
+    let mut found = false;
+    let mut t1 = 0;
+    let mut s1 = 0;
+    let mut wildsearch = false;
+    let mut tsave: c_int = 0 as c_int;
+    let mut ssave: c_int = 0 as c_int;
+    let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut col: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    *matchi = FALSE as c_int;
+    *exact = TRUE as c_int;
+
+    strncpy_safe(&mut temp, templt, FLEN_VALUE); /* copy strings to work area */
+    strncpy_safe(&mut col, colname, FLEN_VALUE);
+    temp[FLEN_VALUE - 1] = 0; /* make sure strings are terminated */
+    col[FLEN_VALUE - 1] = 0;
+
+    /* truncate trailing non-significant blanks */
+    let mut ii = strlen_safe(&temp) as isize - 1;
+    while ii >= 0 {
+        if temp[ii as usize] == bb(b' ') {
+            temp[ii as usize] = 0;
+            ii -= 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut ii = strlen_safe(&col) as isize - 1;
+    while ii >= 0 {
+        if col[ii as usize] == bb(b' ') {
+            col[ii as usize] = 0;
+            ii -= 1;
+        } else {
+            break;
+        }
+    }
+    if casesen == 0 {
+        /* convert both strings to uppercase before comparison */
+        ffupch_safe(&mut temp);
+        ffupch_safe(&mut col);
+    }
+
+    if FSTRCMP(&temp, &col) == 0 {
+        *matchi = TRUE as c_int; /* strings exactly match */
+        return;
+    }
+
+    *exact = FALSE as c_int; /* strings don't exactly match */
+
+    t1 = 0; /* start comparison with 1st char of each string */
+    s1 = 0;
+
+    loop {
+        /* compare corresponding chars in each string */
+        if temp[t1] == 0 && col[s1] == 0 {
+            /* completely scanned both strings so they match */
+            *matchi = TRUE as c_int;
+            return;
+        } else if temp[t1] == 0 {
+            if wildsearch {
+                /*
+                   the previous wildcard search may have been going down
+                   a blind alley.  Backtrack, and resume the wildcard
+                   search with the next character in the string.
+                */
+                t1 = tsave as usize;
+                s1 = ssave as usize + 1;
+            } else {
+                /* reached end of template string so they don't match */
+                return;
+            }
+        } else if col[s1] == 0 {
+            /* reached end of other string; they match if the next */
+            /* character in the template string is a '*' wild card */
+
+            if temp[t1] == bb(b'*') && temp[t1 + 1] == 0 {
+                *matchi = TRUE as c_int;
+            }
+
+            return;
+        }
+
+        if temp[t1] == col[s1] || (temp[t1] == bb(b'?')) {
+            s1 += 1; /* corresponding chars in the 2 strings match */
+            t1 += 1; /* increment both pointers and loop back again */
+        } else if temp[t1] == bb(b'#') && isdigit_safe(col[s1]) {
+            s1 += 1; /* corresponding chars in the 2 strings match */
+            t1 += 1; /* increment both pointers */
+
+            /* find the end of the string of digits */
+            while isdigit_safe(col[s1]) {
+                s1 += 1;
+            }
+        } else if temp[t1] == bb(b'*') {
+            /* save current string locations, in case we need to restart */
+            wildsearch = true;
+            tsave = t1 as c_int;
+            ssave = s1 as c_int;
+
+            /* get next char from template and look for it in the col name */
+            t1 += 1;
+            if temp[t1] == 0 || temp[t1] == bb(b' ') {
+                /* reached end of template so strings match */
+                *matchi = TRUE as c_int;
+                return;
+            }
+
+            found = false;
+            while col[s1] > 0 && !found {
+                if temp[t1] == col[s1] {
+                    t1 += 1; /* found matching characters; incre both pointers */
+                    s1 += 1; /* and loop back to compare next chars */
+                    found = true;
+                } else {
+                    s1 += 1; /* increment the column name pointer and try again */
+                }
+            }
+
+            if !found {
+                return; /* hit end of column name and failed to find a match */
+            }
+        } else if wildsearch {
+            /*
+               the previous wildcard search may have been going down
+               a blind alley.  Backtrack, and resume the wildcard
+               search with the next character in the string.
+            */
+            t1 = tsave as usize;
+            s1 = ssave as usize + 1;
+        } else {
+            return; /* strings don't match */
+        }
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Type of table column.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgtcl(
+    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
+    colnum: c_int,        /* I - column number                           */
+    typecode: *mut c_int, /* O - datatype code (21 = short, etc)         */
+    repeat: *mut c_long,  /* O - repeat count of field                   */
+    width: *mut c_long,   /* O - if ASCII, width of field or unit string */
+    status: *mut c_int,   /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let typecode = typecode.as_mut();
+        let repeat = repeat.as_mut();
+        let width = width.as_mut();
+
+        ffgtcl_safe(fptr, colnum, typecode, repeat, width, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Type of table column.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+pub fn ffgtcl_safe(
+    fptr: &mut fitsfile,          /* I - FITS file pointer                       */
+    colnum: c_int,                /* I - column number                           */
+    typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
+    repeat: Option<&mut c_long>,  /* O - repeat count of field                   */
+    width: Option<&mut c_long>,   /* O - if ASCII, width of field or unit string */
+    status: &mut c_int,           /* IO - error status                           */
+) -> c_int {
+    let mut trepeat: LONGLONG = 0;
+    let mut twidth: LONGLONG = 0;
+
+    ffgtclll_safe(
+        fptr,
+        colnum,
+        typecode,
+        Some(&mut trepeat),
+        Some(&mut twidth),
+        status,
+    );
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if let Some(repeat) = repeat {
+        *repeat = trepeat as c_long;
+    }
+
+    if let Some(width) = width {
+        *width = twidth as c_long;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Type of table column.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgtclll(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
+    colnum: c_int,         /* I - column number                           */
+    typecode: *mut c_int,  /* O - datatype code (21 = short, etc)         */
+    repeat: *mut LONGLONG, /* O - repeat count of field                   */
+    width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
+    status: *mut c_int,    /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let typecode = typecode.as_mut();
+        let repeat = repeat.as_mut();
+        let width = width.as_mut();
+
+        ffgtclll_safe(fptr, colnum, typecode, repeat, width, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Type of table column.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+pub fn ffgtclll_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                       */
+    colnum: c_int,                 /* I - column number                           */
+    typecode: Option<&mut c_int>,  /* O - datatype code (21 = short, etc)         */
+    repeat: Option<&mut LONGLONG>, /* O - repeat count of field                   */
+    width: Option<&mut LONGLONG>,  /* O - if ASCII, width of field or unit string */
+    status: &mut c_int,            /* IO - error status                           */
+) -> c_int {
+    let mut hdutype = 0;
+    let mut decims = 0;
+    let mut tmpwidth: c_long = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if colnum < 1 || colnum > fptr.Fptr.tfield {
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    if ffghdt_safe(fptr, &mut hdutype, status) > 0 {
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_slice();
+    let ci = (colnum - 1) as usize; /* offset to the correct column */
+
+    if hdutype == ASCII_TBL {
+        ffasfm_safe(
+            &c[ci].tform,
+            typecode,
+            Some(&mut tmpwidth),
+            Some(&mut decims),
+            status,
+        );
+
+        // WARNING: Original code doesn't check for null ptr
+        if let Some(width) = width {
+            *width = tmpwidth as LONGLONG;
+        }
+
+        if let Some(repeat) = repeat {
+            *repeat = 1;
+        };
+    } else {
+        if let Some(typecode) = typecode {
+            *typecode = c[ci].tdatatype;
+        }
+        if let Some(width) = width {
+            *width = c[ci].twidth as LONGLONG;
+        }
+        if let Some(repeat) = repeat {
+            *repeat = c[ci].trepeat;
+        };
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the 'equivalent' table column type.
+///
+/// This routine is similar to the ffgtcl routine (which returns the physical
+/// datatype of the column, as stored in the FITS file) except that if the
+/// TSCALn and TZEROn keywords are defined for the column, then it returns
+/// the 'equivalent' datatype.  Thus, if the column is defined as '1I'  (short
+/// integer) this routine may return the type as 'TUSHORT' or as 'TFLOAT'
+/// depending on the TSCALn and TZEROn values.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffeqty(
+    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
+    colnum: c_int,        /* I - column number                           */
+    typecode: *mut c_int, /* O - datatype code (21 = short, etc)         */
+    repeat: *mut c_long,  /* O - repeat count of field                   */
+    width: *mut c_long,   /* O - if ASCII, width of field or unit string */
+    status: *mut c_int,   /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let typecode = typecode.as_mut();
+        let repeat = repeat.as_mut();
+        let width = width.as_mut();
+
+        ffeqty_safe(fptr, colnum, typecode, repeat, width, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the 'equivalent' table column type.
+///
+/// This routine is similar to the ffgtcl routine (which returns the physical
+/// datatype of the column, as stored in the FITS file) except that if the
+/// TSCALn and TZEROn keywords are defined for the column, then it returns
+/// the 'equivalent' datatype.  Thus, if the column is defined as '1I'  (short
+/// integer) this routine may return the type as 'TUSHORT' or as 'TFLOAT'
+/// depending on the TSCALn and TZEROn values.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+pub(crate) fn ffeqty_safe(
+    fptr: &mut fitsfile,          /* I - FITS file pointer                       */
+    colnum: c_int,                /* I - column number                           */
+    typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
+    repeat: Option<&mut c_long>,  /* O - repeat count of field                   */
+    width: Option<&mut c_long>,   /* O - if ASCII, width of field or unit string */
+    status: &mut c_int,           /* IO - error status                           */
+) -> c_int {
+    let mut trepeat: LONGLONG = 0;
+    let mut twidth: LONGLONG = 0;
+
+    ffeqtyll_safe(
+        fptr,
+        colnum,
+        typecode,
+        Some(&mut trepeat),
+        Some(&mut twidth),
+        status,
+    );
+
+    if let Some(repeat) = repeat {
+        *repeat = trepeat as c_long;
+    }
+
+    if let Some(width) = width {
+        *width = twidth as c_long;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the 'equivalent' table column type.
+///
+/// This routine is similar to the ffgtcl routine (which returns the physical
+/// datatype of the column, as stored in the FITS file) except that if the
+/// TSCALn and TZEROn keywords are defined for the column, then it returns
+/// the 'equivalent' datatype.  Thus, if the column is defined as '1I'  (short
+/// integer) this routine may return the type as 'TUSHORT' or as 'TFLOAT'
+/// depending on the TSCALn and TZEROn values.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffeqtyll(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
+    colnum: c_int,         /* I - column number                           */
+    typecode: *mut c_int,  /* O - datatype code (21 = short, etc)         */
+    repeat: *mut LONGLONG, /* O - repeat count of field                   */
+    width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
+    status: *mut c_int,    /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let repeat = repeat.as_mut();
+        let width = width.as_mut();
+        let typecode = typecode.as_mut();
+
+        ffeqtyll_safe(fptr, colnum, typecode, repeat, width, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the 'equivalent' table column type.
+///
+/// This routine is similar to the ffgtcl routine (which returns the physical
+/// datatype of the column, as stored in the FITS file) except that if the
+/// TSCALn and TZEROn keywords are defined for the column, then it returns
+/// the 'equivalent' datatype.  Thus, if the column is defined as '1I'  (short
+/// integer) this routine may return the type as 'TUSHORT' or as 'TFLOAT'
+/// depending on the TSCALn and TZEROn values.
+///
+/// Returns the datatype code of the column, as well as the vector
+/// repeat count and (if it is an ASCII character column) the
+/// width of the field or a unit string within the field.  This supports the
+/// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
+/// if TFORMn = '60A12' then repeat = 60 and width = 12.
+pub fn ffeqtyll_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    colnum: c_int,       /* I - column number                           */
+    mut typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
+    repeat: Option<&mut LONGLONG>, /* O - repeat count of field                   */
+    width: Option<&mut LONGLONG>, /* O - if ASCII, width of field or unit string */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    let mut hdutype: c_int = 0;
+    let mut decims: c_int = 0;
+    let mut tcode: c_int = 0;
+    let mut effcode: c_int = 0;
+    let mut tscale: f64 = 0.0;
+    let mut tzero: f64 = 0.0;
+    let mut min_val: f64 = 0.0;
+    let mut max_val: f64 = 0.0;
+    let mut lngscale: c_long = 0;
+    let mut lngzero: c_long = 0;
+    let mut tmpwidth: c_long = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if colnum < 1 || colnum > fptr.Fptr.tfield {
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    if ffghdt_safe(fptr, &mut hdutype, status) > 0 {
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_mut_slice();
+    let ci = colnum as usize - 1; /* offset to correct column structure */
+
+    if hdutype == ASCII_TBL {
+        ffasfm_safe(
+            &c[ci].tform,
+            typecode.as_deref_mut(),
+            Some(&mut tmpwidth),
+            Some(&mut decims),
+            status,
+        );
+
+        if let Some(width) = width {
+            *width = tmpwidth as LONGLONG;
+        }
+        if let Some(repeat) = repeat {
+            *repeat = 1;
+        }
+    } else {
+        if let Some(typecode) = typecode.as_deref_mut() {
+            *typecode = c[ci].tdatatype;
+        }
+        if let Some(width) = width {
+            *width = c[ci].twidth as LONGLONG;
+        }
+        if let Some(repeat) = repeat {
+            *repeat = c[ci].trepeat;
+        }
+    }
+
+    /* return if caller is not interested in the typecode value */
+    if typecode.is_none() {
+        return *status;
+    }
+
+    let typecode = typecode.unwrap(); // Already checked not none above.
+
+    /* check if the tscale and tzero keywords are defined, which might
+    change the effective datatype of the column  */
+
+    tscale = c[ci].tscale;
+    tzero = c[ci].tzero;
+
+    if tscale == 1.0 && tzero == 0.0 {
+        /* no scaling */
+        return *status;
+    }
+
+    tcode = (*typecode).abs();
+
+    match tcode {
+        TBYTE => {
+            /* binary table 'rB' column */
+            min_val = 0.0;
+            max_val = 255.0;
+        }
+        TSHORT => {
+            min_val = -32768.0;
+            max_val = 32767.0;
+        }
+        TLONG => {
+            min_val = -2147483648.0;
+            max_val = 2147483647.0;
+        }
+        TLONGLONG => {
+            min_val = -9.223_372_036_854_776E18;
+            max_val = 9.223_372_036_854_776E18;
+        }
+
+        _ => {
+            /* don't have to deal with other data types */
+            return *status;
+        }
+    }
+
+    if tscale >= 0. {
+        min_val = tzero + tscale * min_val;
+        max_val = tzero + tscale * max_val;
+    } else {
+        max_val = tzero + tscale * min_val;
+        min_val = tzero + tscale * max_val;
+    }
+    if tzero < 2147483648. {
+        /* don't exceed range of 32-bit integer */
+        lngzero = tzero as c_long;
+    }
+    lngscale = tscale as c_long;
+
+    if (tzero != 2147483648.0) && /* special value that exceeds integer range */
+(tzero != 9223372036854775808.0) &&  /* indicates unsigned long long */
+(lngzero as f64 != tzero || lngscale as f64 != tscale)
+    {
+        /* not integers? */
+        /* floating point scaled values; just decide on required precision */
+        if tcode == TBYTE || tcode == TSHORT {
+            effcode = TFLOAT;
+        } else {
+            effcode = TDOUBLE;
+        }
+    /*
+    In all the remaining cases, TSCALn and TZEROn are integers,
+    and not equal to 1 and 0, respectively.
+    */
+    } else if (min_val == -128.) && (max_val == 127.) {
+        effcode = TSBYTE;
+    } else if (min_val >= -32768.0) && (max_val <= 32767.0) {
+        effcode = TSHORT;
+    } else if (min_val >= 0.0) && (max_val <= 65535.0) {
+        effcode = TUSHORT;
+    } else if (min_val >= -2147483648.0) && (max_val <= 2147483647.0) {
+        effcode = TLONG;
+    } else if (min_val >= 0.0) && (max_val < 4294967296.0) {
+        effcode = TULONG;
+    } else if (min_val >= -9.223_372_036_854_776E18) && (max_val <= 9.223_372_036_854_776E18) {
+        effcode = TLONGLONG;
+    } else if (min_val >= 0.0) && (max_val <= 1.844_674_407_370_955_2E19) {
+        effcode = TULONGLONG;
+    } else {
+        /* exceeds the range of a 64-bit integer */
+        effcode = TDOUBLE;
+    }
+
+    /* return the effective datatype code (negative if variable length col.) */
+    if *typecode < 0 {
+        /* variable length array column */
+        *typecode = -effcode;
+    } else {
+        *typecode = effcode;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of columns in the table (= TFIELDS keyword)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgncl(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    ncols: *mut c_int,   /* O - number of columns in the table          */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let ncols = ncols.as_mut().expect(NULL_MSG);
+
+        ffgncl_safe(fptr, ncols, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of columns in the table (= TFIELDS keyword)
+pub fn ffgncl_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    ncols: &mut c_int,   /* O - number of columns in the table          */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        }
+    }
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        *status = NOT_TABLE;
+        return *status;
+    }
+
+    *ncols = fptr.Fptr.tfield;
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of rows in the table (= NAXIS2 keyword)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgnrw(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    nrows: *mut c_long,  /* O - number of rows in the table             */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nrows = nrows.as_mut().expect(NULL_MSG);
+
+        ffgnrw_safe(fptr, nrows, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of rows in the table (= NAXIS2 keyword)
+pub fn ffgnrw_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    nrows: &mut c_long,  /* O - number of rows in the table             */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        return {
+            *status = NOT_TABLE;
+            *status
+        };
+    }
+
+    /* the NAXIS2 keyword may not be up to date, so use the structure value */
+    *nrows = fptr.Fptr.numrows as c_long;
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of rows in the table (= NAXIS2 keyword)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgnrwll(
+    fptr: *mut fitsfile,  /* I - FITS file pointer                     */
+    nrows: *mut LONGLONG, /* O - number of rows in the table           */
+    status: *mut c_int,   /* IO - error status                         */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nrows = nrows.as_mut().expect(NULL_MSG); //WARNING: Not checked in original code
+
+        ffgnrwll_safe(fptr, nrows, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the number of rows in the table (= NAXIS2 keyword)
+pub fn ffgnrwll_safe(
+    fptr: &mut fitsfile,  /* I - FITS file pointer                     */
+    nrows: &mut LONGLONG, /* O - number of rows in the table           */
+    status: &mut c_int,   /* IO - error status                         */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        }
+    }
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        *status = NOT_TABLE;
+        return *status;
+    }
+
+    /* the NAXIS2 keyword may not be up to date, so use the structure value */
+    *nrows = fptr.Fptr.numrows;
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// get ASCII column keyword values
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgacl(
+    fptr: *mut fitsfile, /* I - FITS file pointer                      */
+    colnum: c_int,       /* I - column number                          */
+    ttype: *mut c_char,  /* O - TTYPEn keyword value                   */
+    tbcol: *mut c_long,  /* O - TBCOLn keyword value                   */
+    tunit: *mut c_char,  /* O - TUNITn keyword value                   */
+    tform: *mut c_char,  /* O - TFORMn keyword value                   */
+    tscal: *mut f64,     /* O - TSCALn keyword value                   */
+    tzero: *mut f64,     /* O - TZEROn keyword value                   */
+    tnull: *mut c_char,  /* O - TNULLn keyword value                   */
+    tdisp: *mut c_char,  /* O - TDISPn keyword value                   */
+    status: *mut c_int,  /* IO - error status                          */
+) -> c_int {
+    unsafe {
+        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut tstatus = 0;
+
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let tbcol = tbcol.as_mut();
+        let tscal = tscal.as_mut();
+        let tzero = tzero.as_mut();
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+            /* rescan header */
+            if ffrdef_safe(fptr, status) > 0 {
+                return *status;
+            }
+        }
+
+        if colnum < 1 || colnum > fptr.Fptr.tfield {
+            *status = BAD_COL_NUM;
+            return *status;
+        }
+
+        /* get what we can from the column structure */
+        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+        let c = slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize);
+        let ci = colnum as usize - 1; /* offset to the correct column */
+
+        if !ttype.is_null() {
+            strcpy(ttype, c[ci].ttype.as_ptr());
+        }
+        if let Some(tbcol) = tbcol {
+            /* first col is 1, not 0 */
+            *tbcol = ((c[ci].tbcol) + 1) as c_long;
+        }
+        if !tform.is_null() {
+            strcpy(tform, c[ci].tform.as_ptr());
+        }
+        if let Some(tscal) = tscal {
+            *tscal = c[ci].tscale;
+        }
+        if let Some(tzero) = tzero {
+            *tzero = c[ci].tzero;
+        }
+
+        if !tnull.is_null() {
+            strcpy(tnull, c[ci].strnull.as_ptr());
+        }
+
+        /* read keywords to get additional parameters */
+        if !tunit.is_null() {
+            ffkeyn_safe(cs!(TUNIT), colnum, &mut name, status);
+            tstatus = 0;
+
+            let tunit = slice::from_raw_parts_mut(tunit, FLEN_VALUE);
+            tunit[0] = 0;
+            ffgkys_safe(fptr, &name, tunit, Some(&mut comm), &mut tstatus);
+        }
+
+        if !tdisp.is_null() {
+            ffkeyn_safe(cs!(TDISP), colnum, &mut name, status);
+            tstatus = 0;
+
+            let tdisp = slice::from_raw_parts_mut(tdisp, FLEN_VALUE);
+            tdisp[0] = 0;
+            ffgkys_safe(fptr, &name, tdisp, Some(&mut comm), &mut tstatus);
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get BINTABLE column keyword values
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgbcl(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
+    colnum: c_int,           /* I - column number                          */
+    ttype: *mut c_char,      /* O - TTYPEn keyword value                   */
+    tunit: *mut c_char,      /* O - TUNITn keyword value                   */
+    dtype: *mut [c_char; 2], /* O - datatype char: I, J, E, D, etc.        */
+    repeat: *mut c_long,     /* O - vector column repeat count             */
+    tscal: *mut f64,         /* O - TSCALn keyword value                   */
+    tzero: *mut f64,         /* O - TZEROn keyword value                   */
+    tnull: *mut c_long,      /* O - TNULLn keyword value integer cols only */
+    tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
+    status: *mut c_int,      /* IO - error status                          */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        let dtype = dtype.as_mut();
+        let repeat = repeat.as_mut();
+        let tscal = tscal.as_mut();
+        let tzero = tzero.as_mut();
+        let tnull = tnull.as_mut();
+
+        let ttype = if ttype.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(ttype, FLEN_VALUE))
+        };
+
+        let tunit = if tunit.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(tunit, FLEN_VALUE))
+        };
+
+        let tdisp = if tdisp.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(tdisp, FLEN_VALUE))
+        };
+
+        ffgbcl_safe(
+            fptr, colnum, ttype, tunit, dtype, repeat, tscal, tzero, tnull, tdisp, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get BINTABLE column keyword values
+pub fn ffgbcl_safe(
+    fptr: &mut fitsfile,             /* I - FITS file pointer                      */
+    colnum: c_int,                   /* I - column number                          */
+    ttype: Option<&mut [c_char]>,    /* O - TTYPEn keyword value                   */
+    tunit: Option<&mut [c_char]>,    /* O - TUNITn keyword value                   */
+    dtype: Option<&mut [c_char; 2]>, /* O - datatype char: I, J, E, D, etc.        */
+    repeat: Option<&mut c_long>,     /* O - vector column repeat count             */
+    tscal: Option<&mut f64>,         /* O - TSCALn keyword value                   */
+    tzero: Option<&mut f64>,         /* O - TZEROn keyword value                   */
+    tnull: Option<&mut c_long>,      /* O - TNULLn keyword value integer cols only */
+    tdisp: Option<&mut [c_char]>,    /* O - TDISPn keyword value                   */
+    status: &mut c_int,              /* IO - error status                          */
+) -> c_int {
+    let mut trepeat = 0;
+    let mut ttnull = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    ffgbclll_safe(
+        fptr,
+        colnum,
+        ttype,
+        tunit,
+        dtype,
+        Some(&mut trepeat),
+        tscal,
+        tzero,
+        Some(&mut ttnull),
+        tdisp,
+        status,
+    );
+
+    if let Some(repeat) = repeat {
+        *repeat = trepeat as c_long;
+    }
+
+    if let Some(tnull) = tnull {
+        *tnull = ttnull as c_long;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// get BINTABLE column keyword values
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgbclll(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
+    colnum: c_int,           /* I - column number                          */
+    ttype: *mut c_char,      /* O - TTYPEn keyword value                   */
+    tunit: *mut c_char,      /* O - TUNITn keyword value                   */
+    dtype: *mut [c_char; 2], /* O - datatype char: I, J, E, D, etc.        */
+    repeat: *mut LONGLONG,   /* O - vector column repeat count             */
+    tscal: *mut f64,         /* O - TSCALn keyword value                   */
+    tzero: *mut f64,         /* O - TZEROn keyword value                   */
+    tnull: *mut LONGLONG,    /* O - TNULLn keyword value integer cols only */
+    tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
+    status: *mut c_int,      /* IO - error status                          */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let dtype = dtype.as_mut();
+        let repeat = repeat.as_mut();
+        let tscal = tscal.as_mut();
+        let tzero = tzero.as_mut();
+        let tnull = tnull.as_mut();
+
+        let ttype = if ttype.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(ttype, FLEN_VALUE))
+        };
+
+        let tunit = if tunit.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(tunit, FLEN_VALUE))
+        };
+
+        let tdisp = if tdisp.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(tdisp, FLEN_VALUE))
+        };
+
+        ffgbclll_safe(
+            fptr, colnum, ttype, tunit, dtype, repeat, tscal, tzero, tnull, tdisp, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get BINTABLE column keyword values
+pub fn ffgbclll_safe(
+    fptr: &mut fitsfile,             /* I - FITS file pointer                      */
+    colnum: c_int,                   /* I - column number                          */
+    ttype: Option<&mut [c_char]>,    /* O - TTYPEn keyword value                   */
+    tunit: Option<&mut [c_char]>,    /* O - TUNITn keyword value                   */
+    dtype: Option<&mut [c_char; 2]>, /* O - datatype char: I, J, E, D, etc.        */
+    repeat: Option<&mut LONGLONG>,   /* O - vector column repeat count             */
+    tscal: Option<&mut f64>,         /* O - TSCALn keyword value                   */
+    tzero: Option<&mut f64>,         /* O - TZEROn keyword value                   */
+    tnull: Option<&mut LONGLONG>,    /* O - TNULLn keyword value integer cols only */
+    tdisp: Option<&mut [c_char]>,    /* O - TDISPn keyword value                   */
+    status: &mut c_int,              /* IO - error status                          */
+) -> c_int {
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let mut tstatus = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if colnum < 1 || colnum > fptr.Fptr.tfield {
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    /* get what we can from the column structure */
+    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    let c = fptr.Fptr.get_tableptr_as_slice();
+    let ci = colnum as usize - 1; /* offset to correct column structure */
+
+    if let Some(ttype) = ttype {
+        strcpy_safe(ttype, &c[ci].ttype);
+    }
+
+    if let Some(dtype) = dtype {
+        if c[ci].tdatatype < 0 {
+            /* add the "P" prefix for */
+            strcpy_safe(dtype, cs!("P")); /* variable length columns */
+        } else {
+            dtype[0] = 0;
+        }
+
+        let abs_datatype = (c[ci].tdatatype).abs();
+
+        if abs_datatype == TBIT {
+            strcat_safe(dtype, cs!("X"));
+        } else if abs_datatype == TBYTE {
+            strcat_safe(dtype, cs!("B"));
+        } else if abs_datatype == TLOGICAL {
+            strcat_safe(dtype, cs!("L"));
+        } else if abs_datatype == TSTRING {
+            strcat_safe(dtype, cs!("A"));
+        } else if abs_datatype == TSHORT {
+            strcat_safe(dtype, cs!("I"));
+        } else if abs_datatype == TLONG {
+            strcat_safe(dtype, cs!("J"));
+        } else if abs_datatype == TLONGLONG {
+            strcat_safe(dtype, cs!("K"));
+        } else if abs_datatype == TFLOAT {
+            strcat_safe(dtype, cs!("E"));
+        } else if abs_datatype == TDOUBLE {
+            strcat_safe(dtype, cs!("D"));
+        } else if abs_datatype == TCOMPLEX {
+            strcat_safe(dtype, cs!("C"));
+        } else if abs_datatype == TDBLCOMPLEX {
+            strcat_safe(dtype, cs!("M"));
+        }
+    }
+
+    if let Some(repeat) = repeat {
+        *repeat = c[ci].trepeat;
+    }
+
+    if let Some(tscal) = tscal {
+        *tscal = c[ci].tscale;
+    }
+
+    if let Some(tzero) = tzero {
+        *tzero = c[ci].tzero;
+    }
+
+    if let Some(tnull) = tnull {
+        *tnull = c[ci].tnull;
+    }
+
+    /* read keywords to get additional parameters */
+
+    if let Some(tunit) = tunit {
+        ffkeyn_safe(cs!(TUNIT), colnum, &mut name, status);
+        tstatus = 0;
+
+        tunit[0] = 0;
+        ffgkys_safe(fptr, &name, tunit, Some(&mut comm), &mut tstatus);
+    }
+
+    if let Some(tdisp) = tdisp {
+        ffkeyn_safe(cs!(TDISP), colnum, &mut name, status);
+        tstatus = 0;
+
+        tdisp[0] = 0;
+        ffgkys_safe(fptr, &name, tdisp, Some(&mut comm), &mut tstatus);
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the number of the Current HDU in the FITS file.  The primary array
+/// is HDU number 1.  Note that this is one of the few cfitsio routines that
+/// does not return the error status value as the value of the function.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffghdn(
+    fptr: *mut fitsfile, /* I - FITS file pointer                      */
+    chdunum: *mut c_int, /* O - number of the CHDU; 1 = primary array  */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        *chdunum = (fptr.HDUposition) + 1;
+        *chdunum
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the number of the Current HDU in the FITS file.  The primary array
+/// is HDU number 1.  Note that this is one of the few cfitsio routines that
+/// does not return the error status value as the value of the function.
+pub fn ffghdn_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                      */
+    chdunum: &mut c_int, /* O - number of the CHDU; 1 = primary array  */
+) -> c_int {
+    *chdunum = (fptr.HDUposition) + 1;
+    *chdunum
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffghadll(
+    fptr: *mut fitsfile,      /* I - FITS file pointer                     */
+    headstart: *mut LONGLONG, /* O - byte offset to beginning of CHDU      */
+    datastart: *mut LONGLONG, /* O - byte offset to beginning of next HDU  */
+    dataend: *mut LONGLONG,   /* O - byte offset to beginning of next HDU  */
+    status: *mut c_int,       /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let headstart = headstart.as_mut();
+        let datastart = datastart.as_mut();
+        let dataend = dataend.as_mut();
+
+        ffghadll_safe(fptr, headstart, datastart, dataend, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+pub fn ffghadll_safe(
+    fptr: &mut fitsfile,              /* I - FITS file pointer                     */
+    headstart: Option<&mut LONGLONG>, /* O - byte offset to beginning of CHDU      */
+    datastart: Option<&mut LONGLONG>, /* O - byte offset to beginning of next HDU  */
+    dataend: Option<&mut LONGLONG>,   /* O - byte offset to beginning of next HDU  */
+    status: &mut c_int,               /* IO - error status     */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        if ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status) > 0 {
+            return *status;
+        }
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    let fptr_headstart = fptr.Fptr.get_headstart_as_slice();
+    if let Some(headstart) = headstart {
+        *headstart = fptr_headstart[fptr.Fptr.curhdu as usize];
+    }
+    if let Some(datastart) = datastart {
+        *datastart = fptr.Fptr.datastart;
+    }
+    if let Some(dataend) = dataend {
+        *dataend = fptr_headstart[(fptr.Fptr.curhdu as usize) + 1];
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffghof(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                     */
+    headstart: *mut off_t, /* O - byte offset to beginning of CHDU      */
+    datastart: *mut off_t, /* O - byte offset to beginning of next HDU  */
+    dataend: *mut off_t,   /* O - byte offset to beginning of next HDU  */
+    status: *mut c_int,    /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let headstart = headstart.as_mut();
+        let datastart = datastart.as_mut();
+        let dataend = dataend.as_mut();
+
+        ffghof_safe(fptr, headstart, datastart, dataend, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+pub(crate) fn ffghof_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                     */
+    headstart: Option<&mut off_t>, /* O - byte offset to beginning of CHDU      */
+    datastart: Option<&mut off_t>, /* O - byte offset to beginning of next HDU  */
+    dataend: Option<&mut off_t>,   /* O - byte offset to beginning of next HDU  */
+    status: &mut c_int,            /* IO - error status     */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        if ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status) > 0 {
+            return *status;
+        };
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    };
+
+    let fptr_headstart = fptr.Fptr.get_headstart_as_slice();
+
+    if let Some(headstart) = headstart {
+        *headstart = fptr_headstart[fptr.Fptr.curhdu as usize] as off_t;
+    }
+
+    if let Some(datastart) = datastart {
+        *datastart = fptr.Fptr.datastart as off_t;
+    }
+
+    if let Some(dataend) = dataend {
+        *dataend = fptr_headstart[(fptr.Fptr.curhdu as usize) + 1] as off_t;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffghad(
+    fptr: *mut fitsfile,    /* I - FITS file pointer                     */
+    headstart: *mut c_long, /* O - byte offset to beginning of CHDU      */
+    datastart: *mut c_long, /* O - byte offset to beginning of next HDU  */
+    dataend: *mut c_long,   /* O - byte offset to beginning of next HDU  */
+    status: *mut c_int,     /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let mut shead: LONGLONG = 0;
+        let mut sdata: LONGLONG = 0;
+        let mut edata: LONGLONG = 0;
+
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        ffghadll_safe(
+            fptr,
+            Some(&mut shead),
+            Some(&mut sdata),
+            Some(&mut edata),
+            status,
+        );
+
+        if let Some(headstart) = headstart.as_mut() {
+            if shead > LONG_MAX as LONGLONG {
+                *status = NUM_OVERFLOW;
+            } else {
+                *headstart = shead as c_long;
+            };
+        }
+
+        if let Some(datastart) = datastart.as_mut() {
+            if sdata > LONG_MAX as LONGLONG {
+                *status = NUM_OVERFLOW;
+            } else {
+                *datastart = sdata as c_long;
+            };
+        }
+
+        if let Some(dataend) = dataend.as_mut() {
+            if edata > LONG_MAX as LONGLONG {
+                *status = NUM_OVERFLOW;
+            } else {
+                *dataend = edata as c_long;
+            };
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// read the required keywords of the CHDU and initialize the corresponding
+/// structure elements that describe the format of the HDU
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffrhdu(
+    fptr: *mut fitsfile, /* I - FITS file pointer */
+    hdutype: *mut c_int, /* O - type of HDU       */
+    status: *mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        ffrhdu_safer(fptr, hdutype.as_mut(), status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// read the required keywords of the CHDU and initialize the corresponding
+/// structure elements that describe the format of the HDU
+pub(crate) unsafe fn ffrhdu_safer(
+    fptr: &mut fitsfile,         /* I - FITS file pointer */
+    hdutype: Option<&mut c_int>, /* O - type of HDU       */
+    status: &mut c_int,          /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let mut tstatus = 0;
+        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut xname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut urltype: [c_char; 20] = [0; 20];
+
+        let mut hdutype = hdutype;
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if ffgrec_safe(fptr, 1, Some(&mut card), status) > 0 {
+            /* get the 80-byte card */
+            ffpmsg_str("Cannot read first keyword in header (ffrhdu).");
+            return *status;
+        }
+
+        strncpy_safe(&mut name, &card, 8); /* first 8 characters = the keyword name */
+        name[8] = 0;
+
+        for ii in (0..8).rev() {
+            /* replace trailing blanks with nulls */
+            if name[ii] == bb(b' ') {
+                name[ii] = 0;
+            } else {
+                break;
+            };
+        }
+
+        /* parse value and comment */
+        if ffpsvc_safe(&card, &mut value, Some(&mut comm), status) > 0 {
+            ffpmsg_str("Cannot read value of first keyword in header (ffrhdu):");
+            ffpmsg_slice(&card);
+            return *status;
+        }
+
+        if strcmp_safe(&name, cs!(b"SIMPLE")) == 0 {
+            /* this is the primary array */
+
+            ffpinit(fptr, status); /* initialize the primary array */
+            if let Some(hdutype) = hdutype.as_deref_mut() {
+                *hdutype = 0;
+            };
+        } else if strcmp_safe(&name, cs!(b"XTENSION")) == 0 {
+            /* this is an XTENSION keyword */
+
+            if ffc2s(&value, &mut xname, status) > 0 {
+                /* get the value string */
+                ffpmsg_str("Bad value string for XTENSION keyword:");
+                ffpmsg_slice(&value);
+                return *status;
+            }
+
+            let mut xtension = 0; // &xname
+            while xname[xtension] == bb(b' ') {
+                /* ignore any leading spaces in name */
+                xtension += 1;
+            }
+
+            if strcmp_safe(&xname[xtension..], cs!(b"TABLE")) == 0 {
+                ffainit(fptr, status); /* initialize the ASCII table */
+                if let Some(hdutype) = hdutype.as_deref_mut() {
+                    *hdutype = 1;
+                };
+            } else if strcmp_safe(&xname[xtension..], cs!(b"BINTABLE")) == 0
+                || strcmp_safe(&xname[xtension..], cs!(b"A3DTABLE")) == 0
+                || strcmp_safe(&xname[xtension..], cs!(b"3DTABLE")) == 0
+            {
+                ffbinit(fptr, status); /* initialize the binary table */
+                if let Some(hdutype) = hdutype.as_deref_mut() {
+                    *hdutype = 2;
+                };
+            } else {
+                tstatus = 0;
+                ffpinit(fptr, &mut tstatus); /* probably an IMAGE extension */
+
+                if tstatus == UNKNOWN_EXT
+                    && let Some(hdutype) = hdutype.as_deref_mut()
+                {
+                    /* don't recognize this extension type */
+                    *hdutype = -1;
+                } else {
+                    *status = tstatus;
+                    if let Some(hdutype) = hdutype {
+                        *hdutype = 0;
+                    };
+                };
+            };
+        } else {
+            /*  not the start of a new extension */
+
+            if card[0] == 0 || card[0] == 10 {
+                /* some editors append this character to EOF */
+                *status = END_OF_FILE;
+            } else {
+                *status = UNKNOWN_REC; /* found unknown type of record */
+                ffpmsg_str("Extension doesn't start with SIMPLE or XTENSION keyword. (ffrhdu)");
+                ffpmsg_slice(&card);
+            };
+        }
+
+        /*  compare the starting position of the next HDU (if any) with the size */
+        /*  of the whole file to see if this is the last HDU in the file */
+
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        let filesize = headstart[(fptr.Fptr.curhdu + 1) as usize];
+
+        if filesize < fptr.Fptr.logfilesize {
+            fptr.Fptr.lasthdu = 0; /* no, not the last HDU */
+        } else {
+            fptr.Fptr.lasthdu = 1; /* yes, this is the last HDU */
+
+            /* special code for mem:// type files (FITS file in memory) */
+            /* Allocate enough memory to hold the entire HDU. */
+            /* Without this code, CFITSIO would repeatedly realloc  memory */
+            /* to incrementally increase the size of the file by 2880 bytes */
+            /* at a time, until it reached the final size */
+
+            ffurlt_safe(fptr, &mut urltype, status);
+
+            if strcmp_safe(&urltype, cs!(b"mem://")) == 0
+                || strcmp_safe(&urltype, cs!("memkeep://")) == 0
+            {
+                fftrun(fptr, filesize, status);
+            };
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// initialize the parameters defining the structure of the primary array
+/// or an Image extension
+pub(crate) unsafe fn ffpinit(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let mut simple: c_int = 0;
+        let mut bitpix: c_int = 0;
+        let mut naxis: c_int = 0;
+        let mut extend: c_int = 0;
+        let mut nspace: c_int = 0;
+        let mut ttype: c_int = 0;
+        let mut bytlen: LONGLONG = 0;
+        let mut ii: usize = 0;
+        let ntilebins: c_int = 0;
+        let mut pcount: c_long = 0;
+        let mut gcount: c_long = 0;
+        let mut naxes: [LONGLONG; 999] = [0; 999];
+        let mut npix: LONGLONG = 0;
+        let mut blank: LONGLONG = 0;
+        let mut bscale: f64 = 0.0;
+        let mut bzero: f64 = 0.0;
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut colptr: &mut tcolumn;
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+
+        fptr.Fptr.hdutype = IMAGE_HDU; /* primary array or IMAGE extension  */
+        fptr.Fptr.headend = fptr.Fptr.logfilesize; /* set max size */
+
+        let mut groups = 0;
+        let mut tstatus = *status;
+
+        /* get all the descriptive info about this HDU */
+        ffgphd(
+            fptr,
+            999,
+            &mut simple,
+            &mut bitpix,
+            &mut naxis,
+            &mut naxes,
+            &mut pcount,
+            &mut gcount,
+            &mut extend,
+            &mut bscale,
+            &mut bzero,
+            &mut blank,
+            &mut nspace,
+            status,
+        );
+
+        if *status == NOT_IMAGE {
+            *status = tstatus; /* ignore 'unknown extension type' error */
+        } else if *status > 0 {
+            return *status;
+        }
+
+        /*
+           the logical end of the header is 80 bytes before the current position,
+           minus any trailing blank keywords just before the END keyword.
+        */
+        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (nspace as LONGLONG + 1));
+
+        /* the data unit begins at the beginning of the next logical block */
+        fptr.Fptr.datastart = ((fptr.Fptr.nextkey - 80) / BL!() + 1) * BL!();
+
+        /* test for 'random groups' */
+        if naxis > 0 && naxes[0] == 0 {
+            tstatus = 0;
+            ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
+            if ffgkyl_safe(
+                fptr,
+                cs!(b"GROUPS"),
+                &mut groups,
+                Some(&mut comm),
+                &mut tstatus,
+            ) != 0
+            {
+                groups = 0; /* GROUPS keyword not found */
+            };
+        }
+        if bitpix == BYTE_IMG {
+            /* test  bitpix and set the datatype code */
+            ttype = TBYTE;
+            bytlen = 1;
+        } else if bitpix == SHORT_IMG {
+            ttype = TSHORT;
+            bytlen = 2;
+        } else if bitpix == LONG_IMG {
+            ttype = TLONG;
+            bytlen = 4;
+        } else if bitpix == LONGLONG_IMG {
+            ttype = TLONGLONG;
+            bytlen = 8;
+        } else if bitpix == FLOAT_IMG {
+            ttype = TFLOAT;
+            bytlen = 4;
+        } else if bitpix == DOUBLE_IMG {
+            ttype = TDOUBLE;
+            bytlen = 8;
+        }
+
+        /*   calculate the size of the primary array  */
+        fptr.Fptr.imgdim = naxis;
+        if naxis == 0 {
+            npix = 0;
+        } else {
+            if groups != 0 {
+                npix = 1; /* NAXIS1 = 0 is a special flag for 'random groups' */
+            } else {
+                npix = naxes[0];
+            }
+            fptr.Fptr.imgnaxis[0] = naxes[0];
+
+            ii = 1;
+            while ii < naxis as usize {
+                npix *= naxes[ii]; /* calc number of pixels in the array */
+                fptr.Fptr.imgnaxis[ii] = naxes[ii];
+                ii += 1
+            }
+        }
+
+        /*
+           now we know everything about the array; just fill in the parameters:
+           the next HDU begins in the next logical block after the data
+        */
+        *fptr.Fptr.headstart.offset(fptr.Fptr.curhdu as isize + 1) = fptr.Fptr.datastart
+            + (((pcount as LONGLONG) + npix) * bytlen * (gcount as LONGLONG) + (BL!() - 1)) / BL!()
+                * BL!();
+
+        /*
+          initialize the fictitious heap starting address (immediately following
+          the array data) and a zero length heap.  This is used to find the
+          end of the data when checking the fill values in the last block.
+        */
+        fptr.Fptr.heapstart = (npix + pcount as LONGLONG) * bytlen * (gcount as LONGLONG);
+        fptr.Fptr.heapsize = 0;
+
+        fptr.Fptr.compressimg = 0; /* this is not a compressed image */
+
+        if naxis == 0 {
+            fptr.Fptr.rowlength = 0; /* rows have zero length */
+            fptr.Fptr.tfield = 0; /* table has no fields   */
+
+            /* free the tile-compressed image cache, if it exists */
+            if !fptr.Fptr.tilerow.is_null() {
+                // HEAP DEALLOCATION
+                let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+                let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                drop(tilestruct_lock);
+
+                fptr.Fptr.tileanynull = ptr::null_mut();
+                fptr.Fptr.tiletype = ptr::null_mut();
+                fptr.Fptr.tiledatasize = ptr::null_mut();
+                fptr.Fptr.tilenullarray = ptr::null_mut();
+                fptr.Fptr.tiledata = ptr::null_mut();
+                fptr.Fptr.tilerow = ptr::null_mut();
+            }
+
+            if !fptr.Fptr.tableptr.is_null() {
+                /* free memory for the old CHDU */
+                // HEAP DEALLOCATIOn
+                let _ = Vec::from_raw_parts(
+                    fptr.Fptr.tableptr,
+                    fptr.Fptr.tfield as usize,
+                    fptr.Fptr.tfield as usize,
+                );
+            }
+
+            fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
+            fptr.Fptr.numrows = 0;
+            fptr.Fptr.origrows = 0;
+        } else {
+            /*
+              The primary array is actually interpreted as a binary table.  There
+              are two columns: the first column contains the group parameters if any.
+              The second column contains the primary array of data as a single vector
+              column element. In the case of 'random grouped' format, each group
+              is stored in a separate row of the table.
+            */
+            /* the number of rows is equal to the number of groups */
+            fptr.Fptr.numrows = gcount as LONGLONG;
+            fptr.Fptr.origrows = gcount as LONGLONG;
+
+            fptr.Fptr.rowlength = (npix + pcount as LONGLONG) * bytlen as LONGLONG; /* total size */
+            fptr.Fptr.tfield = 2; /* 2 fields: group params and the image */
+
+            /* free the tile-compressed image cache, if it exists */
+            if !fptr.Fptr.tilerow.is_null() {
+                // HEAP DEALLOCATION
+                let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+                let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                drop(tilestruct_lock);
+
+                fptr.Fptr.tileanynull = ptr::null_mut();
+                fptr.Fptr.tiletype = ptr::null_mut();
+                fptr.Fptr.tiledatasize = ptr::null_mut();
+                fptr.Fptr.tilenullarray = ptr::null_mut();
+                fptr.Fptr.tiledata = ptr::null_mut();
+                fptr.Fptr.tilerow = ptr::null_mut();
+            }
+
+            if !fptr.Fptr.tableptr.is_null() {
+                /* free memory for the old CHDU */
+                // HEAP DEALLOCATIOn
+                let _ = Vec::from_raw_parts(
+                    fptr.Fptr.tableptr,
+                    fptr.Fptr.tfield as usize,
+                    fptr.Fptr.tfield as usize,
+                );
+            }
+            //colptr = calloc(2, std::mem::size_of::<tcolumn>()) as *mut tcolumn;
+            // HEAP ALLOCATION
+            let mut colptr = Box::new([tcolumn::default(); 2]);
+
+            /*  if colptr.is_null() {
+                ffpmsg(
+                    cstr!(b"malloc failed to get memory for FITS array descriptors (ffpinit)").as_ptr(),
+                );
+                fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
+                return {
+                    *status = ARRAY_TOO_BIG;
+                    *status
+                };
+            } */
+
+            /* the first column represents the group parameters, if any */
+            colptr[0].tbcol = 0;
+            colptr[0].tdatatype = ttype;
+            colptr[0].twidth = bytlen as c_long;
+            colptr[0].trepeat = pcount as LONGLONG;
+            colptr[0].tscale = 1.0;
+            colptr[0].tzero = 0.0;
+            colptr[0].tnull = blank;
+
+            /* the second column represents the image array */
+            colptr[1].tbcol = pcount as LONGLONG * bytlen; /* col starts after the group parms */
+            colptr[1].tdatatype = ttype;
+            colptr[1].twidth = bytlen as c_long;
+            colptr[1].trepeat = npix;
+            colptr[1].tscale = bscale;
+            colptr[1].tzero = bzero;
+            colptr[1].tnull = blank;
+
+            /* copy the table structure address to the fitsfile structure */
+            fptr.Fptr.tableptr = Box::into_raw(colptr) as *mut tcolumn;
+        }
+
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+
+        /* reset next keyword pointer to the start of the header */
+        fptr.Fptr.nextkey = headstart[fptr.Fptr.curhdu as usize];
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// initialize the parameters defining the structure of an ASCII table
+pub(crate) unsafe fn ffainit(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let ii: c_int = 0;
+        let mut nspace: c_int = 0;
+        let ntilebins: c_int = 0;
+        let mut tfield: c_long = 0;
+        let mut pcount: LONGLONG = 0;
+        let mut rowlen: LONGLONG = 0;
+        let mut nrows: LONGLONG = 0;
+        let mut tbcoln: LONGLONG = 0;
+        let mut colptr: *mut tcolumn = ptr::null_mut();
+        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+        let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+        fptr.Fptr.hdutype = ASCII_TBL; /* set that this is an ASCII table */
+        fptr.Fptr.headend = fptr.Fptr.logfilesize; /* set max size */
+
+        /* get table parameters and test that the header is a valid: */
+        if ffgttb(
+            fptr,
+            &mut rowlen,
+            &mut nrows,
+            &mut pcount,
+            &mut tfield,
+            status,
+        ) > 0
+        {
+            return *status;
+        }
+        if pcount != 0 {
+            ffpmsg_str("PCOUNT keyword not equal to 0 in ASCII table (ffainit).");
+            int_snprintf!(&mut errmsg, FLEN_ERRMSG, "  PCOUNT = {}", pcount as c_long,);
+            ffpmsg_slice(&errmsg);
+            *status = BAD_PCOUNT;
+            return *status;
+        }
+
+        fptr.Fptr.rowlength = rowlen; /* store length of a row */
+        fptr.Fptr.tfield = tfield as c_int; /* store number of table fields in row */
+
+        /* free the tile-compressed image cache, if it exists */
+        if !fptr.Fptr.tilerow.is_null() {
+            // HEAP DEALLOCATION
+            let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+            let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+            drop(tilestruct_lock);
+
+            fptr.Fptr.tileanynull = ptr::null_mut();
+            fptr.Fptr.tiletype = ptr::null_mut();
+            fptr.Fptr.tiledatasize = ptr::null_mut();
+            fptr.Fptr.tilenullarray = ptr::null_mut();
+            fptr.Fptr.tiledata = ptr::null_mut();
+            fptr.Fptr.tilerow = ptr::null_mut();
+        }
+
+        if !fptr.Fptr.tableptr.is_null() {
+            /* free memory for the old CHDU */
+            // HEAP DEALLOCATIOn
+            let _ = Vec::from_raw_parts(
+                fptr.Fptr.tableptr,
+                fptr.Fptr.tfield as usize,
+                fptr.Fptr.tfield as usize,
+            );
+        }
+        /* mem for column structures ; space is initialized = 0 */
+        if tfield > 0 {
+            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            if colptr.is_null() {
+                ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffainit)");
+                fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
+                *status = ARRAY_TOO_BIG;
+                return *status;
+            }
+        }
+
+        /* copy the table structure address to the fitsfile structure */
+        fptr.Fptr.tableptr = colptr;
+
+        /*  initialize the table field parameters */
+        if tfield > 0 {
+            let c = slice::from_raw_parts_mut(colptr, tfield as usize);
+            let mut ci = 0;
+            let mut ii = 0;
+            while ii < tfield {
+                c[ci].ttype[0] = 0; /* null column name */
+                c[ci].tscale = 1.0;
+                c[ci].tzero = 0.0;
+                c[ci].strnull[0] = ASCII_NULL_UNDEFINED as c_char; /* null value undefined */
+                c[ci].tbcol = -1; /* initialize to illegal value */
+                c[ci].tdatatype = -9999; /* initialize to illegal value */
+                ii += 1;
+                ci += 1;
+            }
+        }
+
+        /*
+        Initialize the fictitious heap starting address (immediately following
+        the table data) and a zero length heap.  This is used to find the
+        end of the table data when checking the fill values in the last block.
+        There is no special data following an ASCII table.
+        */
+        fptr.Fptr.numrows = nrows;
+        fptr.Fptr.origrows = nrows;
+        fptr.Fptr.heapstart = rowlen * nrows;
+        fptr.Fptr.heapsize = 0;
+
+        fptr.Fptr.compressimg = 0; /* this is not a compressed image */
+
+        /* now search for the table column keywords and the END keyword */
+        nspace = 0;
+
+        let mut ii = 8;
+
+        loop {
+            /* infinite loop  */
+
+            ffgkyn_safe(
+                fptr,
+                ii as c_int,
+                &mut name,
+                &mut value,
+                Some(&mut comm),
+                status,
+            );
+
+            /* try to ignore minor syntax errors */
+            if *status == NO_QUOTE {
+                strcat_safe(&mut value, cs!("'"));
+                *status = 0;
+            } else if *status == BAD_KEYCHAR {
+                *status = 0;
+            }
+
+            if *status == END_OF_FILE {
+                ffpmsg_str("END keyword not found in ASCII table header (ffainit).");
+                *status = NO_END;
+                return *status;
+            } else if *status > 0 {
+                return *status;
+            } else if name[0] == bb(b'T') {
+                /* keyword starts with 'T' ? */
+                ffgtbp(fptr, &name, &value, status); /* test if column keyword */
+            } else if FSTRCMP(&name, cs!("END")) == 0 {
+                /* is this the END keyword? */
+                break;
+            }
+            if name[0] == 0 && value[0] == 0 && comm[0] == 0 {
+                /* a blank keyword? */
+                nspace += 1;
+            } else {
+                nspace = 0;
+            }
+            ii += 1;
+        }
+
+        /* test that all required keywords were found and have legal values */
+        if tfield > 0 {
+            let c = slice::from_raw_parts_mut(colptr, tfield as usize);
+            let mut ci = 0;
+
+            let mut ii = 0;
+            while ii < tfield {
+                tbcoln = c[ci].tbcol; /* the starting column number (zero based) */
+
+                if c[ci].tdatatype == -9999 {
+                    ffkeyn_safe(cs!(TFORM), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Required {} keyword not found (ffainit).",
+                        slice_to_str!(&name),
+                    );
+                    ffpmsg_slice(&message);
+                    *status = NO_TFORM;
+                    return *status;
+                } else if tbcoln == -1 {
+                    ffkeyn_safe(cs!(TBCOL), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Required {} keyword not found (ffainit).",
+                        slice_to_str!(&name),
+                    );
+                    ffpmsg_slice(&message);
+                    *status = NO_TBCOL;
+                    return *status;
+                } else if fptr.Fptr.rowlength != 0 && (tbcoln < 0 || tbcoln >= fptr.Fptr.rowlength)
+                {
+                    ffkeyn_safe(cs!(TBCOL), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Value of {} keyword out of range: {} (ffainit).",
+                        slice_to_str!(&name),
+                        tbcoln as c_long,
+                    );
+                    ffpmsg_slice(&message);
+                    *status = BAD_TBCOL;
+                    return *status;
+                } else if fptr.Fptr.rowlength != 0
+                    && tbcoln + c[ci].twidth as LONGLONG > fptr.Fptr.rowlength
+                {
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Column {} is too wide to fit in table (ffainit)",
+                        ii + 1,
+                    );
+                    ffpmsg_slice(&message);
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        " TFORM = {} and NAXIS1 = {}",
+                        slice_to_str!(&c[ci].tform),
+                        fptr.Fptr.rowlength as c_long,
+                    );
+                    ffpmsg_slice(&message);
+                    *status = COL_TOO_WIDE;
+                    return *status;
+                }
+                ii += 1;
+                ci += 1;
+            }
+        }
+
+        /*
+        now we know everything about the table; just fill in the parameters:
+        the 'END' record is 80 bytes before the current position, minus
+        any trailing blank keywords just before the END keyword.
+        */
+        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (nspace as LONGLONG + 1));
+
+        /* the data unit begins at the beginning of the next logical block */
+        fptr.Fptr.datastart = ((fptr.Fptr.nextkey - 80) / 2880 + 1) * 2880;
+
+        /* the next HDU begins in the next logical block after the data  */
+        *fptr.Fptr.headstart.offset(fptr.Fptr.curhdu as isize + 1) =
+            fptr.Fptr.datastart + ((rowlen * nrows + 2879) / 2880 * 2880);
+
+        /* reset next keyword pointer to the start of the header */
+        fptr.Fptr.nextkey = *fptr.Fptr.headstart.offset(fptr.Fptr.curhdu as isize);
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// initialize the parameters defining the structure of a binary table
+pub(crate) unsafe fn ffbinit(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let ii: c_int = 0;
+        let nspace: c_int = 0;
+        let ntilebins: c_int = 0;
+        let mut tfield: c_long = 0;
+        let mut pcount: LONGLONG = 0;
+        let mut rowlen: LONGLONG = 0;
+        let mut nrows: LONGLONG = 0;
+        let mut totalwidth: LONGLONG = 0;
+        let mut colptr: *mut tcolumn = ptr::null_mut();
+        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+        if *status > 0 {
+            return *status;
+        }
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+        fptr.Fptr.hdutype = BINARY_TBL; /* set that this is a binary table */
+        fptr.Fptr.headend = fptr.Fptr.logfilesize; /* set max size */
+
+        /* get table parameters and test that the header is valid: */
+        if ffgttb(
+            fptr,
+            &mut rowlen,
+            &mut nrows,
+            &mut pcount,
+            &mut tfield,
+            status,
+        ) > 0
+        {
+            return *status;
+        }
+        fptr.Fptr.rowlength = rowlen; /* store length of a row */
+        fptr.Fptr.tfield = tfield as c_int; /* store number of table fields in row */
+
+        /* free the tile-compressed image cache, if it exists */
+        if !fptr.Fptr.tilerow.is_null() {
+            // HEAP DEALLOCATION
+            let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+            let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+            drop(tilestruct_lock);
+
+            fptr.Fptr.tileanynull = ptr::null_mut();
+            fptr.Fptr.tiletype = ptr::null_mut();
+            fptr.Fptr.tiledatasize = ptr::null_mut();
+            fptr.Fptr.tilenullarray = ptr::null_mut();
+            fptr.Fptr.tiledata = ptr::null_mut();
+            fptr.Fptr.tilerow = ptr::null_mut();
+        }
+
+        if !fptr.Fptr.tableptr.is_null() {
+            /* free memory for the old CHDU */
+            // HEAP DEALLOCATIOn
+            let _ = Vec::from_raw_parts(
+                fptr.Fptr.tableptr,
+                fptr.Fptr.tfield as usize,
+                fptr.Fptr.tfield as usize,
+            );
+        }
+        /* mem for column structures ; space is initialized = 0  */
+        if tfield > 0 {
+            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            if colptr.is_null() {
+                ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffbinit)");
+                fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
+                *status = ARRAY_TOO_BIG;
+                return *status;
+            }
+        }
+
+        /* copy the table structure address to the fitsfile structure */
+        fptr.Fptr.tableptr = colptr;
+
+        /* initialize the table field parameters */
+        if tfield > 0 {
+            let c = slice::from_raw_parts_mut(colptr, tfield as usize);
+            let mut ci = 0;
+            let mut ii = 0;
+            while ii < tfield {
+                c[ci].ttype[0] = 0; /* null column name */
+                c[ci].tscale = 1.0;
+                c[ci].tzero = 0.0;
+                c[ci].tnull = NULL_UNDEFINED as _; /* (integer) null value undefined */
+                c[ci].tdatatype = -9999; /* initialize to illegal value */
+                c[ci].trepeat = 1;
+                c[ci].strnull[0] = 0; /* for ASCII string columns (TFORM = rA) */
+                ii += 1;
+                ci += 1;
+            }
+        }
+
+        /*
+        Initialize the heap starting address (immediately following
+        the table data) and the size of the heap.  This is used to find the
+        end of the table data when checking the fill values in the last block.
+        */
+        fptr.Fptr.numrows = nrows;
+        fptr.Fptr.origrows = nrows;
+        fptr.Fptr.heapstart = rowlen * nrows;
+        fptr.Fptr.heapsize = pcount;
+
+        fptr.Fptr.compressimg = 0; /* initialize as not a compressed image */
+
+        /* now search for the table column keywords and the END keyword */
+
+        let mut ii = 8;
+        let mut nspace = 0;
+        loop {
+            /* infinite loop  */
+
+            ffgkyn_safe(
+                fptr,
+                ii as c_int,
+                &mut name,
+                &mut value,
+                Some(&mut comm),
+                status,
+            );
+
+            /* try to ignore minor syntax errors */
+            if *status == NO_QUOTE {
+                strcat_safe(&mut value, cs!("'"));
+                *status = 0;
+            } else if *status == BAD_KEYCHAR {
+                *status = 0;
+            }
+
+            if *status == END_OF_FILE {
+                ffpmsg_str("END keyword not found in binary table header (ffbinit).");
+                *status = NO_END;
+                return *status;
+            } else if *status > 0 {
+                return *status;
+            } else if name[0] == bb(b'T') {
+                /* keyword starts with 'T' ? */
+                ffgtbp(fptr, &name, &value, status); /* test if column keyword */
+            } else if FSTRCMP(&name, cs!("ZIMAGE")) == 0 {
+                if value[0] == bb(b'T') {
+                    fptr.Fptr.compressimg = 1; /* this is a compressed image */
+                }
+            } else if FSTRCMP(&name, cs!("END")) == 0 {
+                /* is this the END keyword? */
+                break;
+            }
+
+            if name[0] == 0 && value[0] == 0 && comm[0] == 0 {
+                /* a blank keyword? */
+                nspace += 1;
+            } else {
+                nspace = 0; /* reset number of consecutive spaces before END */
+            }
+            ii += 1;
+        }
+
+        /* test that all the required keywords were found and have legal values */
+        if tfield > 0 {
+            colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+            let c = slice::from_raw_parts_mut(colptr, tfield as usize);
+
+            for ii in 0..(tfield as usize) {
+                if c[ii].tdatatype == -9999 {
+                    ffkeyn_safe(cs!(TFORM), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Required {} keyword not found (ffbinit).",
+                        slice_to_str!(&name),
+                    );
+                    ffpmsg_slice(&message);
+                    *status = NO_TFORM;
+                    return *status;
+                }
+            }
+        }
+
+        /*
+        now we know everything about the table; just fill in the parameters:
+        the 'END' record is 80 bytes before the current position, minus
+        any trailing blank keywords just before the END keyword.
+        */
+
+        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (nspace + 1));
+
+        /* the data unit begins at the beginning of the next logical block */
+        fptr.Fptr.datastart = ((fptr.Fptr.nextkey - 80) / 2880 + 1) * 2880;
+
+        /* the next HDU begins in the next logical block after the data  */
+        *fptr.Fptr.headstart.offset(fptr.Fptr.curhdu as isize + 1) =
+            fptr.Fptr.datastart + ((fptr.Fptr.heapstart + fptr.Fptr.heapsize + 2879) / 2880 * 2880);
+
+        /* determine the byte offset to the beginning of each column */
+        ffgtbc(fptr, &mut totalwidth, status);
+
+        if totalwidth != rowlen {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "NAXIS1 = {} is not equal to the sum of column widths: {}",
+                rowlen as c_long,
+                totalwidth as c_long,
+            );
+            ffpmsg_slice(&message);
+            *status = BAD_ROW_WIDTH;
+        }
+
+        /* reset next keyword pointer to the start of the header */
+        fptr.Fptr.nextkey = *fptr.Fptr.headstart.offset(fptr.Fptr.curhdu as isize);
+
+        if fptr.Fptr.compressimg == 1 {
+            /*  Is this a compressed image */
+            todo!();
+            //imcomp_get_compressed_image_par(fptr, status);
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// calculate the starting byte offset of each column of an ASCII table
+/// and the total length of a row, in bytes.  The input space value determines
+/// how many blank spaces to leave between each column (1 is recommended).
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgabc(
+    tfields: c_int,              /* I - number of columns in the table           */
+    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
+    space: c_int,                /* I - number of spaces to leave between cols   */
+    rowlen: *mut c_long,         /* O - total width of a table row               */
+    tbcol: *mut c_long,          /* O - starting byte in row for each column     */
+    status: *mut c_int,          /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let rowlen = rowlen.as_mut().expect(NULL_MSG);
+
+        let tbcol = slice::from_raw_parts_mut(tbcol, tfields as usize);
+        let tform = slice::from_raw_parts(tform, tfields as usize);
+
+        let mut v_tform = Vec::new();
+
+        for item in tform {
+            let tform_item = slice::from_raw_parts(*item, FLEN_VALUE);
+            v_tform.push(tform_item);
+        }
+
+        ffgabc_safe(tfields, &v_tform, space, rowlen, tbcol, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// calculate the starting byte offset of each column of an ASCII table
+/// and the total length of a row, in bytes.  The input space value determines
+/// how many blank spaces to leave between each column (1 is recommended).
+pub(crate) fn ffgabc_safe(
+    tfields: c_int,       /* I - number of columns in the table           */
+    tform: &[&[c_char]],  /* I - value of TFORMn keyword for each column  */
+    space: c_int,         /* I - number of spaces to leave between cols   */
+    rowlen: &mut c_long,  /* O - total width of a table row               */
+    tbcol: &mut [c_long], /* O - starting byte in row for each column     */
+    status: &mut c_int,   /* IO - error status                            */
+) -> c_int {
+    let mut datacode = 0;
+    let mut decims = 0;
+    let mut width: c_long = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    *rowlen = 0;
+
+    if tfields <= 0 {
+        return *status;
+    }
+
+    tbcol[0] = 1;
+
+    for ii in 0..(tfields as usize) {
+        tbcol[ii] = *rowlen + 1; /* starting byte in row of column */
+        ffasfm_safe(
+            tform[ii],
+            Some(&mut datacode),
+            Some(&mut width),
+            Some(&mut decims),
+            status,
+        );
+
+        *rowlen += width + space as c_long; /* total length of row */
+    }
+
+    *rowlen -= space as c_long; /*  don't add space after the last field */
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// calculate the starting byte offset of each column of a binary table.
+/// Use the values of the datatype code and repeat counts in the
+/// column structure. Return the total length of a row, in bytes.
+pub(crate) fn ffgtbc(
+    fptr: &mut fitsfile,       /* I - FITS file pointer          */
+    totalwidth: &mut LONGLONG, /* O - total width of a table row */
+    status: &mut c_int,        /* IO - error status              */
+) -> c_int {
+    let mut tfields: c_int = 0;
+    let mut nbytes: LONGLONG = 0;
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+    tfields = fptr.Fptr.tfield;
+
+    *totalwidth = 0;
+
+    if tfields > 0 {
+        let c = fptr.Fptr.get_tableptr_as_mut_slice();
+        let mut ii = 0;
+        let mut ci = 0;
+        while ii < tfields {
+            c[ci].tbcol = *totalwidth; /* byte offset in row to this column */
+
+            if c[ci].tdatatype == TSTRING {
+                nbytes = c[ci].trepeat; /* one byte per char */
+            } else if c[ci].tdatatype == TBIT {
+                nbytes = (c[ci].trepeat + 7) / 8;
+            } else if c[ci].tdatatype > 0 {
+                nbytes = c[ci].trepeat * (c[ci].tdatatype as LONGLONG / 10);
+            } else {
+                let cptr = &c[ci].tform;
+                let mut cpi = 0;
+                while isdigit_safe(cptr[cpi]) {
+                    cpi += 1;
+                }
+
+                if cptr[cpi] == bb(b'P') {
+                    /* this is a 'P' variable length descriptor (neg. tdatatype) */
+                    nbytes = c[ci].trepeat * 8;
+                } else if cptr[cpi] == bb(b'Q') {
+                    /* this is a 'Q' variable length descriptor (neg. tdatatype) */
+                    nbytes = c[ci].trepeat * 16;
+                } else {
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "unknown binary table column type: {}",
+                        slice_to_str!(&c[ci].tform),
+                    );
+                    ffpmsg_slice(&message);
+                    *status = BAD_TFORM;
+                    return *status;
+                }
+            }
+
+            *totalwidth += nbytes;
+            ii += 1;
+            ci += 1;
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get TaBle Parameter.  The input keyword name begins with the letter T.
+/// Test if the keyword is one of the table column definition keywords
+/// of an ASCII or binary table. If so, decode it and update the value
+/// in the structure.
+pub(crate) fn ffgtbp(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    name: &[c_char],     /* I - name of the keyword */
+    value: &[c_char],    /* I - value string of the keyword */
+    status: &mut c_int,  /* IO - error status       */
+) -> c_int {
+    let mut tstatus: c_int = 0;
+    let mut datacode: c_int = 0;
+    let mut decimals: c_int = 0;
+    let mut width: c_long = 0;
+    let mut repeat: c_long = 0;
+    let mut nfield: c_long = 0;
+    let mut ivalue: c_long = 0;
+    let mut jjvalue: LONGLONG = 0;
+    let mut dvalue: f64 = 0.0;
+    let mut tvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let loc: *mut c_char = ptr::null_mut();
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    tstatus = 0;
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    let c = if fptr.Fptr.tfield > 0 {
+        // Can't do this because of borrow checker
+        // fptr.Fptr.get_tableptr_as_mut_slice()
+        // So instead do..
+        unsafe { std::slice::from_raw_parts_mut(fptr.Fptr.tableptr, fptr.Fptr.tfield as usize) }
+    /* get pointer to columns */
+    } else {
+        &mut []
+    };
+
+    let mut ci: usize = 0;
+
+    if FSTRNCMP(&name[1..], cs!("TYPE"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if ffc2s(value, &mut tvalue, &mut tstatus) > 0 {
+            /* remove quotes */
+
+            return *status;
+        }
+
+        strcpy_safe(&mut c[ci].ttype, &tvalue); /* copy col name to structure */
+    } else if FSTRNCMP(&name[1..], cs!("FORM"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if ffc2s(value, &mut tvalue, &mut tstatus) > 0 {
+            /* remove quotes */
+            return *status;
+        }
+
+        strncpy_safe(&mut c[ci].tform, &tvalue, 9); /* copy TFORM to structure */
+        c[ci].tform[9] = 0; /* make sure it is terminated */
+
+        if fptr.Fptr.hdutype == ASCII_TBL {
+            /* ASCII table */
+            if ffasfm_safe(
+                &tvalue,
+                Some(&mut datacode),
+                Some(&mut width),
+                Some(&mut decimals),
+                status,
+            ) > 0
+            {
+                return *status; /* bad format code */
+            }
+            c[ci].tdatatype = TSTRING; /* store datatype code */
+            c[ci].trepeat = 1; /* field repeat count == 1 */
+            c[ci].twidth = width; /* the width of the field, in bytes */
+        } else {
+            /* binary table */
+
+            if ffbnfm_safe(
+                &tvalue,
+                Some(&mut datacode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            ) > 0
+            {
+                return *status; /* bad format code */
+            }
+            c[ci].tdatatype = datacode; /* store datatype code */
+            c[ci].trepeat = repeat as LONGLONG; /* field repeat count  */
+
+            /* Don't overwrite the unit string width if it was previously */
+            /* set by a TDIMn keyword and has a legal value */
+            if datacode == TSTRING {
+                if c[ci].twidth == 0 || c[ci].twidth > repeat {
+                    c[ci].twidth = width; /*  width of a unit string */
+                }
+            } else {
+                c[ci].twidth = width; /*  width of a unit value in chars */
+            }
+        }
+    } else if FSTRNCMP(&name[1..], cs!("BCOL"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+
+            return *status; /* must not be an indexed keyword */
+        }
+
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if fptr.Fptr.hdutype == BINARY_TBL {
+            return *status; /* binary tables don't have TBCOL keywords */
+        }
+
+        if ffc2ii(value, &mut ivalue, status) > 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error reading value of {} as an integer: {}",
+                slice_to_str!(&name),
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+            return *status;
+        }
+        c[ci].tbcol = ivalue as LONGLONG - 1; /* convert to zero base */
+    } else if FSTRNCMP(&name[1..], cs!("SCAL"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if ffc2dd(value, &mut dvalue, &mut tstatus) > 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error reading value of {} as a double: {}",
+                slice_to_str!(&name),
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+
+            /* ignore this error, so don't return error status */
+            return *status;
+        }
+        c[ci].tscale = dvalue;
+    } else if FSTRNCMP(&name[1..], cs!("ZERO"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if ffc2dd(value, &mut dvalue, &mut tstatus) > 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error reading value of {} as a double: {}",
+                slice_to_str!(&name),
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+
+            /* ignore this error, so don't return error status */
+            return *status;
+        }
+        c[ci].tzero = dvalue;
+    } else if FSTRNCMP(&name[1..], cs!("NULL"), 4) == 0 {
+        /* get the index number */
+        if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        if fptr.Fptr.hdutype == ASCII_TBL {
+            /* ASCII table */
+
+            if ffc2s(value, &mut tvalue, &mut tstatus) > 0 {
+                /* remove quotes */
+                return *status;
+            }
+            strncpy_safe(&mut c[ci].strnull, &tvalue, 17); /* copy TNULL string */
+            c[ci].strnull[17] = 0; /* terminate the strnull field */
+        } else {
+            /* binary table */
+
+            if ffc2jj(value, &mut jjvalue, &mut tstatus) > 0 {
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "Error reading value of {} as an integer: {}",
+                    slice_to_str!(&name),
+                    slice_to_str!(&value),
+                );
+                ffpmsg_slice(&message);
+
+                /* ignore this error, so don't return error status */
+                return *status;
+            }
+            c[ci].tnull = jjvalue; /* null value for integer column */
+        }
+    } else if FSTRNCMP(&name[1..], cs!("DIM"), 3) == 0 {
+        if fptr.Fptr.hdutype == ASCII_TBL {
+            /* ASCII table */
+            return *status; /* ASCII tables don't support TDIMn keyword */
+        }
+
+        /* get the index number */
+        if ffc2ii(&name[4..], &mut nfield, &mut tstatus) > 0 {
+            /* read index no. */
+            return *status; /* must not be an indexed keyword */
+        }
+
+        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+            /* out of range */
+            return *status;
+        }
+
+        ci = ci + nfield as usize - 1; /* point to the correct column */
+
+        /* uninitialized columns have tdatatype set = -9999 */
+        if c[ci].tdatatype != -9999 && c[ci].tdatatype != TSTRING {
+            return *status; /* this is not an ASCII string column */
+        }
+
+        let loc = strchr_safe(value, bb(b'(')); /* find the opening parenthesis */
+
+        if loc.is_none() {
+            return *status; /* not a proper TDIM keyword */
+        }
+
+        let loc = loc.unwrap() + 1;
+        let mut endp = 0;
+        width = strtol_safe(&value[loc..], &mut endp, 10); /* read size of first dimension */
+
+        if c[ci].trepeat != 1 && c[ci].trepeat < width as LONGLONG {
+            return *status; /* string length is greater than column width */
+        }
+        c[ci].twidth = width; /* set width of a unit string in chars */
+    } else if FSTRNCMP(&name[1..], cs!("HEAP"), 4) == 0 {
+        if fptr.Fptr.hdutype == ASCII_TBL {
+            /* ASCII table */
+            return *status; /* ASCII tables don't have a heap */
+        }
+
+        if ffc2jj(value, &mut jjvalue, &mut tstatus) > 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error reading value of {} as an integer: {}",
+                slice_to_str!(&name),
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+
+            /* ignore this error, so don't return error status */
+            return *status;
+        }
+        fptr.Fptr.heapstart = jjvalue; /* starting byte of the heap */
+        return *status;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Column PaRameters, and test starting row and element numbers for
+/// validity.  This is a workhorse routine that is call by nearly every
+/// other routine that reads or writes to FITS files.
+pub(crate) fn ffgcprll(
+    fptr: &mut fitsfile, /* I - FITS file pointer                      */
+    colnum: c_int,       /* I - column number (1 = 1st column of table)      */
+    firstrow: LONGLONG,  /* I - first row (1 = 1st row of table)         */
+    firstelem: LONGLONG, /* I - first element within vector (1 = 1st)    */
+    nelem: LONGLONG,     /* I - number of elements to read or write          */
+    writemode: c_int,    /* I - = 1 if writing data, = 0 if reading data     */
+    /*     If = 2, then writing data, but don't modify  */
+    /*     the returned values of repeat and incre.     */
+    /*     If = -1, then reading data in reverse        */
+    /*     direction.                                   */
+    /*     If writemode has 16 added, then treat        */
+    /*        TSTRING column as TBYTE vector            */
+    scale: &mut f64,         /* O - FITS scaling factor (TSCALn keyword value)   */
+    zero: &mut f64,          /* O - FITS scaling zero pt (TZEROn keyword value)  */
+    tform: &mut [c_char],    /* O - ASCII column format: value of TFORMn keyword */
+    twidth: &mut c_long,     /* O - width of ASCII column (characters)           */
+    tcode: &mut c_int,       /* O - abs(column datatype code): I*4=41, R*4=42, etc */
+    maxelem: &mut c_int,     /* O - max number of elements that fit in buffer    */
+    startpos: &mut LONGLONG, /* O - offset in file to starting row & column      */
+    elemnum: &mut LONGLONG,  /* O - starting element number ( 0 = 1st element)   */
+    incre: &mut c_long,      /* O - byte offset between elements within a row    */
+    repeat: &mut LONGLONG,   /* O - number of elements in a row (vector column)  */
+    rowlen: &mut LONGLONG,   /* O - length of a row, in bytes                    */
+    hdutype: &mut c_int,     /* O - HDU type: 0, 1, 2 = primary, table, bintable */
+    tnull: &mut LONGLONG,    /* O - null value for integer columns               */
+    snull: &mut [c_char],    /* O - null value for ASCII table columns           */
+    status: &mut c_int,      /* IO - error status                                */
+) -> c_int {
+    let mut writemode = writemode;
+
+    let mut nulpos = 0;
+    let mut rangecheck = 1;
+    let tstatus = 0;
+    let mut endpos: LONGLONG = 0;
+    let mut nblock: c_long = 0;
+    let mut heapoffset: LONGLONG = 0;
+    let mut lrepeat: LONGLONG = 0;
+    let mut endrow: LONGLONG = 0;
+    let mut nrows: LONGLONG = 0;
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        /* reset position to the correct HDU if necessary */
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header if data structure is undefined */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        };
+    } else if writemode > 0 && writemode != 15 {
+        /* Only terminate the header with the END card if */
+        /* writing to the stdout stream (don't have random access). */
+
+        /* Initialize STREAM_DRIVER to be the device number for */
+        /* writing FITS files directly out to the stdout stream. */
+        /* This only needs to be done once and is thread safe. */
+
+        let mut st = STREAM_DRIVER.lock().unwrap();
+        if *st <= 0 || *st > 40 {
+            urltype2driver(cs!(b"stream://"), st.borrow_mut());
+        }
+
+        if fptr.Fptr.driver == *st
+            && fptr.Fptr.ENDpos != cmp::max(fptr.Fptr.headend, fptr.Fptr.datastart - IOBUFLEN)
+        {
+            ffwend(fptr, status);
+        };
+    }
+
+    /* Do sanity check of input parameters */
+    if firstrow < 1 {
+        if fptr.Fptr.hdutype == IMAGE_HDU {
+            /*  Primary Array or IMAGE */
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Image group number is less than 1: {:.0}",
+                firstrow as f64,
+            );
+            ffpmsg_slice(&message);
+
+            *status = BAD_ROW_NUM;
+            return *status;
+        } else {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Starting row number is less than 1: {:.0}",
+                firstrow as f64,
+            );
+            ffpmsg_slice(&message);
+
+            *status = BAD_ROW_NUM;
+            return *status;
+        };
+    } else if fptr.Fptr.hdutype != ASCII_TBL && firstelem < 1 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Starting element number less than 1: {}",
+            firstelem as c_long,
+        );
+        ffpmsg_slice(&message);
+
+        *status = BAD_ELEM_NUM;
+        return *status;
+    } else if nelem < 0 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Tried to read or write less than 0 elements: {:.0}",
+            nelem as f64,
+        );
+        ffpmsg_slice(&message);
+
+        *status = NEG_BYTES;
+        return *status;
+    } else if colnum < 1 || colnum > fptr.Fptr.tfield {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Specified column number is out of range: {}",
+            colnum,
+        );
+        ffpmsg_slice(&message);
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "  There are {} columns in this table.",
+            fptr.Fptr.tfield,
+        );
+        ffpmsg_slice(&message);
+
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    /*  copy relevant parameters from the structure */
+
+    *hdutype = fptr.Fptr.hdutype; /* image, ASCII table, or BINTABLE  */
+    *rowlen = fptr.Fptr.rowlength; /* width of the table, in bytes     */
+    let datastart = fptr.Fptr.datastart; /* offset in file to start of table */
+
+    let ci = colnum as usize - 1; /* offset to correct column structure */
+    let mut tbcol = 0;
+    {
+        let c: &[tcolumn] = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+
+        *scale = c[ci].tscale; /* value scaling factor;    default = 1.0 */
+        *zero = c[ci].tzero; /* value scaling zeropoint; default = 0.0 */
+        *tnull = c[ci].tnull; /* null value for integer columns         */
+        tbcol = c[ci].tbcol; /* offset to start of column within row   */
+        *twidth = c[ci].twidth; /* width of a single datum, in bytes      */
+        *incre = c[ci].twidth; /* increment between datums, in bytes     */
+
+        *tcode = c[ci].tdatatype;
+        *repeat = c[ci].trepeat;
+
+        strcpy_safe(tform, &c[ci].tform); /* value of TFORMn keyword            */
+        strcpy_safe(snull, &c[ci].strnull); /* null value for ASCII table columns */
+    }
+
+    if *hdutype == ASCII_TBL && snull[0] == 0 {
+        /* In ASCII tables, a null value is equivalent to all spaces */
+
+        strcpy_safe(snull, cs!(b"                 ")); /* maximum of 17 spaces */
+        nulpos = cmp::min(17, *twidth); /* truncate to width of column */
+        snull[nulpos as usize] = 0;
+    }
+
+    /* Special case: use writemode = 15,16,17,18 to interpret TSTRING columns
+       as TBYTE vectors instead (but not for ASCII tables).
+          writemode = 15 equivalent to writemode =-1
+          writemode = 16 equivalent to writemode = 0
+          writemode = 17 equivalent to writemode = 1
+          writemode = 18 equivalent to writemode = 2
+    */
+
+    if writemode >= 15 && writemode <= 18 {
+        if (*tcode).abs() == TSTRING && *hdutype != ASCII_TBL {
+            *incre = 1; /* each element is 1 byte wide */
+
+            if *tcode < 0 {
+                *repeat = *twidth as LONGLONG; /* variable columns appear to put width in *twidth */
+            }
+
+            *twidth = 1; /* width of each element */
+            *scale = 1.0; /* no scaling */
+            *zero = 0.0;
+            *tnull = NULL_UNDEFINED as LONGLONG; /* don't test for nulls */
+            *maxelem = DBUFFSIZE as c_int;
+
+            if *tcode < 0 {
+                *tcode = -TBYTE; /* variable-length */
+            } else {
+                *tcode = TBYTE;
+            };
+        }
+
+        /* translate to the equivalent as listed above */
+        writemode -= 16;
+    }
+
+    /* Special case:  interpret writemode = -1 as reading data, but */
+    /* don't do error check for exceeding the range of pixels  */
+    if writemode == -1 {
+        writemode = 0;
+        rangecheck = 0;
+    }
+
+    /* Special case: interprete 'X' column as 'B' */
+    if (*tcode).abs() == TBIT {
+        *tcode = *tcode / TBIT * TBYTE;
+        *repeat = (*repeat + 7) / 8;
+    }
+
+    /* Special case: support the 'rAw' format in BINTABLEs */
+    if *hdutype == BINARY_TBL && *tcode == TSTRING {
+        if *twidth != 0 {
+            *repeat /= *twidth as LONGLONG; /* repeat = # of unit strings in field */
+        } else {
+            *repeat = 0;
+        };
+    } else if *hdutype == BINARY_TBL && *tcode == -TSTRING {
+        /* variable length string */
+        *incre = 1;
+        *twidth = nelem as c_long;
+    }
+
+    if *hdutype == ASCII_TBL {
+        *elemnum = 0; /* ASCII tables don't have vector elements */
+    } else {
+        *elemnum = firstelem - 1;
+    }
+
+    /* interprete complex and double complex as pairs of floats or doubles */
+    if (*tcode).abs() >= TCOMPLEX {
+        if *tcode > 0 {
+            *tcode = (*tcode + 1) / 2;
+        } else {
+            *tcode = (*tcode - 1) / 2;
+        }
+        *repeat *= 2;
+        *twidth /= 2;
+        *incre /= 2;
+    }
+
+    /* calculate no. of pixels that fit in buffer */
+    /* allow for case where floats are 8 bytes long */
+    if (*tcode).abs() == TFLOAT {
+        *maxelem = (DBUFFSIZE as usize / std::mem::size_of::<f32>()) as c_int;
+    } else if (*tcode).abs() == TDOUBLE {
+        *maxelem = (DBUFFSIZE as usize / std::mem::size_of::<f64>()) as c_int;
+    } else if (*tcode).abs() == TSTRING {
+        if *twidth != 0 {
+            *maxelem = ((DBUFFSIZE - 1) / *twidth as ULONGLONG) as c_int; /* leave room for final \0 */
+        } else {
+            *maxelem = DBUFFSIZE as c_int - 1;
+        }
+        if *maxelem == 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "ASCII string column is too wide: {}; max supported width is {}",
+                *twidth,
+                DBUFFSIZE - 1,
+            );
+            ffpmsg_slice(&message);
+            return {
+                *status = COL_TOO_WIDE;
+                *status
+            };
+        };
+    } else {
+        *maxelem = (DBUFFSIZE / *twidth as ULONGLONG) as c_int;
+    }
+
+    /* calc starting byte position to 1st element of col  */
+    /*  (this does not apply to variable length columns)  */
+    *startpos = datastart + (((firstrow - 1) as LONGLONG) * *rowlen) + tbcol;
+
+    if *hdutype == IMAGE_HDU && writemode != 0 {
+        /*  Primary Array or IMAGE */
+
+        /*
+          For primary arrays, set the repeat count greater than the total
+          number of pixels to be written.  This prevents an out-of-range
+          error message in cases where the final image array size is not
+          yet known or defined.
+        */
+        if *repeat < *elemnum + nelem {
+            *repeat = *elemnum + nelem;
+        };
+    } else if *tcode > 0 {
+        /*  Fixed length table column  */
+
+        if *elemnum >= *repeat {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "First element to write is too large: {}; max allowed value is {}",
+                ((*elemnum) + 1) as c_long,
+                *repeat as c_long,
+            );
+            ffpmsg_slice(&message);
+
+            *status = BAD_ELEM_NUM;
+            return *status;
+        }
+
+        /* last row number to be read or written */
+        endrow = ((*elemnum + nelem - 1) / *repeat) + firstrow;
+
+        if writemode != 0 {
+            /* check if we are writing beyond the current end of table */
+            if (endrow > fptr.Fptr.numrows) && (nelem > 0) {
+                /* if there are more HDUs following the current one, or */
+                /* if there is a data heap, then we must insert space */
+                /* for the new rows.  */
+                if (fptr.Fptr.lasthdu) == 0 || fptr.Fptr.heapsize > 0 {
+                    nrows = endrow - (fptr.Fptr.numrows);
+                    if ffirow_safe(fptr, fptr.Fptr.numrows, nrows, status) > 0 {
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "Failed to add space for {:.0} new rows in table.",
+                            nrows as f64,
+                        );
+                        ffpmsg_slice(&message);
+                        return *status;
+                    };
+                } else {
+                    /* update heap starting address */
+                    fptr.Fptr.heapstart +=
+                        ((endrow - fptr.Fptr.numrows) as LONGLONG) * fptr.Fptr.rowlength;
+                    fptr.Fptr.numrows = endrow; /* update number of rows */
+                };
+            };
+        } else {
+            /* reading from the file */
+
+            if endrow > fptr.Fptr.numrows && rangecheck != 0 {
+                if *hdutype == IMAGE_HDU {
+                    /*  Primary Array or IMAGE */
+
+                    if firstrow > fptr.Fptr.numrows {
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "Attempted to read from group {} of the HDU,",
+                            firstrow as c_long,
+                        );
+                        ffpmsg_slice(&message);
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "however the HDU only contains {} group(s).",
+                            fptr.Fptr.numrows as c_long,
+                        );
+                        ffpmsg_slice(&message);
+                    } else {
+                        ffpmsg_str("Attempt to read past end of array:");
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "  Image has  {} elements;",
+                            *repeat as c_long,
+                        );
+                        ffpmsg_slice(&message);
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "  Tried to read {} elements starting at element {}.",
+                            nelem as c_long,
+                            firstelem as c_long,
+                        );
+                        ffpmsg_slice(&message);
+                    };
+                } else {
+                    ffpmsg_str("Attempt to read past end of table:");
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "  Table has {:.0} rows with {:.0} elements per row;",
+                        (fptr.Fptr.numrows) as f64,
+                        *repeat as f64,
+                    );
+                    ffpmsg_slice(&message);
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "  Tried to read {:.0} elements starting at row {:.0}, element {:.0}.",
+                        nelem as f64,
+                        firstrow as f64,
+                        ((*elemnum) + 1) as f64,
+                    );
+                    ffpmsg_slice(&message);
+                }
+
+                *status = BAD_ROW_NUM;
+                return *status;
+            };
+        }
+
+        if *repeat == 1 && nelem > 1 && writemode != 2 {
+            /*
+              When accessing a scalar column, fool the calling routine into
+              thinking that this is a vector column with very big elements.
+              This allows multiple values (up to the maxelem number of elements
+              that will fit in the buffer) to be read or written with a single
+              routine call, which increases the efficiency.
+
+              If writemode == 2, then the calling program does not want to
+              have this efficiency trick applied.
+            */
+            if *rowlen <= LONG_MAX as LONGLONG {
+                *incre = *rowlen as c_long;
+                *repeat = nelem;
+            };
+        };
+    } else {
+        /*  Variable length Binary Table column */
+
+        *tcode *= -1;
+
+        if writemode != 0 {
+            /* return next empty heap address for writing */
+
+            *repeat = nelem + *elemnum; /* total no. of elements in the field */
+
+            /* first, check if we are overwriting an existing row, and */
+            /* if so, if the existing space is big enough for the new vector */
+
+            if firstrow <= fptr.Fptr.numrows {
+                let mut tstatus = 0;
+                ffgdesll_safe(
+                    fptr,
+                    colnum,
+                    firstrow,
+                    Some(&mut lrepeat),
+                    Some(&mut heapoffset),
+                    &mut tstatus,
+                );
+
+                let c: &[tcolumn] = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+
+                if tstatus == 0 {
+                    if (c[ci]).tdatatype <= -TCOMPLEX {
+                        lrepeat *= 2; /* no. of float or double values */
+                    } else if (c[ci]).tdatatype == -TBIT {
+                        lrepeat = (lrepeat + 7) / 8; /* convert from bits to bytes */
+                    }
+
+                    if lrepeat >= *repeat {
+                        /* enough existing space? */
+
+                        *startpos = datastart + heapoffset + fptr.Fptr.heapstart;
+
+                        /*  write the descriptor into the fixed length part of table */
+                        if (c[ci]).tdatatype <= -TCOMPLEX {
+                            /* divide repeat count by 2 to get no. of complex values */
+                            ffpdes_safe(fptr, colnum, firstrow, *repeat / 2, heapoffset, status);
+                        } else {
+                            ffpdes_safe(fptr, colnum, firstrow, *repeat, heapoffset, status);
+                        }
+                        return *status;
+                    };
+                };
+            }
+
+            /* Add more rows to the table, if writing beyond the end. */
+            /* It is necessary to shift the heap down in this case */
+            if firstrow > fptr.Fptr.numrows {
+                nrows = firstrow - (fptr.Fptr.numrows);
+                if ffirow_safe(fptr, fptr.Fptr.numrows, nrows, status) > 0 {
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Failed to add space for {:.0} new rows in table.",
+                        nrows as f64,
+                    );
+                    ffpmsg_slice(&message);
+                    return *status;
+                };
+            }
+
+            /*  calculate starting position (for writing new data) in the heap */
+            *startpos = datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize;
+
+            /*  write the descriptor into the fixed length part of table */
+            {
+                let c: &[tcolumn] = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+
+                if (c[ci]).tdatatype <= -TCOMPLEX {
+                    /* divide repeat count by 2 to get no. of complex values */
+                    ffpdes_safe(
+                        fptr,
+                        colnum,
+                        firstrow,
+                        *repeat / 2,
+                        fptr.Fptr.heapsize,
+                        status,
+                    );
+                } else {
+                    ffpdes_safe(fptr, colnum, firstrow, *repeat, fptr.Fptr.heapsize, status);
+                }
+            }
+
+            /* If this is not the last HDU in the file, then check if */
+            /* extending the heap would overwrite the following header. */
+            /* If so, then have to insert more blocks. */
+            if (fptr.Fptr.lasthdu) == 0 {
+                endpos = datastart
+                    + fptr.Fptr.heapstart
+                    + fptr.Fptr.heapsize
+                    + (*repeat * (*incre as LONGLONG));
+
+                let headstart = fptr.Fptr.get_headstart_as_slice();
+
+                if endpos > headstart[fptr.Fptr.curhdu as usize + 1] {
+                    /* calc the number of blocks that need to be added */
+                    nblock = (((endpos - 1 - headstart[fptr.Fptr.curhdu as usize + 1]) / BL!()) + 1)
+                        as c_long;
+
+                    if ffiblk(fptr, nblock, 1, status) > 0 {
+                        /* insert blocks */
+
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "Failed to extend the size of the variable length heap by {} blocks.",
+                            nblock,
+                        );
+                        ffpmsg_slice(&message);
+                        return *status;
+                    };
+                };
+            }
+
+            /* increment the address to the next empty heap position */
+            fptr.Fptr.heapsize += *repeat * (*incre as LONGLONG);
+        } else {
+            /*  get the read start position in the heap */
+
+            if firstrow > fptr.Fptr.numrows {
+                ffpmsg_str("Attempt to read past end of table");
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "  Table has {:.0} rows and tried to read row {:.0}.",
+                    (fptr.Fptr.numrows) as f64,
+                    firstrow as f64,
+                );
+                ffpmsg_slice(&message);
+
+                *status = BAD_ROW_NUM;
+                return *status;
+            }
+
+            ffgdesll_safe(
+                fptr,
+                colnum,
+                firstrow,
+                Some(&mut lrepeat),
+                Some(&mut heapoffset),
+                status,
+            );
+            *repeat = lrepeat;
+
+            {
+                let c: &[tcolumn] = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+                if (c[ci]).tdatatype <= -TCOMPLEX {
+                    *repeat *= 2; /* no. of float or double values */
+                } else if (c[ci]).tdatatype == -TBIT {
+                    *repeat = (*repeat + 7) / 8; /* convert from bits to bytes */
+                }
+            }
+
+            if *elemnum >= *repeat {
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "Starting element to read in variable length column is too large: {}",
+                    firstelem as c_long,
+                );
+                ffpmsg_slice(&message);
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "  This row only contains {} elements",
+                    *repeat as c_long,
+                );
+                ffpmsg_slice(&message);
+
+                *status = BAD_ELEM_NUM;
+                return *status;
+            }
+            *startpos = datastart + heapoffset + fptr.Fptr.heapstart;
+        };
+    }
+    *status
+}
+
+/*---------------------------------------------------------------------------*/
+/// Tests the contents of the binary table variable length array heap.
+///
+/// Returns the number of bytes that are currently not pointed to by any
+/// of the descriptors, and also the number of bytes that are pointed to
+/// by more than one descriptor.  It returns valid = FALSE if any of the
+/// descriptors point to addresses that are out of the bounds of the
+/// heap.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fftheap(
+    fptr: *mut fitsfile,    /* I - FITS file pointer                         */
+    heapsz: *mut LONGLONG,  /* O - current size of the heap               */
+    unused: *mut LONGLONG,  /* O - no. of unused bytes in the heap        */
+    overlap: *mut LONGLONG, /* O - no. of bytes shared by > 1 descriptors */
+    valid: *mut c_int,      /* O - are all the heap addresses valid?         */
+    status: *mut c_int,     /* IO - error status                             */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let heapsz = heapsz.as_mut();
+        let unused = unused.as_mut();
+        let overlap = overlap.as_mut();
+        let valid = valid.as_mut();
+
+        fftheap_safe(fptr, heapsz, unused, overlap, valid, status)
+    }
+}
+
+/*---------------------------------------------------------------------------*/
+/// Tests the contents of the binary table variable length array heap.
+///
+/// Returns the number of bytes that are currently not pointed to by any
+/// of the descriptors, and also the number of bytes that are pointed to
+/// by more than one descriptor.  It returns valid = FALSE if any of the
+/// descriptors point to addresses that are out of the bounds of the
+/// heap.
+pub fn fftheap_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                         */
+    mut heapsz: Option<&mut LONGLONG>, /* O - current size of the heap               */
+    mut unused: Option<&mut LONGLONG>, /* O - no. of unused bytes in the heap        */
+    mut overlap: Option<&mut LONGLONG>, /* O - no. of bytes shared by > 1 descriptors */
+    mut valid: Option<&mut c_int>, /* O - are all the heap addresses valid?         */
+    status: &mut c_int,  /* IO - error status                             */
+) -> c_int {
+    let mut typecode = 0;
+    let mut pixsize = 0;
+    let mut ii: c_long = 0;
+    let mut nbytes: c_long = 0;
+    let mut repeat: LONGLONG = 0;
+    let mut offset: LONGLONG = 0;
+    let mut tunused = 0;
+    let mut toverlap = 0;
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if ffrdef_safe(fptr, status) > 0 {
+        /* rescan header to make sure everything is up to date */
+        return *status;
+    }
+
+    if let Some(valid) = valid.as_deref_mut() {
+        *valid = TRUE as c_int;
+    }
+    if let Some(heapsz) = heapsz.as_deref_mut() {
+        *heapsz = fptr.Fptr.heapsize;
+    }
+    if let Some(unused) = unused.as_deref_mut() {
+        *unused = 0;
+    }
+    if let Some(overlap) = overlap.as_deref_mut() {
+        *overlap = 0;
+    }
+
+    /* return if this is not a binary table HDU or if the heap is empty */
+    if fptr.Fptr.hdutype != BINARY_TBL || fptr.Fptr.heapsize == 0 {
+        return *status;
+    }
+
+    if fptr.Fptr.heapsize > LONG_MAX as LONGLONG {
+        ffpmsg_str("Heap is too big to test ( > 2**31 bytes). (fftheap)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+
+    let theapsz = fptr.Fptr.heapsize as c_long;
+
+    let mut buffer = Vec::new(); /* allocate temp space */
+    if buffer.try_reserve_exact(theapsz as usize).is_err() {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Failed to allocate buffer to test the heap",
+        );
+        ffpmsg_slice(&message);
+
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        buffer.resize(theapsz as usize, 0);
+    }
+
+    /* loop over all cols */
+    let mut jj = 1;
+    while jj <= fptr.Fptr.tfield && *status <= 0 {
+        ffgtcl_safe(fptr, jj, Some(&mut typecode), None, None, status);
+        if typecode > 0 {
+            continue; /* ignore fixed length columns */
+        }
+
+        pixsize = -typecode / 10;
+
+        ii = 1;
+        while ii as LONGLONG <= fptr.Fptr.numrows {
+            ffgdesll_safe(
+                fptr,
+                jj,
+                ii as LONGLONG,
+                Some(&mut repeat),
+                Some(&mut offset),
+                status,
+            );
+
+            if typecode == -TBIT {
+                nbytes = ((repeat + 7) as c_long) / 8;
+            } else {
+                nbytes = (repeat as c_long) * pixsize as c_long;
+            }
+            if offset < 0 || offset + nbytes as LONGLONG > theapsz as LONGLONG {
+                if let Some(valid) = valid.as_deref_mut() {
+                    *valid = FALSE as c_int; /* address out of bounds */
+                }
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "Descriptor in row {}, column {} has invalid heap address",
+                    ii,
+                    jj,
+                );
+                ffpmsg_slice(&message);
+            } else {
+                for kk in 0..(nbytes as usize) {
+                    buffer[kk + offset as usize] += 1; /* increment every used byte */
+                }
+            };
+            ii += 1
+        }
+        jj += 1
+    }
+
+    for kk in 0..(theapsz as usize) {
+        if buffer[kk] == 0 {
+            tunused += 1;
+        } else if buffer[kk] > 1 {
+            toverlap += 1;
+        };
+    }
+
+    if let Some(heapsz) = heapsz {
+        *heapsz = theapsz as LONGLONG;
+    }
+
+    if let Some(unused) = unused {
+        *unused = tunused;
+    }
+
+    if let Some(overlap) = overlap {
+        *overlap = toverlap;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// compress the binary table heap by reordering the contents heap and
+/// recovering any unused space
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcmph(
+    fptr: *mut fitsfile, /* I -FITS file pointer                         */
+    status: *mut c_int,  /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        ffcmph_safer(fptr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// compress the binary table heap by reordering the contents heap and
+/// recovering any unused space
+pub(crate) unsafe fn ffcmph_safer(
+    fptr: &mut fitsfile, /* I -FITS file pointer                         */
+    status: &mut c_int,  /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let mut typecode = 0;
+        let mut pixsize = 0;
+        let mut valid = 0;
+        let mut ii: LONGLONG = 0;
+        let mut buffsize = 10000;
+        let mut nbytes: usize = 0;
+        let mut unused: LONGLONG = 0;
+        let mut overlap: LONGLONG = 0;
+        let mut repeat: LONGLONG = 0;
+        let mut offset: LONGLONG = 0;
+        let mut tbuff: *mut c_char;
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+        let mut pcount: LONGLONG = 0;
+        let mut endpos: LONGLONG = 0;
+        let mut t2heapsize: LONGLONG = 0;
+        let mut nblock = 0;
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* get information about the current heap */
+        fftheap_safe(
+            fptr,
+            None,
+            Some(&mut unused),
+            Some(&mut overlap),
+            Some(&mut valid),
+            status,
+        );
+
+        if valid == 0 {
+            /* bad heap pointers */
+            *status = BAD_HEAP_PTR;
+            return *status;
+        }
+
+        /* return if this is not a binary table HDU or if the heap is OK as is */
+        if fptr.Fptr.hdutype != BINARY_TBL
+            || fptr.Fptr.heapsize == 0
+            || (unused == 0 && overlap == 0)
+            || *status > 0
+        {
+            return *status;
+        }
+
+        let mut tptr: Option<Box<fitsfile>> = None;
+
+        /* copy the current HDU to a temporary file in memory */
+        if ffinit_safer(&mut tptr, cs!("mem://tempheapfile"), status) != 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Failed to create temporary file for the heap",
+            );
+            ffpmsg_slice(&message);
+            return *status;
+        }
+
+        let mut tptr = tptr.expect(NULL_MSG);
+
+        if ffcopy_safer(fptr, &mut tptr, 0, status) != 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Failed to create copy of the heap",
+            );
+            ffpmsg_slice(&message);
+            ffclos_safer(tptr, status);
+            return *status;
+        }
+
+        let mut buffer: Vec<c_char> = Vec::new(); /* allocate initial buffer */
+
+        if buffer.try_reserve_exact(buffsize).is_err() {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Failed to allocate buffer to copy the heap",
+            );
+            ffpmsg_slice(&message);
+            ffclos_safer(tptr, status);
+
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        } else {
+            buffer.resize(buffsize, 0)
+        }
+
+        let readheapstart = tptr.Fptr.datastart + tptr.Fptr.heapstart;
+        let writeheapstart = fptr.Fptr.datastart + fptr.Fptr.heapstart;
+
+        let t1heapsize = fptr.Fptr.heapsize; /* save original heap size */
+        fptr.Fptr.heapsize = 0; /* reset heap to zero */
+
+        /* loop over all cols */
+        let mut jj = 1;
+        while jj <= fptr.Fptr.tfield && *status <= 0 {
+            ffgtcl_safe(&mut tptr, jj, Some(&mut typecode), None, None, status);
+
+            if typecode > 0 {
+                continue; /* ignore fixed length columns */
+            }
+
+            pixsize = -typecode / 10;
+
+            /* copy heap data, row by row */
+            ii = 1;
+            while ii as LONGLONG <= fptr.Fptr.numrows {
+                ffgdesll_safe(
+                    &mut tptr,
+                    jj,
+                    ii,
+                    Some(&mut repeat),
+                    Some(&mut offset),
+                    status,
+                );
+                if typecode == -TBIT {
+                    nbytes = ((repeat + 7) / 8) as usize;
+                } else {
+                    nbytes = (repeat as usize) * pixsize as usize;
+                }
+
+                /* increase size of buffer if necessary to read whole array */
+                if (nbytes) > buffsize {
+                    let additional = nbytes - buffer.capacity();
+                    if buffer.try_reserve_exact(additional).is_err() {
+                        *status = MEMORY_ALLOCATION;
+                    } else {
+                        buffsize = nbytes;
+                        buffer.resize(nbytes, 0);
+                    };
+                }
+
+                /* If this is not the last HDU in the file, then check if */
+                /* extending the heap would overwrite the following header. */
+                /* If so, then have to insert more blocks. */
+                if (fptr.Fptr.lasthdu) == 0 {
+                    endpos = writeheapstart + fptr.Fptr.heapsize + (nbytes as LONGLONG);
+                    let headstart = fptr.Fptr.get_headstart_as_slice();
+                    if endpos > headstart[(fptr.Fptr.curhdu + 1) as usize] {
+                        /* calc the number of blocks that need to be added */
+                        nblock = (((endpos - 1 - headstart[(fptr.Fptr.curhdu + 1) as usize])
+                            / BL!())
+                            + 1) as c_long;
+
+                        if ffiblk(fptr, nblock, 1, status) > 0 {
+                            /* insert blocks */
+                            int_snprintf!(
+                                &mut message,
+                                FLEN_ERRMSG,
+                                "Failed to extend the size of the variable length heap by {} blocks.",
+                                nblock,
+                            );
+                            ffpmsg_slice(&message);
+                        };
+                    };
+                }
+
+                /* read arrray of bytes from temporary copy */
+                ffmbyt_safe(&mut tptr, readheapstart + offset, REPORT_EOF, status);
+                ffgbyt(
+                    &mut tptr,
+                    nbytes as LONGLONG,
+                    cast_slice_mut(&mut buffer),
+                    status,
+                );
+
+                /* write arrray of bytes back to original file */
+                ffmbyt_safe(
+                    fptr,
+                    writeheapstart + fptr.Fptr.heapsize,
+                    IGNORE_EOF,
+                    status,
+                );
+                ffpbyt(
+                    fptr,
+                    nbytes as LONGLONG,
+                    cast_slice_mut(&mut buffer),
+                    status,
+                );
+
+                /* write descriptor */
+                ffpdes_safe(fptr, jj, ii as LONGLONG, repeat, fptr.Fptr.heapsize, status);
+                fptr.Fptr.heapsize += nbytes as LONGLONG; /* update heapsize */
+
+                if *status > 0 {
+                    ffclos_safer(tptr, status);
+                    return *status;
+                };
+
+                ii += 1
+            }
+
+            jj += 1
+        }
+
+        ffclos_safer(tptr, status);
+
+        /* delete any empty blocks at the end of the HDU */
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        nblock = ((headstart[(fptr.Fptr.curhdu + 1) as usize]
+            - (writeheapstart + fptr.Fptr.heapsize))
+            / BL!()) as c_long;
+
+        if nblock > 0 {
+            t2heapsize = fptr.Fptr.heapsize; /* save new heap size */
+            fptr.Fptr.heapsize = t1heapsize; /* restore  original heap size */
+            ffdblk(fptr, nblock, status);
+            fptr.Fptr.heapsize = t2heapsize; /* reset correct heap size */
+        }
+
+        /* update the PCOUNT value (size of heap) */
+        ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
+
+        ffgkyjj_safe(fptr, cs!("PCOUNT"), &mut pcount, Some(&mut comm), status);
+        if fptr.Fptr.heapsize != pcount {
+            ffmkyj_safe(fptr, cs!("PCOUNT"), fptr.Fptr.heapsize, Some(&comm), status);
+        }
+
+        /* rescan new HDU structure */
+        ffrdef_safe(fptr, status);
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get (read) the variable length vector descriptor from the table.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgdes(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                         */
+    colnum: c_int,         /* I - column number (1 = 1st column of table)   */
+    rownum: LONGLONG,      /* I - row number (1 = 1st row of table)         */
+    length: *mut c_long,   /* O - number of elements in the row             */
+    heapaddr: *mut c_long, /* O - heap pointer to the data                  */
+    status: *mut c_int,    /* IO - error status                             */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let length = length.as_mut();
+        let heapaddr = heapaddr.as_mut();
+
+        ffgdes_safe(fptr, colnum, rownum, length, heapaddr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get (read) the variable length vector descriptor from the table.
+pub fn ffgdes_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                         */
+    colnum: c_int,                 /* I - column number (1 = 1st column of table)   */
+    rownum: LONGLONG,              /* I - row number (1 = 1st row of table)         */
+    length: Option<&mut c_long>,   /* O - number of elements in the row             */
+    heapaddr: Option<&mut c_long>, /* O - heap pointer to the data                  */
+    status: &mut c_int,            /* IO - error status                             */
+) -> c_int {
+    let mut lengthjj: LONGLONG = 0; /* convert the temporary 8-byte values to 4-byte values */
+    let mut heapaddrjj: LONGLONG = 0; /* check for overflow */
+
+    if ffgdesll_safe(
+        fptr,
+        colnum,
+        rownum,
+        Some(&mut lengthjj),
+        Some(&mut heapaddrjj),
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    /* convert the temporary 8-byte values to 4-byte values */
+    /* check for overflow */
+    if let Some(length) = length {
+        if lengthjj > LONG_MAX as LONGLONG {
+            *status = NUM_OVERFLOW;
+        } else {
+            *length = lengthjj as c_long;
+        }
+    }
+
+    if let Some(heapaddr) = heapaddr {
+        if heapaddrjj > LONG_MAX as LONGLONG {
+            *status = NUM_OVERFLOW;
+        } else {
+            *heapaddr = heapaddrjj as c_long;
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// get (read) the variable length vector descriptor from the binary table.
+///
+/// This is similar to ffgdes, except it supports the full 8-byte range of the
+/// length and offset values in 'Q' columns, as well as 'P' columns.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgdesll(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - column number (1 = 1st column of table) */
+    rownum: LONGLONG,        /* I - row number (1 = 1st row of table)       */
+    length: *mut LONGLONG,   /* O - number of elements in the row           */
+    heapaddr: *mut LONGLONG, /* O - heap pointer to the data                */
+    status: *mut c_int,      /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let length = length.as_mut();
+        let heapaddr = heapaddr.as_mut();
+
+        ffgdesll_safe(fptr, colnum, rownum, length, heapaddr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get (read) the variable length vector descriptor from the binary table.
+///
+/// This is similar to ffgdes, except it supports the full 8-byte range of the
+/// length and offset values in 'Q' columns, as well as 'P' columns.
+pub fn ffgdesll_safe(
+    fptr: &mut fitsfile,             /* I - FITS file pointer                       */
+    colnum: c_int,                   /* I - column number (1 = 1st column of table) */
+    rownum: LONGLONG,                /* I - row number (1 = 1st row of table)       */
+    length: Option<&mut LONGLONG>,   /* O - number of elements in the row           */
+    heapaddr: Option<&mut LONGLONG>, /* O - heap pointer to the data                */
+    status: &mut c_int,              /* IO - error status                           */
+) -> c_int {
+    let mut descript4: [c_uint; 2] = [0, 0];
+    let mut descript8: [LONGLONG; 2] = [0, 0];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+    let ci = colnum as usize - 1; /* offset to the correct column */
+
+    if c[ci].tdatatype >= 0 {
+        *status = NOT_VARI_LEN;
+        return *status;
+    }
+
+    let bytepos = fptr.Fptr.datastart + (fptr.Fptr.rowlength * (rownum - 1)) + c[ci].tbcol;
+    if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
+        /* read 4-byte descriptor */
+        if ffgi4b(fptr, bytepos, 2, 4, cast_slice_mut(&mut descript4), status) <= 0 {
+            if let Some(length) = length {
+                *length = descript4[0] as LONGLONG; /* 1st word is the length  */
+            }
+            if let Some(heapaddr) = heapaddr {
+                *heapaddr = descript4[1] as LONGLONG; /* 2nd word is the address */
+            };
+        };
+    } else {
+        /* this is for 'Q' columns */
+
+        /* read 8 byte descriptor */
+        if ffgi8b(fptr, bytepos, 2, 8, cast_slice_mut(&mut descript8), status) <= 0 {
+            if let Some(length) = length {
+                *length = descript8[0]; /* 1st word is the length  */
+            }
+            if let Some(heapaddr) = heapaddr {
+                *heapaddr = descript8[1]; /* 2nd word is the address */
+            };
+        };
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+///  get (read) a range of variable length vector descriptors from the table.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgdess(
+    fptr: *mut fitsfile,   /* I - FITS file pointer                        */
+    colnum: c_int,         /* I - column number (1 = 1st column of table)   */
+    firstrow: LONGLONG,    /* I - first row  (1 = 1st row of table)         */
+    nrows: LONGLONG,       /* I - number or rows to read                    */
+    length: *mut c_long,   /* O - number of elements in the row             */
+    heapaddr: *mut c_long, /* O - heap pointer to the data                  */
+    status: *mut c_int,    /* IO - error status                             */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        let length = match length.is_null() {
+            true => Some(slice::from_raw_parts_mut(length, nrows as usize)),
+            false => None,
+        };
+
+        let heapaddr = match heapaddr.is_null() {
+            true => Some(slice::from_raw_parts_mut(heapaddr, nrows as usize)),
+            false => None,
+        };
+
+        ffgdess_safe(fptr, colnum, firstrow, nrows, length, heapaddr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  get (read) a range of variable length vector descriptors from the table.
+pub(crate) fn ffgdess_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                        */
+    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
+    firstrow: LONGLONG,  /* I - first row  (1 = 1st row of table)         */
+    nrows: LONGLONG,     /* I - number or rows to read                    */
+    mut length: Option<&mut [c_long]>, /* O - number of elements in the row             */
+    mut heapaddr: Option<&mut [c_long]>, /* O - heap pointer to the data                  */
+    status: &mut c_int,  /* IO - error status                             */
+) -> c_int {
+    let mut ii: c_long;
+    let mut descript4: [INT32BIT; 2] = [0, 0];
+    let mut descript8: [LONGLONG; 2] = [0, 0];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    let colptr = 0; /* point to first column structure */
+    let c = fptr.Fptr.get_tableptr_as_slice();
+    let ci = colnum as usize - 1; /* offset to the correct column */
+
+    if c[ci].tdatatype >= 0 {
+        *status = NOT_VARI_LEN;
+        return *status;
+    }
+
+    let rowsize = fptr.Fptr.rowlength;
+    let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1i64)) + c[ci].tbcol;
+
+    if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
+        /* read 4-byte descriptors */
+        ii = 0;
+        let mut length_i = 0;
+        let mut heapaddr_i = 0;
+        while (ii as LONGLONG) < nrows {
+            /* read descriptors */
+            if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
+                if let Some(length) = length.as_deref_mut() {
+                    length[length_i] = descript4[0] as c_long; /* 1st word is the length  */
+                    length_i += 1;
+                }
+
+                if let Some(heapaddr) = heapaddr.as_deref_mut() {
+                    heapaddr[heapaddr_i] = descript4[1] as c_long; /* 2nd word is the address */
+                    heapaddr_i += 1;
+                }
+
+                bytepos += rowsize;
+            } else {
+                return *status;
+            };
+            ii += 1
+        }
+    } else {
+        /* this is for 'Q' columns */
+
+        /* read 8-byte descriptors */
+        ii = 0;
+        let mut length_i = 0;
+        let mut heapaddr_i = 0;
+        while (ii as LONGLONG) < nrows {
+            /* read descriptors */
+            if ffgi8b(fptr, bytepos, 2, 8, &mut descript8, status) <= 0 {
+                if let Some(length) = length.as_deref_mut() {
+                    #[allow(clippy::absurd_extreme_comparisons)]
+                    // On some architectures, this is a valid comparison
+                    if descript8[0] > LONG_MAX {
+                        *status = NUM_OVERFLOW;
+                    }
+
+                    length[length_i] = descript8[0] as c_long; /* 1st word is the length  */
+                    length_i += 1;
+                }
+                if let Some(heapaddr) = heapaddr.as_deref_mut() {
+                    #[allow(clippy::absurd_extreme_comparisons)]
+                    // On some architectures, this is a valid comparison
+                    if descript8[1] > LONG_MAX {
+                        *status = NUM_OVERFLOW;
+                    }
+
+                    heapaddr[heapaddr_i] = descript8[1] as c_long; /* 2nd word is the address */
+                    heapaddr_i += 1;
+                }
+                bytepos += rowsize;
+            } else {
+                return *status;
+            };
+            ii += 1
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// get (read) a range of variable length vector descriptors from the table.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgdessll(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
+    colnum: c_int,           /* I - column number (1 = 1st column of table)   */
+    firstrow: LONGLONG,      /* I - first row  (1 = 1st row of table)         */
+    nrows: LONGLONG,         /* I - number or rows to read                    */
+    length: *mut LONGLONG,   /* O - number of elements in the row         */
+    heapaddr: *mut LONGLONG, /* O - heap pointer to the data              */
+    status: *mut c_int,      /* IO - error status                             */
+) -> c_int {
+    unsafe {
+        let mut ii: LONGLONG;
+        let mut descript4: [INT32BIT; 2] = [0, 0];
+        let mut descript8: [LONGLONG; 2] = [0, 0];
+
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0
+        {
+            /* rescan header */
+            return *status;
+        }
+
+        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+        let c = slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize);
+        let ci = colnum as usize - 1; /* offset to the correct column */
+
+        if c[ci].tdatatype >= 0 {
+            *status = NOT_VARI_LEN;
+            return *status;
+        }
+
+        let rowsize = fptr.Fptr.rowlength;
+        let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1)) + c[ci].tbcol;
+
+        if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
+            /* read 4-byte descriptors */
+            ii = 0;
+            let mut length_i = 0;
+            let mut heapaddr_i = 0;
+            while ii < nrows {
+                /* read descriptors */
+                if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
+                    if !length.is_null() {
+                        let length = slice::from_raw_parts_mut(length, nrows as usize);
+                        length[length_i] = descript4[0] as LONGLONG; /* 1st word is the length  */
+                        length_i += 1;
+                    }
+                    if !heapaddr.is_null() {
+                        let heapaddr = slice::from_raw_parts_mut(heapaddr, nrows as usize);
+                        heapaddr[heapaddr_i] = descript4[1] as LONGLONG; /* 2nd word is the address */
+                        heapaddr_i += 1;
+                    }
+                    bytepos += rowsize;
+                } else {
+                    return *status;
+                };
+                ii += 1
+            }
+        } else {
+            /* this is for 'Q' columns */
+
+            /* read 8-byte descriptors */
+            ii = 0;
+            let mut length_i = 0;
+            let mut heapaddr_i = 0;
+            while ii < nrows {
+                /* read descriptors */
+                /* cast to type (long *) even though it is actually (LONGLONG *) */
+                if ffgi8b(fptr, bytepos, 2, 8, &mut descript8, status) <= 0 {
+                    if !length.is_null() {
+                        let length = slice::from_raw_parts_mut(length, nrows as usize);
+                        length[length_i] = descript8[0] as LONGLONG; /* 1st word is the length  */
+                        length_i += 1;
+                    }
+                    if !heapaddr.is_null() {
+                        let heapaddr = slice::from_raw_parts_mut(heapaddr, nrows as usize);
+                        heapaddr[heapaddr_i] = descript8[1] as LONGLONG; /* 2nd word is the address */
+                        heapaddr_i += 1;
+                    }
+                    bytepos += rowsize;
+                } else {
+                    return *status;
+                };
+                ii += 1
+            }
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  put (write) the variable length vector descriptor to the table.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffpdes(
+    fptr: *mut fitsfile, /* I - FITS file pointer                         */
+    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
+    rownum: LONGLONG,    /* I - row number (1 = 1st row of table)         */
+    length: LONGLONG,    /* I - number of elements in the row             */
+    heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
+    status: *mut c_int,  /* IO - error status                             */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        ffpdes_safe(fptr, colnum, rownum, length, heapaddr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+///  put (write) the variable length vector descriptor to the table.
+pub(crate) fn ffpdes_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                         */
+    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
+    rownum: LONGLONG,    /* I - row number (1 = 1st row of table)         */
+    length: LONGLONG,    /* I - number of elements in the row             */
+    heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
+    status: &mut c_int,  /* IO - error status                             */
+) -> c_int {
+    let mut bytepos: LONGLONG = 0;
+
+    let mut descript4: [c_uint; 2] = [0; 2];
+    let mut descript8: [LONGLONG; 2] = [0; 2];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+    let ci = (colnum - 1) as usize; /* offset to the correct column */
+
+    if c[ci].tdatatype >= 0 {
+        *status = NOT_VARI_LEN;
+    }
+
+    bytepos = fptr.Fptr.datastart + (fptr.Fptr.rowlength * (rownum - 1)) + c[ci].tbcol;
+
+    ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status); /* move to element */
+
+    let c = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
+    let ci = (colnum - 1) as usize; /* offset to the correct column */
+
+    if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
+        if length > c_uint::MAX as LONGLONG
+            || length < 0
+            || heapaddr > c_uint::MAX as LONGLONG
+            || heapaddr < 0
+        {
+            ffpmsg_str("P variable length column descriptor is out of range");
+            *status = NUM_OVERFLOW;
+            return *status;
+        }
+
+        descript4[0] = length as c_uint; /* 1st word is the length  */
+        descript4[1] = heapaddr as c_uint; /* 2nd word is the address */
+
+        ffpi4b(fptr, 2, 4, cast_slice(&descript4), status); /* write the descriptor */
+    } else {
+        /* this is a 'Q' descriptor column */
+
+        descript8[0] = length; /* 1st word is the length  */
+        descript8[1] = heapaddr; /* 2nd word is the address */
+
+        ffpi8b(fptr, 2, 8, cast_slice(&descript8), status); /* write the descriptor */
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// close the current HDU.  If we have write access to the file, then:
+/// - write the END keyword and pad header with blanks if necessary
+/// - check the data fill values, and rewrite them if not correct
+pub(crate) unsafe fn ffchdu(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+        let ii: isize = 0;
+        let mut stdriver = -1; // -1 so that if stream driver not found, it doesn't default
+        let ntilebins = 0;
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+            /* no need to do any further updating of the HDU */
+        } else if fptr.Fptr.writemode == 1 {
+            urltype2driver(cs!(b"stream://"), &mut stdriver);
+
+            /* don't rescan header in special case of writing to stdout */
+            if fptr.Fptr.driver != stdriver {
+                ffrdef_safe(fptr, status);
+            }
+            if fptr.Fptr.heapsize > 0 {
+                ffuptf(fptr, status); /* update the variable length TFORM values */
+            }
+
+            ffpdfl(fptr, status); /* insure correct data fill values */
+        }
+
+        if fptr.Fptr.open_count == 1 {
+            /* free memory for the CHDU structure only if no other files are using it */
+            if !fptr.Fptr.tableptr.is_null() {
+                // HEAP DEALLOCATIOn
+                let _ = Vec::from_raw_parts(
+                    fptr.Fptr.tableptr,
+                    fptr.Fptr.tfield as usize,
+                    fptr.Fptr.tfield as usize,
+                );
+
+                fptr.Fptr.tableptr = ptr::null_mut();
+
+                /* free the tile-compressed image cache, if it exists */
+                if !fptr.Fptr.tilerow.is_null() {
+                    // HEAP DEALLOCATION
+                    let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+                    let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                    drop(tilestruct_lock);
+
+                    fptr.Fptr.tileanynull = ptr::null_mut();
+                    fptr.Fptr.tiletype = ptr::null_mut();
+                    fptr.Fptr.tiledatasize = ptr::null_mut();
+                    fptr.Fptr.tilenullarray = ptr::null_mut();
+                    fptr.Fptr.tiledata = ptr::null_mut();
+                    fptr.Fptr.tilerow = ptr::null_mut();
+                };
+            };
+        }
+
+        if *status > 0 && *status != NO_CLOSE_ERROR {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error while closing HDU number {} (ffchdu).",
+                fptr.Fptr.curhdu,
+            );
+            ffpmsg_slice(&message);
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Update the value of the TFORM keywords for the variable length array
+/// columns to make sure they all have the form 1Px(len) or Px(len) where
+/// 'len' is the maximum length of the vector in the table (e.g., '1PE(400)')
+pub(crate) fn ffuptf(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut tflds: c_long = 0;
+    let mut length: LONGLONG = 0;
+    let mut addr: LONGLONG = 0;
+    let mut maxlen: LONGLONG = 0;
+    let mut naxis2: LONGLONG = 0;
+    let jj: LONGLONG = 0;
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut newform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut lenval: [c_char; 40] = [0; 40];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
+    ffgkyjj_safe(fptr, cs!("NAXIS2"), &mut naxis2, Some(&mut comment), status);
+    ffgkyj_safe(fptr, cs!("TFIELDS"), &mut tflds, Some(&mut comment), status);
+
+    for ii in 1..=(tflds as usize) {
+        /* loop over all the columns */
+
+        ffkeyn_safe(cs!("TFORM"), ii as c_int, &mut keyname, status); /* construct name */
+        if ffgkys_safe(fptr, &keyname, &mut tform, Some(&mut comment), status) > 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Error while updating variable length vector TFORMn values (ffuptf).",
+            );
+            ffpmsg_slice(&message);
+            return *status;
+        }
+
+        /* is this a variable array length column ? */
+        if tform[0] == bb(b'P')
+            || tform[1] == bb(b'P')
+            || tform[0] == bb(b'Q')
+            || tform[1] == bb(b'Q')
+        {
+            /* get the max length */
+            maxlen = 0;
+            for jj in 1..=(naxis2 as usize) {
+                ffgdesll_safe(
+                    fptr,
+                    ii as c_int,
+                    jj as LONGLONG,
+                    Some(&mut length),
+                    Some(&mut addr),
+                    status,
+                );
+
+                if length > maxlen {
+                    maxlen = length;
+                }
+            }
+
+            /* construct the new keyword value */
+            strcpy_safe(&mut newform, cs!("'"));
+            let tmp = strchr_safe(&tform, bb(b'(')); /* truncate old length, if present */
+            if let Some(tmp) = tmp {
+                tform[tmp] = 0;
+            }
+            let lenform = strlen_safe(&tform);
+
+            /* print as double, because the string-to-64-bit */
+            /* conversion is platform dependent (%lld, %ld, %I64d) */
+
+            int_snprintf!(&mut lenval, 40, "({:.0})", maxlen as f64,);
+
+            if lenform + strlen_safe(&lenval) + 2 > FLEN_VALUE - 1 {
+                ffpmsg_str("Error assembling TFORMn string (ffuptf).");
+                *status = BAD_TFORM;
+                return *status;
+            }
+            strcat_safe(&mut newform, &tform);
+
+            strcat_safe(&mut newform, &lenval);
+
+            while strlen_safe(&newform) < 9 {
+                strcat_safe(&mut newform, cs!(" ")); /* append spaces 'till length = 8 */
+            }
+            strcat_safe(&mut newform, cs!("'")); /* append closing parenthesis */
+            /* would be simpler to just call ffmkyj here, but this */
+            /* would force linking in all the modkey & putkey routines */
+            ffmkky_safe(&keyname, &newform, Some(&comment), &mut card, status); /* make new card */
+            ffmkey(fptr, &card, status); /* replace last read keyword */
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// ReDEFine the structure of a data unit.  This routine re-reads
+/// the CHDU header keywords to determine the structure and length of the
+/// current data unit.  This redefines the start of the next HDU.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffrdef(
+    fptr: *mut fitsfile, /* I - FITS file pointer */
+    status: *mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        ffrdef_safe(fptr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// ReDEFine the structure of a data unit.  This routine re-reads
+/// the CHDU header keywords to determine the structure and length of the
+/// current data unit.  This redefines the start of the next HDU.
+pub fn ffrdef_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut dummy: c_int = 0;
+    let mut tstatus = 0;
+    let mut naxis2: LONGLONG = 0;
+    let mut pcount: LONGLONG = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.writemode == 1 {
+        /* write access to the file? */
+
+        // SAFETY: This is not safe, just a temporary hack to remove unsafe on upstream functions
+        // TODO: Remove this hack
+        unsafe {
+            /* don't need to check NAXIS2 and PCOUNT if data hasn't been written */
+            if fptr.Fptr.datastart != DATA_UNDEFINED as LONGLONG {
+                /* update NAXIS2 keyword if more rows were written to the table */
+                /* and if the user has not explicitly reset the NAXIS2 value */
+                if fptr.Fptr.hdutype != IMAGE_HDU {
+                    ffmaky_safe(fptr, 2, status);
+                    if ffgkyjj_safe(
+                        fptr,
+                        cs!("NAXIS2"),
+                        &mut naxis2,
+                        Some(&mut comm),
+                        &mut tstatus,
+                    ) > 0
+                    {
+                        /* Couldn't read NAXIS2 (odd!);  in certain circumstances */
+                        /* this may be normal, so ignore the error. */
+                        naxis2 = fptr.Fptr.numrows;
+                    }
+                    if fptr.Fptr.numrows > naxis2 && fptr.Fptr.origrows == naxis2 {
+                        /* if origrows is not equal to naxis2, then the user must */
+                        /* have manually modified the NAXIS2 keyword value, and */
+                        /* we will assume that the current value is correct. */
+                        /* would be simpler to just call ffmkyj here, but this */
+                        /* would force linking in all the modkey & putkey routines */
+
+                        /* print as double because the 64-bit int conversion */
+                        /* is platform dependent (%lld, %ld, %I64 )          */
+
+                        int_snprintf!(
+                            &mut valstring,
+                            FLEN_VALUE,
+                            "{:.0}",
+                            (fptr.Fptr.numrows) as f64,
+                        );
+                        ffmkky_safe(cs!("NAXIS2"), &valstring, Some(&comm), &mut card, status);
+                        ffmkey(fptr, &card, status);
+                    };
+                }
+
+                /* if data has been written to variable length columns in a  */
+                /* binary table, then we may need to update the PCOUNT value */
+                if fptr.Fptr.heapsize > 0 {
+                    ffmaky_safe(fptr, 2, status);
+                    ffgkyjj_safe(fptr, cs!("PCOUNT"), &mut pcount, Some(&mut comm), status);
+                    if fptr.Fptr.heapsize != pcount {
+                        ffmkyj_safe(fptr, cs!("PCOUNT"), fptr.Fptr.heapsize, Some(&comm), status);
+                    };
+                };
+            }
+
+            if ffwend(fptr, status) <= 0 {
+                /* rewrite END keyword and fill */
+                ffrhdu_safer(fptr, Some(&mut dummy), status); /* re-scan the header keywords  */
+            };
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// based on the number of keywords which have already been written,
+/// plus the number of keywords to reserve space for, we then can
+/// define where the data unit should start (it must start at the
+/// beginning of a 2880-byte logical block).
+///
+/// This routine will only have any effect if the starting location of the
+/// data unit following the header is not already defined.  In any case,
+/// it is always possible to add more keywords to the header even if the
+/// data has already been written.  It is just more efficient to reserve
+/// the space in advance.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffhdef(
+    fptr: *mut fitsfile, /* I - FITS file pointer                    */
+    morekeys: c_int,     /* I - reserve space for this many keywords */
+    status: *mut c_int,  /* IO - error status                        */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        ffhdef_safe(fptr, morekeys, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// based on the number of keywords which have already been written,
+/// plus the number of keywords to reserve space for, we then can
+/// define where the data unit should start (it must start at the
+/// beginning of a 2880-byte logical block).
+///
+/// This routine will only have any effect if the starting location of the
+/// data unit following the header is not already defined.  In any case,
+/// it is always possible to add more keywords to the header even if the
+/// data has already been written.  It is just more efficient to reserve
+/// the space in advance.
+pub fn ffhdef_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    morekeys: c_int,     /* I - reserve space for this many keywords */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    let delta: LONGLONG;
+
+    if *status > 0 || morekeys < 1 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        ffrdef_safe(fptr, status);
+
+        /* ffrdef defines the offset to datastart and the start of */
+        /* the next HDU based on the number of existing keywords. */
+        /* We need to increment both of these values based on */
+        /* the number of new keywords to be added.  */
+
+        delta = ((fptr.Fptr.headend + (morekeys as LONGLONG * 80)) / BL!() + 1) * BL!()
+            - fptr.Fptr.datastart;
+
+        fptr.Fptr.datastart += delta;
+
+        let curhdu = fptr.Fptr.curhdu as usize;
+        fptr.Fptr.get_headstart_as_mut_slice()[curhdu + 1] += delta;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// write the END card and following fill (space chars) in the current header
+pub(crate) fn ffwend(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut blankkey: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut endkey: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut keyrec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut endpos = fptr.Fptr.headend;
+
+    /* we assume that the HDUposition == curhdu in all cases */
+
+    /*  calc the data starting position if not currently defined */
+    if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        fptr.Fptr.datastart = (endpos / BL!() + 1) * BL!();
+    }
+
+    /* calculate the number of blank keyword slots in the header */
+    let nspace = ((fptr.Fptr.datastart - endpos) / 80i64) as c_long;
+    strcpy_safe(
+        &mut blankkey,
+        cs!("                                        "),
+    );
+    strcat_safe(
+        &mut blankkey,
+        cs!("                                        "),
+    );
+    strcpy_safe(&mut endkey, cs!("END                                     "));
+    strcat_safe(&mut endkey, cs!("                                        "));
+
+    /* check if header is already correctly terminated with END and fill */
+    let mut tstatus = 0;
+    ffmbyt_safe(fptr, endpos, REPORT_EOF, &mut tstatus); /* move to header end */
+    let mut ii = 0;
+    while ii < nspace as usize {
+        ffgbyt(fptr, 80, cast_slice_mut(&mut keyrec), &mut tstatus); /* get next keyword */
+        if tstatus != 0 {
+            break;
+        }
+        if strncmp_safe(&keyrec, &blankkey, 80) != 0 && strncmp_safe(&keyrec, &endkey, 80) != 0 {
+            break;
+        };
+        ii += 1;
+    }
+
+    if ii == nspace as usize && tstatus == 0 {
+        /* check if the END keyword exists at the correct position */
+        endpos = cmp::max(endpos, fptr.Fptr.datastart - IOBUFLEN);
+        ffmbyt_safe(fptr, endpos, REPORT_EOF, &mut tstatus); /* move to END position */
+        ffgbyt(fptr, 80, cast_slice_mut(&mut keyrec), &mut tstatus); /* read the END keyword */
+        if strncmp_safe(&keyrec, &endkey, 80) == 0 && tstatus == 0 {
+            /* store this position, for later reference */
+            fptr.Fptr.ENDpos = endpos;
+
+            return *status; /* END card was already correct */
+        };
+    }
+
+    /* header was not correctly terminated, so write the END and blank fill */
+    endpos = fptr.Fptr.headend;
+    ffmbyt_safe(fptr, endpos, IGNORE_EOF, status); /* move to header end */
+    let mut ii = 0;
+    while ii < nspace as usize {
+        ffpbyt(fptr, 80, cast_slice_mut(&mut blankkey), status); /* write the blank keywords */
+        ii += 1
+    }
+    /*
+    The END keyword must either be placed immediately after the last
+    keyword that was written (as indicated by the headend value), or
+    must be in the first 80 bytes of the 2880-byte FITS record immediately
+    preceeding the data unit, whichever is further in the file. The
+    latter will occur if space has been reserved for more header keywords
+    which have not yet been written.
+    */
+    endpos = cmp::max(endpos, fptr.Fptr.datastart - 2880);
+
+    ffmbyt_safe(fptr, endpos, REPORT_EOF, status); /* move to END position */
+    ffpbyt(fptr, 80, cast_slice_mut(&mut endkey), status); /*  write the END keyword to header */
+
+    /* store this position, for later reference */
+    fptr.Fptr.ENDpos = endpos;
+    if *status > 0 {
+        ffpmsg_str("Error while writing END card (ffwend).");
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write the Data Unit Fill values if they are not already correct.
+/// The fill values are used to fill out the last 2880 byte block of the HDU.
+/// Fill the data unit with zeros or blanks depending on the type of HDU
+/// from the end of the data to the end of the current FITS 2880 byte block
+pub(crate) fn ffpdfl(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut chfill: u8 = 0;
+    let mut fill: [u8; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
+    let mut fillstart: LONGLONG;
+    let mut nfill;
+    let mut tstatus;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if fptr.HDUposition != (fptr.Fptr.curhdu) {
+        return *status; /* fill has already been correctly written */
+    }
+
+    if fptr.Fptr.heapstart == 0 {
+        return *status; /* null data unit, so there is no fill */
+    }
+
+    fillstart = fptr.Fptr.datastart + (fptr.Fptr.heapstart + (fptr.Fptr.heapsize));
+
+    nfill = ((fillstart + (BL!() - 1)) / BL!() * BL!() - fillstart) as c_long;
+
+    if nfill >= BL!()
+    /* can only happen if fillstart was negative */
+    {
+        *status = BAD_HEAP_PTR;
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype == ASCII_TBL {
+        chfill = 32; /* ASCII tables are filled with spaces */
+    } else {
+        chfill = 0; /* all other extensions are filled with zeros */
+    }
+
+    tstatus = 0;
+
+    if nfill == 0 {
+        /* no fill bytes; just check that entire table exists */
+
+        fillstart -= 1;
+        nfill = 1;
+        ffmbyt_safe(fptr, fillstart, REPORT_EOF, &mut tstatus); /* move to last byte */
+        ffgbyt(fptr, nfill as LONGLONG, &mut fill, &mut tstatus); /* get the last byte */
+
+        if tstatus == 0 {
+            return *status; /* no EOF error, so everything is OK */
+        }
+    } else {
+        ffmbyt_safe(fptr, fillstart, REPORT_EOF, &mut tstatus); /* move to fill area */
+        ffgbyt(fptr, nfill as LONGLONG, &mut fill, &mut tstatus); /* get the fill bytes */
+
+        if tstatus == 0 {
+            let mut ii: usize = 0;
+            while ii < nfill as usize {
+                if fill[ii] != chfill {
+                    break;
+                }
+                ii += 1;
+            }
+
+            if ii == nfill as usize {
+                return *status; /* all the fill values were correct */
+            }
+        }
+    }
+
+    /* fill values are incorrect or have not been written, so write them */
+    fill[..(nfill as usize)].fill(chfill); /* fill the buffer with the fill value */
+
+    ffmbyt_safe(fptr, fillstart, IGNORE_EOF, status); /* move to fill area */
+    ffpbyt(fptr, nfill as LONGLONG, &fill, status); /* write the fill bytes */
+
+    if *status > 0 {
+        ffpmsg_str("Error writing Data Unit fill bytes (ffpdfl).");
+    }
+
+    *status
+}
+
+/**********************************************************************
+   ffchfl : Check Header Fill values
+
+      Check that the header unit is correctly filled with blanks from
+      the END card to the end of the current FITS 2880-byte block
+
+         Function parameters:
+            fptr     Fits file pointer
+            status   output error status
+
+    Translated ftchfl into C by Peter Wilson, Oct. 1997
+**********************************************************************/
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
+    unsafe {
+        let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+        let blanks = [bb(b' '); 80]; /*  80 spaces  */
+
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+
+        /*   calculate the number of blank keyword slots in the header  */
+
+        let endpos = fptr.Fptr.headend;
+        let nblank = ((fptr.Fptr.datastart - endpos) / 80) as c_long;
+
+        /*   move the i/o pointer to the end of the header keywords   */
+
+        ffmbyt_safe(fptr, endpos, TRUE as c_int, status);
+
+        /*   find the END card (there may be blank keywords perceeding it)   */
+
+        let mut gotend = false;
+        for i in 0..nblank {
+            ffgbyt(fptr, 80, cast_slice_mut(&mut rec), status);
+            if strncmp_safe(&rec, cs!("END     "), 8) == 0 {
+                if gotend {
+                    /*   There is a duplicate END record   */
+                    *status = BAD_HEADER_FILL;
+                    ffpmsg_str("Warning: Header fill area contains duplicate END card:");
+                }
+                gotend = true;
+                if strncmp_safe(&rec[8..], &blanks[8..], 72) != 0 {
+                    /*   END keyword has extra characters   */
+                    *status = END_JUNK;
+                    ffpmsg_str("Warning: END keyword contains extraneous non-blank characters:");
+                };
+            } else if gotend && strncmp_safe(&rec, &blanks, 80) != 0 {
+                /*   The fill area contains extraneous characters   */
+                *status = BAD_HEADER_FILL;
+                ffpmsg_str("Warning: Header fill area contains extraneous non-blank characters:");
+            };
+            if *status > 0 {
+                rec[FLEN_CARD - 1] = 0; /* make sure string is null terminated */
+                ffpmsg_slice(&rec);
+                return *status;
+            };
+        }
+        *status
+    }
+}
+
+/**********************************************************************
+   ffcdfl : Check Data Unit Fill values
+
+      Check that the data unit is correctly filled with zeros or
+      blanks from the end of the data to the end of the current
+      FITS 2880 byte block
+
+         Function parameters:
+            fptr     Fits file pointer
+            status   output error status
+
+    Translated ftcdfl into C by Peter Wilson, Oct. 1997
+**********************************************************************/
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
+    unsafe {
+        let mut chbuff: [c_char; BL!()] = [0; BL!()];
+
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let status = status.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+
+        /*   check if the data unit is null   */
+        if fptr.Fptr.heapstart == 0 {
+            return *status;
+        }
+
+        /* calculate starting position of the fill bytes, if any */
+        let filpos = fptr.Fptr.datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize;
+
+        /*   calculate the number of fill bytes   */
+        let nfill = ((filpos + (BL!() - 1)) / BL!() * BL!() - filpos) as c_long;
+        if nfill == 0 {
+            return *status;
+        }
+
+        /*   move to the beginning of the fill bytes   */
+        ffmbyt_safe(fptr, filpos, FALSE as c_int, status);
+
+        if ffgbyt(fptr, nfill as LONGLONG, cast_slice_mut(&mut chbuff), status) > 0 {
+            ffpmsg_str("Error reading data unit fill bytes (ffcdfl).");
+            return *status;
+        }
+
+        let chfill: c_char = if fptr.Fptr.hdutype == ASCII_TBL {
+            32 /* ASCII tables are filled with spaces */
+        } else {
+            0 /* all other extensions are filled with zeros */
+        };
+
+        /*   check for all zeros or blanks   */
+
+        for i in 0..(nfill as usize) {
+            if chbuff[i] != chfill {
+                *status = BAD_DATA_FILL;
+
+                if fptr.Fptr.hdutype == ASCII_TBL {
+                    ffpmsg_str(
+                        "Warning: remaining bytes following ASCII table data are not filled with blanks.",
+                    );
+                } else {
+                    ffpmsg_str(
+                        "Warning: remaining bytes following data are not filled with zeros.",
+                    );
+                }
+                return *status;
+            };
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Create Header Data unit:  Create, initialize, and move the i/o pointer
+/// to a new extension appended to the end of the FITS file.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcrhd(
+    fptr: *mut fitsfile, /* I - FITS file pointer */
+    status: *mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        ffcrhd_safer(fptr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Create Header Data unit:  Create, initialize, and move the i/o pointer
+/// to a new extension appended to the end of the FITS file.
+pub(crate) unsafe fn ffcrhd_safer(
+    fptr: &mut fitsfile, /* I - FITS file pointer */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    unsafe {
+        let mut tstatus: c_int = 0;
+        let bytepos: LONGLONG;
+        let ptr: *mut LONGLONG;
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        }
+
+        /* If the current header is empty, we don't have to do anything */
+        let h = fptr.Fptr.get_headstart_as_slice();
+        if fptr.Fptr.headend == h[fptr.Fptr.curhdu as usize] {
+            return *status;
+        }
+
+        while ffmrhd_safe(fptr, 1, None, &mut tstatus) == 0 {} /* move to end of file */
+
+        if fptr.Fptr.maxhdu == fptr.Fptr.MAXHDU {
+            /* allocate more space for the headstart array */
+            // WARNING THIS SHOULD BE A REALLOC
+            // HEAP ALLOCATION
+            let l = fptr.Fptr.MAXHDU as usize + 1;
+            let mut vo = Vec::from_raw_parts(fptr.Fptr.headstart, l, l);
+
+            if vo.try_reserve_exact(1000).is_err() {
+                *status = MEMORY_ALLOCATION;
+                return *status;
+            } else {
+                (ptr, _, _) = vo.into_raw_parts();
+                fptr.Fptr.MAXHDU += 1000;
+                fptr.Fptr.headstart = ptr;
+            }
+        }
+
+        if ffchdu(fptr, status) <= 0 {
+            /* close the current HDU */
+
+            let h = fptr.Fptr.get_headstart_as_slice();
+            bytepos = h[fptr.Fptr.maxhdu as usize + 1]; /* last */
+            ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status); /* move file ptr to it */
+            fptr.Fptr.maxhdu += 1; /* increment the known number of HDUs */
+            fptr.Fptr.curhdu = fptr.Fptr.maxhdu; /* set current HDU loc */
+            fptr.HDUposition = fptr.Fptr.maxhdu; /* set current HDU loc */
+            fptr.Fptr.nextkey = bytepos; /* next keyword = start of header */
+            fptr.Fptr.headend = bytepos; /* end of header */
+            fptr.Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* start data unit undefined */
+
+            /* any other needed resets */
+
+            /* reset the dithering offset that may have been calculated for the */
+            /* previous HDU back to the requested default value */
+            fptr.Fptr.dither_seed = fptr.Fptr.request_dither_seed;
+        }
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Delete the specified number of 2880-byte blocks from the end
+/// of the CHDU by shifting all following extensions up this
+/// number of blocks.
+pub(crate) fn ffdblk(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    nblocks: c_long,     /* I - number of 2880-byte blocks to delete */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    let mut buffer: [c_char; BL!()] = [0; BL!()];
+
+    if *status > 0 || nblocks <= 0 {
+        return *status;
+    }
+
+    let nblocks = nblocks as usize;
+
+    let mut tstatus = 0;
+    /* pointers to the read and write positions */
+
+    let mut readpos = (fptr.Fptr.datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize) as usize;
+    readpos = readpos.div_ceil(BL!()) * BL!(); /* start of block */
+
+    /*  the following formula is wrong because the current data unit
+        may have been extended without updating the headstart value
+        of the following HDU.
+
+        readpos = fptr.Fptr.headstart[(fptr.Fptr.curhdu) + 1];
+    */
+
+    let mut writepos = readpos - (nblocks * BL!());
+    while ffmbyt_safe(fptr, readpos as LONGLONG, REPORT_EOF, &mut tstatus) == 0
+        && ffgbyt(fptr, BL!(), cast_slice_mut(&mut buffer), &mut tstatus) == 0
+    {
+        ffmbyt_safe(fptr, writepos as LONGLONG, REPORT_EOF, status);
+        ffpbyt(fptr, BL!(), cast_slice(&buffer), status);
+        if *status > 0 {
+            ffpmsg_str("Error deleting FITS blocks (ffdblk)");
+            return *status;
+        }
+        readpos += BL!(); /* increment to next block to transfer */
+        writepos += BL!();
+    }
+
+    /* now fill the last nblock blocks with zeros */
+    buffer.fill(0);
+    ffmbyt_safe(fptr, writepos as LONGLONG, REPORT_EOF, status);
+
+    for ii in 0..nblocks {
+        ffpbyt(fptr, BL!(), cast_slice(&buffer), status);
+    }
+
+    /* move back before the deleted blocks, since they may be deleted
+    and we do not want to delete the current active buffer */
+    ffmbyt_safe(fptr, (writepos - 1) as LONGLONG, REPORT_EOF, status);
+
+    /* truncate the file to the new size, if supported on this device */
+    fftrun(fptr, writepos as LONGLONG, status);
+
+    /* recalculate the starting location of all subsequent HDUs */
+    let mut ii = fptr.Fptr.curhdu as usize;
+    let maxhdu = fptr.Fptr.maxhdu;
+    let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+    while ii <= maxhdu as usize {
+        headstart[ii + 1] -= (nblocks * BL!()) as LONGLONG;
+        ii += 1
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the type of the CHDU. This returns the 'logical' type of the HDU,
+/// not necessarily the physical type, so in the case of a compressed image
+/// stored in a binary table, this will return the type as an Image, not a
+/// binary table.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffghdt(
+    fptr: *mut fitsfile, /* I - FITS file pointer             */
+    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2 */
+    /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
+    status: *mut c_int, /* IO - error status                 */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let exttype = exttype.as_mut().expect(NULL_MSG);
+
+        ffghdt_safe(fptr, exttype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the type of the CHDU. This returns the 'logical' type of the HDU,
+/// not necessarily the physical type, so in the case of a compressed image
+/// stored in a binary table, this will return the type as an Image, not a
+/// binary table.
+pub(crate) fn ffghdt_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer             */
+    exttype: &mut c_int, /* O - type of extension, 0, 1, or 2 */
+    /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
+    status: &mut c_int, /* IO - error status                 */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    if fptr.HDUposition == 0 && fptr.Fptr.headend == 0 {
+        /* empty primary array is alway an IMAGE_HDU */
+        *exttype = IMAGE_HDU;
+    } else {
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        } else if fptr.Fptr.datastart == DATA_UNDEFINED {
+            /* rescan header if data structure is undefined */
+            if ffrdef_safe(fptr, status) > 0 {
+                return *status;
+            };
+        }
+
+        *exttype = fptr.Fptr.hdutype; /* return the type of HDU */
+
+        /*  check if this is a compressed image */
+        if fptr.Fptr.compressimg != 0 {
+            *exttype = IMAGE_HDU;
+        };
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Was CFITSIO compiled with the -D_REENTRANT flag?  1 = yes, 0 = no.
+///
+/// Note that specifying the -D_REENTRANT flag is required, but may not be
+/// sufficient, to ensure that CFITSIO can be safely used in a multi-threaded
+/// environoment.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_is_reentrant() -> c_int {
+    /*
+    #ifdef _REENTRANT
+           return(1);
+    #else
+           return(0);
+    #endif
+    */
+
+    1
+}
+
+/*--------------------------------------------------------------------------*/
+/// Returns TRUE if the CHDU is a compressed image, else returns zero.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_is_compressed_image(
+    fptr: *mut fitsfile, /* I - FITS file pointer  */
+    status: *mut c_int,  /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        fits_is_compressed_image_safe(fptr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Returns TRUE if the CHDU is a compressed image, else returns zero.
+pub(crate) fn fits_is_compressed_image_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status); /*  check if this is a compressed image */
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED && ffrdef_safe(fptr, status) > 0 {
+        return *status;
+    };
+
+    if fptr.Fptr.compressimg != 0 {
+        return 1;
+    }
+    0
+}
+
+/*--------------------------------------------------------------------------*/
+/// get the datatype and size of the input image
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgipr(
+    infptr: *mut fitsfile, /* I - FITS file pointer                     */
+    maxaxis: c_int,        /* I - max number of axes to return          */
+    bitpix: *mut c_int,    /* O - image data type                       */
+    naxis: *mut c_int,     /* O - image dimension (NAXIS value)         */
+    naxes: *mut c_long,    /* O - size of image dimensions              */
+    status: *mut c_int,    /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let bitpix = bitpix.as_mut();
+        let naxis = naxis.as_mut();
+        let naxes = if naxes.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(naxes, maxaxis as usize))
+        };
+
+        ffgipr_safe(infptr, maxaxis, bitpix, naxis, naxes, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get the datatype and size of the input image
+pub fn ffgipr_safe(
+    infptr: &mut fitsfile,        /* I - FITS file pointer                     */
+    maxaxis: c_int,               /* I - max number of axes to return          */
+    bitpix: Option<&mut c_int>,   /* O - image data type                       */
+    naxis: Option<&mut c_int>,    /* O - image dimension (NAXIS value)         */
+    naxes: Option<&mut [c_long]>, /* O - size of image dimensions              */
+    status: &mut c_int,           /* IO - error status      */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* don't return the parameter if a null pointer was given */
+
+    if let Some(bitpix) = bitpix {
+        ffgidt_safe(infptr, bitpix, status); /* get BITPIX value */
+    }
+
+    if let Some(naxis) = naxis {
+        ffgidm_safe(infptr, naxis, status); /* get NAXIS value */
+    }
+
+    if let Some(naxes) = naxes {
+        ffgisz_safe(infptr, maxaxis, naxes, status); /* get NAXISn values */
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the datatype and size of the input image
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgiprll(
+    infptr: *mut fitsfile, /* I - FITS file pointer                   */
+    maxaxis: c_int,        /* I - max number of axes to return          */
+    bitpix: *mut c_int,    /* O - image data type                       */
+    naxis: *mut c_int,     /* O - image dimension (NAXIS value)         */
+    naxes: *mut LONGLONG,  /* O - size of image dimensions              */
+    status: *mut c_int,    /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let bitpix = bitpix.as_mut();
+        let naxis = naxis.as_mut();
+        let naxes = if naxes.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts_mut(naxes, maxaxis as usize))
+        };
+
+        if *status > 0 {
+            return *status; /* get NAXISn values */
+        }
+
+        /* don't return the parameter if a null pointer was given */
+
+        if let Some(bitpix) = bitpix {
+            ffgidt_safe(infptr, bitpix, status); /* get BITPIX value */
+        }
+
+        if let Some(naxis) = naxis {
+            ffgidm_safe(infptr, naxis, status); /* get NAXIS value */
+        }
+
+        if let Some(naxes) = naxes {
+            ffgiszll_safe(infptr, maxaxis, naxes, status); /* get NAXISn values */
+        }
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the datatype of the image (= BITPIX keyword for normal image, or
+/// ZBITPIX for a compressed image)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgidt(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    imgtype: *mut c_int, /* O - image data type                         */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let imgtype = imgtype.as_mut().expect(NULL_MSG);
+
+        ffgidt_safe(fptr, imgtype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the datatype of the image (= BITPIX keyword for normal image, or
+/// ZBITPIX for a compressed image)
+pub fn ffgidt_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    imgtype: &mut c_int, /* O - image data type                         */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    /* reset to beginning of header */
+    ffmaky_safe(fptr, 1, status); /* simply move to beginning of header */
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        ffgky_safe(
+            fptr,
+            crate::KeywordDatatypeMut::TINT(imgtype),
+            cs!("BITPIX"),
+            None,
+            status,
+        );
+    } else if fptr.Fptr.compressimg != 0 {
+        /* this is a binary table containing a compressed image */
+        ffgky_safe(
+            fptr,
+            crate::KeywordDatatypeMut::TINT(imgtype),
+            cs!("ZBITPIX"),
+            None,
+            status,
+        );
+    } else {
+        *status = NOT_IMAGE;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the effective datatype of the image (= BITPIX keyword for normal image,
+/// or ZBITPIX for a compressed image)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgiet(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    imgtype: *mut c_int, /* O - image data type                         */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let imgtype = imgtype.as_mut().expect(NULL_MSG);
+
+        ffgiet_safe(fptr, imgtype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the effective datatype of the image (= BITPIX keyword for normal image,
+/// or ZBITPIX for a compressed image)
+pub(crate) fn ffgiet_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    imgtype: &mut c_int, /* O - image data type                         */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    let mut tstatus: c_int = 0;
+    let mut lngscale: c_long = 0;
+    let mut lngzero: c_long = 0;
+    let mut bscale: f64 = 0.0;
+    let mut bzero: f64 = 0.0;
+    let mut min_val: f64 = 0.0;
+    let mut max_val: f64 = 0.0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    /* reset to beginning of header */
+    ffmaky_safe(fptr, 2, status); /* simply move to beginning of header */
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        ffgky_safe(
+            fptr,
+            crate::KeywordDatatypeMut::TINT(imgtype),
+            cs!("BITPIX"),
+            None,
+            status,
+        );
+    } else if fptr.Fptr.compressimg != 0 {
+        /* this is a binary table containing a compressed image */
+        ffgky_safe(
+            fptr,
+            crate::KeywordDatatypeMut::TINT(imgtype),
+            cs!("ZBITPIX"),
+            None,
+            status,
+        );
+    } else {
+        *status = NOT_IMAGE;
+        return *status;
+    }
+
+    /* check if the BSCALE and BZERO keywords are defined, which might
+    change the effective datatype of the image  */
+    tstatus = 0;
+    fits_read_key_dbl(fptr, cs!("BSCALE"), &mut bscale, None, &mut tstatus);
+    if tstatus != 0 {
+        bscale = 1.0;
+    }
+
+    tstatus = 0;
+    fits_read_key_dbl(fptr, cs!("BZERO"), &mut bzero, None, &mut tstatus);
+
+    if tstatus != 0 {
+        bzero = 0.0;
+    }
+
+    if bscale == 1.0 && bzero == 0.0 {
+        /* no scaling */
+        return *status;
+    }
+
+    match *imgtype {
+        BYTE_IMG => {
+            /* 8-bit image */
+            min_val = 0.;
+            max_val = 255.0;
+        }
+        SHORT_IMG => {
+            min_val = -32768.0;
+            max_val = 32767.0;
+        }
+        LONG_IMG => {
+            min_val = -2147483648.0;
+            max_val = 2147483647.0;
+        }
+        _ => {
+            /* don't have to deal with other data types */
+            return *status;
+        }
+    }
+
+    if bscale >= 0. {
+        min_val = bzero + bscale * min_val;
+        max_val = bzero + bscale * max_val;
+    } else {
+        max_val = bzero + bscale * min_val;
+        min_val = bzero + bscale * max_val;
+    }
+
+    if bzero < 2147483648. {
+        /* don't exceed range of 32-bit integer */
+        lngzero = bzero as c_long;
+    }
+
+    lngscale = bscale as c_long;
+
+    if (bzero != 2147483648.) && /* special value that exceeds integer range */
+       ((lngzero as f64) != bzero || (lngscale as f64) != bscale)
+    {
+        /* not integers? */
+        /* floating point scaled values; just decide on required precision */
+        if *imgtype == BYTE_IMG || *imgtype == SHORT_IMG {
+            *imgtype = FLOAT_IMG;
+        } else {
+            *imgtype = DOUBLE_IMG;
+        }
+
+    /*
+       In all the remaining cases, BSCALE and BZERO are integers,
+       and not equal to 1 and 0, respectively.
+    */
+    } else if (min_val == -128.) && (max_val == 127.) {
+        *imgtype = SBYTE_IMG;
+    } else if (min_val >= -32768.0) && (max_val <= 32767.0) {
+        *imgtype = SHORT_IMG;
+    } else if (min_val >= 0.0) && (max_val <= 65535.0) {
+        *imgtype = USHORT_IMG;
+    } else if (min_val >= -2147483648.0) && (max_val <= 2147483647.0) {
+        *imgtype = LONG_IMG;
+    } else if (min_val >= 0.0) && (max_val < 4294967296.0) {
+        *imgtype = ULONG_IMG;
+    } else {
+        /* exceeds the range of a 32-bit integer */
+        *imgtype = DOUBLE_IMG;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the dimension of the image (= NAXIS keyword for normal image, or
+/// ZNAXIS for a compressed image)
+/// These values are cached for faster access.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgidm(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    naxis: *mut c_int,   /* O - image dimension (NAXIS value)           */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let naxis = naxis.as_mut().expect(NULL_MSG);
+
+        ffgidm_safe(fptr, naxis, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the dimension of the image (= NAXIS keyword for normal image, or
+/// ZNAXIS for a compressed image)
+/// These values are cached for faster access.
+pub fn ffgidm_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    naxis: &mut c_int,   /* O - image dimension (NAXIS value)           */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        *naxis = fptr.Fptr.imgdim;
+    } else if fptr.Fptr.compressimg != 0 {
+        *naxis = fptr.Fptr.zndim;
+    } else {
+        *status = NOT_IMAGE;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the size of the image dimensions (= NAXISn keywords for normal image, or
+/// ZNAXISn for a compressed image)
+/// These values are cached for faster access.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgisz(
+    fptr: *mut fitsfile, /* I - FITS file pointer                       */
+    nlen: c_int,         /* I - number of axes to return                */
+    naxes: *mut c_long,  /* O - size of image dimensions                */
+    status: *mut c_int,  /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        /* reset position to the correct HDU if necessary */
+        if fptr.HDUposition != fptr.Fptr.curhdu {
+            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+            /* rescan header */
+            if ffrdef_safe(fptr, status) > 0 {
+                return *status;
+            }
+        }
+
+        if fptr.Fptr.hdutype == IMAGE_HDU {
+            let naxis = cmp::min(fptr.Fptr.imgdim, nlen);
+            let naxes = slice::from_raw_parts_mut(naxes, naxis as usize);
+
+            ffgisz_safe(fptr, nlen, naxes, status);
+        } else if fptr.Fptr.compressimg != 0 {
+            let naxis = cmp::min(fptr.Fptr.zndim, nlen);
+            let naxes = slice::from_raw_parts_mut(naxes, naxis as usize);
+
+            ffgisz_safe(fptr, nlen, naxes, status);
+        } else {
+            *status = NOT_IMAGE;
+        }
+
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the size of the image dimensions (= NAXISn keywords for normal image, or
+/// ZNAXISn for a compressed image)
+/// These values are cached for faster access.
+pub fn ffgisz_safe(
+    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
+    nlen: c_int,          /* I - number of axes to return                */
+    naxes: &mut [c_long], /* O - size of image dimensions                */
+    status: &mut c_int,   /* IO - error status                           */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        }
+    }
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        let naxis = cmp::min(fptr.Fptr.imgdim, nlen);
+
+        for ii in 0..(naxis as usize) {
+            naxes[ii] = fptr.Fptr.imgnaxis[ii] as c_long;
+        }
+    } else if fptr.Fptr.compressimg != 0 {
+        let naxis = cmp::min(fptr.Fptr.zndim, nlen);
+
+        naxes[..(naxis as usize)].copy_from_slice(&fptr.Fptr.znaxis[..(naxis as usize)]);
+    } else {
+        *status = NOT_IMAGE;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the size of the image dimensions (= NAXISn keywords for normal image, or
+/// ZNAXISn for a compressed image)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgiszll(
+    fptr: *mut fitsfile,  /* I - FITS file pointer                     */
+    nlen: c_int,          /* I - number of axes to return              */
+    naxes: *mut LONGLONG, /* O - size of image dimensions              */
+    status: *mut c_int,
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let naxes = slice::from_raw_parts_mut(naxes, nlen as usize);
+
+        ffgiszll_safe(fptr, nlen, naxes, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the size of the image dimensions (= NAXISn keywords for normal image, or
+/// ZNAXISn for a compressed image)
+pub fn ffgiszll_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                     */
+    nlen: c_int,            /* I - number of axes to return              */
+    naxes: &mut [LONGLONG], /* O - size of image dimensions              */
+    status: &mut c_int,
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        }
+    }
+
+    if fptr.Fptr.hdutype == IMAGE_HDU {
+        let naxis = cmp::min(fptr.Fptr.imgdim, nlen) as usize;
+        let mut ii: usize = 0;
+        while ii < naxis {
+            naxes[ii] = fptr.Fptr.imgnaxis[ii];
+            ii += 1
+        }
+    } else if fptr.Fptr.compressimg != 0 {
+        let naxis = cmp::min(fptr.Fptr.zndim, nlen) as usize;
+
+        let mut ii: usize = 0;
+        while ii < naxis {
+            naxes[ii] = fptr.Fptr.znaxis[ii] as LONGLONG;
+            ii += 1
+        }
+    } else {
+        *status = NOT_IMAGE;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move to Absolute Header Data unit.  Move to the specified HDU
+/// and read the header to initialize the table structure.  Note that extnum
+/// is one based, so the primary array is extnum = 1.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffmahd(
+    fptr: *mut fitsfile, /* I - FITS file pointer             */
+    hdunum: c_int,       /* I - number of the HDU to move to  */
+    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2 */
+    status: *mut c_int,  /* IO - error status                 */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let exttype = exttype.as_mut();
+
+        ffmahd_safe(fptr, hdunum, exttype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move to Absolute Header Data unit.  Move to the specified HDU
+/// and read the header to initialize the table structure.  Note that extnum
+/// is one based, so the primary array is extnum = 1.
+pub(crate) fn ffmahd_safe(
+    fptr: &mut fitsfile,         /* I - FITS file pointer             */
+    hdunum: c_int,               /* I - number of the HDU to move to  */
+    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2 */
+    status: &mut c_int,          /* IO - error status                 */
+) -> c_int {
+    let mut moveto = 0;
+    let mut tstatus = 0;
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut ptr: *mut LONGLONG = ptr::null_mut();
+
+    let mut exttype = exttype;
+
+    unsafe {
+        if *status > 0 {
+            return *status;
+        } else if hdunum < 1 {
+            *status = BAD_HDU_NUM;
+            return *status;
+        } else if hdunum >= fptr.Fptr.MAXHDU {
+            /* allocate more space for the headstart array */
+            // HEAP ALLOCATION
+            let l = fptr.Fptr.MAXHDU as usize + 1;
+            let mut vo = Vec::from_raw_parts(fptr.Fptr.headstart, l, l);
+
+            if vo.try_reserve_exact(1000).is_err() {
+                *status = MEMORY_ALLOCATION;
+                return *status;
+            } else {
+                (ptr, _, _) = vo.into_raw_parts();
+                fptr.Fptr.MAXHDU += 1000;
+                fptr.Fptr.headstart = ptr;
+            }
+        }
+
+        /* set logical HDU position to the actual position, in case they differ */
+        fptr.HDUposition = fptr.Fptr.curhdu;
+
+        while (fptr.Fptr.curhdu) + 1 != hdunum {
+            /* at the correct HDU? */
+
+            /* move directly to the extension if we know that it exists,
+            otherwise move to the highest known extension.  */
+
+            moveto = cmp::min(hdunum - 1, (fptr.Fptr.maxhdu) + 1);
+
+            /* test if HDU exists */
+            let headstart = fptr.Fptr.get_headstart_as_slice();
+            if headstart[moveto as usize] < fptr.Fptr.logfilesize {
+                if ffchdu(fptr, status) <= 0 {
+                    /* close out the current HDU */
+
+                    if ffgext(fptr, moveto, exttype.as_deref_mut(), status) > 0 {
+                        /* failed to get the requested extension */
+                        tstatus = 0;
+                        ffrhdu_safer(fptr, exttype.as_deref_mut(), &mut tstatus);
+                        /* restore the CHDU */
+                    };
+                };
+            } else {
+                *status = END_OF_FILE;
+            }
+            if *status > 0 {
+                if *status != END_OF_FILE {
+                    /* don't clutter up the message stack in the common case of */
+                    /* simply hitting the end of file (often an expected error) */
+
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Failed to move to HDU number {} (ffmahd).",
+                        hdunum,
+                    );
+
+                    ffpmsg_slice(&message);
+                }
+                return *status;
+            };
+        }
+
+        if let Some(exttype) = exttype {
+            ffghdt_safe(fptr, exttype, status);
+        }
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move a Relative number of Header Data units.  Offset to the specified
+/// extension and read the header to initialize the HDU structure.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffmrhd(
+    fptr: *mut fitsfile, /* I - FITS file pointer                    */
+    hdumov: c_int,       /* I - rel. no. of HDUs to move by (+ or -) */
+    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2        */
+    status: *mut c_int,  /* IO - error status                        */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let exttype = exttype.as_mut();
+
+        ffmrhd_safe(fptr, hdumov, exttype, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move a Relative number of Header Data units.  Offset to the specified
+/// extension and read the header to initialize the HDU structure.
+pub fn ffmrhd_safe(
+    fptr: &mut fitsfile,         /* I - FITS file pointer                    */
+    hdumov: c_int,               /* I - rel. no. of HDUs to move by (+ or -) */
+    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2        */
+    status: &mut c_int,          /* IO - error status                        */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    let extnum = fptr.HDUposition + 1 + hdumov; /* the absolute HDU number */
+    ffmahd_safe(fptr, extnum, exttype, status); /* move to the HDU */
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move to the next HDU with a given extension type (IMAGE_HDU, ASCII_TBL,
+/// BINARY_TBL, or ANY_HDU), extension name (EXTNAME or HDUNAME keyword),
+/// and EXTVERS keyword values.  If hduvers = 0, then move to the first HDU
+/// with the given type and name regardless of EXTVERS value.  If no matching
+/// HDU is found in the file, then the current open HDU will remain unchanged.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffmnhd(
+    fptr: *mut fitsfile,
+    exttype: c_int,
+    hduname: *const c_char,
+    hduver: c_int,
+    status: *mut c_int,
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(hduname);
+
+        ffmnhd_safe(fptr, exttype, hduname, hduver, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Move to the next HDU with a given extension type (IMAGE_HDU, ASCII_TBL,
+/// BINARY_TBL, or ANY_HDU), extension name (EXTNAME or HDUNAME keyword),
+/// and EXTVERS keyword values.  If hduvers = 0, then move to the first HDU
+/// with the given type and name regardless of EXTVERS value.  If no matching
+/// HDU is found in the file, then the current open HDU will remain unchanged.
+pub fn ffmnhd_safe(
+    fptr: &mut fitsfile,
+    exttype: c_int,
+    hduname: &[c_char],
+    hduver: c_int,
+    status: &mut c_int,
+) -> c_int {
+    let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let ii: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut alttype: c_int = 0;
+    let mut extnum: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut matched: c_int = 0;
+    let mut exact: c_int = 0;
+    let mut slen = 0;
+    let mut putback: c_int = 0;
+    let mut chopped: c_int = 0;
+    let mut extver: c_long = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    extnum = fptr.HDUposition + 1; /* save the current HDU number */
+
+    /*
+       This is a kludge to deal with a special case where the
+       user specified a hduname that ended with a # character, which
+       CFITSIO previously interpreted as a flag to mean "don't copy any
+       other HDUs in the file into the virtual file in memory.  If the
+       remaining hduname does not end with a # character (meaning that
+       the user originally entered a hduname ending in 2 # characters)
+       then there is the possibility that the # character should be
+       treated literally, if the actual EXTNAME also ends with a #.
+       Setting putback = 1 means that we need to test for this case later on.
+    */
+
+    if fptr.Fptr.only_one != 0 {
+        /* if true, name orignally ended with a # */
+        slen = strlen_safe(hduname);
+        if hduname[slen - 1] != bb(b'#') {
+            /* This will fail if real EXTNAME value */
+            putback = 1; /*  ends with 2 # characters. */
+        }
+    }
+
+    let mut ii = 1;
+    loop
+    /* loop over all HDUs until EOF */
+    {
+        tstatus = 0;
+        if ffmahd_safe(fptr, ii, Some(&mut hdutype), &mut tstatus) != 0
+        /* move to next HDU */
+        {
+            ffmahd_safe(fptr, extnum, None, status); /* restore original file position */
+            *status = BAD_HDU_NUM; /* couldn't find desired HDU */
+            return *status;
+        }
+
+        alttype = -1;
+        if fits_is_compressed_image_safe(fptr, status) != 0 {
+            alttype = BINARY_TBL;
+        }
+
+        /* Does this HDU have a matching type? */
+        if exttype == ANY_HDU || hdutype == exttype || hdutype == alttype {
+            ffmaky_safe(fptr, 2, status); /* reset to the 2nd keyword in the header */
+            if ffgkys_safe(fptr, cs!("EXTNAME"), &mut extname, None, &mut tstatus) <= 0 {
+                /* get keyword */
+                if putback != 0 {
+                    /* more of the kludge */
+                    /* test if the EXTNAME value ends with a #;  if so, chop it  */
+                    /* off before comparing the strings */
+                    chopped = 0;
+                    slen = strlen_safe(&extname);
+                    if extname[slen - 1] == bb(b'#') {
+                        extname[slen - 1] = 0;
+                        chopped = 1;
+                    }
+                }
+
+                /* see if the strings are an exact match */
+                ffcmps_safe(
+                    hduname,
+                    &extname,
+                    CASEINSEN as c_int,
+                    &mut matched,
+                    &mut exact,
+                );
+            }
+
+            /* if EXTNAME keyword doesn't exist, or it does not match, then try HDUNAME */
+            if tstatus != 0 || exact == 0 {
+                tstatus = 0;
+                if ffgkys_safe(fptr, cs!("HDUNAME"), &mut extname, None, &mut tstatus) <= 0 {
+                    if putback != 0 {
+                        /* more of the kludge */
+                        chopped = 0;
+                        slen = strlen_safe(&extname);
+                        if extname[slen - 1] == bb(b'#') {
+                            extname[slen - 1] = 0; /* chop off the # */
+                            chopped = 1;
+                        }
+                    }
+
+                    /* see if the strings are an exact match */
+                    ffcmps_safe(
+                        hduname,
+                        &extname,
+                        CASEINSEN as c_int,
+                        &mut matched,
+                        &mut exact,
+                    );
+                }
+            }
+
+            if tstatus == 0 && exact != 0
+            /* found a matching name */
+            {
+                if hduver != 0
+                /* need to check if version numbers match? */
+                {
+                    if ffgkyj_safe(fptr, cs!("EXTVER"), &mut extver, None, &mut tstatus) > 0 {
+                        extver = 1; /* assume default EXTVER value */
+                    }
+
+                    if extver == hduver as c_long {
+                        if chopped != 0 {
+                            /* The # was literally part of the name, not a flag */
+                            fptr.Fptr.only_one = 0;
+                        }
+                        return *status; /* found matching name and vers */
+                    }
+                } else {
+                    if chopped != 0 {
+                        /* The # was literally part of the name, not a flag */
+                        fptr.Fptr.only_one = 0;
+                    }
+                    return *status; /* found matching name */
+                }
+            } /* end of !tstatus && exact */
+        } /* end of matching HDU type */
+        ii += 1;
+    } /* end of loop over HDUs */
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+///  Return the number of HDUs that currently exist in the file.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffthdu(
+    fptr: *mut fitsfile, /* I - FITS file pointer                    */
+    nhdu: *mut c_int,    /* O - number of HDUs in the file           */
+    status: *mut c_int,  /* IO - error status                        */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        if *status > 0 {
+            return *status;
+        }
+
+        let extnum = fptr.HDUposition + 1; /* save the current HDU number */
+        *nhdu = extnum - 1;
+
+        /* if the CHDU is empty or not completely defined, just return */
+        if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+            return *status;
+        }
+
+        /* loop until EOF */
+        let mut tstatus = 0;
+        let mut ii = extnum;
+        while ffmahd_safe(fptr, ii, None, &mut tstatus) <= 0 {
+            *nhdu = ii;
+            ii += 1
+        }
+        ffmahd_safe(fptr, extnum, None, status); /* restore orig file position */
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get Extension.  Move to the specified extension and initialize the
+/// HDU structure.
+pub(crate) fn ffgext(
+    fptr: &mut fitsfile,         /* I - FITS file pointer                */
+    hdunum: c_int,               /* I - no. of HDU to move get (0 based) */
+    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2    */
+    status: &mut c_int,          /* IO - error status                    */
+) -> c_int {
+    let mut xcurhdu: c_int = 0;
+    let mut xmaxhdu: c_int = 0;
+    let mut xheadend: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+
+    if ffmbyt_safe(fptr, headstart[hdunum as usize], REPORT_EOF, status) <= 0 {
+        /* temporarily save current values, in case of error */
+        xcurhdu = fptr.Fptr.curhdu;
+        xmaxhdu = fptr.Fptr.maxhdu;
+        xheadend = fptr.Fptr.headend;
+
+        /* set new parameter values */
+        fptr.Fptr.curhdu = hdunum;
+        fptr.HDUposition = hdunum;
+        fptr.Fptr.maxhdu = cmp::max(fptr.Fptr.maxhdu, hdunum);
+        fptr.Fptr.headend = fptr.Fptr.logfilesize; /* set max size */
+
+        if unsafe { ffrhdu_safer(fptr, exttype, status) } > 0 {
+            /* failed to get the new HDU, so restore previous values */
+            fptr.Fptr.curhdu = xcurhdu;
+            fptr.HDUposition = xcurhdu;
+            fptr.Fptr.maxhdu = xmaxhdu;
+            fptr.Fptr.headend = xheadend;
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert 2880-byte blocks at the end of the current header or data unit
+pub(crate) fn ffiblk(
+    fptr: &mut fitsfile, /* I - FITS file pointer               */
+    nblock: c_long,      /* I - no. of blocks to insert         */
+    headdata: c_int,     /* I - insert where? 0=header, 1=data  */
+    /*     -1=beginning of file            */
+    status: &mut c_int, /* IO - error status                   */
+) -> c_int {
+    let mut typhdu: c_int = 0;
+    let mut insertpt: LONGLONG = 0;
+    let mut charfill: c_char = 0;
+
+    let buff1: [c_char; BLOCK_LEN] = [0; BLOCK_LEN];
+    let buff2: [c_char; BLOCK_LEN] = [0; BLOCK_LEN];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 || nblock <= 0 {
+        return *status;
+    }
+
+    let mut tstatus = *status;
+
+    if headdata == 0 || fptr.Fptr.hdutype == ASCII_TBL {
+        charfill = 32; /* headers and ASCII tables have space (32) fill */
+    } else {
+        charfill = 0; /* images and binary tables have zero fill */
+    }
+
+    if headdata == 0 {
+        insertpt = fptr.Fptr.datastart; /* insert just before data, or */
+    } else if headdata == -1 {
+        insertpt = 0;
+        strcpy_safe(
+            &mut card,
+            cs!("XTENSION= 'IMAGE   '          / IMAGE extension"),
+        );
+    } else
+    /* at end of data, */
+    {
+        insertpt = fptr.Fptr.datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize;
+        insertpt = ((insertpt + (BL!() - 1)) / BL!()) * BL!(); /* start of block */
+
+        /* the following formula is wrong because the current data unit
+           may have been extended without updating the headstart value
+           of the following HDU.
+        */
+        /* insertpt = fptr.Fptr.headstart[fptr.Fptr.curhdu + 1]; */
+    }
+
+    let mut inbuff = buff1; /* set pointers to input and output buffers */
+    let mut outbuff = buff2;
+
+    outbuff.fill(charfill); /* initialize buffer with fill */
+
+    if nblock == 1 {
+        /* insert one block */
+
+        if headdata == -1 {
+            ffmrec_safe(fptr, 1, &card, status); /* change SIMPLE -> XTENSION */
+        }
+
+        ffmbyt_safe(fptr, insertpt, REPORT_EOF, status); /* move to 1st point */
+        ffgbyt(fptr, BL!(), cast_slice_mut(&mut inbuff), status); /* read first block of bytes */
+
+        while *status <= 0 {
+            ffmbyt_safe(fptr, insertpt, REPORT_EOF, status); /* insert point */
+            ffpbyt(fptr, BL!(), cast_slice(&outbuff), status); /* write the output buffer */
+
+            if *status > 0 {
+                return *status;
+            }
+
+            std::mem::swap(&mut inbuff, &mut outbuff);
+            insertpt += BL!(); /* increment insert point by 1 block */
+
+            ffmbyt_safe(fptr, insertpt, REPORT_EOF, status); /* move to next block */
+            ffgbyt(fptr, BL!(), cast_slice_mut(&mut inbuff), status); /* read block of bytes */
+        }
+
+        *status = tstatus; /* reset status value */
+        ffmbyt_safe(fptr, insertpt, IGNORE_EOF, status); /* move back to insert pt */
+        ffpbyt(fptr, BL!(), cast_slice(&outbuff), status); /* write the final block */
+    } else {
+        /*  inserting more than 1 block */
+
+        let savehdu = fptr.Fptr.curhdu; /* save the current HDU number */
+        tstatus = *status;
+        while *status <= 0 {
+            /* find the last HDU in file */
+            ffmrhd_safe(fptr, 1, Some(&mut typhdu), status);
+        }
+
+        if *status == END_OF_FILE {
+            *status = tstatus;
+        }
+
+        ffmahd_safe(fptr, savehdu + 1, Some(&mut typhdu), status); /* move back to CHDU */
+        if headdata == -1 {
+            ffmrec_safe(fptr, 1, &card, status); /* NOW change SIMPLE -> XTENSION */
+        }
+
+        /* number of 2880-byte blocks that have to be shifted down */
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        let nshift = ((headstart[(fptr.Fptr.maxhdu + 1) as usize] - insertpt) / BL!()) as c_long;
+        /* position of last block in file to be shifted */
+        let mut jpoint = headstart[(fptr.Fptr.maxhdu + 1) as usize] - BL!();
+
+        /* move all the blocks starting at end of file working backwards */
+        for ii in 0..(nshift as usize) {
+            /* move to the read start position */
+            if ffmbyt_safe(fptr, jpoint, REPORT_EOF, status) > 0 {
+                return *status;
+            }
+
+            ffgbyt(fptr, BL!(), cast_slice_mut(&mut inbuff), status); /* read one record */
+
+            /* move forward to the write postion */
+            ffmbyt_safe(
+                fptr,
+                jpoint + (nblock * BL!()) as LONGLONG,
+                IGNORE_EOF,
+                status,
+            );
+
+            ffpbyt(fptr, BL!(), cast_slice_mut(&mut inbuff), status); /* write the record */
+
+            jpoint -= BL!();
+        }
+
+        /* move back to the write start postion (might be EOF) */
+        ffmbyt_safe(fptr, insertpt, IGNORE_EOF, status);
+
+        for ii in 0..(nblock as usize) {
+            /* insert correct fill value */
+            ffpbyt(fptr, BL!(), cast_slice(&outbuff), status);
+        }
+    }
+
+    if headdata == 0 {
+        /* update data start address */
+        fptr.Fptr.datastart += (nblock * BL!()) as LONGLONG;
+    }
+
+    /* update following HDU addresses */
+    let range = (fptr.Fptr.curhdu as usize)..=(fptr.Fptr.maxhdu as usize);
+    let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+    for ii in range {
+        headstart[ii + 1] += (nblock * BL!()) as LONGLONG;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the type classification of the input header record
+/// ```text
+/// TYP_STRUC_KEY: SIMPLE, BITPIX, NAXIS, NAXISn, EXTEND, BLOCKED,
+///                GROUPS, PCOUNT, GCOUNT, END
+///                XTENSION, TFIELDS, TTYPEn, TBCOLn, TFORMn, THEAP,
+///                 and the first 4 COMMENT keywords in the primary array
+///                 that define the FITS format.
+///
+/// TYP_CMPRS_KEY:
+///          The keywords used in the compressed image format
+///                ZIMAGE, ZCMPTYPE, ZNAMEn, ZVALn, ZTILEn,
+///                ZBITPIX, ZNAXISn, ZSCALE, ZZERO, ZBLANK,
+///                EXTNAME = 'COMPRESSED_IMAGE'
+///        ZSIMPLE, ZTENSION, ZEXTEND, ZBLOCKED, ZPCOUNT, ZGCOUNT
+///        ZQUANTIZ, ZDITHER0
+///
+/// TYP_SCAL_KEY:  BSCALE, BZERO, TSCALn, TZEROn
+///
+/// TYP_NULL_KEY:  BLANK, TNULLn
+///
+/// TYP_DIM_KEY:   TDIMn
+///
+/// TYP_RANG_KEY:  TLMINn, TLMAXn, TDMINn, TDMAXn, DATAMIN, DATAMAX
+///
+/// TYP_UNIT_KEY:  BUNIT, TUNITn
+///
+/// TYP_DISP_KEY:  TDISPn
+///
+/// TYP_HDUID_KEY: EXTNAME, EXTVER, EXTLEVEL, HDUNAME, HDUVER, HDULEVEL
+///
+/// TYP_CKSUM_KEY  CHECKSUM, DATASUM
+///
+/// TYP_WCS_KEY:
+///         Primary array:
+///                WCAXES, CTYPEn, CUNITn, CRVALn, CRPIXn, CROTAn, CDELTn
+///                CDj_is, PVj_ms, LONPOLEs, LATPOLEs
+///
+///         Pixel list:
+///                TCTYPn, TCTYns, TCUNIn, TCUNns, TCRVLn, TCRVns, TCRPXn, TCRPks,
+///                TCDn_k, TCn_ks, TPVn_m, TPn_ms, TCDLTn, TCROTn
+///
+///         Bintable vector:
+///                jCTYPn, jCTYns, jCUNIn, jCUNns, jCRVLn, jCRVns, iCRPXn, iCRPns,
+///                jiCDn, jiCDns, jPVn_m, jPn_ms, jCDLTn, jCROTn
+///              
+/// TYP_REFSYS_KEY:
+///                 EQUINOXs, EPOCH, MJD-OBSs, RADECSYS, RADESYSs
+///
+/// TYP_COMM_KEY:  COMMENT, HISTORY, (blank keyword)
+///
+/// TYP_CONT_KEY:  CONTINUE
+///
+/// TYP_USER_KEY:  all other keywords
+/// ```
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgkcl(tcard: *mut c_char) -> c_int {
+    unsafe {
+        raw_to_slice!(tcard);
+
+        ffgkcl_safe(tcard)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
+    let mut card: [c_char; 20] = [0; 20];
+
+    card[0] = 0;
+
+    strncat_safe(&mut card, tcard, 8); /* copy the keyword name */
+    strcat_safe(&mut card, cs!("        ")); /* append blanks to make at least 8 chars long */
+    ffupch_safe(&mut card); /* make sure it is in upper case */
+
+    let card1 = &card[1..]; /* pointer to 2nd character */
+    let card5 = card[5]; /* pointer to 6th character */
+
+    /* the strncmp function is slow, so try to be more efficient */
+    if card[0] == bb(b'Z') {
+        if FSTRNCMP(card1, cs!(b"IMAGE  "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"CMPTYPE"), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"NAME"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_CMPRS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"VAL"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_CMPRS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"TILE"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_CMPRS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"BITPIX "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"NAXIS"), 5) == 0 {
+            if (card[6] >= bb(b'0') && card[6] <= bb(b'9')) || (card[6] == bb(b' ')) {
+                return TYP_CMPRS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"SCALE  "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"ZERO   "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"BLANK  "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"SIMPLE "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"TENSION"), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"EXTEND "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"BLOCKED"), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"PCOUNT "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"GCOUNT "), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"QUANTIZ"), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        } else if FSTRNCMP(card1, cs!(b"DITHER0"), 7) == 0 {
+            return TYP_CMPRS_KEY;
+        };
+    } else if card[0] == bb(b' ') {
+        return TYP_COMM_KEY;
+    } else if card[0] == bb(b'B') {
+        if FSTRNCMP(card1, cs!(b"ITPIX  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"LOCKED "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"LANK   "), 7) == 0 {
+            return TYP_NULL_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"SCALE  "), 7) == 0 {
+            return TYP_SCAL_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ZERO   "), 7) == 0 {
+            return TYP_SCAL_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"UNIT   "), 7) == 0 {
+            return TYP_UNIT_KEY;
+        };
+    } else if card[0] == bb(b'C') {
+        /* new comment string starting Oct 2001 */
+        if FSTRNCMP(card1, cs!(b"OMMENT"), 6) == 0 {
+            if FSTRNCMP(
+                tcard,
+                cs!(b"COMMENT   and Astrophysics\', volume 376, page 3"),
+                47,
+            ) == 0
+            {
+                return TYP_STRUC_KEY;
+            }
+
+            /* original COMMENT strings from 1993 - 2001 */
+            if FSTRNCMP(
+                tcard,
+                cs!(b"COMMENT   FITS (Flexible Image Transport System"),
+                47,
+            ) == 0
+            {
+                return TYP_STRUC_KEY;
+            }
+            if FSTRNCMP(
+                tcard,
+                cs!(b"COMMENT   Astrophysics Supplement Series v44/p3"),
+                47,
+            ) == 0
+            {
+                return TYP_STRUC_KEY;
+            }
+            if FSTRNCMP(
+                tcard,
+                cs!(b"COMMENT   Contact the NASA Science Office of St"),
+                47,
+            ) == 0
+            {
+                return TYP_STRUC_KEY;
+            }
+            if FSTRNCMP(
+                tcard,
+                cs!(b"COMMENT   FITS Definition document #100 and oth"),
+                47,
+            ) == 0
+            {
+                return TYP_STRUC_KEY;
+            }
+            if card[7] == bb(b' ') {
+                return TYP_COMM_KEY;
+            } else {
+                return TYP_USER_KEY;
+            };
+        }
+        if FSTRNCMP(card1, cs!(b"HECKSUM"), 7) == 0 {
+            return TYP_CKSUM_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ONTINUE"), 7) == 0 {
+            return TYP_CONT_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"TYPE"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"UNIT"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"RVAL"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"RPIX"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"ROTA"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"RDER"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"SYER"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"DELT"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if card1[0] == bb(b'D') && card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+            return TYP_WCS_KEY;
+        };
+    } else if card[0] == bb(b'D') {
+        if FSTRNCMP(card1, cs!(b"ATASUM "), 7) == 0 {
+            return TYP_CKSUM_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ATAMIN "), 7) == 0 {
+            return TYP_RANG_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ATAMAX "), 7) == 0 {
+            return TYP_RANG_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ATE-OBS"), 7) == 0 {
+            return TYP_REFSYS_KEY;
+        };
+    } else if card[0] == bb(b'E') {
+        if FSTRNCMP(card1, cs!(b"XTEND  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ND     "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"XTNAME "), 7) == 0 {
+            /* check for special compressed image value */
+            if FSTRNCMP(tcard, cs!(b"EXTNAME = \'COMPRESSED_IMAGE\'"), 28) == 0 {
+                return TYP_CMPRS_KEY;
+            } else {
+                return TYP_HDUID_KEY;
+            };
+        }
+        if FSTRNCMP(card1, cs!(b"XTVER  "), 7) == 0 {
+            return TYP_HDUID_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"XTLEVEL"), 7) == 0 {
+            return TYP_HDUID_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"QUINOX"), 6) == 0 {
+            return TYP_REFSYS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"QUI"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+            return TYP_REFSYS_KEY;
+        };
+        if FSTRNCMP(card1, cs!(b"POCH   "), 7) == 0 {
+            return TYP_REFSYS_KEY;
+        };
+    } else if card[0] == bb(b'G') {
+        if FSTRNCMP(card1, cs!(b"COUNT  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ROUPS  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        };
+    } else if card[0] == bb(b'H') {
+        if FSTRNCMP(card1, cs!(b"DUNAME "), 7) == 0 {
+            return TYP_HDUID_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"DUVER  "), 7) == 0 {
+            return TYP_HDUID_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"DULEVEL"), 7) == 0 {
+            return TYP_HDUID_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ISTORY"), 6) == 0 {
+            if card[7] == bb(b' ') {
+                return TYP_COMM_KEY;
+            } else {
+                return TYP_USER_KEY;
+            };
+        };
+    } else if card[0] == bb(b'L') {
+        if FSTRNCMP(card1, cs!(b"ONPOLE"), 6) == 0 {
+            return TYP_WCS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ATPOLE"), 6) == 0 {
+            return TYP_WCS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ONP"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"ATP"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
+        {
+            return TYP_WCS_KEY;
+        };
+    } else if card[0] == bb(b'M') {
+        if FSTRNCMP(card1, cs!(b"JD-OBS "), 7) == 0 {
+            return TYP_REFSYS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"JDOB"), 4) == 0 && card[5] >= bb(b'0') && card[5] <= bb(b'9') {
+            return TYP_REFSYS_KEY;
+        };
+    } else if card[0] == bb(b'N') {
+        if FSTRNCMP(card1, cs!(b"AXIS"), 4) == 0
+            && ((card5 >= bb(b'0') && card5 <= bb(b'9')) || (card5 == bb(b' ')))
+        {
+            return TYP_STRUC_KEY;
+        };
+    } else if card[0] == bb(b'P') {
+        if FSTRNCMP(card1, cs!(b"COUNT  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        }
+        if card1[0] == bb(b'C') {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if card1[0] == bb(b'V') {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if card1[0] == bb(b'S') && card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+            return TYP_WCS_KEY;
+        };
+    } else if card[0] == bb(b'R') {
+        if FSTRNCMP(card1, cs!(b"ADECSYS"), 7) == 0 {
+            return TYP_REFSYS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ADESYS"), 6) == 0 {
+            return TYP_REFSYS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"ADE"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+            return TYP_REFSYS_KEY;
+        };
+    } else if card[0] == bb(b'S') {
+        if FSTRNCMP(card1, cs!(b"IMPLE  "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        };
+    } else if card[0] == bb(b'T') {
+        if FSTRNCMP(card1, cs!(b"TYPE"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_STRUC_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"FORM"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_STRUC_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"BCOL"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_STRUC_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"FIELDS "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        } else if FSTRNCMP(card1, cs!(b"HEAP   "), 7) == 0 {
+            return TYP_STRUC_KEY;
+        } else if FSTRNCMP(card1, cs!(b"NULL"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_NULL_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"DIM"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_DIM_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"UNIT"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_UNIT_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"DISP"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_DISP_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"SCAL"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_SCAL_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"ZERO"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_SCAL_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"LMIN"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_RANG_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"LMAX"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_RANG_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"DMIN"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_RANG_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"DMAX"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_RANG_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CTYP"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CTY"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CUNI"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CUN"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CRVL"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CRV"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CRPX"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CRP"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CROT"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CDLT"), 4) == 0 {
+            if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CDE"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CRD"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CSY"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"WCS"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"C"), 1) == 0 {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"P"), 1) == 0 {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"V"), 1) == 0 {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"S"), 1) == 0 && card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+            return TYP_WCS_KEY;
+        };
+    } else if card[0] == bb(b'X') {
+        if FSTRNCMP(card1, cs!(b"TENSION"), 7) == 0 {
+            return TYP_STRUC_KEY;
+        };
+    } else if card[0] == bb(b'W') {
+        if FSTRNCMP(card1, cs!(b"CSAXES"), 6) == 0 {
+            return TYP_WCS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"CSNAME"), 6) == 0 {
+            return TYP_WCS_KEY;
+        }
+        if FSTRNCMP(card1, cs!(b"CAX"), 3) == 0 {
+            if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"CSN"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
+        {
+            return TYP_WCS_KEY;
+        };
+    } else if card[0] >= bb(b'0') && card[0] <= bb(b'9') {
+        if card1[0] == bb(b'C') {
+            if FSTRNCMP(card1, cs!(b"CTYP"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CTY"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CUNI"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CUN"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CRVL"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CRV"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CRPX"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CRP"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CROT"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CDLT"), 4) == 0 {
+                if card5 >= bb(b'0') && card5 <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CDE"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CRD"), 3) == 0 {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY;
+                };
+            } else if FSTRNCMP(card1, cs!(b"CSY"), 3) == 0
+                && card[4] >= bb(b'0')
+                && card[4] <= bb(b'9')
+            {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"V"), 1) == 0 {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if FSTRNCMP(card1, cs!(b"S"), 1) == 0 {
+            if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+                return TYP_WCS_KEY;
+            };
+        } else if card1[0] >= bb(b'0') && card1[0] <= bb(b'9') {
+            /* 2 digits at beginning of keyword */
+
+            if (card[2] == bb(b'P')) && (card[3] == bb(b'C')) {
+                if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+                    return TYP_WCS_KEY; /*  ijPCn keyword */
+                };
+            } else if (card[2] == bb(b'C'))
+                && (card[3] == bb(b'D'))
+                && card[4] >= bb(b'0')
+                && card[4] <= bb(b'9')
+            {
+                return TYP_WCS_KEY; /*  ijCDn keyword */
+            };
+        };
+    }
+
+    TYP_USER_KEY /* by default all others are user keywords */
+}
+
+/*--------------------------------------------------------------------------*/
+/// determine implicit datatype of input string.
+/// This assumes that the string conforms to the FITS standard
+/// for keyword values, so may not detect all invalid formats.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffdtyp(
+    cval: *const c_char, /* I - formatted string representation of the value */
+    dtype: *mut c_char,  /* O - datatype code: C, L, F, I, or X */
+    status: *mut c_int,  /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let dtype = dtype.as_mut().expect(NULL_MSG);
+        raw_to_slice!(cval);
+
+        if *status > 0 {
+            /* inherit input status value if > 0 */
+            return *status;
+        }
+
+        if cval[0] == 0 {
+            *status = VALUE_UNDEFINED;
+            return *status;
+        } else if cval[0] == bb(b'\\') {
+            *dtype = bb(b'C'); /* character string starts with a quote */
+        } else if cval[0] == bb(b'T') || cval[0] == bb(b'F') {
+            *dtype = bb(b'L'); /* logical = T or F character */
+        } else if cval[0] == bb(b'(') {
+            *dtype = bb(b'X'); /* complex datatype "(1.2, -3.4)" */
+        } else if strchr_safe(cval, bb(b'.')).is_some() {
+            *dtype = bb(b'F'); /* float usualy contains a decimal point */
+        } else if strchr_safe(cval, bb(b'E')).is_some() || strchr_safe(cval, bb(b'D')).is_some() {
+            *dtype = bb(b'F'); /* exponential contains a E or D */
+        } else {
+            *dtype = bb(b'I'); /* if none of the above assume it is integer */
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// determine implicit datatype of input string.
+/// This assumes that the string conforms to the FITS standard
+/// for keyword values, so may not detect all invalid formats.
+pub fn ffdtyp_safe(
+    cval: &[c_char],    /* I - formatted string representation of the value */
+    dtype: &mut c_char, /* O - datatype code: C, L, F, I, or X */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED;
+        return *status;
+    } else if cval[0] == bb(b'\\') {
+        *dtype = bb(b'C'); /* character string starts with a quote */
+    } else if cval[0] == bb(b'T') || cval[0] == bb(b'F') {
+        *dtype = bb(b'L'); /* logical = T or F character */
+    } else if cval[0] == bb(b'(') {
+        *dtype = bb(b'X'); /* complex datatype "(1.2, -3.4)" */
+    } else if strchr_safe(cval, bb(b'.')).is_some() {
+        *dtype = bb(b'F'); /* float usualy contains a decimal point */
+    } else if strchr_safe(cval, bb(b'E')).is_some() || strchr_safe(cval, bb(b'D')).is_some() {
+        *dtype = bb(b'F'); /* exponential contains a E or D */
+    } else {
+        *dtype = bb(b'I'); /* if none of the above assume it is integer */
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// determine implicit datatype of input integer string.
+/// This assumes that the string conforms to the FITS standard
+/// for integer keyword value, so may not detect all invalid formats.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffinttyp(
+    cval: *mut c_char,    /* I - formatted string representation of the integer */
+    dtype: *mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
+    negative: *mut c_int, /* O - is cval negative? */
+    status: *mut c_int,   /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let dtype = dtype.as_mut().expect(NULL_MSG);
+        let negative = negative.as_mut().expect(NULL_MSG);
+        raw_to_slice!(cval);
+
+        if *status > 0 {
+            return *status; /* inherit input status value if > 0 */
+        }
+
+        *dtype = 0;
+        *negative = 0;
+
+        let mut p = 0;
+        if cval[0] == bb(b'+') {
+            p += 1; /* ignore leading + sign */
+        } else if cval[0] == bb(b'-') {
+            p += 1;
+            *negative = 1; /* this is a negative number */
+        }
+
+        if cval[0] == bb(b'0') {
+            while cval[0] == bb(b'0') {
+                p += 1; /* skip leading zeros */
+            }
+
+            if cval[0] == 0 {
+                /* the value is a string of 1 or more zeros */
+                *dtype = TSBYTE;
+                return *status;
+            };
+        }
+
+        let len = strlen_safe(&cval[p..]);
+        for ii in 0..len {
+            if !isdigit_safe(cval[p + ii]) {
+                *status = BAD_INTKEY;
+                return *status;
+            };
+        }
+
+        /* check for unambiguous cases, based on length of the string */
+        if len == 0 {
+            *status = VALUE_UNDEFINED;
+        } else if len < 3 {
+            *dtype = TSBYTE;
+        } else if len == 4 {
+            *dtype = TSHORT;
+        } else if len > 5 && len < 10 {
+            *dtype = TINT;
+        } else if len > 10 && len < 19 {
+            *dtype = TLONGLONG;
+        } else if len > 20 {
+            *status = BAD_INTKEY;
+        } else if (*negative) == 0 {
+            if len == 3 {
+                if strcmp_safe(&cval[p..], cs!(b"127")) <= 0 {
+                    *dtype = TSBYTE;
+                } else if strcmp_safe(&cval[p..], cs!(b"255")) <= 0 {
+                    *dtype = TBYTE;
+                } else {
+                    *dtype = TSHORT;
+                };
+            } else if len == 5 {
+                if strcmp_safe(&cval[p..], cs!(b"32767")) <= 0 {
+                    *dtype = TSHORT;
+                } else if strcmp_safe(&cval[p..], cs!(b"65535")) <= 0 {
+                    *dtype = TUSHORT;
+                } else {
+                    *dtype = TINT;
+                };
+            } else if len == 10 {
+                if strcmp_safe(&cval[p..], cs!(b"2147483647")) <= 0 {
+                    *dtype = TINT;
+                } else if strcmp_safe(&cval[p..], cs!(b"4294967295")) <= 0 {
+                    *dtype = TUINT;
+                } else {
+                    *dtype = TLONGLONG;
+                };
+            } else if len == 19 {
+                if strcmp_safe(&cval[p..], cs!(b"9223372036854775807")) <= 0 {
+                    *dtype = TLONGLONG;
+                } else {
+                    *dtype = TULONGLONG;
+                };
+            } else if len == 20 {
+                if strcmp_safe(&cval[p..], cs!(b"18446744073709551615")) <= 0 {
+                    *dtype = TULONGLONG;
+                } else {
+                    *status = BAD_INTKEY;
+                };
+            };
+        } else {
+            /* negative integers */
+
+            if len == 3 {
+                if strcmp_safe(&cval[p..], cs!(b"128")) <= 0 {
+                    *dtype = TSBYTE;
+                } else {
+                    *dtype = TSHORT;
+                };
+            } else if len == 5 {
+                if strcmp_safe(&cval[p..], cs!(b"32768")) <= 0 {
+                    *dtype = TSHORT;
+                } else {
+                    *dtype = TINT;
+                };
+            } else if len == 10 {
+                if strcmp_safe(&cval[p..], cs!(b"2147483648")) <= 0 {
+                    *dtype = TINT;
+                } else {
+                    *dtype = TLONGLONG;
+                };
+            } else if len == 19 {
+                if strcmp_safe(&cval[p..], cs!(b"9223372036854775808")) <= 0 {
+                    *dtype = TLONGLONG;
+                } else {
+                    *status = BAD_INTKEY;
+                };
+            };
+        }
+        *status
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// high level routine to convert formatted character string to its
+/// intrinsic data type
+pub(crate) fn ffc2x(
+    cval: &[c_char],    /* I - formatted string representation of the value */
+    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+    /* Only one of the following will be defined, depending on datatype */
+    ival: &mut c_long,   /* O - integer value       */
+    lval: &mut c_int,    /* O - logical value       */
+    sval: &mut [c_char], /* O - string value        */
+    dval: &mut f64,      /* O - double value        */
+    status: &mut c_int,  /* IO - error status */
+) -> c_int {
+    ffdtyp_safe(cval, dtype, status); /* determine the datatype */
+
+    if *dtype == bb(b'I') {
+        ffc2ii(cval, ival, status);
+    } else if *dtype == bb(b'F') {
+        ffc2dd(cval, dval, status);
+    } else if *dtype == bb(b'L') {
+        ffc2ll(cval, lval, status);
+    } else {
+        ffc2s(cval, sval, status); /* C and X formats */
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// high level routine to convert formatted character string to its
+/// intrinsic data type
+pub(crate) fn ffc2xx(
+    cval: &[c_char],    /* I - formatted string representation of the value */
+    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+
+    /* Only one of the following will be defined, depending on datatype */
+    ival: &mut LONGLONG, /* O - integer value       */
+    lval: &mut c_int,    /* O - logical value       */
+    sval: &mut [c_char], /* O - string value        */
+    dval: &mut f64,      /* O - double value        */
+    status: &mut c_int,  /* IO - error status */
+) -> c_int {
+    ffdtyp_safe(cval, dtype, status); /* determine the datatype */
+
+    if *dtype == bb(b'I') {
+        ffc2jj(cval, ival, status);
+    } else if *dtype == bb(b'F') {
+        ffc2dd(cval, dval, status);
+    } else if *dtype == bb(b'L') {
+        ffc2ll(cval, lval, status);
+    } else {
+        ffc2s(cval, sval, status); /* C and X formats */
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// High level routine to convert formatted character string to its
+/// intrinsic data type
+pub(crate) fn ffc2uxx(
+    cval: &[c_char],    /* I - formatted string representation of the value */
+    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+    /* Only one of the following will be defined, depending on datatype */
+    ival: &mut ULONGLONG, /* O - integer value       */
+    lval: &mut c_int,     /* O - logical value       */
+    sval: &mut [c_char],  /* O - string value        */
+    dval: &mut f64,       /* O - double value        */
+    status: &mut c_int,   /* IO - error status */
+) -> c_int {
+    ffdtyp_safe(cval, dtype, status); /* determine the datatype */
+
+    if *dtype == bb(b'I') {
+        ffc2ujj(cval, ival, status);
+    } else if *dtype == bb(b'F') {
+        ffc2dd(cval, dval, status);
+    } else if *dtype == bb(b'L') {
+        ffc2ll(cval, lval, status);
+    } else {
+        ffc2s(cval, sval, status); /* C and X formats */
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert formatted string to an integer value, doing implicit
+/// datatype conversion if necessary.
+pub(crate) fn ffc2i(
+    cval: &[c_char],    /* I - string representation of the value */
+    ival: &mut c_long,  /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; 81] = [0; 81];
+
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut lval: c_int = 0;
+    let mut dval: f64 = 0.0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED; /* null value string */
+        return *status;
+    }
+
+    /* convert the keyword to its native datatype */
+    ffc2x(
+        cval, &mut dtype, ival, &mut lval, &mut sval, &mut dval, status,
+    );
+
+    if dtype == bb(b'X') {
+        *status = BAD_INTKEY;
+    } else if dtype == bb(b'C') {
+        /* try reading the string as a number */
+        if ffc2dd(&sval, &mut dval, status) <= 0 {
+            if dval > (LONG_MAX as f64) || dval < (LONG_MIN as f64) {
+                *status = NUM_OVERFLOW;
+            } else {
+                *ival = dval as c_long;
+            };
+        };
+    } else if dtype == bb(b'F') {
+        if dval > (LONG_MAX as f64) || dval < (LONG_MIN as f64) {
+            *status = NUM_OVERFLOW;
+        } else {
+            *ival = dval as c_long;
+        };
+    } else if dtype == bb(b'L') {
+        *ival = lval as c_long;
+    }
+
+    if *status > 0 {
+        *ival = 0;
+
+        strcpy_safe(
+            &mut msg,
+            cs!("Error in ffc2i evaluating string as an integer: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+
+        return *status;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert formatted string to a LONGLONG integer value, doing implicit
+/// datatype conversion if necessary.
+pub(crate) fn ffc2j(
+    cval: &[c_char],     /* I - string representation of the value */
+    ival: &mut LONGLONG, /* O - numerical value of the input string */
+    status: &mut c_int,  /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; 81] = [0; 81];
+    let mut msg: [c_char; 81] = [0; 81];
+    let mut lval: c_int = 0;
+    let mut dval: f64 = 0.0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED; /* null value string */
+        return *status;
+    }
+
+    /* convert the keyword to its native datatype */
+    ffc2xx(
+        cval, &mut dtype, ival, &mut lval, &mut sval, &mut dval, status,
+    );
+
+    if dtype == bb(b'X') {
+        *status = BAD_INTKEY;
+    } else if dtype == bb(b'C') {
+        /* try reading the string as a number */
+        if ffc2dd(&sval, &mut dval, status) <= 0 {
+            if dval > LONGLONG_MAX as f64 || dval < LONGLONG_MIN as f64 {
+                *status = NUM_OVERFLOW;
+            } else {
+                *ival = dval as LONGLONG;
+            }
+        }
+    } else if dtype == bb(b'F') {
+        if dval > LONGLONG_MAX as f64 || dval < LONGLONG_MIN as f64 {
+            *status = NUM_OVERFLOW;
+        } else {
+            *ival = dval as LONGLONG;
+        }
+    } else if dtype == bb(b'L') {
+        *ival = lval as LONGLONG;
+    }
+
+    if *status > 0 {
+        *ival = 0;
+        strcpy_safe(
+            &mut msg,
+            cs!("Error in ffc2j evaluating string as a long integer: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        return *status;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert formatted string to a ULONGLONG integer value, doing implicit
+/// datatype conversion if necessary.
+pub(crate) fn ffc2uj(
+    cval: &[c_char],      /* I - string representation of the value */
+    ival: &mut ULONGLONG, /* O - numerical value of the input string */
+    status: &mut c_int,   /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut lval = 0;
+    let mut dval: f64 = 0.0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED;
+        return *status;
+        /* null value string */
+    }
+
+    /* convert the keyword to its native datatype */
+    ffc2uxx(
+        cval, &mut dtype, ival, &mut lval, &mut sval, &mut dval, status,
+    );
+
+    if dtype == bb(b'X') {
+        *status = BAD_INTKEY;
+    } else if dtype == bb(b'C') {
+        /* try reading the string as a number */
+        if ffc2dd(&sval, &mut dval, status) <= 0 {
+            if dval > DULONGLONG_MAX || dval < -0.49 {
+                *status = NUM_OVERFLOW;
+            } else {
+                *ival = dval as ULONGLONG;
+            };
+        };
+    } else if dtype == bb(b'F') {
+        if dval > DULONGLONG_MAX || dval < -0.49 {
+            *status = NUM_OVERFLOW;
+        } else {
+            *ival = dval as ULONGLONG;
+        };
+    } else if dtype == bb(b'L') {
+        *ival = lval as ULONGLONG;
+    }
+
+    if *status > 0 {
+        *ival = 0;
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2j evaluating string as a long integer: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        return *status;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert formatted string to a logical value, doing implicit
+/// datatype conversion if necessary
+pub(crate) fn ffc2l(
+    cval: &[c_char],    /* I - string representation of the value */
+    lval: &mut c_int,   /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut ival: c_long = 0;
+    let mut dval: f64 = 0.0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED;
+        return *status;
+
+        /* null value string */
+    }
+
+    /* convert the keyword to its native datatype */
+    ffc2x(
+        cval, &mut dtype, &mut ival, lval, &mut sval, &mut dval, status,
+    );
+
+    if dtype == bb(b'C') || dtype == bb(b'X') {
+        *status = BAD_LOGICALKEY;
+    }
+
+    if *status > 0 {
+        *lval = 0;
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2l evaluating string as a logical: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        return *status;
+    }
+
+    if dtype == bb(b'I') {
+        if ival != 0 {
+            *lval = 1;
+        } else {
+            *lval = 0;
+        };
+    } else if dtype == bb(b'F') {
+        if dval != 0.0 {
+            *lval = 1;
+        } else {
+            *lval = 0;
+        };
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert formatted string to a real float value, doing implicit
+/// datatype conversion if necessary
+pub(crate) fn ffc2r(
+    cval: &[c_char],    /* I - string representation of the value */
+    fval: &mut f32,     /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut lval = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED;
+        return *status;
+        /* null value string */
+    }
+
+    ffdtyp_safe(cval, &mut dtype, status); /* determine the datatype */
+
+    if dtype == bb(b'I') || dtype == bb(b'F') {
+        ffc2rr(cval, fval, status);
+    } else if dtype == bb(b'L') {
+        ffc2ll(cval, &mut lval, status);
+        *fval = lval as f32;
+    } else if dtype == bb(b'C') {
+        /* try reading the string as a number */
+        ffc2s(cval, &mut sval, status);
+        ffc2rr(&sval, fval, status);
+    } else {
+        *status = BAD_FLOATKEY;
+    }
+
+    if *status > 0 {
+        *fval = 0.0;
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2r evaluating string as a float: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        return *status;
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert formatted string to a double value, doing implicit
+/// datatype conversion if necessary
+pub(crate) fn ffc2d(
+    cval: &[c_char],    /* I - string representation of the value */
+    dval: &mut f64,     /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut dtype: c_char = 0;
+    let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut lval = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == 0 {
+        *status = VALUE_UNDEFINED;
+        return *status;
+        /* null value string */
+    }
+
+    ffdtyp_safe(cval, &mut dtype, status); /* determine the datatype */
+
+    if dtype == bb(b'I') || dtype == bb(b'F') {
+        ffc2dd(cval, dval, status);
+    } else if dtype == bb(b'L') {
+        ffc2ll(cval, &mut lval, status);
+        *dval = lval as f64;
+    } else if dtype == bb(b'C') {
+        /* try reading the string as a number */
+        ffc2s(cval, &mut sval, status);
+        ffc2dd(&sval, dval, status);
+    } else {
+        *status = BAD_DOUBLEKEY;
+    }
+
+    if *status > 0 {
+        *dval = 0.0;
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2d evaluating string as a double: "),
+        );
+
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        return *status;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert null-terminated formatted string to an integer value
+pub(crate) fn ffc2ii(
+    cval: &[c_char],    /* I - string representation of the value */
+    ival: &mut c_long,  /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    let cval: &[u8] = cast_slice(cval);
+    let tmp_str = CStr::from_bytes_until_nul(cval)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .trim();
+    let tmp = atoi::<c_long>(tmp_str);
+
+    match tmp {
+        Ok(val) => {
+            *ival = val;
+        }
+        Err(err) => match err.kind() {
+            std::num::IntErrorKind::Empty => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::InvalidDigit => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+                let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+                strcpy_safe(
+                    &mut msg,
+                    cs!("Range Error in ffc2ii converting string to long int: "),
+                );
+                strncat_safe(&mut msg, cast_slice(cval), 25);
+                ffpmsg_slice(&msg);
+                *status = NUM_OVERFLOW;
+            }
+            _ => {
+                *status = BAD_C2I;
+            }
+        },
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert null-terminated formatted string to an long long integer value
+pub(crate) fn ffc2jj(
+    cval: &[c_char],     /* I - string representation of the value */
+    ival: &mut LONGLONG, /* O - numerical value of the input string */
+    status: &mut c_int,  /* IO - error status */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    let cval: &[u8] = cast_slice(cval);
+    let tmp_str = CStr::from_bytes_until_nul(cval)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .trim();
+    let tmp = atoi::<LONGLONG>(tmp_str);
+
+    match tmp {
+        Ok(val) => {
+            *ival = val;
+        }
+        Err(err) => match err.kind() {
+            std::num::IntErrorKind::Empty => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::InvalidDigit => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+                let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+                strcpy_safe(
+                    &mut msg,
+                    cs!("Range Error in ffc2jj converting string to longlong int: "),
+                );
+                strncat_safe(&mut msg, cast_slice(cval), 25);
+                ffpmsg_slice(&msg);
+                *status = NUM_OVERFLOW;
+            }
+            _ => {
+                *status = BAD_C2I;
+            }
+        },
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert null-terminated formatted string to an unsigned long long integer value
+pub(crate) fn ffc2ujj(
+    cval: &[c_char],      /* I - string representation of the value */
+    ival: &mut ULONGLONG, /* O - numerical value of the input string */
+    status: &mut c_int,   /* IO - error status */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    let cval: &[u8] = cast_slice(cval);
+    let tmp_str = CStr::from_bytes_until_nul(cval)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .trim();
+    let tmp = atoi::<ULONGLONG>(tmp_str);
+
+    match tmp {
+        Ok(val) => {
+            *ival = val;
+        }
+        Err(err) => match err.kind() {
+            std::num::IntErrorKind::Empty => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::InvalidDigit => {
+                *status = BAD_C2I;
+            }
+            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+                let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+                strcpy_safe(
+                    &mut msg,
+                    cs!("Range Error in ffc2ujj converting string to unsigned longlong int: "),
+                );
+                strncat_safe(&mut msg, cast_slice(cval), 25);
+                ffpmsg_slice(&msg);
+                *status = NUM_OVERFLOW;
+            }
+            _ => {
+                *status = BAD_C2I;
+            }
+        },
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert null-terminated formatted string to a logical value
+pub(crate) fn ffc2ll(
+    cval: &[c_char],    /* I - string representation of the value: T or F */
+    lval: &mut c_int,   /* O - numerical value of the input string: 1 or 0 */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if cval[0] == bb(b'T') {
+        *lval = 1;
+    } else {
+        *lval = 0; /* any character besides T is considered false */
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert an input quoted string to an unquoted string by removing
+/// the leading and trailing quote character.  Also, replace any
+/// pairs of single quote characters with just a single quote
+/// character (FITS used a pair of single quotes to represent
+/// a literal quote character within the string).
+pub(crate) fn ffc2s(
+    instr: &[c_char],      /* I - null terminated quoted input string */
+    outstr: &mut [c_char], /* O - null terminated output string without quotes */
+    status: &mut c_int,    /* IO - error status */
+) -> c_int {
+    let mut len = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if instr[0] != bb(b'\'') {
+        if instr[0] == 0 {
+            outstr[0] = 0;
+            *status = VALUE_UNDEFINED; /* null value string */
+            return *status;
+        } else {
+            strcpy_safe(outstr, instr); /* no leading quote, so return input string */
+            return *status;
+        }
+    }
+
+    len = strlen_safe(instr);
+    let mut ii = 1;
+    let mut jj: isize = 0;
+    while ii < len {
+        if instr[ii] == bb(b'\'') {
+            /*  is this the closing quote?  */
+            if instr[ii + 1] == bb(b'\'') {
+                /* 2 successive quotes? */
+                ii += 1; /* copy only one of the quotes */
+            } else {
+                break; /*  found the closing quote, so exit this loop  */
+            }
+        }
+        outstr[jj as usize] = instr[ii]; /* copy the next character to the output */
+        ii += 1;
+        jj += 1;
+    }
+
+    outstr[jj as usize] = 0; /*  terminate the output string  */
+
+    if ii == len {
+        ffpmsg_str("This string value has no closing quote (ffc2s):");
+        ffpmsg_slice(instr);
+        *status = NO_QUOTE;
+        return *status;
+    }
+
+    jj -= 1;
+    while jj >= 0 {
+        /* replace trailing blanks with nulls */
+        if outstr[jj as usize] == bb(b' ') {
+            outstr[jj as usize] = 0;
+        } else {
+            break;
+        }
+        jj -= 1;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert null-terminated formatted string to a float value
+pub(crate) fn ffc2rr(
+    cval: &[c_char],    /* I - string representation of the value */
+    fval: &mut f32,     /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut tval: [c_char; 73] = [0; 73];
+    let decimalpt: c_char = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    // let locale = SystemLocale::default().unwrap();
+    // let decimalpt = locale.decimal().as_bytes()[0] as c_char;
+
+    strcpy_safe(&mut tval, cval);
+
+    *fval = 0.0;
+
+    if strchr_safe(cval, bb(b'D')).is_some() || decimalpt == bb(b',') {
+        /* need to modify a temporary copy of the string before parsing it */
+        if strlen_safe(cval) > 72 {
+            strcpy_safe(&mut msg, cs!(b"Error: Invalid string to float in ffc2rr"));
+            ffpmsg_slice(&msg);
+            *status = BAD_C2F;
+            return *status;
+        }
+
+        /*  The C language does not support a 'D'; replace with 'E' */
+        tval.iter_mut().for_each(|x| {
+            if *x == bb(b'D') {
+                *x = bb(b'E');
+            }
+        });
+
+        /* Rust parse is not locale aware */
+        /*
+        if decimalpt == bb(b',') {
+            /* strtod expects a comma, not a period, as the decimal point */
+            (&tval).iter_mut().filter(|x| *x == bb(b'.')).for_each(|x| {
+                *x = bb(b',');
+            });
+        }
+        */
+    }
+
+    let mut i = 0;
+    for c in tval.iter() {
+        if *c == bb(b' ') {
+            i += 1;
+            break;
+        }
+    }
+
+    let tmp: Result<f32, ParseFloatError> = CStr::from_bytes_until_nul(cast_slice(&tval[i..]))
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .parse();
+
+    match tmp {
+        Ok(val) => {
+            *fval = val;
+        }
+        Err(err) => {
+            strcpy_safe(
+                &mut msg,
+                cs!(b"Error in ffc2rr converting string to float: "),
+            );
+            strncat_safe(&mut msg, cval, 30);
+            ffpmsg_slice(&msg);
+            *status = BAD_C2F;
+            return *status;
+        }
+    }
+
+    let mut val_bytes = fval.to_ne_bytes();
+    let sptr: &mut [c_short] = cast_slice_mut(&mut val_bytes);
+    let mut si = 0;
+
+    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        si = 1; /* point to MSBs */
+    }
+
+    let iret = fnan(sptr[si]); /* if iret == 1, then the double value is a NaN */
+
+    if iret == 1 {
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2rr converting string to float: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        *fval = 0.0;
+        *status = NUM_OVERFLOW;
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// convert null-terminated formatted string to a double value
+pub(crate) fn ffc2dd(
+    cval: &[c_char],    /* I - string representation of the value */
+    dval: &mut f64,     /* O - numerical value of the input string */
+    status: &mut c_int, /* IO - error status */
+) -> c_int {
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut tval: [c_char; 73] = [0; 73];
+    let decimalpt: c_char = 0;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    // let locale = SystemLocale::default().unwrap();
+    // let decimalpt = locale.decimal().as_bytes()[0] as c_char;
+
+    strcpy_safe(&mut tval, cval);
+
+    *dval = 0.0;
+
+    if strchr_safe(cval, bb(b'D')).is_some() || decimalpt == bb(b',') {
+        /* need to modify a temporary copy of the string before parsing it */
+        if strlen_safe(cval) > 72 {
+            strcpy_safe(&mut msg, cs!(b"Error: Invalid string to double in ffc2dd"));
+            ffpmsg_slice(&msg);
+            *status = BAD_C2D;
+            return *status;
+        }
+
+        /*  The C language does not support a 'D'; replace with 'E' */
+        tval.iter_mut().for_each(|x| {
+            if *x == bb(b'D') {
+                *x = bb(b'E');
+            }
+        });
+
+        /* Rust parse is not locale aware */
+        /*
+        if decimalpt == bb(b',') {
+            /* strtod expects a comma, not a period, as the decimal point */
+            (&tval).iter_mut().filter(|x| *x == bb(b'.')).for_each(|x| {
+                *x = bb(b',');
+            });
+        }
+        */
+    }
+
+    let mut i = 0;
+    for c in tval.iter() {
+        if *c == bb(b' ') {
+            i += 1;
+            break;
+        }
+    }
+
+    let tmp: Result<f64, ParseFloatError> = CStr::from_bytes_until_nul(cast_slice(&tval[i..]))
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .parse();
+
+    match tmp {
+        Ok(val) => {
+            *dval = val;
+        }
+        Err(err) => {
+            strcpy_safe(
+                &mut msg,
+                cs!(b"Error in ffc2dd converting string to double: "),
+            );
+            strncat_safe(&mut msg, cval, 30);
+            ffpmsg_slice(&msg);
+            *status = BAD_C2D;
+            return *status;
+        }
+    }
+
+    let val_bytes = &mut [*dval];
+    let sptr: &[c_short] = cast_slice(val_bytes);
+    let mut si = 0;
+
+    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        si = 3; /* point to MSBs */
+    }
+
+    let iret = dnan(sptr[si]); /* if iret == 1, then the double value is a NaN */
+
+    if iret == 1 {
+        strcpy_safe(
+            &mut msg,
+            cs!(b"Error in ffc2dd converting string to double: "),
+        );
+        strncat_safe(&mut msg, cval, 30);
+        ffpmsg_slice(&msg);
+        *dval = 0.0;
+        *status = NUM_OVERFLOW;
+    }
+    *status
+}
+
+/* ================================================================== */
+/* A hack for nonunix machines, which lack strcasecmp and strncasecmp */
+/* ================================================================== */
+pub(crate) fn fits_strcasecmp(s1: &[c_char], s2: &[c_char]) -> c_int {
+    let mut c2: c_char;
+    let mut c1: c_char;
+
+    let mut i = 0;
+    loop {
+        c1 = toupper(s1[i]);
+        c2 = toupper(s2[i]);
+        if c1 < c2 {
+            return -1;
+        }
+        if c1 > c2 {
+            return 1;
+        }
+        if c1 == 0 {
+            return 0;
+        }
+        i += 1;
+    }
+}
+
+pub(crate) fn fits_strncasecmp(s1: &[c_char], s2: &[c_char], n: usize) -> c_int {
+    let mut c1;
+    let mut c2;
+
+    let mut i = 0;
+
+    while i < n {
+        c1 = toupper(s1[i]) as c_int;
+        c2 = toupper(s2[i]) as c_int;
+        if c1 < c2 {
+            return -1;
+        }
+        if c1 > c2 {
+            return 1;
+        }
+        if c1 == 0 {
+            return 0;
+        }
+
+        i += 1;
+    }
+    0
+}
+
+/*
+ * fits_recalloc - an allocator/reallocator in the style of calloc and realloc
+ *
+ * Allocates or reallocates storage upon request.  Newly allocated
+ * storage is zeroed in the style of calloc.
+ *
+ * Cases handled are:
+ *    ptr == 0 or old_num == 0 - use calloc to allocate new storage
+ *    new_num = 0 - frees any storage if ptr is non-NULL
+ *    new_num < old_num - uses realloc() to reduce storage allocated
+ *    new_num > old_num - uses realloc() and sets newly allocated
+ *                        storage to zero (old portion left unchanged)
+ *
+ * void *ptr - "old" pointer, or NULL to allocate new storage
+ * size_t old_num - old number of records allocated
+ * size_t new_num  - new number of records allocated
+ * size_t size - size of record in bytes
+ *
+ * RETURNS: newly allocated storage
+ *
+ * */
+pub(crate) unsafe fn fits_recalloc(
+    ptr: *mut c_void,
+    old_num: usize,
+    new_num: usize,
+    size: usize,
+) -> *mut c_void {
+    todo!();
+}

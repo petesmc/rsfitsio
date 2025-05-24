@@ -1,0 +1,19 @@
+- [ ] Refactor the NullCheckType and NullValue. NullValue isn't Copy and these concepts are intrinsicly linked.
+- [ ] Investigate all code with 'WARNING'
+- [ ] Investigate all code with 'TODO'
+- [ ] Remove use a malloc and free
+- [ ] Remove use of libc unsafe functions
+- [ ] Clean up all warnings
+- [ ] Remove clippy allow(unused_assignments)
+- [ ] Remove clippy allow(unused_variables)
+- [ ] Test IRAF code. Ported but untested.
+- [ ] Fix all todo!()s
+- [ ] Implement Utility programs
+- [ ] Restructure modules, ::api ??
+- [ ] Every extern function should be a wrapper around a safe interface
+- [X] Fix broken testprog.out comparison
+- [X] Miri currently fails, fix.
+- [ ] Complete shared memory code. 
+- [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
+- [X] Mark all extern functions as deprecated so that we can detect usage
+* fits_get_token2_safe could cause problems

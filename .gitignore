@@ -1,0 +1,14 @@
+/target
+Cargo.lock
+/resources
+.vscode
+*.log
+/lib
+
+/c/testprog.fit
+/c/speedcc.fit
+/c/cookbook
+/c/testprog
+/c/speed
+/c/print_c
+/cfitsio

@@ -1,0 +1,50 @@
+[package]
+name = "rsfitsio"
+version = "0.462.1"
+edition = "2024"
+rust-version = "1.85"
+description = "Rust bindings for the CFITSIO library, providing access to FITS files."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/petesmc/rsfitsio"
+categories = ["science", "aerospace", "external-ffi-bindings"]
+keywords = [
+    "fits",
+    "fitsio",
+    "cfitsio",
+    "astronomy",
+    "data",
+    "file-format",
+    "io",
+    "binary",
+    "rust-fitsio",
+    "ffi",
+]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+
+[features]
+default = []
+bzip2 = ["dep:libbz2-rs-sys"]
+shared_mem= []
+
+[dependencies]
+libz-rs-sys = { version = "0.5" }
+libbz2-rs-sys = { version = "*", optional = true}
+libc="0.2"
+cstr="*"
+errno="0.3"
+bytemuck = "1.22"
+tempfile = "3.19"
+fastrand = "2.3"
+pwd = "1.4"
+ricecomp = "0.4"
+pliocomp = "0.2"
+hcompress = "0.3"
+chrono = "0.4"
+cbitset = "*"
+memchr = { version = "2.2.0", default-features = false }

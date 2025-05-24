@@ -1,0 +1,61 @@
+snprintf
+
+%.0f -> 0 decimal places for float -> {:.0}
+%d -> signed int -> {}
+%lu -> unsigned long int -> {}
+%ld -> long signed int -> {}
+%lld -> long long signed int -> {}
+%X -> unsigned upper case hex -> {:X}
+%s -> string -> {}
+
+
+%.*f -> precision set by preceding argument.
+// Hello {arg 0 ("x")} is {arg 2 (0.01) with precision specified in arg 1 (5)}
+println!("Hello {0} is {2:.1$}", "x", 5, 0.01);
+
+
+%.8s -> max of 8 chars printed -> {:.8}
+%3d  -> int, at least 3 chars long, left padded with spaces -> {:3}
+%.45s -> string, max 45 characters -> {:.45}
+%.*G -> precision by preceeding argument, use either scientific or normal notation -> DOES NOT EXIST
+%.1E -> scientific notation, 1 d.p -> {:.1E}
+%.*E -> scientific notional, precision preceding argument -> 
+%20llu -> {:20}
+%20lu -> {:20}
+%#14.6G
+%#23.15G
+%6d -> {:6}
+%4d -> {:4}
+%11.0f -> {:11.0}
+
+
+%*s -> string width preceding argument -> {:}
+println!("Hello {1:0$}!", width, "x");
+
+
+
+
+
+
+
+
+
+
+
+
+
+write!(
+                    FixedWriter(&mut message),
+                    "Failed to move to HDU number {} (ffmahd).",
+                    hdunum
+                )
+                .unwrap();
+                /*
+                snprintf(
+                    message.as_mut_ptr(),
+                    FLEN_ERRMSG,
+                    cstr!(b"Failed to move to HDU number %d (ffmahd).").as_ptr(),
+                    hdunum,
+                );
+                */
+

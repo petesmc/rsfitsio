@@ -1,0 +1,12 @@
+export LD_LIBRARY_PATH=~/rsfitsio/target/debug
+
+gcc -L ../target/debug -o testprog testprog.c -lrsfitsio
+
+gcc -L ../target/debug -o cookbook cookbook.c -lrsfitsio
+
+gcc -L ../target/debug -o speed speed.c -lrsfitsio
+
+If C debug doesn't work, Cntrl+Shift+P -> Run Build Task
+
+gcc -o print_c print_c.
+rustc print_rs.rs
