@@ -16,4 +16,7 @@
 - [ ] Complete shared memory code. 
 - [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
 - [X] Mark all extern functions as deprecated so that we can detect usage
+- [ ] Feature "bzip2" doesn't work
+- [ ] Feature "shared_mem" doesn't work
+
 * fits_get_token2_safe could cause problems

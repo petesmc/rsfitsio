@@ -1388,7 +1388,7 @@ pub(crate) unsafe fn mem_zuncompress_and_write(hdl: c_int, buffer: &[u8], nbytes
 #[cfg(feature = "bzip2")]
 pub(crate) unsafe fn bzip2uncompress2mem(
     filename: &[c_char],
-    diskfile: &mut File,
+    diskfile: &mut FILE,
     hdl: c_int,
     filesize: &mut usize,
     status: &mut c_int,
