@@ -763,7 +763,7 @@ unsafe fn shared_malloc(size: c_long, mode: c_int, newhandle: c_int) -> c_int /*
         }
     }
     if shared_debug {
-        print!("malloc (size = %ld, mode = {}):", size, mode);
+        print!("malloc (size = {}, mode = {}):", size, mode);
     }
     if size < 0 {
         return SHARED_INVALID;
