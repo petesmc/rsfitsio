@@ -12,11 +12,6 @@ keywords = [
     "fitsio",
     "cfitsio",
     "astronomy",
-    "data",
-    "file-format",
-    "io",
-    "binary",
-    "rust-fitsio",
     "ffi",
 ]
 
