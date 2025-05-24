@@ -9,6 +9,7 @@
 3. Run `cargo fix`
 4. Fix new warnings
 5. Keep PRs small, and if required split into multiple explainable commits
+6. Add tests
 
 ## Aims
 
@@ -33,6 +34,7 @@ diff out.log testprog.out
 
 diff testprog.fit testprog.std
 ```
+
 ## Sync'ing upstream
 
 Updated `SYNCED_COMMIT.md` file with the commit hash of the upstream cfitsio library when you are syncing.
