@@ -2247,7 +2247,7 @@ mod tests {
 
         let mut header_len = 0;
         let z = irafrdhead(
-            CString::new(iraf_imh_file).unwrap().to_bytes_with_nul(),
+            cast_slice(CString::new(iraf_imh_file).unwrap().to_bytes_with_nul()),
             &mut header_len,
         );
 
