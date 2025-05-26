@@ -32,7 +32,7 @@ libz-rs-sys = { version = "0.5" }
 libbz2-rs-sys = { version = "0.2", optional = true}
 libc="0.2"
 cstr="0.2"
-errno="0.3"
+errno=">=0.3.12"
 bytemuck = "1.22"
 tempfile = "3.19"
 fastrand = "2.3"
@@ -40,6 +40,6 @@ pwd = "1.4"
 ricecomp = "0.4"
 pliocomp = "0.2"
 hcompress = "0.3"
-chrono = "0.4"
+chrono = ">=0.4.20"
 cbitset = "0.2"
 memchr = { version = "2.2.0", default-features = false }
