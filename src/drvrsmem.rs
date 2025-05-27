@@ -1300,7 +1300,7 @@ unsafe fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
         return SHARED_NOTINIT; /* not initialized */
     }
 
-    strcpy(segname.as_mut_ptr(), c"h".as_ptr());
+    strcpy_safe(&mut segname, cs!("h"));
     snprintf(segname[1..].as_mut_ptr(), 9, c"{}".as_ptr(), id);
 
     if smem_open(segname.as_ptr(), 0, &mut i) != 0 {

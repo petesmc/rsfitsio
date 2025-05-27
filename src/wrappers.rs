@@ -5,7 +5,7 @@ use cbitset::BitSet256;
 use crate::c_types::{
     c_char, c_double, c_int, c_long, c_longlong, c_uchar, c_ulong, c_ulonglong, size_t,
 };
-use libc::{strtol, strtoll, strtoul, strtoull};
+use libc::{atof, atoi, strtol, strtoll, strtoul, strtoull};
 
 use crate::bb;
 
@@ -354,11 +354,11 @@ pub(crate) fn isspace(c: c_char) -> bool {
 }
 
 pub(crate) fn atoi_safe(cs: &[c_char]) -> c_int {
-    unsafe { libc::atoi(cs.as_ptr()) }
+    unsafe { atoi(cs.as_ptr()) }
 }
 
 pub(crate) fn atof_safe(cs: &[c_char]) -> f64 {
-    unsafe { libc::atof(cs.as_ptr()) }
+    unsafe { atof(cs.as_ptr()) }
 }
 
 pub(crate) fn isdigit_safe(c: c_char) -> bool {
