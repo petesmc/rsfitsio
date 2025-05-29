@@ -3,12 +3,15 @@ Cargo.lock
 /resources
 .vscode
 *.log
+*.lis
 /lib
 
+testprog.fit
 /c/testprog.fit
 /c/speedcc.fit
 /c/cookbook
 /c/testprog
+/c/testprog_extended
 /c/speed
 /c/print_c
 /cfitsio
