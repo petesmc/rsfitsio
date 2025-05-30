@@ -9,7 +9,8 @@ use crate::relibc::io::{self, Write};
 //     string::{String, ToString},
 //     vec::Vec,
 // };
-use core::{cmp, ffi::VaList, fmt, num::FpCategory, ops::Range, slice};
+use core::{cmp, fmt, num::FpCategory, ops::Range, slice};
+use std::collections::VecDeque;
 use std::{
     collections::BTreeMap,
     ffi::{CStr, c_void},
@@ -26,6 +27,23 @@ use crate::relibc::{
 // | |_) | (_) | | |  __/ |  | |_) | | (_| | ||  __/_
 // |____/ \___/|_|_|\___|_|  | .__/|_|\__,_|\__\___(_)
 //                           |_|
+
+pub struct CustomVaList(pub VecDeque<VaArg>);
+
+impl CustomVaList {
+    pub fn new() -> Self {
+        CustomVaList(VecDeque::new())
+    }
+
+    pub fn arg(&mut self) -> VaArg {
+        self.0.pop_front().expect("No more arguments in CustomVaList")
+    }
+
+    pub fn push(&mut self, arg: VaArg) {
+        self.0.push_back(arg);
+    }
+   
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum IntKind {
@@ -61,7 +79,7 @@ enum Number {
     Next,
 }
 impl Number {
-    unsafe fn resolve(self, varargs: &mut VaListCache, ap: &mut VaList) -> usize {
+    unsafe fn resolve(self, varargs: &mut VaListCache, ap: &mut CustomVaList) -> usize {
         unsafe {
             let arg = match self {
                 Number::Static(num) => return num,
@@ -89,7 +107,7 @@ impl Number {
     }
 }
 #[derive(Clone, Copy, Debug)]
-enum VaArg {
+pub(crate) enum VaArg {
     c_char(c_char),
     c_double(c_double),
     c_int(c_int),
@@ -102,8 +120,9 @@ enum VaArg {
     ssize_t(ssize_t),
     wint_t(wint_t),
 }
+
 impl VaArg {
-    unsafe fn arg_from(fmtkind: FmtKind, intkind: IntKind, ap: &mut VaList) -> VaArg {
+    unsafe fn arg_from(fmtkind: FmtKind, intkind: IntKind, ap: &mut CustomVaList) -> VaArg {
         unsafe {
             // Per the C standard using va_arg with a type with a size
             // less than that of an int for integers and double for floats
@@ -116,40 +135,109 @@ impl VaArg {
                 (FmtKind::Percent, _) => panic!("Can't call arg_from on %"),
 
                 (FmtKind::Char, IntKind::Long) | (FmtKind::Char, IntKind::LongLong) => {
-                    VaArg::wint_t(ap.arg::<wint_t>())
+                    match ap.arg() {
+                        // If the argument is a wint_t, we can safely return it
+                        // as a wint_t. This is because the C standard guarantees
+                        // that wint_t is an integer type.
+                        VaArg::wint_t(i) => VaArg::wint_t(i),
+                        _ => panic!("Expected wint_t for %c with long or long long"),
+                    }
+
                 }
 
                 (FmtKind::Char, _)
                 | (FmtKind::Unsigned, IntKind::Byte)
-                | (FmtKind::Signed, IntKind::Byte) => VaArg::c_char(ap.arg::<c_char>()),
+                | (FmtKind::Signed, IntKind::Byte) => {
+                    match ap.arg() {
+                        // If the argument is a c_char, we can safely return it
+                        // as a c_char. This is because the C standard guarantees
+                        // that c_char is an integer type.
+                        VaArg::c_char(i) => VaArg::c_char(i),
+                        _ => panic!("Expected c_char for %c with byte"),
+                    }
+                },
                 (FmtKind::Unsigned, IntKind::Short) | (FmtKind::Signed, IntKind::Short) => {
-                    VaArg::c_short(ap.arg::<c_short>())
+                    match ap.arg() {
+                        // If the argument is a c_short, we can safely return it
+                        // as a c_short. This is because the C standard guarantees
+                        // that c_short is an integer type.
+                        VaArg::c_short(i) => VaArg::c_short(i),
+                        _ => panic!("Expected c_short for %hd with short"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::Int) | (FmtKind::Signed, IntKind::Int) => {
-                    VaArg::c_int(ap.arg::<c_int>())
+                   match ap.arg() {
+                        // If the argument is a c_int, we can safely return it
+                        // as a c_int. This is because the C standard guarantees
+                        // that c_int is an integer type.
+                        VaArg::c_int(i) => VaArg::c_int(i),
+                        _ => panic!("Expected c_int for %d with int"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::Long) | (FmtKind::Signed, IntKind::Long) => {
-                    VaArg::c_long(ap.arg::<c_long>())
+                    match ap.arg() {
+                        // If the argument is a c_long, we can safely return it
+                        // as a c_long. This is because the C standard guarantees
+                        // that c_long is an integer type.
+                        VaArg::c_long(i) => VaArg::c_long(i),
+                        _ => panic!("Expected c_long for %ld with long"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::LongLong) | (FmtKind::Signed, IntKind::LongLong) => {
-                    VaArg::c_longlong(ap.arg::<c_longlong>())
+                    match ap.arg() {
+                        // If the argument is a c_longlong, we can safely return it
+                        // as a c_longlong. This is because the C standard guarantees
+                        // that c_longlong is an integer type.
+                        VaArg::c_longlong(i) => VaArg::c_longlong(i),
+                        _ => panic!("Expected c_longlong for %lld with long long"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::IntMax) | (FmtKind::Signed, IntKind::IntMax) => {
-                    VaArg::intmax_t(ap.arg::<intmax_t>())
+                    match ap.arg() {
+                        // If the argument is an intmax_t, we can safely return it
+                        // as an intmax_t. This is because the C standard guarantees
+                        // that intmax_t is an integer type.
+                        VaArg::intmax_t(i) => VaArg::intmax_t(i),
+                        _ => panic!("Expected intmax_t for %jd with intmax_t"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::PtrDiff) | (FmtKind::Signed, IntKind::PtrDiff) => {
-                    VaArg::ptrdiff_t(ap.arg::<ptrdiff_t>())
+                    match ap.arg() {
+                        // If the argument is a ptrdiff_t, we can safely return it
+                        // as a ptrdiff_t. This is because the C standard guarantees
+                        // that ptrdiff_t is an integer type.
+                        VaArg::ptrdiff_t(i) => VaArg::ptrdiff_t(i),
+                        _ => panic!("Expected ptrdiff_t for %td with ptrdiff_t"),
+                    }
                 }
                 (FmtKind::Unsigned, IntKind::Size) | (FmtKind::Signed, IntKind::Size) => {
-                    VaArg::ssize_t(ap.arg::<ssize_t>())
+                    match ap.arg() {
+                        // If the argument is a ssize_t, we can safely return it
+                        // as a ssize_t. This is because the C standard guarantees
+                        // that ssize_t is an integer type.
+                        VaArg::ssize_t(i) => VaArg::ssize_t(i),
+                        _ => panic!("Expected ssize_t for %zd with size"),
+                    }
                 }
 
                 (FmtKind::AnyNotation, _) | (FmtKind::Decimal, _) | (FmtKind::Scientific, _) => {
-                    VaArg::c_double(ap.arg::<c_double>())
+                    match ap.arg() {
+                        // If the argument is a c_double, we can safely return it
+                        // as a c_double. This is because the C standard guarantees
+                        // that c_double is a floating point type.
+                        VaArg::c_double(i) => VaArg::c_double(i),
+                        _ => panic!("Expected c_double for %f with double"),
+                    }
                 }
 
                 (FmtKind::GetWritten, _) | (FmtKind::Pointer, _) | (FmtKind::String, _) => {
-                    VaArg::pointer(ap.arg::<*const c_void>())
+                    match ap.arg() {
+                        // If the argument is a pointer, we can safely return it
+                        // as a pointer. This is because the C standard guarantees
+                        // that pointers are valid for printf.
+                        VaArg::pointer(i) => VaArg::pointer(i),
+                        _ => panic!("Expected pointer for %p with pointer"),
+                    }
                 }
             }
         }
@@ -242,7 +330,7 @@ impl VaListCache {
     unsafe fn get(
         &mut self,
         i: usize,
-        ap: &mut VaList,
+        ap: &mut CustomVaList,
         default: Option<(FmtKind, IntKind)>,
     ) -> VaArg {
         unsafe {
@@ -262,13 +350,13 @@ impl VaListCache {
                 // point. Reaching here means there are unused gaps in the
                 // arguments. Ultimately we'll have to settle down with
                 // defaulting to c_int.
-                self.args.push(VaArg::c_int(ap.arg::<c_int>()))
+                self.args.push(ap.arg())
             }
 
             // Add the value to the cache
             self.args.push(match default {
-                Some((fmtkind, intkind)) => VaArg::arg_from(fmtkind, intkind, ap),
-                None => VaArg::c_int(ap.arg::<c_int>()),
+                Some((fmtkind, intkind)) => ap.arg(),
+                None => ap.arg(),
             });
 
             // Return the value
@@ -631,7 +719,7 @@ impl Iterator for PrintfIter {
     }
 }
 
-unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: VaList) -> io::Result<c_int> {
+unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> io::Result<c_int> {
     unsafe {
         let w = &mut platform::CountingWriter::new(w);
 
@@ -655,7 +743,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: VaList) -> io::Res
             }
             for num in &[arg.min_width, arg.precision.unwrap_or(Number::Static(0))] {
                 match num {
-                    Number::Next => varargs.args.push(VaArg::c_int(ap.arg::<c_int>())),
+                    Number::Next => varargs.args.push(ap.arg()),
                     Number::Index(i) => {
                         positional.insert(i - 1, (FmtKind::Signed, IntKind::Int));
                     }
@@ -1284,6 +1372,6 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: VaList) -> io::Res
 /// Behavior is undefined if any of the following conditions are violated:
 /// - `format` must point to valid null-terminated string.
 /// - `ap` must follow the safety contract of variable arguments of C.
-pub(crate) unsafe fn printf<W: Write>(w: W, format: &CStr, ap: VaList) -> c_int {
+pub(crate) unsafe fn printf<W: Write>(w: W, format: &CStr, ap: CustomVaList) -> c_int {
     unsafe { inner_printf(w, format, ap).unwrap_or(-1) }
 }

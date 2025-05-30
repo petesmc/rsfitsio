@@ -19,7 +19,7 @@ use crate::{
         LONGLONG, READWRITE, SHARED_AGAIN, SHARED_BADARG, SHARED_ERRBASE, SHARED_IPCERR,
         SHARED_NOFILE, SHARED_NOMEM, SHARED_NORESIZE, SHARED_NOTINIT, SHARED_NULPTR,
     },
-    relibc::header::stdio::{snprintf, sscanf},
+    relibc::header::stdio::sscanf,
     wrappers::strcpy,
 };
 
@@ -367,10 +367,10 @@ unsafe fn shared_init(debug_msgs: c_int) -> c_int /* initialize shared memory st
         if shared_debug {
             print!(" lockfileinit=");
         }
-        snprintf(
+        int_snprintf!(
             buf.as_mut_ptr(),
             1000,
-            c"%s.%d.%d".as_ptr(),
+            c"{}.{}.{}".as_ptr(),
             SHARED_FDNAME,
             shared_kbase,
             shared_maxseg,
@@ -1301,7 +1301,7 @@ unsafe fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
     }
 
     strcpy_safe(&mut segname, cs!(c"h"));
-    snprintf(segname[1..].as_mut_ptr(), 9, c"{}".as_ptr(), id);
+    int_snprintf!(segname[1..].as_mut_ptr(), 9, c"{}".as_ptr(), id);
 
     if smem_open(segname.as_ptr(), 0, &mut i) != 0 {
         return SHARED_BADARG;
