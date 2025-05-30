@@ -49,7 +49,7 @@ pub(crate) unsafe fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t) ->
     }
 }
 
-pub(crate) fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
+pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     let mut i = 0;
 
     assert!(n <= dst.len());
@@ -104,7 +104,7 @@ pub(crate) fn strcmp_safe(cs: &[c_char], ct: &[c_char]) -> c_int {
     strncmp_safe(cs, ct, cmp::max(cs.len(), ct.len()))
 }
 
-pub(crate) fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
+pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     let min_len = cmp::min(cs.len(), ct.len());
     let min_n = cmp::min(n, min_len);
     for i in 0..min_n {
@@ -325,7 +325,7 @@ pub(crate) unsafe fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) -> *
     }
 }
 
-pub(crate) fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
+pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
     unsafe { strcat(s.as_mut_ptr(), ct.as_ptr()) };
 }
 

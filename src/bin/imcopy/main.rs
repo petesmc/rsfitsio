@@ -185,9 +185,7 @@ pub fn main() -> ExitCode {
 
             if hdutype == IMAGE_HDU {
                 /* get image dimensions and total number of pixels in image */
-                for ii in 0..9 {
-                    naxes[ii] = 1;
-                }
+                naxes.fill(1);
 
                 fits_get_img_param(
                     infptr.as_mut(),
