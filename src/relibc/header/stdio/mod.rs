@@ -1,7 +1,7 @@
 use crate::c_types::{c_char, c_int, size_t};
 use bytemuck::cast_slice;
 use printf::{CustomVaList, VaArg};
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 
 use crate::relibc::platform;
 
@@ -9,9 +9,7 @@ mod lookaheadreader;
 mod printf;
 mod scanf;
 
-
 pub(crate) fn sprintf_f64(s: &mut [c_char], format: &[c_char], val: f64) -> c_int {
-
     unsafe {
         let n = s.len();
         let mut valist = CustomVaList::new();
@@ -111,7 +109,10 @@ mod tests {
         let format = c"%3d";
         let mut buffer: [c_char; 100] = [0; 100];
         let result = snprintf_cint(&mut buffer, 100, cast_slice(format.to_bytes_with_nul()), 42);
-        
-        assert_eq!(&buffer[..(result + 1) as usize], cast_slice(c" 42".to_bytes_with_nul()));
+
+        assert_eq!(
+            &buffer[..(result + 1) as usize],
+            cast_slice(c" 42".to_bytes_with_nul())
+        );
     }
 }

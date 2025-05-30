@@ -36,13 +36,14 @@ impl CustomVaList {
     }
 
     pub fn arg(&mut self) -> VaArg {
-        self.0.pop_front().expect("No more arguments in CustomVaList")
+        self.0
+            .pop_front()
+            .expect("No more arguments in CustomVaList")
     }
 
     pub fn push(&mut self, arg: VaArg) {
         self.0.push_back(arg);
     }
-   
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -142,7 +143,6 @@ impl VaArg {
                         VaArg::wint_t(i) => VaArg::wint_t(i),
                         _ => panic!("Expected wint_t for %c with long or long long"),
                     }
-
                 }
 
                 (FmtKind::Char, _)
@@ -155,7 +155,7 @@ impl VaArg {
                         VaArg::c_char(i) => VaArg::c_char(i),
                         _ => panic!("Expected c_char for %c with byte"),
                     }
-                },
+                }
                 (FmtKind::Unsigned, IntKind::Short) | (FmtKind::Signed, IntKind::Short) => {
                     match ap.arg() {
                         // If the argument is a c_short, we can safely return it
@@ -166,7 +166,7 @@ impl VaArg {
                     }
                 }
                 (FmtKind::Unsigned, IntKind::Int) | (FmtKind::Signed, IntKind::Int) => {
-                   match ap.arg() {
+                    match ap.arg() {
                         // If the argument is a c_int, we can safely return it
                         // as a c_int. This is because the C standard guarantees
                         // that c_int is an integer type.
