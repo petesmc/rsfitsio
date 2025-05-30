@@ -22,4 +22,4 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Run testprog checks
-      run: testprog_check.sh
+      run: bash ./testprog_check.sh
