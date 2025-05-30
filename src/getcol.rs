@@ -2882,7 +2882,7 @@ pub(crate) unsafe fn ffgcvn_safer(
             return *status;
         }
 
-        let mut repeats: Vec<LONGLONG> = Vec::with_capacity(ncols as usize);
+        let mut repeats: Vec<LONGLONG> = vec![0; ncols as usize];
 
         ffgnrwll_safe(fptr, &mut ntotrows, status);
         ffgrsz_safe(fptr, &mut nrowbuf, status);

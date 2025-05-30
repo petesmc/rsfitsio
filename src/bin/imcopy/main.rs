@@ -185,9 +185,7 @@ pub fn main() -> ExitCode {
 
             if hdutype == IMAGE_HDU {
                 /* get image dimensions and total number of pixels in image */
-                for ii in 0..9 {
-                    naxes[ii] = 1;
-                }
+                naxes.fill(1);
 
                 fits_get_img_param(
                     infptr.as_mut(),
@@ -339,8 +337,8 @@ pub fn main() -> ExitCode {
             status = 0; /* Reset after normal error */
         }
 
-        fits_close_file(outfptr.as_mut(), &mut status);
-        fits_close_file(infptr.as_mut(), &mut status);
+        fits_close_file(Some(outfptr), &mut status);
+        fits_close_file(Some(infptr), &mut status);
 
         /* if error occurred, print out error message */
         if status != 0 {

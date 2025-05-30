@@ -41,6 +41,12 @@ Updated `SYNCED_COMMIT.md` file with the commit hash of the upstream cfitsio lib
 
 # Tips
 
+## Testprog
+
+```
+cargo run --bin testprog > rust_testprog.lis
+```
+
 ## Windows
 
 ```Powershell
@@ -53,4 +59,6 @@ $env:Path += ';C:\code\rsfitsio\target\debug'
 RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo miri test -- -- tests::test_write_image
 
 MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
+
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full -Zmiri-disable-stacked-borrows" cargo miri run --bin testprog
 ```

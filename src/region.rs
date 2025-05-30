@@ -1996,7 +1996,7 @@ pub(crate) unsafe fn fits_read_fits_region(
             }
         }
 
-        let mut cvalue: Vec<c_char> = Vec::with_capacity(FLEN_VALUE + 1);
+        let mut cvalue: Vec<c_char> = vec![0; FLEN_VALUE + 1];
 
         /* loop over the shapes - note 1-based counting for rows in FITS files */
 

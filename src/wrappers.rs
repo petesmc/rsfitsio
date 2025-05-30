@@ -5,7 +5,7 @@ use cbitset::BitSet256;
 use crate::c_types::{
     c_char, c_double, c_int, c_long, c_longlong, c_uchar, c_ulong, c_ulonglong, size_t,
 };
-use libc::{strtol, strtoll, strtoul, strtoull};
+use libc::{atof, atoi, strtol, strtoll, strtoul, strtoull};
 
 use crate::bb;
 
@@ -49,7 +49,7 @@ pub(crate) unsafe fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t) ->
     }
 }
 
-pub(crate) fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
+pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     let mut i = 0;
 
     assert!(n <= dst.len());
@@ -104,7 +104,7 @@ pub(crate) fn strcmp_safe(cs: &[c_char], ct: &[c_char]) -> c_int {
     strncmp_safe(cs, ct, cmp::max(cs.len(), ct.len()))
 }
 
-pub(crate) fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
+pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     let min_len = cmp::min(cs.len(), ct.len());
     let min_n = cmp::min(n, min_len);
     for i in 0..min_n {
@@ -325,12 +325,28 @@ pub(crate) unsafe fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) -> *
     }
 }
 
-pub(crate) fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
-    unsafe { strcat(s.as_mut_ptr(), ct.as_ptr()) };
+pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
+    let ct_len = strlen_safe(ct);
+
+    strncat_safe(s, ct, ct_len);
 }
 
 pub(crate) fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
-    unsafe { strncat(s.as_mut_ptr(), ct.as_ptr(), n as size_t) };
+    let s_len = strlen_safe(s);
+    let ct_len = strlen_safe(ct);
+
+    let n = cmp::min(n, ct_len);
+    let mut i = 0;
+    while i < n {
+        let b = ct[i];
+        if b == 0 {
+            break;
+        }
+
+        s[s_len + i] = b;
+        i += 1;
+    }
+    s[s_len + i] = 0;
 }
 
 pub(crate) fn toupper(c: c_char) -> c_char {
@@ -354,11 +370,11 @@ pub(crate) fn isspace(c: c_char) -> bool {
 }
 
 pub(crate) fn atoi_safe(cs: &[c_char]) -> c_int {
-    unsafe { libc::atoi(cs.as_ptr()) }
+    unsafe { atoi(cs.as_ptr()) }
 }
 
 pub(crate) fn atof_safe(cs: &[c_char]) -> f64 {
-    unsafe { libc::atof(cs.as_ptr()) }
+    unsafe { atof(cs.as_ptr()) }
 }
 
 pub(crate) fn isdigit_safe(c: c_char) -> bool {

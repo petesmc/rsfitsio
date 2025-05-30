@@ -6151,20 +6151,21 @@ pub(crate) fn urltype2driver(urltype: &[c_char], driver: &mut c_int) -> c_int {
 /// then calling the system dependent routine to physically close the FITS file
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffclos(
-    fptr: *mut fitsfile, /* I - FITS file pointer */
-    status: *mut c_int,  /* IO - error status     */
+    fptr: Option<Box<fitsfile>>, /* I - FITS file pointer */
+    status: *mut c_int,          /* IO - error status     */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
-        if fptr.is_null() {
-            *status = NULL_INPUT_PTR;
-            return *status;
-        }
-
-        let fptr = Box::from_raw(fptr);
-
-        ffclos_safer(fptr, status)
+        match fptr {
+            None => {
+                *status = NULL_INPUT_PTR;
+                return *status;
+            }
+            Some(fptr) => {
+                return ffclos_safer(fptr, status);
+            }
+        };
     }
 }
 

@@ -1620,6 +1620,7 @@ pub(crate) fn fits_clean_url(
         */
         while !mystack.is_empty() {
             let tmp = mystack.pop_front().unwrap(); // This will be missing all the null terminators
+
             if strlen_safe(outURL) + tmp.len() + 1 > FLEN_FILENAME - 1 {
                 outURL[0] = 0;
                 ffpmsg_str("outURL is too long (fits_clean_url)");
@@ -1629,6 +1630,11 @@ pub(crate) fn fits_clean_url(
 
             // Note: We need to manually keep track of the len since we aren't using C null terminators here
             let len = strlen_safe(outURL) + tmp.len();
+
+            let mut c = Vec::from(tmp);
+            c.push(0); // Add a null terminator to the end of the tmp slice
+            let tmp = c.as_slice(); // Convert back to a slice
+
             strcat_safe(outURL, tmp);
 
             outURL[len] = 0; // Manually add the null terminator

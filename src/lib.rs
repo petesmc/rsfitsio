@@ -100,6 +100,7 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
+use bytemuck::cast_slice;
 use fitsio::{
     FLEN_VALUE, LONGLONG, TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TINT, TLOGICAL,
     TLONG, TLONGLONG, TSBYTE, TSHORT, TSTRING, TUINT, TULONG, TULONGLONG, TUSHORT, ULONGLONG,
@@ -401,7 +402,7 @@ pub enum KeywordDatatype<'a> {
     TULONG(&'a c_ulong),
     TFLOAT(&'a f32),
     TDOUBLE(&'a f64),
-    TSTRING(&'a [c_char; FLEN_VALUE]),
+    TSTRING(&'a [c_char]),
     TLOGICAL(&'a c_int),
     TCOMPLEX(&'a [f32; 2]),
     TDBLCOMPLEX(&'a [f64; 2]),
@@ -423,9 +424,9 @@ impl KeywordDatatype<'_> {
             TULONG => KeywordDatatype::TULONG(unsafe { &*(value as *const c_ulong) }),
             TFLOAT => KeywordDatatype::TFLOAT(unsafe { &*(value as *const f32) }),
             TDOUBLE => KeywordDatatype::TDOUBLE(unsafe { &*(value as *const f64) }),
-            TSTRING => {
-                KeywordDatatype::TSTRING(unsafe { &*(value as *const [c_char; FLEN_VALUE]) })
-            }
+            TSTRING => KeywordDatatype::TSTRING(unsafe {
+                cast_slice(CStr::from_ptr(value as *const c_char).to_bytes_with_nul())
+            }),
             TLOGICAL => KeywordDatatype::TLOGICAL(unsafe { &*(value as *const c_int) }),
             TCOMPLEX => KeywordDatatype::TCOMPLEX(unsafe { &*(value as *const [f32; 2]) }),
             TDBLCOMPLEX => KeywordDatatype::TDBLCOMPLEX(unsafe { &*(value as *const [f64; 2]) }),

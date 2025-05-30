@@ -10834,7 +10834,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
             return *status;
         }
 
-        if addr_of!(infptr) == addr_of!(outfptr) {
+        if std::ptr::eq(infptr, outfptr) {
             ffpmsg_str("Cannot compress table 'in place' (fits_compress_table)");
             ffpmsg_str(" outfptr cannot be the same as infptr.");
             *status = DATA_COMPRESSION_ERR;
@@ -11878,7 +11878,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
 
         if fits_read_key_log(infptr, cs!("ZTABLE"), &mut tstatus, None, status) != 0 {
             /* just copy the HDU if the table is not compressed */
-            if ptr::addr_of!(infptr) != ptr::addr_of!(outfptr) {
+            if !std::ptr::eq(infptr, outfptr) {
                 fits_copy_hdu(infptr, outfptr, 0, status);
             }
             return *status;
@@ -11889,7 +11889,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
 
         if ncols < 1 {
             /* just copy the HDU if the table does not have  more than 0 columns */
-            if ptr::addr_of!(infptr) != ptr::addr_of!(outfptr) {
+            if !std::ptr::eq(infptr, outfptr) {
                 fits_copy_hdu(infptr, outfptr, 0, status);
             }
             return *status;

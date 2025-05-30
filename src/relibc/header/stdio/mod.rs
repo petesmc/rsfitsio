@@ -97,6 +97,16 @@ pub(crate) fn snprintf_cint(s: &mut [c_char], n: size_t, format: &[c_char], val:
     unsafe { snprintf_safer(s, n, format, val) }
 }
 
+pub(crate) fn snprintf_f64_decim(
+    s: &mut [c_char],
+    n: size_t,
+    format: &[c_char],
+    decim: c_int,
+    val: f64,
+) -> c_int {
+    unsafe { snprintf_safer(s, n, format, decim, val) }
+}
+
 pub(crate) unsafe extern "C" fn sscanf(
     s: *const c_char,
     format: *const c_char,

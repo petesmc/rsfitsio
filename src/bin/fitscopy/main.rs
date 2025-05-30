@@ -78,12 +78,10 @@ pub fn main() -> ExitCode {
                     &mut status,
                 );
 
-                let mut outfptr = outfptr.unwrap();
-                fits_close_file(outfptr.as_mut(), &mut status);
+                fits_close_file(outfptr, &mut status);
             }
 
-            let mut infptr = infptr.unwrap();
-            fits_close_file(infptr.as_mut(), &mut status);
+            fits_close_file(infptr, &mut status);
         }
 
         /* if error occured, print out error message */

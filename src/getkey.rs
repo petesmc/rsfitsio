@@ -1356,12 +1356,12 @@ pub unsafe extern "C" fn ffgkls(
             // HEAP ALLOCATION
 
             /* allocate and return a null string */
-            let mut v: Vec<c_char> = Vec::with_capacity(1);
+            let mut v: Vec<c_char> = vec![0; 1];
             v[0] = 0;
         } else {
             /* allocate space,  plus 1 for null */
             // HEAP ALLOCATION
-            let mut v: Vec<c_char> = Vec::with_capacity(strlen_safe(&valstring) + 1);
+            let mut v: Vec<c_char> = vec![0; strlen_safe(&valstring) + 1];
 
             ffc2s(&valstring, &mut v, status); /* convert string to value */
             len = strlen_safe(&v);
