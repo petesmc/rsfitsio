@@ -26,7 +26,7 @@ use crate::fitscore::{
 use crate::getkey::ffgkys_safe;
 use crate::imcompress::imcomp_init_table;
 use crate::modkey::{ffdkey_safe, ffirec_safe, ffmnam_safe, ffucrd_safe};
-use crate::relibc::header::stdio::snprintf_safer;
+use crate::relibc::header::stdio::{snprintf_f64_decim};
 use crate::{KeywordDatatype, fitsio2::*};
 use crate::{TKeywords, wrappers::*};
 use crate::{atoi, int_snprintf};
@@ -1487,7 +1487,7 @@ pub unsafe extern "C" fn ffpkys(
 
         let comm: Option<&[c_char]> = match comm.is_null() {
             true => None,
-            false => Some(slice::from_raw_parts(comm, FLEN_COMMENT)),
+            false => Some(cast_slice(CStr::from_ptr(comm).to_bytes_with_nul())),
         };
 
         ffpkys_safe(fptr, keyname, value, comm, status)
@@ -4036,15 +4036,13 @@ pub(crate) fn ffr2e(
         //     (-decim) as usize,
         //     fval as f64, // GPoint(fval as f64),
         // ) < 0
-        if unsafe {
-            snprintf_safer(
+        if snprintf_f64_decim(
                 cval,
                 FLEN_VALUE,
                 cast_slice(cstr!("%.*G").to_bytes_with_nul()),
                 -decim,
                 fval as f64,
-            )
-        } < 0
+            ) < 0
         {
             ffpmsg_str("Error in ffr2e converting float to string");
             *status = BAD_F2C;
@@ -4163,15 +4161,13 @@ pub(crate) fn ffd2e(
     if decim < 0 {
         /* use G format if decim is negative */
         // if int_snprintf!(cval, FLEN_VALUE, "{:.*}", (-decim) as usize, dval /* GPoint(dval) */) < 0 {
-        if unsafe {
-            snprintf_safer(
+        if snprintf_f64_decim(
                 cval,
                 FLEN_VALUE,
                 cast_slice(cstr!("%.*G").to_bytes_with_nul()),
                 -decim,
                 dval,
-            )
-        } < 0
+            ) < 0
         {
             ffpmsg_str("Error in ffd2e converting float to string");
             *status = BAD_F2C;

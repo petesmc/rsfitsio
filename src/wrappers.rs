@@ -326,11 +326,31 @@ pub(crate) unsafe fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) -> *
 }
 
 pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
-    unsafe { strcat(s.as_mut_ptr(), ct.as_ptr()) };
+
+    let ct_len = strlen_safe(ct);
+
+    strncat_safe(s, ct, ct_len);
+    
 }
 
 pub(crate) fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
-    unsafe { strncat(s.as_mut_ptr(), ct.as_ptr(), n as size_t) };
+    
+        let s_len = strlen_safe(s);
+        let ct_len = strlen_safe(ct);
+
+        let n = cmp::min(n, ct_len);
+        let mut i = 0;
+        while i < n {
+
+            let b = ct[i];
+            if b == 0 {
+                break;
+            }
+
+            s[s_len + i] = b;
+            i += 1;
+        }
+        s[s_len + i] = 0;
 }
 
 pub(crate) fn toupper(c: c_char) -> c_char {

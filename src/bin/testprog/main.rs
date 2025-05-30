@@ -84,31 +84,14 @@ macro_rules! byte_slice_to_str {
 }
 
 pub trait AsMutPtr<T> {
-    fn as_mut_ptr(&self) -> *mut T;
+    fn as_mut_ptr(&mut self) -> *mut T;
 }
 
-impl<T> AsMutPtr<T> for Option<&mut [T]> {
-    fn as_mut_ptr(&self) -> *mut T {
-        match self {
-            Some(v) => v.as_ptr() as *mut T, // UNSAFE
-            None => std::ptr::null_mut(),
-        }
-    }
-}
-
-impl<T> AsMutPtr<T> for Option<&mut T> {
-    fn as_mut_ptr(&self) -> *mut T {
-        match *self {
-            Some(ref val) => unsafe { ptr::read(val) as *mut _ },
-            None => ptr::null_mut(),
-        }
-    }
-}
 
 impl<T> AsMutPtr<T> for Option<Box<T>> {
-    fn as_mut_ptr(&self) -> *mut T {
+    fn as_mut_ptr(&mut self) -> *mut T {
         match self {
-            Some(val) => val.as_ref() as *const T as *mut T,
+            Some(val) => val.as_mut() as *mut T,
             None => ptr::null_mut(),
         }
     }
