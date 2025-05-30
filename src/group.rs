@@ -1651,7 +1651,6 @@ pub(crate) fn fits_clean_url(
     *status
 }
 
-
 /*--------------------------------------------------------------------------*/
 /// Create a relative URL to the file referenced by absURL with respect to the
 /// reference URL refURL. The relative URL is returned in relURL.

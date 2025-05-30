@@ -424,9 +424,9 @@ impl KeywordDatatype<'_> {
             TULONG => KeywordDatatype::TULONG(unsafe { &*(value as *const c_ulong) }),
             TFLOAT => KeywordDatatype::TFLOAT(unsafe { &*(value as *const f32) }),
             TDOUBLE => KeywordDatatype::TDOUBLE(unsafe { &*(value as *const f64) }),
-            TSTRING => {
-                KeywordDatatype::TSTRING(unsafe { cast_slice(CStr::from_ptr(value as *const c_char).to_bytes_with_nul()) })
-            }
+            TSTRING => KeywordDatatype::TSTRING(unsafe {
+                cast_slice(CStr::from_ptr(value as *const c_char).to_bytes_with_nul())
+            }),
             TLOGICAL => KeywordDatatype::TLOGICAL(unsafe { &*(value as *const c_int) }),
             TCOMPLEX => KeywordDatatype::TCOMPLEX(unsafe { &*(value as *const [f32; 2]) }),
             TDBLCOMPLEX => KeywordDatatype::TDBLCOMPLEX(unsafe { &*(value as *const [f64; 2]) }),

@@ -337,8 +337,8 @@ pub fn main() -> ExitCode {
             status = 0; /* Reset after normal error */
         }
 
-        fits_close_file(outfptr.as_mut(), &mut status);
-        fits_close_file(infptr.as_mut(), &mut status);
+        fits_close_file(Some(outfptr), &mut status);
+        fits_close_file(Some(infptr), &mut status);
 
         /* if error occurred, print out error message */
         if status != 0 {

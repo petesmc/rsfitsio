@@ -87,7 +87,6 @@ pub trait AsMutPtr<T> {
     fn as_mut_ptr(&mut self) -> *mut T;
 }
 
-
 impl<T> AsMutPtr<T> for Option<Box<T>> {
     fn as_mut_ptr(&mut self) -> *mut T {
         match self {
@@ -297,7 +296,9 @@ pub fn main() -> ExitCode {
                 if fptr.is_none() { 0 } else { 1 } as c_ulong,
                 status
             );
-            ffclos(fptr.as_mut_ptr(), &mut status);
+
+            let f = fptr.take();
+            ffclos(f, &mut status);
             println!("  ffclos status = {status}\n");
             ffcmsg();
             //status = 0;
@@ -1331,7 +1332,8 @@ pub fn main() -> ExitCode {
             */
 
             for _ii in 0..10 {
-                if ffclos(fptr.as_mut_ptr(), &mut status) > 0 {
+                let f = fptr.take();
+                if ffclos(f, &mut status) > 0 {
                     print!("ERROR in ftclos (1) = {status}");
                     break 'mainloop;
                 }
@@ -3629,7 +3631,8 @@ pub fn main() -> ExitCode {
                 print!("Close the tmp file: ffclos status = {}\n", status);
             */
 
-            ffdelt(tmpfptr.as_mut_ptr(), &mut status);
+            let t = Box::into_raw(tmpfptr.take().unwrap());
+            ffdelt(t, &mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
 
             if status > 0 {
@@ -4557,7 +4560,8 @@ pub fn main() -> ExitCode {
                 print!("Close the tmp file: ffclos status = {}\n", status);
             */
 
-            ffdelt(tmpfptr.as_mut_ptr(), &mut status);
+            let t = Box::into_raw(tmpfptr.take().unwrap());
+            ffdelt(t, &mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
             if status > 0 {
                 break 'mainloop;
@@ -4964,7 +4968,8 @@ pub fn main() -> ExitCode {
             ffgrec(tmpfptr.as_mut_ptr(), 6, card.as_mut_ptr(), &mut status);
             println!("{}", byte_slice_to_str!(&card));
 
-            ffdelt(tmpfptr.as_mut_ptr(), &mut status);
+            let t = Box::into_raw(tmpfptr.take().unwrap());
+            ffdelt(t, &mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
 
             ffdhdu(fptr.as_mut_ptr(), &mut hdutype, &mut status);
@@ -6232,7 +6237,8 @@ pub fn main() -> ExitCode {
         */
 
         // errstatus: Jump here on error or completion
-        ffclos(fptr.as_mut_ptr(), &mut status);
+        let f = fptr.take();
+        ffclos(f, &mut status);
         println!("ffclos status = {status}");
 
         println!();
