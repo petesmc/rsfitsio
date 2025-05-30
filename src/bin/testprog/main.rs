@@ -170,7 +170,7 @@ pub fn main() -> ExitCode {
     let mut oskey: [c_char; 13] = [0; 13];
     oskey.copy_from_slice(cast_slice(c"value_string".to_bytes_with_nul()));
 
-    let mut iskey: [c_char; 21] = [0; 21];
+    let mut iskey: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut olkey: c_int = 1;
     let mut ilkey: c_int = 0;
     let oshtkey: c_short;
@@ -305,7 +305,7 @@ pub fn main() -> ExitCode {
 
             for ii in 0..21 {
                 /* allocate space for string column value */
-                inskey[ii] = malloc(21) as *mut c_char;
+                inskey[ii] = malloc(FLEN_VALUE) as *mut c_char;
             }
 
             for ii in 0..10 {
@@ -2284,7 +2284,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"ky_pkne".as_ptr(),
                 2,
-                4,
+                3,
                 inekey.as_mut_ptr(),
                 &mut nfound,
                 &mut status,

@@ -6,7 +6,11 @@ use std::{
     os::raw::c_void,
 };
 
-use crate::{fitscore::ffpmsg_slice, int_snprintf, slice_to_str, wrappers::strlen_safe};
+use crate::{
+    fitscore::{ALLOCATIONS, ffpmsg_slice},
+    int_snprintf, slice_to_str,
+    wrappers::strlen_safe,
+};
 
 use crate::cfileio::fitsdriver;
 
@@ -737,9 +741,17 @@ impl FITSfile {
         let f_iobuffer: Box<[c_char; NIOBUF as usize * IOBUFLEN as usize]> =
             f_iobuffer.into_boxed_slice().try_into().unwrap();
 
-        let (f_headstart, _, _) = f_headstart.into_raw_parts();
+        let (f_headstart, l, c) = f_headstart.into_raw_parts();
+        ALLOCATIONS
+            .lock()
+            .unwrap()
+            .insert(f_headstart as usize, (l, c));
 
-        let (f_filename, _, _) = f_filename.into_raw_parts();
+        let (f_filename, l, c) = f_filename.into_raw_parts();
+        ALLOCATIONS
+            .lock()
+            .unwrap()
+            .insert(f_filename as usize, (l, c));
 
         // HEAP ALLOCATION
         /* allocate FITSfile structure and initialize = 0 */

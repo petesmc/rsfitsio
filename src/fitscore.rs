@@ -35,9 +35,11 @@ SERVICES PROVIDED HEREUNDER."
 
 use core::{slice, str};
 use std::borrow::BorrowMut;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::num::{ParseFloatError, ParseIntError};
 use std::ptr::addr_of;
+use std::sync::{LazyLock, Mutex};
 use std::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
@@ -73,6 +75,10 @@ pub const DEL_NEWEST: c_int = 3; /* delete the newest message from the stack */
 pub const GET_MESG: c_int = 4; /* pop and return oldest message, ignoring marks */
 pub const PUT_MESG: c_int = 5; /* add a new message to the stack */
 pub const PUT_MARK: c_int = 6; /* add a marker to the stack */
+
+// Use this to keep track of allocations so we can deallocate with the same `Layout` used for allocation.
+pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
+    LazyLock::new(Default::default);
 
 /*--------------------------------------------------------------------------*/
 /// return the current version number of the FITSIO software
@@ -5624,7 +5630,7 @@ pub(crate) unsafe fn ffpinit(
             999,
             &mut simple,
             &mut bitpix,
-            &mut naxis,
+            Some(&mut naxis),
             &mut naxes,
             &mut pcount,
             &mut gcount,
@@ -5746,12 +5752,20 @@ pub(crate) unsafe fn ffpinit(
 
             if !fptr.Fptr.tableptr.is_null() {
                 /* free memory for the old CHDU */
-                // HEAP DEALLOCATIOn
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
+
+                // HEAP DEALLOCATION
+                let alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.get(&(fptr.Fptr.tableptr as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, *l, *c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        fptr.Fptr.tableptr,
+                        fptr.Fptr.tfield as usize,
+                        fptr.Fptr.tfield as usize,
+                    );
+                }
             }
 
             fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
@@ -5789,7 +5803,7 @@ pub(crate) unsafe fn ffpinit(
 
             if !fptr.Fptr.tableptr.is_null() {
                 /* free memory for the old CHDU */
-                // HEAP DEALLOCATIOn
+                // HEAP DEALLOCATION
                 let _ = Vec::from_raw_parts(
                     fptr.Fptr.tableptr,
                     fptr.Fptr.tfield as usize,
@@ -5915,7 +5929,7 @@ pub(crate) unsafe fn ffainit(
 
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
-            // HEAP DEALLOCATIOn
+            // HEAP DEALLOCATION
             let _ = Vec::from_raw_parts(
                 fptr.Fptr.tableptr,
                 fptr.Fptr.tfield as usize,
@@ -5924,7 +5938,9 @@ pub(crate) unsafe fn ffainit(
         }
         /* mem for column structures ; space is initialized = 0 */
         if tfield > 0 {
-            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            let (p, l, c) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            colptr = p;
             if colptr.is_null() {
                 ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffainit)");
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
@@ -6167,7 +6183,7 @@ pub(crate) unsafe fn ffbinit(
 
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
-            // HEAP DEALLOCATIOn
+            // HEAP DEALLOCATION
             let _ = Vec::from_raw_parts(
                 fptr.Fptr.tableptr,
                 fptr.Fptr.tfield as usize,
@@ -6176,7 +6192,9 @@ pub(crate) unsafe fn ffbinit(
         }
         /* mem for column structures ; space is initialized = 0  */
         if tfield > 0 {
-            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            let (p, l, c) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            colptr = p;
             if colptr.is_null() {
                 ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffbinit)");
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
@@ -8361,7 +8379,7 @@ pub(crate) unsafe fn ffchdu(
         if fptr.Fptr.open_count == 1 {
             /* free memory for the CHDU structure only if no other files are using it */
             if !fptr.Fptr.tableptr.is_null() {
-                // HEAP DEALLOCATIOn
+                // HEAP DEALLOCATION
                 let _ = Vec::from_raw_parts(
                     fptr.Fptr.tableptr,
                     fptr.Fptr.tfield as usize,
@@ -9086,9 +9104,10 @@ pub(crate) unsafe fn ffcrhd_safer(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                (ptr, _, _) = vo.into_raw_parts();
+                let (p, l, c) = vo.into_raw_parts();
+                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = ptr;
+                fptr.Fptr.headstart = p;
             }
         }
 
@@ -9879,9 +9898,10 @@ pub(crate) fn ffmahd_safe(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                (ptr, _, _) = vo.into_raw_parts();
+                let (p, l, c) = vo.into_raw_parts();
+                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = ptr;
+                fptr.Fptr.headstart = p;
             }
         }
 
@@ -11956,8 +11976,8 @@ pub(crate) fn ffc2rr(
         }
     }
 
-    let mut val_bytes = fval.to_ne_bytes();
-    let sptr: &mut [c_short] = cast_slice_mut(&mut val_bytes);
+    let val_bytes = &[*fval]; // To keep alignment
+    let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
     if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
@@ -12060,7 +12080,7 @@ pub(crate) fn ffc2dd(
         }
     }
 
-    let val_bytes = &mut [*dval];
+    let val_bytes = &[*dval];
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 

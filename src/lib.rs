@@ -248,7 +248,7 @@ impl<'a> TKeywords<'a> {
                 let ttype_item = if item.is_null() {
                     None
                 } else {
-                    Some(core::slice::from_raw_parts(*item, FLEN_VALUE))
+                    Some(cast_slice(CStr::from_ptr(*item).to_bytes_with_nul()))
                 };
                 v_ttype.push(ttype_item);
             }
@@ -258,7 +258,7 @@ impl<'a> TKeywords<'a> {
             let mut v_tform = Vec::new();
 
             for item in tform {
-                let tform_item = core::slice::from_raw_parts(*item, FLEN_VALUE);
+                let tform_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
                 v_tform.push(tform_item);
             }
 
@@ -273,7 +273,7 @@ impl<'a> TKeywords<'a> {
                     let tunit_item = if item.is_null() {
                         None
                     } else {
-                        Some(core::slice::from_raw_parts(*item, FLEN_VALUE))
+                        Some(cast_slice(CStr::from_ptr(*item).to_bytes_with_nul()))
                     };
                     v_tunit.push(tunit_item);
                 }

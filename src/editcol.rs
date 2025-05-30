@@ -158,7 +158,7 @@ pub(crate) fn ffrsimll_safe(
         99,
         &mut simple,
         &mut obitpix,
-        &mut onaxis,
+        Some(&mut onaxis),
         &mut onaxes,
         &mut pcount,
         &mut gcount,

@@ -18,7 +18,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::aliases::ffclos_safer;
 use crate::cfileio::MAX_PREFIX_LEN;
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
-use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::iraffits::iraf2mem;
@@ -258,8 +258,9 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
             ffpmsg_str("malloc of initial memory failed (mem_createmem)");
             return FILE_NOT_OPENED;
         } else {
-            let (v, _, _) = v.into_raw_parts();
-            m[ii].memaddr = v;
+            let (p, l, c) = v.into_raw_parts();
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            m[ii].memaddr = p;
         }
     }
 
@@ -1193,7 +1194,7 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
 
         let memsize = m[handle].memsize;
 
-        // HEAP DEALLOCATIOn
+        // HEAP DEALLOCATION
         _ = Vec::from_raw_parts(*(m[handle].memaddrptr), memsize, memsize);
         // free( *(m[handle].memaddrptr) );
 

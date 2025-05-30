@@ -9,6 +9,7 @@ use core::slice;
 use std::ffi::CStr;
 use std::{cmp, ptr};
 
+use crate::aliases::ALLOCATIONS;
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -1415,7 +1416,9 @@ pub unsafe extern "C" fn ffgkls(
                 }
             }
 
-            (*value, _, _) = v.into_raw_parts();
+            let (p, l, c) = v.into_raw_parts();
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            *value = p;
         }
         *status
     }
@@ -1825,9 +1828,13 @@ pub unsafe extern "C" fn fffree(
 
         if !value.is_null() {
             // HEAP DEALLOCATION
-            // WARNING. We don't know the size, but we have a pointer.
-            // SAFTEY: Definitely not safe at all!
-            let _ = Vec::from_raw_parts(value, 1, 1);
+
+            let alloc_lock = ALLOCATIONS.lock().unwrap();
+            let alloc = alloc_lock.get(&(value as usize));
+            if let Some((l, c)) = alloc {
+                // HEAP DEALLOCATION
+                let _ = Vec::from_raw_parts(value, *l, *c);
+            }
         }
         *status
     }
@@ -3693,7 +3700,7 @@ pub unsafe extern "C" fn ffghpr(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let simple = simple.as_mut().expect(NULL_MSG);
         let bitpix = bitpix.as_mut().expect(NULL_MSG);
-        let naxis = naxis.as_mut().expect(NULL_MSG); // WARNING -> Maybe this can be null?
+        let mut naxis = naxis.as_mut();
         let pcount = pcount.as_mut().expect(NULL_MSG);
         let gcount = gcount.as_mut().expect(NULL_MSG);
         let extend = extend.as_mut().expect(NULL_MSG);
@@ -3703,7 +3710,7 @@ pub unsafe extern "C" fn ffghpr(
             maxdim,
             simple,
             bitpix,
-            naxis,
+            naxis.as_deref_mut(),
             &mut tnaxes,
             pcount,
             gcount,
@@ -3715,19 +3722,20 @@ pub unsafe extern "C" fn ffghpr(
             status,
         );
 
-        if !naxes.is_null() {
-            let naxes = slice::from_raw_parts_mut(naxes, maxdim as usize);
+        if let Some(naxis) = naxis
+            && !naxes.is_null()
+        {
+            let naxes = slice::from_raw_parts_mut(naxes, *naxis as usize);
 
-            if *naxis != 0 {
-                let mut ii = 0;
-                while (ii < *naxis) && (ii < maxdim) {
-                    naxes[ii as usize] = tnaxes[ii as usize] as c_long;
-                    ii += 1;
-                }
-            } else {
-                for ii in 0..(maxdim as usize) {
-                    naxes[ii] = tnaxes[ii] as c_long;
-                }
+            let mut ii = 0;
+            while (ii < *naxis) && (ii < maxdim) {
+                naxes[ii as usize] = tnaxes[ii as usize] as c_long;
+                ii += 1;
+            }
+        } else if !naxes.is_null() {
+            let naxes = slice::from_raw_parts_mut(naxes, maxdim as usize);
+            for ii in 0..(maxdim as usize) {
+                naxes[ii] = tnaxes[ii] as c_long;
             }
         }
 
@@ -3758,7 +3766,7 @@ pub unsafe extern "C" fn ffghprll(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let simple = simple.as_mut().expect(NULL_MSG);
         let bitpix = bitpix.as_mut().expect(NULL_MSG);
-        let naxis = naxis.as_mut().expect(NULL_MSG);
+        let naxis = naxis.as_mut();
         let pcount = pcount.as_mut().expect(NULL_MSG);
         let gcount = gcount.as_mut().expect(NULL_MSG);
         let extend = extend.as_mut().expect(NULL_MSG);
@@ -3777,16 +3785,16 @@ pub unsafe extern "C" fn ffghprll(
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
 pub fn ffghprll_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    simple: &mut c_int,     /* O - does file conform to FITS standard? 1/0  */
-    bitpix: &mut c_int,     /* O - number of bits per data value pixel      */
-    naxis: &mut c_int,      /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG], /* O - length of each data axis                 */
-    pcount: &mut c_long,    /* O - number of group parameters (usually 0)   */
-    gcount: &mut c_long,    /* O - number of random groups (usually 1 or 0) */
-    extend: &mut c_int,     /* O - may FITS file haave extensions?          */
-    status: &mut c_int,     /* IO - error status                            */
+    fptr: &mut fitsfile,       /* I - FITS file pointer                        */
+    maxdim: c_int,             /* I - maximum no. of dimensions to read;       */
+    simple: &mut c_int,        /* O - does file conform to FITS standard? 1/0  */
+    bitpix: &mut c_int,        /* O - number of bits per data value pixel      */
+    naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
+    naxes: &mut [LONGLONG],    /* O - length of each data axis                 */
+    pcount: &mut c_long,       /* O - number of group parameters (usually 0)   */
+    gcount: &mut c_long,       /* O - number of random groups (usually 1 or 0) */
+    extend: &mut c_int,        /* O - may FITS file haave extensions?          */
+    status: &mut c_int,        /* IO - error status                            */
 ) -> c_int {
     let mut idummy: c_int = 0;
     let mut lldummy: LONGLONG = 0;
@@ -4722,20 +4730,20 @@ pub unsafe extern "C" fn ffghbnll(
 /// the FITS standard and return the parameters which determine the size and
 /// structure of the primary array or IMAGE extension.
 pub(crate) fn ffgphd(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    simple: &mut c_int,     /* O - does file conform to FITS standard? 1/0  */
-    bitpix: &mut c_int,     /* O - number of bits per data value pixel      */
-    naxis: &mut c_int,      /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG], /* O - length of each data axis                 */
-    pcount: &mut c_long,    /* O - number of group parameters (usually 0)   */
-    gcount: &mut c_long,    /* O - number of random groups (usually 1 or 0) */
-    extend: &mut c_int,     /* O - may FITS file have extensions?          */
-    bscale: &mut f64,       /* O - array pixel linear scaling factor        */
-    bzero: &mut f64,        /* O - array pixel linear scaling zero point    */
-    blank: &mut LONGLONG,   /* O - value used to represent undefined pixels */
-    nspace: &mut c_int,     /* O - number of blank keywords prior to END    */
-    status: &mut c_int,     /* IO - error status                            */
+    fptr: &mut fitsfile,       /* I - FITS file pointer                        */
+    maxdim: c_int,             /* I - maximum no. of dimensions to read;       */
+    simple: &mut c_int,        /* O - does file conform to FITS standard? 1/0  */
+    bitpix: &mut c_int,        /* O - number of bits per data value pixel      */
+    naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
+    naxes: &mut [LONGLONG],    /* O - length of each data axis                 */
+    pcount: &mut c_long,       /* O - number of group parameters (usually 0)   */
+    gcount: &mut c_long,       /* O - number of random groups (usually 1 or 0) */
+    extend: &mut c_int,        /* O - may FITS file have extensions?          */
+    bscale: &mut f64,          /* O - array pixel linear scaling factor        */
+    bzero: &mut f64,           /* O - array pixel linear scaling zero point    */
+    blank: &mut LONGLONG,      /* O - value used to represent undefined pixels */
+    nspace: &mut c_int,        /* O - number of blank keywords prior to END    */
+    status: &mut c_int,        /* IO - error status                            */
 ) -> c_int {
     let mut ii = 0;
     let mut nextkey = 0;
@@ -4849,13 +4857,15 @@ pub(crate) fn ffgphd(
             return *status;
         };
         //}
-        // if !naxis.is_null() {
-        ffgidm_safe(fptr, naxis, status); /* get NAXIS value */
-        if *status > 0 {
-            ffpmsg_str("Error reading NAXIS value of compressed image");
-            return *status;
-        };
-        // }
+
+        if let Some(naxis) = naxis {
+            ffgidm_safe(fptr, naxis, status); /* get NAXIS value */
+            if *status > 0 {
+                ffpmsg_str("Error reading NAXIS value of compressed image");
+                return *status;
+            };
+        }
+
         //if !naxes.is_null() {
         ffgiszll_safe(fptr, maxdim, naxes, status); /* get NAXISn value */
         if *status > 0 {
@@ -4934,9 +4944,7 @@ pub(crate) fn ffgphd(
 
             *status = BAD_NAXIS;
             return *status;
-        } else
-        /* if !naxis.is_null() todo */
-        {
+        } else if let Some(naxis) = naxis {
             *naxis = longnaxis as c_int; /* do explicit type conversion */
         }
 
@@ -5548,7 +5556,12 @@ pub(crate) fn ffh2st_safe(
     ); /* copy header */
     hdr[(nrec as LONGLONG * IOBUFLEN) as usize] = 0;
 
-    let (header_ptr, _, _) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = hdr.into_raw_parts();
+    ALLOCATIONS
+        .lock()
+        .unwrap()
+        .insert(header_ptr as usize, (l, c));
+
     *header = header_ptr;
 
     *status
@@ -5699,7 +5712,12 @@ pub(crate) fn ffhdr2str_safe(
     hdr.resize(((*nkeys * 80) + 1) as usize, 0);
     hdr.shrink_to_fit();
 
-    let (header_ptr, _, _) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = hdr.into_raw_parts();
+    ALLOCATIONS
+        .lock()
+        .unwrap()
+        .insert(header_ptr as usize, (l, c));
+
     *header = header_ptr;
 
     *status

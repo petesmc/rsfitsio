@@ -185,7 +185,7 @@ pub unsafe extern "C" fn ffukys(
 
         let comm: Option<&[c_char]> = match comm.is_null() {
             true => None,
-            false => Some(slice::from_raw_parts(comm, FLEN_COMMENT)),
+            false => Some(cast_slice(CStr::from_ptr(comm).to_bytes_with_nul())),
         };
 
         ffukys_safe(fptr, keyname, value, comm, status)
@@ -1159,7 +1159,7 @@ pub unsafe extern "C" fn ffmkys(
 
         let comm: Option<&[c_char]> = match comm.is_null() {
             true => None,
-            false => Some(slice::from_raw_parts(comm, FLEN_COMMENT)),
+            false => Some(cast_slice(CStr::from_ptr(comm).to_bytes_with_nul())),
         };
 
         ffmkys_safe(fptr, keyname, value, comm, status)

@@ -57,7 +57,7 @@ use std::{
     ptr,
 };
 
-use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::NULL_MSG;
 use crate::int_snprintf;
 use crate::{
@@ -248,7 +248,9 @@ pub(crate) unsafe fn iraf2mem(
         /* append the image data onto the FITS header */
         irafrdimage(&mut b_ptr, buffsize, filesize, status);
 
-        let (raw_ptr, _, _) = b_ptr.into_raw_parts();
+        let (raw_ptr, l, c) = b_ptr.into_raw_parts();
+        ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
+
         *buffptr = raw_ptr;
 
         *status

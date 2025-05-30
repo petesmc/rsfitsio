@@ -41,9 +41,10 @@ use crate::editcol::ffdcol_safe;
 use crate::edithdu::ffcopy_safer;
 use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe};
 use crate::fitscore::{
-    ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe, ffgidm_safe,
-    ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe, ffmrhd_safe,
-    ffpmsg_slice, ffpmsg_str, ffrhdu_safer, ffupch_safe, fits_strcasecmp, fits_strncasecmp,
+    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
+    ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
+    ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safer, ffupch_safe, fits_strcasecmp,
+    fits_strncasecmp,
 };
 use crate::getkey::{ffgcrd_safe, ffgkyl_safe, ffmaky_safe};
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
@@ -6021,8 +6022,9 @@ pub(crate) unsafe fn ffimport_file_safer(
         fclose(aFile);
 
         // HEAP ALLOCATION
-        let (v, _, _) = lines.into_raw_parts();
-        *contents = v;
+        let (p, l, c) = lines.into_raw_parts();
+        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+        *contents = p;
         *status
     }
 }
