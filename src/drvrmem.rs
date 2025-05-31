@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -18,7 +19,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::aliases::ffclos_safer;
 use crate::cfileio::MAX_PREFIX_LEN;
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
-use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::iraffits::iraf2mem;
@@ -258,8 +259,9 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
             ffpmsg_str("malloc of initial memory failed (mem_createmem)");
             return FILE_NOT_OPENED;
         } else {
-            let (v, _, _) = v.into_raw_parts();
-            m[ii].memaddr = v;
+            let (p, l, c) = vec_into_raw_parts(v);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            m[ii].memaddr = p;
         }
     }
 
@@ -981,23 +983,37 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         naxis = 1;
         let mut cptr2 = 0;
-        dim[0] = strtol_safe(&filename[cptr..], &mut cptr2, 10);
+        // dim[0] = strtol_safe(&filename[cptr..], &mut cptr2, 10);
+        let (r, n) = strtol_safe(&filename[cptr..]).unwrap();
+        dim[0] = r;
+        cptr2 = n;
 
         if cptr2 != 0 && filename[cptr2] == bb(b',') {
             naxis = 2;
-            dim[1] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
-
+            // dim[1] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+            let (r, n) = strtol_safe(&filename[(cptr2 + 1)..]).unwrap();
+            dim[1] = r;
+            cptr = n;
             if cptr != 0 && filename[cptr] == bb(b',') {
                 naxis = 3;
-                dim[2] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                //dim[2] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+                dim[2] = r;
+                cptr2 = n;
 
                 if cptr2 != 0 && filename[cptr2] == bb(b',') {
                     naxis = 4;
-                    dim[3] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+                    // dim[3] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+                    let (r, n) = strtol_safe(&filename[(cptr2 + 1)..]).unwrap();
+                    dim[3] = r;
+                    cptr = n;
 
                     if cptr != 0 && filename[cptr] == bb(b',') {
                         naxis = 5;
-                        dim[4] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                        //dim[4] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                        let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+                        dim[4] = r;
+                        cptr2 = n;
                     }
                 }
             }
@@ -1007,8 +1023,10 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         if filename[cptr] == bb(b':') {
             /* read starting offset value */
-            let mut dummy = 0;
-            offset = strtol_safe(&filename[(cptr + 1)..], &mut dummy, 10);
+
+            // offset = strtol_safe(&filename[(cptr + 1)..], &mut dummy, 10);
+            let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+            offset = r;
         }
 
         nvals = dim[0] * dim[1] * dim[2] * dim[3] * dim[4];
@@ -1193,7 +1211,7 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
 
         let memsize = m[handle].memsize;
 
-        // HEAP DEALLOCATIOn
+        // HEAP DEALLOCATION
         _ = Vec::from_raw_parts(*(m[handle].memaddrptr), memsize, memsize);
         // free( *(m[handle].memaddrptr) );
 

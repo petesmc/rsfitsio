@@ -45,6 +45,7 @@
 */
 
 use crate::c_types::{c_char, c_int, c_long};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use std::ffi::CStr;
@@ -57,7 +58,7 @@ use std::{
     ptr,
 };
 
-use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::NULL_MSG;
 use crate::int_snprintf;
 use crate::{
@@ -170,7 +171,7 @@ pub(crate) fn fits_delete_iraf_file_safe(
 
     let mut irafheader = irafheader.unwrap();
 
-    getirafpixname(filename, &mut irafheader, &mut pixfilename, status);
+    getirafpixname(filename, &irafheader, &mut pixfilename, status);
 
     /* don't need the IRAF header any more */
     // free(irafheader);
@@ -228,7 +229,7 @@ pub(crate) unsafe fn iraf2mem(
         /* convert IRAF header to FITS header in memory */
         let tmp_buffer = iraftofits(
             filename,
-            &mut irafheader,
+            &irafheader,
             lenirafhead,
             &mut b_ptr,
             buffsize,
@@ -248,7 +249,9 @@ pub(crate) unsafe fn iraf2mem(
         /* append the image data onto the FITS header */
         irafrdimage(&mut b_ptr, buffsize, filesize, status);
 
-        let (raw_ptr, _, _) = b_ptr.into_raw_parts();
+        let (raw_ptr, l, c) = vec_into_raw_parts(b_ptr);
+        ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
+
         *buffptr = raw_ptr;
 
         *status
@@ -443,7 +446,7 @@ fn irafrdimage(
     }
 
     /* check pixel header magic word */
-    imhver = pix_version(&mut pixheader);
+    imhver = pix_version(&pixheader);
     if imhver < 1 {
         ffpmsg_str("File not valid IRAF pixel file:");
         ffpmsg_slice(&pixname);
@@ -1221,7 +1224,7 @@ fn irafgetc2(
 ) -> Option<Vec<c_char>> {
     let irafstring = irafgetc(irafheader, offset, 2 * (nc + 1));
 
-    iraf2str(&mut irafstring.unwrap(), nc)
+    iraf2str(&irafstring.unwrap(), nc)
 }
 
 /*--------------------------------------------------------------------------*/

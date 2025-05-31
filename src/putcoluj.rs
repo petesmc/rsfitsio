@@ -358,7 +358,11 @@ pub unsafe extern "C" fn ffpssuj(
         let lpixel = slice::from_raw_parts(lpixel, naxis as usize);
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        let nelem = naxes.iter().product::<c_long>() as usize;
+        let mut nelem = 1;
+        for ii in 0..naxis as usize {
+            nelem *= (lpixel[ii] - fpixel[ii] + 1) as usize;
+        }
+
         let array = slice::from_raw_parts(array, nelem);
 
         ffpssuj_safe(fptr, group, naxis, naxes, fpixel, lpixel, array, status)
@@ -1721,7 +1725,11 @@ pub unsafe extern "C" fn ffpssujj(
         let lpixel = slice::from_raw_parts(lpixel, naxis as usize);
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        let nelem = naxes.iter().product::<c_long>() as usize;
+        let mut nelem = 1;
+        for ii in 0..naxis as usize {
+            nelem *= (lpixel[ii] - fpixel[ii] + 1) as usize;
+        }
+
         let array = slice::from_raw_parts(array, nelem);
 
         ffpssujj_safe(fptr, group, naxis, naxes, fpixel, lpixel, array, status)

@@ -2050,7 +2050,6 @@ pub(crate) fn fffr4r4(
             sptr += 1; /* point to MSBs */
         }
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if scale == 1.0 && zero == 0.0 {
@@ -2161,8 +2160,6 @@ pub(crate) fn fffr4r4_inplace(
         if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
             sptr += 1; /* point to MSBs */
         }
-
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
 
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
@@ -2288,7 +2285,6 @@ pub(crate) fn fffr8r4(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {

@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Read;
 
 use crate::c_types::*;
+use crate::helpers::boxed::box_try_new;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -194,7 +195,7 @@ pub(crate) fn fits_read_ascii_region(
         return *status;
     }
 
-    let aRgn = Box::try_new(SAORegion::default());
+    let aRgn = box_try_new(SAORegion::default());
     if aRgn.is_err() {
         ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
         *status = MEMORY_ALLOCATION;
@@ -691,10 +692,18 @@ pub(crate) fn fits_read_ascii_region(
                         cFmt = CoordFmt::HHMMSS;
                         mm = 0;
                         ss = 0.0;
-                        hh = strtol_safe(&currLine[pX..], &mut endp, 10);
+                        // hh = strtol_safe(&currLine[pX..], &mut endp, 10);
+                        let (r, p) = strtol_safe(&currLine[pX..]).unwrap();
+                        hh = r;
+                        let mut endp = p;
+
                         if endp != 0 && currLine[pX + endp] == bb(b':') {
                             pX += endp + 1;
-                            mm = strtol_safe(&currLine[pX..], &mut endp, 10);
+                            // mm = strtol_safe(&currLine[pX..], &mut endp, 10);
+                            let (r, p) = strtol_safe(&currLine[pX..]).unwrap();
+                            mm = r;
+                            endp = p;
+
                             if endp != 0 && currLine[pX + endp] == bb(b':') {
                                 pX += endp + 1;
                                 ss = atof_safe(&currLine[pX..]);
@@ -713,10 +722,19 @@ pub(crate) fn fits_read_ascii_region(
                             negdec = 1;
                             pY += 1;
                         }
-                        dd = strtol_safe(&currLine[pY..], &mut endp, 10);
+
+                        // dd = strtol_safe(&currLine[pY..], &mut endp, 10);
+                        let (r, p) = strtol_safe(&currLine[pY..]).unwrap();
+                        dd = r;
+                        endp = p;
+
                         if endp != 0 && currLine[pY + endp] == bb(b':') {
                             pY += endp + 1;
-                            mm = strtol_safe(&currLine[pY..], &mut endp, 10);
+                            // mm = strtol_safe(&currLine[pY..], &mut endp, 10);
+                            let (r, p) = strtol_safe(&currLine[pY..]).unwrap();
+                            mm = r;
+                            endp = p;
+
                             if endp != 0 && currLine[pY + endp] == bb(b':') {
                                 pY += endp + 1;
                                 ss = atof_safe(&currLine[pY..]);
@@ -1834,7 +1852,7 @@ pub(crate) unsafe fn fits_read_fits_region(
             return *status;
         }
 
-        let aRgn = Box::try_new(SAORegion::default());
+        let aRgn = box_try_new(SAORegion::default());
 
         if aRgn.is_err() {
             ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
@@ -1940,7 +1958,7 @@ pub(crate) unsafe fn fits_read_fits_region(
 
         dotransform = false;
         if aRgn.wcs.exists {
-            let tmp_regwcs = Box::try_new(WCSdata::default());
+            let tmp_regwcs = box_try_new(WCSdata::default());
             if tmp_regwcs.is_err() {
                 ffpmsg_str("Failed to allocate memory for Region WCS data");
                 *status = MEMORY_ALLOCATION;

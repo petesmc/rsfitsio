@@ -35,12 +35,15 @@ SERVICES PROVIDED HEREUNDER."
 
 use core::{slice, str};
 use std::borrow::BorrowMut;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::num::{ParseFloatError, ParseIntError};
 use std::ptr::addr_of;
+use std::sync::{LazyLock, Mutex};
 use std::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -73,6 +76,10 @@ pub const DEL_NEWEST: c_int = 3; /* delete the newest message from the stack */
 pub const GET_MESG: c_int = 4; /* pop and return oldest message, ignoring marks */
 pub const PUT_MESG: c_int = 5; /* add a new message to the stack */
 pub const PUT_MARK: c_int = 6; /* add a marker to the stack */
+
+// Use this to keep track of allocations so we can deallocate with the same `Layout` used for allocation.
+pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
+    LazyLock::new(Default::default);
 
 /*--------------------------------------------------------------------------*/
 /// return the current version number of the FITSIO software
@@ -5624,7 +5631,7 @@ pub(crate) unsafe fn ffpinit(
             999,
             &mut simple,
             &mut bitpix,
-            &mut naxis,
+            Some(&mut naxis),
             &mut naxes,
             &mut pcount,
             &mut gcount,
@@ -5746,12 +5753,20 @@ pub(crate) unsafe fn ffpinit(
 
             if !fptr.Fptr.tableptr.is_null() {
                 /* free memory for the old CHDU */
-                // HEAP DEALLOCATIOn
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
+
+                // HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        fptr.Fptr.tableptr,
+                        fptr.Fptr.tfield as usize,
+                        fptr.Fptr.tfield as usize,
+                    );
+                }
             }
 
             fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
@@ -5789,27 +5804,31 @@ pub(crate) unsafe fn ffpinit(
 
             if !fptr.Fptr.tableptr.is_null() {
                 /* free memory for the old CHDU */
-                // HEAP DEALLOCATIOn
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
+                // HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        fptr.Fptr.tableptr,
+                        fptr.Fptr.tfield as usize,
+                        fptr.Fptr.tfield as usize,
+                    );
+                }
             }
-            //colptr = calloc(2, std::mem::size_of::<tcolumn>()) as *mut tcolumn;
-            // HEAP ALLOCATION
-            let mut colptr = Box::new([tcolumn::default(); 2]);
 
-            /*  if colptr.is_null() {
-                ffpmsg(
-                    c"malloc failed to get memory for FITS array descriptors (ffpinit)".as_ptr(),
-                );
+            // HEAP ALLOCATION
+            let mut colptr = Vec::new();
+            if colptr.try_reserve_exact(2).is_err() {
+                ffpmsg_str("malloc failed to get memory for FITS array descriptors (ffpinit)");
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
-                return {
-                    *status = ARRAY_TOO_BIG;
-                    *status
-                };
-            } */
+                *status = ARRAY_TOO_BIG;
+                return *status;
+            } else {
+                colptr.resize(2, tcolumn::default());
+            }
 
             /* the first column represents the group parameters, if any */
             colptr[0].tbcol = 0;
@@ -5830,7 +5849,10 @@ pub(crate) unsafe fn ffpinit(
             colptr[1].tnull = blank;
 
             /* copy the table structure address to the fitsfile structure */
-            fptr.Fptr.tableptr = Box::into_raw(colptr) as *mut tcolumn;
+
+            let (p, l, c) = vec_into_raw_parts(colptr);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            fptr.Fptr.tableptr = p;
         }
 
         let headstart = fptr.Fptr.get_headstart_as_slice();
@@ -5915,22 +5937,35 @@ pub(crate) unsafe fn ffainit(
 
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
-            // HEAP DEALLOCATIOn
-            let _ = Vec::from_raw_parts(
-                fptr.Fptr.tableptr,
-                fptr.Fptr.tfield as usize,
-                fptr.Fptr.tfield as usize,
-            );
+            // HEAP DEALLOCATION
+            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+            if let Some((l, c)) = alloc {
+                // HEAP DEALLOCATION
+                let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
+            } else {
+                let _ = Vec::from_raw_parts(
+                    fptr.Fptr.tableptr,
+                    fptr.Fptr.tfield as usize,
+                    fptr.Fptr.tfield as usize,
+                );
+            }
         }
         /* mem for column structures ; space is initialized = 0 */
         if tfield > 0 {
-            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
-            if colptr.is_null() {
+            let mut tmp = Vec::new();
+            if tmp.try_reserve_exact(tfield as usize).is_err() {
                 ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffainit)");
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
                 *status = ARRAY_TOO_BIG;
                 return *status;
+            } else {
+                tmp.resize(tfield as usize, tcolumn::default());
             }
+
+            let (p, l, c) = vec_into_raw_parts(tmp);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            colptr = p;
         }
 
         /* copy the table structure address to the fitsfile structure */
@@ -6167,22 +6202,36 @@ pub(crate) unsafe fn ffbinit(
 
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
-            // HEAP DEALLOCATIOn
-            let _ = Vec::from_raw_parts(
-                fptr.Fptr.tableptr,
-                fptr.Fptr.tfield as usize,
-                fptr.Fptr.tfield as usize,
-            );
+            // HEAP DEALLOCATION
+            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+            if let Some((l, c)) = alloc {
+                // HEAP DEALLOCATION
+                let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
+            } else {
+                let _ = Vec::from_raw_parts(
+                    fptr.Fptr.tableptr,
+                    fptr.Fptr.tfield as usize,
+                    fptr.Fptr.tfield as usize,
+                );
+            }
         }
+
         /* mem for column structures ; space is initialized = 0  */
         if tfield > 0 {
-            (colptr, _, _) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
-            if colptr.is_null() {
+            let mut tmp = Vec::new();
+            if tmp.try_reserve_exact(tfield as usize).is_err() {
                 ffpmsg_str("malloc failed to get memory for FITS table descriptors (ffbinit)");
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
                 *status = ARRAY_TOO_BIG;
                 return *status;
+            } else {
+                tmp.resize(tfield as usize, tcolumn::default());
             }
+
+            let (p, l, c) = vec_into_raw_parts(tmp);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            colptr = p;
         }
 
         /* copy the table structure address to the fitsfile structure */
@@ -6773,7 +6822,11 @@ pub(crate) fn ffgtbp(
 
         let loc = loc.unwrap() + 1;
         let mut endp = 0;
-        width = strtol_safe(&value[loc..], &mut endp, 10); /* read size of first dimension */
+        /* read size of first dimension */
+        // width = strtol_safe(&value[loc..], &mut endp, 10);
+        let (r, p) = strtol_safe(&value[loc..]).unwrap();
+        width = r;
+        endp = p;
 
         if c[ci].trepeat != 1 && c[ci].trepeat < width as LONGLONG {
             return *status; /* string length is greater than column width */
@@ -8361,12 +8414,19 @@ pub(crate) unsafe fn ffchdu(
         if fptr.Fptr.open_count == 1 {
             /* free memory for the CHDU structure only if no other files are using it */
             if !fptr.Fptr.tableptr.is_null() {
-                // HEAP DEALLOCATIOn
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
+                // HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        fptr.Fptr.tableptr,
+                        fptr.Fptr.tfield as usize,
+                        fptr.Fptr.tfield as usize,
+                    );
+                }
 
                 fptr.Fptr.tableptr = ptr::null_mut();
 
@@ -9086,9 +9146,10 @@ pub(crate) unsafe fn ffcrhd_safer(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                (ptr, _, _) = vo.into_raw_parts();
+                let (p, l, c) = vec_into_raw_parts(vo);
+                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = ptr;
+                fptr.Fptr.headstart = p;
             }
         }
 
@@ -9859,7 +9920,7 @@ pub(crate) fn ffmahd_safe(
     let mut moveto = 0;
     let mut tstatus = 0;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let mut ptr: *mut LONGLONG = ptr::null_mut();
+    let ptr: *mut LONGLONG = ptr::null_mut();
 
     let mut exttype = exttype;
 
@@ -9879,9 +9940,10 @@ pub(crate) fn ffmahd_safe(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                (ptr, _, _) = vo.into_raw_parts();
+                let (p, l, c) = vec_into_raw_parts(vo);
+                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = ptr;
+                fptr.Fptr.headstart = p;
             }
         }
 
@@ -11956,8 +12018,8 @@ pub(crate) fn ffc2rr(
         }
     }
 
-    let mut val_bytes = fval.to_ne_bytes();
-    let sptr: &mut [c_short] = cast_slice_mut(&mut val_bytes);
+    let val_bytes = &[*fval]; // To keep alignment
+    let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
     if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
@@ -12060,7 +12122,7 @@ pub(crate) fn ffc2dd(
         }
     }
 
-    let val_bytes = &mut [*dval];
+    let val_bytes = &[*dval];
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 

@@ -800,7 +800,7 @@ pub(crate) fn fits_set_compression_pref_safe(
 
         if strncmp_safe(&card, cs!(c"FZ"), 2) == 0 {
             /* get the keyword value string */
-            ffpsvc_safe(&mut card, &mut value, None, status);
+            ffpsvc_safe(&card, &mut value, None, status);
 
             if strncmp_safe(&card[2..], cs!(c"ALGOR"), 5) == 0 {
                 /* set the desired compression algorithm */
@@ -1856,10 +1856,10 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
 /// This routine does the following:
 /// - reads an image one tile at a time
 /// - if it is a float or double image, then it tries to quantize the pixels
-/// into scaled integers.
+///   into scaled integers.
 /// - it then compressess the integer pixels, or if the it was not
-/// possible to quantize the floating point pixels, then it losslessly
-/// compresses them with gzip
+///   possible to quantize the floating point pixels, then it losslessly
+///   compresses them with gzip
 /// - writes the compressed byte stream to the output FITS file
 unsafe fn imcomp_compress_image(
     infptr: &mut fitsfile,
@@ -5626,7 +5626,7 @@ pub(crate) unsafe fn fits_img_decompress_header_safer(
                     outfptr,
                     (infptr.Fptr).zbitpix,
                     (infptr.Fptr).zndim,
-                    &mut (infptr.Fptr).znaxis,
+                    &(infptr.Fptr).znaxis,
                     status,
                 ) > 0
                 {
@@ -7152,7 +7152,7 @@ fn imcomp_copy_imheader(
 
         ffgrec_safe(infptr, ii.try_into().unwrap(), Some(&mut card), status);
 
-        keyclass = ffgkcl_safe(&mut card); /* Get the type/class of keyword */
+        keyclass = ffgkcl_safe(&card); /* Get the type/class of keyword */
 
         /* don't copy structural keywords or checksum keywords */
         if (keyclass <= TYP_CMPRS_KEY) || (keyclass == TYP_CKSUM_KEY) {
@@ -7846,7 +7846,7 @@ fn imcomp_decompress_tile(
                     uncompress2mem_from_mem(
                         &cbuf,
                         (nelemll as c_long).try_into().unwrap(),
-                        &mut (buffer.as_mut_ptr() as *mut u8),
+                        &mut (buffer.as_mut_ptr()),
                         &mut idatalen,
                         None,
                         Some(&mut tilebytesize),
@@ -8272,7 +8272,7 @@ fn imcomp_decompress_tile(
             uncompress2mem_from_mem(
                 cast_slice(&cbuf),
                 (nelemll as c_long).try_into().unwrap(),
-                &mut (idata.as_mut_ptr() as *mut u8),
+                &mut (idata.as_mut_ptr()),
                 &mut idatalen,
                 Some(realloc),
                 Some(&mut tilebytesize),
@@ -10707,32 +10707,32 @@ fn imcomp_double2nan_inplace(
 /// Then, on a chunk by piece basis, do the following:
 ///
 /// 1. Transpose the table from its original row-major order, into column-major
-/// order. All the bytes for each column are then continuous.  In addition, the
-/// bytes within each table element may be shuffled so that the most significant
-/// byte of every element occurs first in the array, followed by the next most
-/// significant byte, and so on to the least significant byte.  Byte shuffling
-/// often improves the gzip compression of floating-point arrays.
+///    order. All the bytes for each column are then continuous.  In addition, the
+///    bytes within each table element may be shuffled so that the most significant
+///    byte of every element occurs first in the array, followed by the next most
+///    significant byte, and so on to the least significant byte.  Byte shuffling
+///    often improves the gzip compression of floating-point arrays.
 ///
 /// 2. Compress the contiguous array of bytes in each column using the specified
-/// compression method.  If no method is specifed, then a default method for that
-/// data type is chosen.
+///    compression method.  If no method is specifed, then a default method for that
+///    data type is chosen.
 ///
 /// 3. Store the compressed stream of bytes into a column that has the same name
-/// as in the input table, but which has a variable-length array data type (1QB).
-/// The output table will contain one row for each piece of the original table.
+///    as in the input table, but which has a variable-length array data type (1QB).
+///    The output table will contain one row for each piece of the original table.
 ///
 /// 4. If the input table contain variable-length arrays, then each VLA
-/// is compressed individually, and written to the heap in the output table.
-/// Note that the output table will contain 2 sets of pointers for each VLA
-/// column. The first set contains the pointers to the uncompressed VLAs from the
-/// input table and the second is the set of pointers to the compressed VLAs in
-/// the output table. The latter set of pointers is used to reconstruct table when
-/// it is uncompressed, so that the heap has exactly the same structure as in the
-/// original file.  The 2 sets of pointers are concatinated together, compressed
-/// with gzip, and written to the output table.  When reading the compressed
-/// table, the only VLA that is directly visible is this compressed array of
-/// descriptors.  One has to uncompress this array to be able to to read all the
-/// descriptors to the individual VLAs in the column.
+///    is compressed individually, and written to the heap in the output table.
+///    Note that the output table will contain 2 sets of pointers for each VLA
+///    column. The first set contains the pointers to the uncompressed VLAs from the
+///    input table and the second is the set of pointers to the compressed VLAs in
+///    the output table. The latter set of pointers is used to reconstruct table when
+///    it is uncompressed, so that the heap has exactly the same structure as in the
+///    original file.  The 2 sets of pointers are concatinated together, compressed
+///    with gzip, and written to the output table.  When reading the compressed
+///    table, the only VLA that is directly visible is this compressed array of
+///    descriptors.  One has to uncompress this array to be able to to read all the
+///    descriptors to the individual VLAs in the column.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_compress_table(
     infptr: *mut fitsfile,
@@ -11434,7 +11434,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
                                     compress2mem_from_mem(
                                         cast_slice(&vlamem),
                                         vlamemlen as usize,
-                                        &mut (cvlamem.as_mut_ptr() as *mut u8),
+                                        &mut (cvlamem.as_mut_ptr()),
                                         &mut compmemlen,
                                         Some(realloc),
                                         Some(&mut dlen),
@@ -11702,7 +11702,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
                         compress2mem_from_mem(
                             cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
                             datasize,
-                            &mut (cvlamem.as_mut_ptr() as *mut u8),
+                            &mut (cvlamem.as_mut_ptr()),
                             &mut datasize,
                             Some(realloc),
                             Some(&mut dlen),
@@ -11979,15 +11979,15 @@ pub unsafe extern "C" fn fits_uncompress_table(
         /* reset the NAXIS1, NAXIS2. and PCOUNT keywords to the original */
         fits_read_card(outfptr, cs!(c"ZNAXIS1"), &mut card, status);
         strncpy_safe(&mut card, cs!(c"NAXIS1"), 7);
-        fits_update_card(outfptr, cs!(c"NAXIS1"), &mut card, status);
+        fits_update_card(outfptr, cs!(c"NAXIS1"), &card, status);
 
         fits_read_card(outfptr, cs!(c"ZNAXIS2"), &mut card, status);
         strncpy_safe(&mut card, cs!(c"NAXIS2"), 7);
-        fits_update_card(outfptr, cs!(c"NAXIS2"), &mut card, status);
+        fits_update_card(outfptr, cs!(c"NAXIS2"), &card, status);
 
         fits_read_card(outfptr, cs!(c"ZPCOUNT"), &mut card, status);
         strncpy_safe(&mut card, cs!(c"PCOUNT"), 7);
-        fits_update_card(outfptr, cs!(c"PCOUNT"), &mut card, status);
+        fits_update_card(outfptr, cs!(c"PCOUNT"), &card, status);
 
         fits_delete_key(outfptr, cs!(c"ZTABLE"), status);
         fits_delete_key(outfptr, cs!(c"ZTILELEN"), status);
@@ -12029,7 +12029,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
             fits_read_card(outfptr, &keyname, &mut card, status);
             card[0] = bb(b'T');
             keyname[0] = bb(b'T');
-            fits_update_card(outfptr, &keyname, &mut card, status);
+            fits_update_card(outfptr, &keyname, &card, status);
 
             /* now delete the ZFORM keyword */
             keyname[0] = bb(b'Z');
@@ -12829,7 +12829,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
             ffpbyt(
                 outfptr,
                 naxis1 * rowspertile,
-                cast_slice(&mut rm_buffer),
+                cast_slice(&rm_buffer),
                 status,
             );
 

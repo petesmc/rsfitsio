@@ -222,7 +222,7 @@ pub unsafe extern "C" fn ffg2di(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let anynul = anynul.as_mut();
 
-        let array = slice::from_raw_parts_mut(array, (ncols * naxis2 * naxis2) as usize);
+        let array = slice::from_raw_parts_mut(array, (ncols * naxis2) as usize);
 
         /* call the 3D reading routine, with the 3rd dimension = 1 */
         ffg3di_safe(
@@ -2128,7 +2128,6 @@ pub(crate) fn fffr4i2(
             sptr += 1; /* point to MSBs */
         }
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if scale == 1.0 && zero == 0.0 {
@@ -2275,7 +2274,6 @@ pub(crate) fn fffr8i2(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {

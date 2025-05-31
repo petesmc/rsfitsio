@@ -2,6 +2,7 @@ use core::slice;
 use std::ptr;
 
 use crate::c_types::*;
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::cast_slice;
 
@@ -9,8 +10,8 @@ use crate::aliases::ffdelt_safer;
 use crate::cfileio::ffinit_safer;
 
 use crate::fitscore::{
-    ffgcno_safe, ffghdn_safe, ffghdt_safe, ffgncl_safe, ffkeyn_safe, ffmahd_safe, ffmkky_safe,
-    ffmnhd_safe, ffpmsg_str, fits_copy_pixlist2image_safe,
+    ALLOCATIONS, ffgcno_safe, ffghdn_safe, ffghdt_safe, ffgncl_safe, ffkeyn_safe, ffmahd_safe,
+    ffmkky_safe, ffmnhd_safe, ffpmsg_str, fits_copy_pixlist2image_safe,
 };
 use crate::fitsio::*;
 use crate::getcold::ffgcvd_safe;
@@ -216,8 +217,10 @@ pub(crate) unsafe fn fits_read_wcstab_safer(
                 break;
             }
 
-            // WARNING: This needs to be freed somewhere
-            let (ptr, _, _) = tmp.into_raw_parts();
+            // HEAP ALLOCATION
+            let (ptr, l, c) = vec_into_raw_parts(tmp);
+            ALLOCATIONS.lock().unwrap().insert(ptr as usize, (l, c));
+
             *wtbp[iwtb].arrayp = ptr;
         }
 
@@ -1504,7 +1507,12 @@ pub(crate) fn ffgtwcs_safe(
     strcat_safe(&mut hdr[cptr..], cs!(c"END"));
     strncat_safe(&mut hdr[cptr..], blanks, 77);
 
-    let (header_ptr, _, _) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
+    ALLOCATIONS
+        .lock()
+        .unwrap()
+        .insert(header_ptr as usize, (l, c));
+
     *header = header_ptr;
 
     *status
