@@ -5,7 +5,6 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
-use core::slice;
 use std::cmp;
 use std::ffi::CStr;
 

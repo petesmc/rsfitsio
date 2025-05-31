@@ -3,7 +3,7 @@ use std::{cmp, ffi::CStr, ptr, str::FromStr};
 use bytemuck::cast_slice;
 use cbitset::BitSet256;
 
-use crate::c_types::{c_char, c_double, c_int, c_uchar, size_t};
+use crate::c_types::{c_char, c_int, c_uchar, size_t};
 use libc::atoi;
 
 use crate::bb;
@@ -188,7 +188,7 @@ pub(crate) unsafe fn strnlen(s: *const c_char, size: size_t) -> size_t {
 }
 
 pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F as FromStr>::Err> {
-    let strlen = (input.len() - 1);
+    let strlen = input.len() - 1;
     let input: &[u8] = cast_slice(input);
 
     // Find the first non-numeric character or the end of the string
@@ -539,7 +539,7 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
                 };
 
                 // Exponent digits are always in base 10.
-                if (s[si] as u8 as char).is_digit(10) {
+                if (s[si] as u8 as char).is_ascii_digit() {
                     let mut exponent_value = 0;
 
                     while let Some(digit) = (s[si] as u8 as char).to_digit(10) {

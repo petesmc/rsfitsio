@@ -9920,7 +9920,7 @@ pub(crate) fn ffmahd_safe(
     let mut moveto = 0;
     let mut tstatus = 0;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let mut ptr: *mut LONGLONG = ptr::null_mut();
+    let ptr: *mut LONGLONG = ptr::null_mut();
 
     let mut exttype = exttype;
 

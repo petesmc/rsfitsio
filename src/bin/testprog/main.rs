@@ -7,7 +7,7 @@ use std::{ffi::CStr, process::ExitCode};
 
 use bytemuck::cast_slice;
 
-use libc::{c_int, c_long, c_short, c_uchar, free, malloc, strcpy, strncpy};
+use libc::{c_int, c_long, c_short, c_uchar, free, malloc, strcpy};
 
 use rsfitsio::buffers::{ffflus, ffgtbb, ffptbb};
 use rsfitsio::c_types::{c_char, c_ulong};
