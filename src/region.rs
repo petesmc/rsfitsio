@@ -3,8 +3,8 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 
-use crate::helpers::boxed::box_try_new;
 use crate::c_types::*;
+use crate::helpers::boxed::box_try_new;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -692,10 +692,18 @@ pub(crate) fn fits_read_ascii_region(
                         cFmt = CoordFmt::HHMMSS;
                         mm = 0;
                         ss = 0.0;
-                        hh = strtol_safe(&currLine[pX..], &mut endp, 10);
+                        // hh = strtol_safe(&currLine[pX..], &mut endp, 10);
+                        let (r, p) = strtol_safe(&currLine[pX..]).unwrap();
+                        hh = r;
+                        let mut endp = p;
+
                         if endp != 0 && currLine[pX + endp] == bb(b':') {
                             pX += endp + 1;
-                            mm = strtol_safe(&currLine[pX..], &mut endp, 10);
+                            // mm = strtol_safe(&currLine[pX..], &mut endp, 10);
+                            let (r, p) = strtol_safe(&currLine[pX..]).unwrap();
+                            mm = r;
+                            endp = p;
+
                             if endp != 0 && currLine[pX + endp] == bb(b':') {
                                 pX += endp + 1;
                                 ss = atof_safe(&currLine[pX..]);
@@ -714,10 +722,19 @@ pub(crate) fn fits_read_ascii_region(
                             negdec = 1;
                             pY += 1;
                         }
-                        dd = strtol_safe(&currLine[pY..], &mut endp, 10);
+
+                        // dd = strtol_safe(&currLine[pY..], &mut endp, 10);
+                        let (r, p) = strtol_safe(&currLine[pY..]).unwrap();
+                        dd = r;
+                        endp = p;
+
                         if endp != 0 && currLine[pY + endp] == bb(b':') {
                             pY += endp + 1;
-                            mm = strtol_safe(&currLine[pY..], &mut endp, 10);
+                            // mm = strtol_safe(&currLine[pY..], &mut endp, 10);
+                            let (r, p) = strtol_safe(&currLine[pY..]).unwrap();
+                            mm = r;
+                            endp = p;
+
                             if endp != 0 && currLine[pY + endp] == bb(b':') {
                                 pY += endp + 1;
                                 ss = atof_safe(&currLine[pY..]);

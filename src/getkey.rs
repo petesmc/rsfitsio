@@ -1830,11 +1830,13 @@ pub unsafe extern "C" fn fffree(
         if !value.is_null() {
             // HEAP DEALLOCATION
 
-            let alloc_lock = ALLOCATIONS.lock().unwrap();
-            let alloc = alloc_lock.get(&(value as usize));
+            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+            let alloc = alloc_lock.remove(&(value as usize));
             if let Some((l, c)) = alloc {
                 // HEAP DEALLOCATION
-                let _ = Vec::from_raw_parts(value, *l, *c);
+                let _ = Vec::from_raw_parts(value, l, c);
+            } else {
+                let _ = Vec::from_raw_parts(value, 1, 1);
             }
         }
         *status
@@ -3479,7 +3481,13 @@ pub fn ffdtdm_safe(
         loc_inner += 1;
 
         let mut loc_offset = 0;
-        dimsize = strtol_safe(&tdimstr[loc_inner..], &mut loc_offset, 10); /* read size of next dimension */
+
+        /* read size of next dimension */
+        // dimsize = strtol_safe(&tdimstr[loc_inner..], &mut loc_offset, 10);
+        let (r, p) = strtol_safe(&tdimstr[loc_inner..]).unwrap();
+        dimsize = r;
+        loc_offset = p;
+
         loc_inner += loc_offset;
 
         if *naxis < maxdim {

@@ -1,4 +1,7 @@
-use crate::{c_types::c_ulonglong, helpers::{boxed::box_try_new, vec_raw_parts::vec_into_raw_parts}};
+use crate::{
+    c_types::c_ulonglong,
+    helpers::{boxed::box_try_new, vec_raw_parts::vec_into_raw_parts},
+};
 use bytemuck::{cast_slice, cast_slice_mut};
 use std::{
     cmp,
@@ -913,74 +916,135 @@ impl Drop for FITSfile {
     fn drop(&mut self) {
         unsafe {
             if !self.filename.is_null() {
-                // Can't use CString::from_raw here because there is a minimum of 32 bytes reserved
-                let c = CStr::from_ptr(self.filename);
-                let mut slen = c.to_bytes_with_nul().len();
-                slen = cmp::max(slen, 32);
-
-                let _ = Vec::from_raw_parts(self.filename, slen, slen); //HEAP DEALLOCATION
+                // HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.filename as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.filename, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(self.filename, 32, 32);
+                }
             }
 
             if !self.headstart.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.headstart,
-                    (self.MAXHDU as usize) + 1,
-                    (self.MAXHDU as usize) + 1,
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.headstart as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.headstart, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.headstart,
+                        (self.MAXHDU as usize) + 1,
+                        (self.MAXHDU as usize) + 1,
+                    );
+                }
             }
 
             if !self.tableptr.is_null() {
-                let _ =
-                    Vec::from_raw_parts(self.tableptr, self.tfield as usize, self.tfield as usize);
-                //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tableptr as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tableptr, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tableptr,
+                        self.tfield as usize,
+                        self.tfield as usize,
+                    );
+                }
             }
 
             if !self.tilerow.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tilerow,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tilerow as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tilerow, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tilerow,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
 
             if !self.tiledatasize.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tiledatasize,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tiledatasize as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tiledatasize, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tiledatasize,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
 
             if !self.tiletype.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tiletype,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tiletype as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tiletype, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tiletype,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
 
             if !self.tiledata.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tiledata,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tiledata as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tiledata, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tiledata,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
 
             if !self.tilenullarray.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tilenullarray,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tilenullarray as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tilenullarray, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tilenullarray,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
 
             if !self.tileanynull.is_null() {
-                let _ = Vec::from_raw_parts(
-                    self.tileanynull,
-                    self.get_tile_alloc_len(),
-                    self.get_tile_alloc_len(),
-                ); //HEAP DEALLOCATION
+                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+                let alloc = alloc_lock.remove(&(self.tileanynull as usize));
+                if let Some((l, c)) = alloc {
+                    // HEAP DEALLOCATION
+                    let _ = Vec::from_raw_parts(self.tileanynull, l, c);
+                } else {
+                    let _ = Vec::from_raw_parts(
+                        self.tileanynull,
+                        self.get_tile_alloc_len(),
+                        self.get_tile_alloc_len(),
+                    );
+                }
             }
         }
     }

@@ -18,7 +18,6 @@ pub(crate) fn vec_into_raw_parts<T>(v: Vec<T>) -> (*mut T, usize, usize) {
     (me.as_mut_ptr(), me.len(), me.capacity())
 }
 
-    
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -27,7 +26,7 @@ mod tests {
     fn test_vec_into_raw_parts() {
         let v = vec![1, 2, 3];
         let (ptr, len, cap) = vec_into_raw_parts(v);
-        
+
         assert_eq!(len, 3);
         assert_eq!(cap, 3);
         assert!(!ptr.is_null());

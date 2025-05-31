@@ -1,11 +1,10 @@
-use std::{cmp, ffi::CStr, ptr};
+use std::{cmp, ffi::CStr, ptr, str::FromStr};
 
+use bytemuck::cast_slice;
 use cbitset::BitSet256;
 
-use crate::c_types::{
-    c_char, c_double, c_int, c_long, c_longlong, c_uchar, c_ulong, c_ulonglong, size_t,
-};
-use libc::{atof, atoi, strtol, strtoll, strtoul, strtoull};
+use crate::c_types::{c_char, c_double, c_int, c_uchar, size_t};
+use libc::atoi;
 
 use crate::bb;
 
@@ -188,59 +187,41 @@ pub(crate) unsafe fn strnlen(s: *const c_char, size: size_t) -> size_t {
     }
 }
 
-pub(crate) fn strtol_safe(s: &[c_char], endp: &mut usize, base: usize) -> c_long {
-    let mut p: c_char = 0;
-    let mut pp = &mut p as *mut c_char;
+pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F as FromStr>::Err> {
+    let strlen = (input.len() - 1);
+    let input: &[u8] = cast_slice(input);
 
-    unsafe {
-        let r = strtol(s.as_ptr(), &mut pp, base as c_int);
-        *endp = (pp).offset_from(s.as_ptr()) as usize;
-        r
+    // Find the first non-numeric character or the end of the string
+    let mut start = 0;
+    let mut end = 0;
+
+    while start < strlen && (input[start] as char).is_whitespace() {
+        start += 1;
     }
-}
 
-pub(crate) fn strtoll_safe(s: &[c_char], endp: &mut usize, base: usize) -> c_longlong {
-    let mut p: c_char = 0;
-    let mut pp = &mut p as *mut c_char;
-
-    unsafe {
-        let r = strtoll(s.as_ptr(), &mut pp, base as c_int);
-        *endp = (pp).offset_from(s.as_ptr()) as usize;
-        r
+    while start < strlen
+        && !(input[start] as char).is_numeric()
+        && (input[start] as char) != '+'
+        && (input[start] as char) != '-'
+    {
+        start += 1;
     }
-}
 
-pub(crate) fn strtoul_safe(s: &[c_char], endp: &mut usize, base: usize) -> c_ulong {
-    let mut p: c_char = 0;
-    let mut pp = &mut p as *mut c_char;
+    end = start + 1;
 
-    unsafe {
-        let r = strtoul(s.as_ptr(), &mut pp, base as c_int);
-        *endp = (pp).offset_from(s.as_ptr()) as usize;
-        r
+    while end < strlen && (input[end] as char).is_numeric() {
+        end += 1;
     }
-}
 
-pub(crate) fn strtoull_safe(s: &[c_char], endp: &mut usize, base: usize) -> c_ulonglong {
-    let mut p: c_char = 0;
-    let mut pp = &mut p as *mut c_char;
+    let str = str::from_utf8(&input[start..end]).unwrap();
 
-    unsafe {
-        let r = strtoull(s.as_ptr(), &mut pp, base as c_int);
-        *endp = (pp).offset_from(s.as_ptr()) as usize;
-        r
-    }
+    let res = str.parse::<F>()?;
+
+    Ok((res, end))
 }
 
 pub(crate) fn strtod_safe(s: &[c_char], endp: &mut usize) -> f64 {
-    let mut p: c_char = 0;
-    let mut pp = &mut p as *mut c_char;
-
-    unsafe {
-        let r = strtod(s.as_ptr(), &mut pp);
-        *endp = (pp).offset_from(s.as_ptr()) as usize;
-        r
-    }
+    strto_float_impl(s, endp)
 }
 
 pub(crate) unsafe fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
@@ -374,7 +355,8 @@ pub(crate) fn atoi_safe(cs: &[c_char]) -> c_int {
 }
 
 pub(crate) fn atof_safe(cs: &[c_char]) -> f64 {
-    unsafe { atof(cs.as_ptr()) }
+    let mut dummy = 0;
+    strtod_safe(cs, &mut dummy)
 }
 
 pub(crate) fn isdigit_safe(c: c_char) -> bool {
@@ -479,150 +461,137 @@ unsafe fn inner_strspn(s1: *const c_char, s2: *const c_char, cmp: bool) -> size_
     }
 }
 
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/macros.rs
-#[macro_export]
-macro_rules! strto_float_impl {
-    ($type:ident, $s:expr, $endptr:expr) => {{
-        let mut s = $s;
-        let endptr = $endptr;
+// Copied and modified from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/macros.rs
+fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
+    let mut s = s;
 
-        while isspace(*s as c_char) {
-            s = s.offset(1);
+    let mut si = 0;
+    while isspace(s[si]) {
+        si += 1;
+    }
+
+    let mut result: f64 = 0.0;
+    let mut exponent: Option<f64> = None;
+    let mut radix = 10;
+
+    let result_sign = match s[si] as u8 {
+        b'-' => {
+            si += 1;
+            -1.0
+        }
+        b'+' => {
+            si += 1;
+            1.0
+        }
+        _ => 1.0,
+    };
+
+    let rust_s = unsafe { CStr::from_ptr(s.as_ptr()).to_string_lossy() };
+
+    // detect NaN, Inf
+    if rust_s.to_lowercase().starts_with("inf") {
+        result = f64::INFINITY;
+        si += 3;
+    } else if rust_s.to_lowercase().starts_with("nan") {
+        // we cannot signal negative NaN in LLVM backed languages
+        // https://github.com/rust-lang/rust/issues/73328 , https://github.com/rust-lang/rust/issues/81261
+        result = f64::NAN;
+        si += 3;
+    } else {
+        if s[si] as u8 == b'0' && s[si + 1] as u8 == b'x' {
+            si += 2;
+            radix = 16;
         }
 
-        let mut result: $type = 0.0;
-        let mut exponent: Option<$type> = None;
-        let mut radix = 10;
+        while let Some(digit) = (s[si] as u8 as char).to_digit(radix) {
+            result *= radix as f64;
+            result += digit as f64;
+            si += 1;
+        }
 
-        let result_sign = match *s as u8 {
-            b'-' => {
-                s = s.offset(1);
-                -1.0
+        if s[si] as u8 == b'.' {
+            si += 1;
+
+            let mut i = 1.0;
+            while let Some(digit) = (s[si] as u8 as char).to_digit(radix) {
+                i *= radix as f64;
+                result += digit as f64 / i;
+                si += 1;
             }
-            b'+' => {
-                s = s.offset(1);
-                1.0
-            }
-            _ => 1.0,
-        };
+        }
 
-        let rust_s = CStr::from_ptr(s).to_string_lossy();
+        let s_before_exponent = s;
 
-        // detect NaN, Inf
-        if rust_s.to_lowercase().starts_with("inf") {
-            result = $type::INFINITY;
-            s = s.offset(3);
-        } else if rust_s.to_lowercase().starts_with("nan") {
-            // we cannot signal negative NaN in LLVM backed languages
-            // https://github.com/rust-lang/rust/issues/73328 , https://github.com/rust-lang/rust/issues/81261
-            result = $type::NAN;
-            s = s.offset(3);
-        } else {
-            if *s as u8 == b'0' && *s.offset(1) as u8 == b'x' {
-                s = s.offset(2);
-                radix = 16;
-            }
+        exponent = match (s[si] as u8, radix) {
+            (b'e' | b'E', 10) | (b'p' | b'P', 16) => {
+                si += 1;
 
-            while let Some(digit) = (*s as u8 as char).to_digit(radix) {
-                result *= radix as $type;
-                result += digit as $type;
-                s = s.offset(1);
-            }
+                let is_exponent_positive = match s[si] as u8 {
+                    b'-' => {
+                        si += 1;
+                        false
+                    }
+                    b'+' => {
+                        si += 1;
+                        true
+                    }
+                    _ => true,
+                };
 
-            if *s as u8 == b'.' {
-                s = s.offset(1);
+                // Exponent digits are always in base 10.
+                if (s[si] as u8 as char).is_digit(10) {
+                    let mut exponent_value = 0;
 
-                let mut i = 1.0;
-                while let Some(digit) = (*s as u8 as char).to_digit(radix) {
-                    i *= radix as $type;
-                    result += digit as $type / i;
-                    s = s.offset(1);
-                }
-            }
+                    while let Some(digit) = (s[si] as u8 as char).to_digit(10) {
+                        exponent_value *= 10;
+                        exponent_value += digit;
+                        si += 1;
+                    }
 
-            let s_before_exponent = s;
-
-            exponent = match (*s as u8, radix) {
-                (b'e' | b'E', 10) | (b'p' | b'P', 16) => {
-                    s = s.offset(1);
-
-                    let is_exponent_positive = match *s as u8 {
-                        b'-' => {
-                            s = s.offset(1);
-                            false
-                        }
-                        b'+' => {
-                            s = s.offset(1);
-                            true
-                        }
-                        _ => true,
+                    let exponent_base = match radix {
+                        10 => 10u128,
+                        16 => 2u128,
+                        _ => unreachable!(),
                     };
 
-                    // Exponent digits are always in base 10.
-                    if (*s as u8 as char).is_digit(10) {
-                        let mut exponent_value = 0;
-
-                        while let Some(digit) = (*s as u8 as char).to_digit(10) {
-                            exponent_value *= 10;
-                            exponent_value += digit;
-                            s = s.offset(1);
-                        }
-
-                        let exponent_base = match radix {
-                            10 => 10u128,
-                            16 => 2u128,
-                            _ => unreachable!(),
-                        };
-
-                        if is_exponent_positive {
-                            Some(exponent_base.pow(exponent_value) as $type)
-                        } else {
-                            Some(1.0 / (exponent_base.pow(exponent_value) as $type))
-                        }
+                    if is_exponent_positive {
+                        Some(exponent_base.pow(exponent_value) as f64)
                     } else {
-                        // Exponent had no valid digits after 'e'/'p' and '+'/'-', rollback
-                        s = s_before_exponent;
-                        None
+                        Some(1.0 / (exponent_base.pow(exponent_value) as f64))
                     }
+                } else {
+                    // Exponent had no valid digits after 'e'/'p' and '+'/'-', rollback
+                    s = s_before_exponent;
+                    None
                 }
-                _ => None,
-            };
-        }
+            }
+            _ => None,
+        };
+    }
 
-        if !endptr.is_null() {
-            // This is stupid, but apparently strto* functions want
-            // const input but mut output, yet the man page says
-            // "stores the address of the first invalid character in *endptr"
-            // so obviously it doesn't want us to clone it.
-            *endptr = s as *mut _;
-        }
+    *endptr = si;
 
-        if let Some(exponent) = exponent {
-            result_sign * result * exponent
-        } else {
-            result_sign * result
-        }
-    }};
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/stdlib/mod.rs
-pub(crate) unsafe fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double {
-    unsafe { strto_float_impl!(c_double, s, endptr) }
+    if let Some(exponent) = exponent {
+        result_sign * result * exponent
+    } else {
+        result_sign * result
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use libc::c_longlong;
+
     use crate::wrappers::*;
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_strtol() {
         let s: &[libc::c_char] = bytemuck::cast_slice(b"12345 XC");
-        let mut endps = 0;
         let mut endpu: *mut libc::c_char = std::ptr::null_mut();
 
         let ru = unsafe { libc::strtol(s.as_ptr(), &mut endpu, 10) };
-        let rs = strtol_safe(s, &mut endps, 10);
+        let (rs, endps): (c_longlong, usize) = strtol_safe(s).unwrap();
 
         assert_eq!(ru, 12345);
         unsafe {
@@ -630,6 +599,107 @@ mod tests {
         }
         assert_eq!(rs, 12345);
         assert_eq!(endps, 5)
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_strtol_safer_vs_strtol() {
+        // Test with leadng whitespace
+        let s: &[c_char] = bytemuck::cast_slice(b"   12345 XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, 12345);
+        assert_eq!(endp, 8); // 3 spaces + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with leading zeros
+        let s: &[c_char] = bytemuck::cast_slice(b"00012345 XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, 12345);
+        assert_eq!(endp, 8); // 3 zeros + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with negative number
+        let s: &[c_char] = bytemuck::cast_slice(b"-12345 XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, -12345);
+        assert_eq!(endp, 6); // 1 minus + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with invalid characters
+        let s: &[c_char] = bytemuck::cast_slice(b"12345a XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, 12345);
+        assert_eq!(endp, 5); // 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with empty string
+        let s: &[c_char] = bytemuck::cast_slice(b"\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let r = strtol_safe::<c_longlong>(s);
+        let endp = 0;
+        assert!(r.is_err());
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with only whitespace
+        let s: &[c_char] = bytemuck::cast_slice(b"   \0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let r = strtol_safe::<c_longlong>(s);
+        let endp = 0;
+        assert!(r.is_err());
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with only invalid characters
+        let s: &[c_char] = bytemuck::cast_slice(b"abcde\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let r = strtol_safe::<c_longlong>(s);
+        let endp = 0;
+        assert!(r.is_err());
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with leading zeros and invalid characters
+        let s: &[c_char] = bytemuck::cast_slice(b"00012345a XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, 12345);
+        assert_eq!(endp, 8); // 3 zeros + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with negative number and invalid characters
+        let s: &[c_char] = bytemuck::cast_slice(b"-12345a XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, -12345);
+        assert_eq!(endp, 6); // 1 minus + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
+
+        // Test with leading whitespace and invalid characters
+        let s: &[c_char] = bytemuck::cast_slice(b"   12345a XC\0");
+        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let (ru, endp) = strtol_safe(s).unwrap();
+        assert_eq!(ru, 12345);
+        assert_eq!(endp, 8); // 3 spaces + 5 digits
+        assert_eq!(rs, ru);
+        assert_eq!(endp, unsafe { endps.offset_from(s.as_ptr()) } as usize);
     }
 
     #[test]
@@ -773,5 +843,47 @@ mod tests {
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s3, s4);
         assert_eq!(ru, rs);
+    }
+
+    // Write test cases for strto_float_impl
+    #[test]
+    fn test_strto_float_impl() {
+        let mut endptr: usize = 0;
+
+        // Test with valid float
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"123.456\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert_eq!(result, 123.456);
+        assert_eq!(endptr, 7); // "123.456" + null terminator
+
+        // Test with negative float
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"-123.456\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert_eq!(result, -123.456);
+        assert_eq!(endptr, 8); // "-123.456" + null terminator
+
+        // Test with scientific notation
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"1.23e4\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert_eq!(result, 12300.0);
+        assert_eq!(endptr, 6); // "1.23e4" + null terminator
+
+        // Test with invalid float
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"abc\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert_eq!(result, 0.0);
+        assert_eq!(endptr, 0); // No valid float parsed
+
+        // Test with empty string
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert_eq!(result, 0.0);
+        assert_eq!(endptr, 0); // No valid float parsed
+
+        // Test with Nan
+        let s: &[libc::c_char] = bytemuck::cast_slice(b"nan\0");
+        let result = strto_float_impl(s, &mut endptr);
+        assert!(result.is_nan());
+        assert_eq!(endptr, 3); // NaN parsed
     }
 }

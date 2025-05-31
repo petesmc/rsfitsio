@@ -1167,7 +1167,10 @@ pub(crate) fn ffrwrg_safe(
         if rowlist[ni] == bb(b'-') {
             minval = 1; /* implied minrow value = 1 */
         } else if isdigit_safe(rowlist[ni]) {
-            minval = strtol_safe(&rowlist[ni..], &mut ni, 10);
+            // minval = strtol_safe(&rowlist[ni..], &mut ni, 10);
+            let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
+            minval = r;
+            ni = n;
         } else {
             *status = RANGE_PARSE_ERROR;
             ffpmsg_str("Syntax error in this row range list:");
@@ -1187,7 +1190,10 @@ pub(crate) fn ffrwrg_safe(
             }
 
             if isdigit_safe(rowlist[ni]) {
-                maxval = strtol_safe(&rowlist[ni..], &mut ni, 10);
+                //maxval = strtol_safe(&rowlist[ni..], &mut ni, 10);
+                let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
+                maxval = r;
+                ni = n;
             } else if rowlist[ni] == bb(b',') || rowlist[ni] == 0 {
                 maxval = maxrows as c_long; /* implied max value */
             } else {

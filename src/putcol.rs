@@ -1412,7 +1412,7 @@ pub unsafe fn ffpcl_safer(
                     slice::from_raw_parts(array.as_ptr() as *const *const c_char, nelem as usize);
                 let mut v_array = Vec::new();
                 for item in array {
-                    let array_item = slice::from_raw_parts(*item, FLEN_VALUE);
+                    let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
                     v_array.push(array_item);
                 }
 

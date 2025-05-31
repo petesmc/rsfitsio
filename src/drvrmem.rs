@@ -983,23 +983,37 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         naxis = 1;
         let mut cptr2 = 0;
-        dim[0] = strtol_safe(&filename[cptr..], &mut cptr2, 10);
+        // dim[0] = strtol_safe(&filename[cptr..], &mut cptr2, 10);
+        let (r, n) = strtol_safe(&filename[cptr..]).unwrap();
+        dim[0] = r;
+        cptr2 = n;
 
         if cptr2 != 0 && filename[cptr2] == bb(b',') {
             naxis = 2;
-            dim[1] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
-
+            // dim[1] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+            let (r, n) = strtol_safe(&filename[(cptr2 + 1)..]).unwrap();
+            dim[1] = r;
+            cptr = n;
             if cptr != 0 && filename[cptr] == bb(b',') {
                 naxis = 3;
-                dim[2] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                //dim[2] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+                dim[2] = r;
+                cptr2 = n;
 
                 if cptr2 != 0 && filename[cptr2] == bb(b',') {
                     naxis = 4;
-                    dim[3] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+                    // dim[3] = strtol_safe(&filename[(cptr2 + 1)..], &mut cptr, 10);
+                    let (r, n) = strtol_safe(&filename[(cptr2 + 1)..]).unwrap();
+                    dim[3] = r;
+                    cptr = n;
 
                     if cptr != 0 && filename[cptr] == bb(b',') {
                         naxis = 5;
-                        dim[4] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                        //dim[4] = strtol_safe(&filename[(cptr + 1)..], &mut cptr2, 10);
+                        let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+                        dim[4] = r;
+                        cptr2 = n;
                     }
                 }
             }
@@ -1009,8 +1023,10 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         if filename[cptr] == bb(b':') {
             /* read starting offset value */
-            let mut dummy = 0;
-            offset = strtol_safe(&filename[(cptr + 1)..], &mut dummy, 10);
+
+            // offset = strtol_safe(&filename[(cptr + 1)..], &mut dummy, 10);
+            let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+            offset = r;
         }
 
         nvals = dim[0] * dim[1] * dim[2] * dim[3] * dim[4];

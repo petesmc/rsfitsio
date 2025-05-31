@@ -1,5 +1,6 @@
 #![allow(deprecated)]
 
+use core::slice;
 use std::ffi::c_void;
 use std::ptr;
 use std::{ffi::CStr, process::ExitCode};
@@ -61,7 +62,7 @@ use rsfitsio::putkey::{
 use rsfitsio::scalnull::{ffsnul, fftnul, fftscl};
 use rsfitsio::wcssub::ffgics;
 use rsfitsio::wcsutil::{ffwldp, ffxypx};
-use rsfitsio::wrappers::{strcat_safe, strncmp_safe};
+use rsfitsio::wrappers::{strcat_safe, strncmp_safe, strncpy_safe};
 use rsfitsio::{
     aliases::fits_open_file,
     cfileio::ffclos,
@@ -164,7 +165,7 @@ pub fn main() -> ExitCode {
     let mut larray: [c_char; 42] = [0; 42];
     let mut larray2: [c_char; 42] = [0; 42];
     let mut colname: [c_char; 70] = [0; 70];
-    let mut tdisp: [c_char; 40] = [0; 40];
+    let mut tdisp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut nulstr: [c_char; 40] = [0; 40];
 
     let mut oskey: [c_char; 13] = [0; 13];
@@ -267,10 +268,10 @@ pub fn main() -> ExitCode {
     let mut tform: [*mut c_char; 10] = [ptr::null_mut(); 10];
     let mut tunit: [*mut c_char; 10] = [ptr::null_mut(); 10];
 
-    let mut tblname: [c_char; 40] = [0; 40];
+    let mut tblname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
-    let mut binname: [c_char; 14] = [0; 14];
-    binname.copy_from_slice(cast_slice(c"Test-BINTABLE".to_bytes_with_nul()));
+    let mut binname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    binname[..14].copy_from_slice(cast_slice(c"Test-BINTABLE".to_bytes_with_nul()));
 
     let mut templt: [c_char; 13] = [0; 13];
     templt.copy_from_slice(cast_slice(c"testprog.tpt".to_bytes_with_nul()));
@@ -309,9 +310,9 @@ pub fn main() -> ExitCode {
             }
 
             for ii in 0..10 {
-                ttype[ii] = malloc(20) as *mut c_char;
-                tform[ii] = malloc(20) as *mut c_char;
-                tunit[ii] = malloc(20) as *mut c_char;
+                ttype[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                tform[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                tunit[ii] = malloc(FLEN_VALUE) as *mut c_char;
             }
 
             comms[0] = comm.as_mut_ptr();
@@ -5166,8 +5167,9 @@ pub fn main() -> ExitCode {
 
             /* loop over rows 1 - 20 */
             for ii in 2..=20 as LONGLONG {
-                strncpy(inskey[0], iskey.as_ptr(), ii as usize);
-                *(inskey[0].add(ii as usize)) = 0;
+                let inskey_item = slice::from_raw_parts_mut(inskey[0], FLEN_VALUE);
+                strncpy_safe(inskey_item, &iskey, ii as usize);
+                inskey_item[ii as usize] = 0;
                 ffpcls(
                     fptr.as_mut_ptr(),
                     1,

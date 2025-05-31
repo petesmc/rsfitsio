@@ -4,7 +4,7 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
-use core::{slice};
+use core::slice;
 use std::ffi::CStr;
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
@@ -13,8 +13,8 @@ use errno::{Errno, errno, set_errno};
 
 use libc::{ERANGE, fclose, fgets, fopen, fprintf};
 
-use crate::helpers::boxed::box_try_new;
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
+use crate::helpers::boxed::box_try_new;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 
@@ -3447,27 +3447,25 @@ pub unsafe fn ffinit_safer(
             }
         }
 
-        {
-            //let d = driverTable.lock().unwrap();
-            let d = DRIVER_TABLE.get().unwrap();
+        //let d = driverTable.lock().unwrap();
+        let d = DRIVER_TABLE.get().unwrap();
 
-            /* call appropriate driver to create the file */
-            if d[driver as usize].create.is_some() {
-                let lock = FFLOCK(); /* lock this while searching for vacant handle */
-                *status = (d[driver as usize].create.unwrap())(&mut outfile, &mut handle);
-                FFUNLOCK(lock);
+        /* call appropriate driver to create the file */
+        if d[driver as usize].create.is_some() {
+            let lock = FFLOCK(); /* lock this while searching for vacant handle */
+            *status = (d[driver as usize].create.unwrap())(&mut outfile, &mut handle);
+            FFUNLOCK(lock);
 
-                if *status > 0 {
-                    ffpmsg_str("failed to create new file (already exists?):");
-                    ffpmsg_slice(url);
-                    return *status;
-                }
-            } else {
-                ffpmsg_str("cannot create a new file of this type: (ffinit)");
+            if *status > 0 {
+                ffpmsg_str("failed to create new file (already exists?):");
                 ffpmsg_slice(url);
-                *status = FILE_NOT_CREATED;
                 return *status;
             }
+        } else {
+            ffpmsg_str("cannot create a new file of this type: (ffinit)");
+            ffpmsg_slice(url);
+            *status = FILE_NOT_CREATED;
+            return *status;
         }
 
         let d = DRIVER_TABLE.get().unwrap();
@@ -5667,8 +5665,9 @@ pub(crate) unsafe fn ffexts_safer(
 
             set_errno(Errno(0)); /* reset this prior to calling strtol */
 
-            let mut loc = 0;
-            *extnum = strtol_safe(&extspec[ptr1..], &mut loc, 10) as c_int; /* read the string as an integer */
+            let (r, loc): (LONGLONG, usize) = strtol_safe(&extspec[ptr1..]).unwrap(); /* read the string as an integer */
+
+            *extnum = r as c_int;
 
             let mut loc = ptr1 + loc;
             while extspec[loc] == bb(b' ') {
@@ -6161,9 +6160,7 @@ pub unsafe extern "C" fn ffclos(
                 *status = NULL_INPUT_PTR;
                 *status
             }
-            Some(fptr) => {
-                ffclos_safer(fptr, status)
-            }
+            Some(fptr) => ffclos_safer(fptr, status),
         }
     }
 }
@@ -6336,7 +6333,6 @@ pub(crate) unsafe fn ffdelt_safer(
         }
 
         fits_clear_Fptr_safer(&mut local_fptr.Fptr, status); /* clear Fptr address */
-        local_fptr.Fptr.filename = ptr::null_mut();
         local_fptr.Fptr.validcode = 0; /* magic value to indicate invalid fptr */
 
         *fptr = None;

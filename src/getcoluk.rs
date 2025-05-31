@@ -2025,7 +2025,6 @@ pub(crate) fn fffr4uint(
             sptr += 1; /* point to MSBs */
         }
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if scale == 1.0 && zero == 0.0 {
@@ -2172,7 +2171,6 @@ pub(crate) fn fffr8uint(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
         let shortBuffer: &[c_short] = cast_slice(input);
 
         if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
