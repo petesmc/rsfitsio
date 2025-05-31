@@ -13,7 +13,6 @@ use std::sync::Mutex;
 use crate::c_types::{c_char, c_int};
 
 use bytemuck::cast_slice;
-use cstr::cstr;
 
 #[cfg(target_family = "unix")]
 use pwd::Passwd;
@@ -329,7 +328,7 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
         slen = strlen_safe(&cwd);
         if (slen < FLEN_FILENAME) && cwd[slen - 1] != bb(b'/') {
             /* make sure the CWD ends with slash */
-            strcat_safe(&mut cwd, cs!(b"/"));
+            strcat_safe(&mut cwd, cs!(c"/"));
         }
 
         /* check that CWD string matches the rootstring */
@@ -403,7 +402,7 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
         return TOO_MANY_FILES; /* too many files opened */
     }
 
-    strcpy_safe(&mut mode, cs!(b"w+b")); /* create new file with read-write */
+    strcpy_safe(&mut mode, cs!(c"w+b")); /* create new file with read-write */
 
     /* does file already exist? */
     let diskfile = File::options()
@@ -734,27 +733,27 @@ pub(crate) fn file_is_compressed(filename: &mut [c_char; FLEN_FILENAME]) -> c_in
             return 0;
         }
         strcpy_safe(&mut tmpfilename, filename);
-        strcat_safe(filename, cs!(b".gz"));
+        strcat_safe(filename, cs!(c".gz"));
 
         if file_openfile(filename, 0, &mut diskfile) != 0 {
             strcpy_safe(filename, &tmpfilename);
-            strcat_safe(filename, cs!(b".Z"));
+            strcat_safe(filename, cs!(c".Z"));
 
             if file_openfile(filename, 0, &mut diskfile) != 0 {
                 strcpy_safe(filename, &tmpfilename);
-                strcat_safe(filename, cs!(b".z")); /* it's often lower case on CDROMs */
+                strcat_safe(filename, cs!(c".z")); /* it's often lower case on CDROMs */
 
                 if file_openfile(filename, 0, &mut diskfile) != 0 {
                     strcpy_safe(filename, &tmpfilename);
-                    strcat_safe(filename, cs!(b".zip"));
+                    strcat_safe(filename, cs!(c".zip"));
 
                     if file_openfile(filename, 0, &mut diskfile) != 0 {
                         strcpy_safe(filename, &tmpfilename);
-                        strcat_safe(filename, cs!(b"-z")); /* VMS suffix */
+                        strcat_safe(filename, cs!(c"-z")); /* VMS suffix */
 
                         if file_openfile(filename, 0, &mut diskfile) != 0 {
                             strcpy_safe(filename, &tmpfilename);
-                            strcat_safe(filename, cs!(b"-gz")); /* VMS suffix */
+                            strcat_safe(filename, cs!(c"-gz")); /* VMS suffix */
 
                             if file_openfile(filename, 0, &mut diskfile) != 0 {
                                 strcpy_safe(filename, &tmpfilename); /* restore original name */
@@ -802,15 +801,15 @@ pub(crate) fn file_checkfile(
         /* if output file has been specified, save the name for future use: */
         /* This is the name of the uncompressed file to be created on disk. */
         if strlen_safe(outfile) != 0 {
-            if strncmp_safe(outfile, cs!(b"mem:"), 4) == 0 {
+            if strncmp_safe(outfile, cs!(c"mem:"), 4) == 0 {
                 /* uncompress the file in memory, with READ and WRITE access */
-                strcpy_safe(urltype, cs!(b"compressmem://")); /* use special driver */
+                strcpy_safe(urltype, cs!(c"compressmem://")); /* use special driver */
                 ofile[0] = 0;
             } else {
-                strcpy_safe(urltype, cs!(b"compressfile://")); /* use special driver */
+                strcpy_safe(urltype, cs!(c"compressfile://")); /* use special driver */
 
                 /* don't copy the "file://" prefix, if present.  */
-                if strncmp_safe(outfile, cs!(b"file://"), 7) == 0 {
+                if strncmp_safe(outfile, cs!(c"file://"), 7) == 0 {
                     strcpy_safe(&mut *ofile, &outfile[7..]);
                 } else {
                     strcpy_safe(&mut *ofile, outfile);
@@ -818,7 +817,7 @@ pub(crate) fn file_checkfile(
             };
         } else {
             /* uncompress the file in memory */
-            strcpy_safe(urltype, cs!(b"compress://")); /* use special driver */
+            strcpy_safe(urltype, cs!(c"compress://")); /* use special driver */
             ofile[0] = 0; /* no output file was specified */
         }
     } else {

@@ -219,6 +219,7 @@ struct Custom {
 /// [`io::Error`]: struct.Error.html
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[allow(deprecated)]
+#[non_exhaustive]
 pub enum ErrorKind {
     /// An entity was not found, often a file.
     NotFound,
@@ -284,11 +285,6 @@ pub enum ErrorKind {
     /// particular number of bytes but only a smaller number of bytes could be
     /// read.
     UnexpectedEof,
-
-    /// A marker variant that tells the compiler that users of this enum cannot
-    /// match it exhaustively.
-    #[doc(hidden)]
-    __Nonexhaustive,
 }
 
 impl ErrorKind {
@@ -312,7 +308,6 @@ impl ErrorKind {
             ErrorKind::Interrupted => "operation interrupted",
             ErrorKind::Other => "other os error",
             ErrorKind::UnexpectedEof => "unexpected end of file",
-            _ => "unknown error",
         }
     }
 }

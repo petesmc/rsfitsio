@@ -8,7 +8,6 @@ use std::ptr;
 use crate::c_types::{c_char, c_int, c_long, c_short};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::aliases::ffgnrw_safe;
 use crate::aliases::safer::{fits_read_key_str, fits_write_key_str};
@@ -770,18 +769,18 @@ pub(crate) fn fits_write_keys_histoe(
 
             // && colexpr[ii] && colexpr[ii][0] && colname[ii]) {
             /* Column expression: we need to put the column name from the binning expression */
-            ffkeyn_safe(cs!("CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+            ffkeyn_safe(cs!(c"CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
             fits_write_key_str(
                 histptr,
                 &keyname,
                 &colname[ii],
-                Some(cs!("Coordinate Type")),
+                Some(cs!(c"Coordinate Type")),
                 &mut tstatus,
             );
         } else {
             /* Column name */
             tstatus = 0;
-            ffkeyn_safe(cs!("CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+            ffkeyn_safe(cs!(c"CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
             fits_read_key_str(histptr, &keyname, &mut svalue, None, &mut tstatus);
 
             if tstatus == 0 {
@@ -790,32 +789,32 @@ pub(crate) fn fits_write_keys_histoe(
 
             /* use column name as the axis name */
             tstatus = 0;
-            ffkeyn_safe(cs!("TTYPE"), colnum[ii], &mut keyname, &mut tstatus);
+            ffkeyn_safe(cs!(c"TTYPE"), colnum[ii], &mut keyname, &mut tstatus);
             fits_read_key_str(fptr, &keyname, &mut svalue, None, &mut tstatus);
 
             if tstatus == 0 {
-                ffkeyn_safe(cs!("CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+                ffkeyn_safe(cs!(c"CTYPE"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
                 fits_write_key_str(
                     histptr,
                     &keyname,
                     &svalue,
-                    Some(cs!("Coordinate Type")),
+                    Some(cs!(c"Coordinate Type")),
                     &mut tstatus,
                 );
             }
 
             /*  CUNITn,  use the column units */
             tstatus = 0;
-            ffkeyn_safe(cs!("TUNIT"), colnum[ii], &mut keyname, &mut tstatus);
+            ffkeyn_safe(cs!(c"TUNIT"), colnum[ii], &mut keyname, &mut tstatus);
             fits_read_key_str(fptr, &keyname, &mut svalue, None, &mut tstatus);
 
             if tstatus == 0 {
-                ffkeyn_safe(cs!("CUNIT"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+                ffkeyn_safe(cs!(c"CUNIT"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
                 fits_write_key_str(
                     histptr,
                     &keyname,
                     &svalue,
-                    Some(cs!("Coordinate Units")),
+                    Some(cs!(c"Coordinate Units")),
                     &mut tstatus,
                 );
             }
@@ -824,24 +823,24 @@ pub(crate) fn fits_write_keys_histoe(
         /*  CRPIXn  - Reference Pixel choose first pixel in new image as ref. pix. */
         dvalue = 1.0;
         tstatus = 0;
-        ffkeyn_safe(cs!("CRPIX"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+        ffkeyn_safe(cs!(c"CRPIX"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
         ffpky_safe(
             histptr,
             KeywordDatatype::TDOUBLE(&dvalue),
             &keyname,
-            Some(cs!("Reference Pixel")),
+            Some(cs!(c"Reference Pixel")),
             &mut tstatus,
         );
 
         /*  CRVALn - Value at the location of the reference pixel */
         dvalue = 1.0;
         tstatus = 0;
-        ffkeyn_safe(cs!("CRVAL"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+        ffkeyn_safe(cs!(c"CRVAL"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
         ffpky_safe(
             histptr,
             KeywordDatatype::TDOUBLE(&dvalue),
             &keyname,
-            Some(cs!("Reference Value")),
+            Some(cs!(c"Reference Value")),
             &mut tstatus,
         );
 
@@ -849,12 +848,12 @@ pub(crate) fn fits_write_keys_histoe(
         dvalue = 1.0;
         tstatus = 0;
         dvalue = 1.0;
-        ffkeyn_safe(cs!("CDELT"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
+        ffkeyn_safe(cs!(c"CDELT"), (ii + 1) as c_int, &mut keyname, &mut tstatus);
         ffpky_safe(
             histptr,
             KeywordDatatype::TDOUBLE(&dvalue),
             &keyname,
-            Some(cs!("Pixel size")),
+            Some(cs!(c"Pixel size")),
             &mut tstatus,
         );
     }
@@ -1197,7 +1196,7 @@ pub(crate) fn fits_get_col_minmax(
     ffgky_safe(
         fptr,
         crate::KeywordDatatypeMut::TLONG(&mut nrows),
-        cs!("NAXIS2"),
+        cs!(c"NAXIS2"),
         None,
         status,
     ); /* no. of rows */

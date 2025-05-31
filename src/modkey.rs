@@ -10,7 +10,6 @@ use std::cmp;
 use std::ffi::CStr;
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::c_types::*;
 use crate::fitscore::{
@@ -1048,9 +1047,9 @@ pub(crate) fn ffpunt_safe(
 
     /* copy the units string to the new comment string if not null */
     if unit[0] != 0 {
-        strcpy_safe(&mut newcomm, cs!("["));
+        strcpy_safe(&mut newcomm, cs!(c"["));
         strncat_safe(&mut newcomm, unit, 45); /* max allowed length is about 45 chars */
-        strcat_safe(&mut newcomm, cs!("] "));
+        strcat_safe(&mut newcomm, cs!(c"] "));
         len = strlen_safe(&newcomm);
         len = FLEN_COMMENT - len - 1; /* amount of space left in the field */
     } else {
@@ -1122,7 +1121,7 @@ pub fn ffmkyu_safe(
         return *status; /* get old comment */
     }
 
-    strcpy_safe(&mut valstring, cs!(" ")); /* create a dummy value string */
+    strcpy_safe(&mut valstring, cs!(c" ")); /* create a dummy value string */
 
     //if (!comm || comm[0] == '&') { /* preserve the current comment string */
     if comm.is_none() {
@@ -1889,7 +1888,7 @@ pub unsafe extern "C" fn ffikyu(
             return *status;
         }
 
-        strcpy_safe(&mut valstring, cs!(" ")); /* create a dummy value string */
+        strcpy_safe(&mut valstring, cs!(c" ")); /* create a dummy value string */
         ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
         ffikey_safe(fptr, &card, status);
 
@@ -2312,16 +2311,16 @@ pub fn ffikey_safe(
         buff2[ii] = bb(b' ');
     }
 
-    let mut keylength = strcspn_safe(&buff2, cs!("="));
+    let mut keylength = strcspn_safe(&buff2, cs!(c"="));
     if keylength == 80 {
         keylength = 8;
     }
 
     /* test for the common commentary keywords which by definition have 8-char names */
-    if fits_strncasecmp(cs!("COMMENT "), &buff2, 8) == 0
-        || fits_strncasecmp(cs!("HISTORY "), &buff2, 8) == 0
-        || fits_strncasecmp(cs!("        "), &buff2, 8) == 0
-        || fits_strncasecmp(cs!("CONTINUE"), &buff2, 8) == 0
+    if fits_strncasecmp(cs!(c"COMMENT "), &buff2, 8) == 0
+        || fits_strncasecmp(cs!(c"HISTORY "), &buff2, 8) == 0
+        || fits_strncasecmp(cs!(c"        "), &buff2, 8) == 0
+        || fits_strncasecmp(cs!(c"CONTINUE"), &buff2, 8) == 0
     {
         keylength = 8;
     }
@@ -2532,8 +2531,8 @@ pub fn ffdrec_safe(
     bytepos = fptr.Fptr.headend - 80; /* last keyword in header */
 
     /* construct a blank keyword */
-    strcpy_safe(&mut buff2, cs!("                                        "));
-    strcat_safe(&mut buff2, cs!("                                        "));
+    strcpy_safe(&mut buff2, cs!(c"                                        "));
+    strcat_safe(&mut buff2, cs!(c"                                        "));
     let mut inbuff = buff1;
     let mut outbuff = buff2;
     for ii in 0..(nshift as usize) {

@@ -12,7 +12,6 @@ use std::{cmp, ptr};
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::buffers::*;
 use crate::fitscore::{
@@ -380,7 +379,7 @@ pub unsafe extern "C" fn ffgnxk(
         casesn = FALSE as c_int;
 
         /* get next card, and return with an error if hit end of header */
-        while ffgcrd_safe(fptr, cs!("*"), &mut keybuf, status) <= 0 {
+        while ffgcrd_safe(fptr, cs!(c"*"), &mut keybuf, status) <= 0 {
             ffgknm_safe(&keybuf, &mut keyname, &mut namelen, status); /* get the keyword name */
 
             /* does keyword match any names in the include list? */
@@ -794,7 +793,7 @@ pub fn ffgcrd_safe(
         keyname[ii] = toupper(keyname[ii]); /*  make upper case  */
         ii += 1;
     }
-    if FSTRNCMP(cs!("HIERARCH"), &keyname, 8) == 0 {
+    if FSTRNCMP(cs!(c"HIERARCH"), &keyname, 8) == 0 {
         if namelen == 8 {
             /* special case: just looking for any HIERARCH keyword */
             hier = 1;
@@ -857,7 +856,7 @@ pub fn ffgcrd_safe(
             ffgnky(fptr, card, status); /* get next keyword */
 
             if hier > 0 {
-                if FSTRNCMP(cs!("HIERARCH"), card, 8) == 0 {
+                if FSTRNCMP(cs!(c"HIERARCH"), card, 8) == 0 {
                     return *status; /* found a HIERARCH keyword */
                 }
             } else {
@@ -1016,12 +1015,12 @@ pub fn ffgknm_safe(
     *length = 0;
 
     /* support for ESO HIERARCH keywords; find the '=' */
-    if FSTRNCMP(card, cs!("HIERARCH "), 9) == 0 {
+    if FSTRNCMP(card, cs!(c"HIERARCH "), 9) == 0 {
         let ptr2 = strchr_safe(card, bb(b'=')); /* no value indicator ??? */
 
         if ptr2.is_none() {
             /* this probably indicates an error, so just return FITS name */
-            strcat_safe(name, cs!(b"HIERARCH"));
+            strcat_safe(name, cs!(c"HIERARCH"));
             *length = 8;
             return *status;
         }
@@ -1393,7 +1392,7 @@ pub unsafe extern "C" fn ffgkls(
                             let c = c.as_deref_mut().unwrap();
 
                             if strlen_safe(c) != 0 && addCommDelim {
-                                strcat_safe(c, cs!(" "));
+                                strcat_safe(c, cs!(c" "));
                                 commspace -= 1;
                             }
 
@@ -1556,7 +1555,7 @@ pub unsafe extern "C" fn ffgsky(
                             let c = c.as_deref_mut().unwrap();
 
                             if strlen_safe(c) != 0 && addCommDelim {
-                                strcat_safe(c, cs!(" "));
+                                strcat_safe(c, cs!(c" "));
                                 commspace -= 1;
                             }
                             strncat_safe(c, &nextcomm, commspace);
@@ -1761,7 +1760,7 @@ pub(crate) fn ffglkut(
                         if addCommDelim {
                             lenc += strlen_safe(&comstring) + 1;
                             dynComStr.resize(lenc + 1, 0);
-                            strcat_safe(&mut dynComStr, cs!(" "));
+                            strcat_safe(&mut dynComStr, cs!(c" "));
                             strcat_safe(&mut dynComStr, &comstring);
                         } else {
                             lenc += strlen_safe(&comstring);
@@ -1865,10 +1864,10 @@ pub(crate) fn ffgcnt(
         return *status; /*  hit end of header  */
     }
 
-    if strncmp_safe(&card, cs!("CONTINUE  "), 10) == 0 {
+    if strncmp_safe(&card, cs!(c"CONTINUE  "), 10) == 0 {
         /* a continuation card? */
 
-        strncpy_safe(&mut card, cs!("D2345678=  "), 10); /* overwrite a dummy keyword name */
+        strncpy_safe(&mut card, cs!(c"D2345678=  "), 10); /* overwrite a dummy keyword name */
         ffpsvc_safe(&card, &mut strval, comm, &mut tstatus); /*  get the string value & comment */
 
         ffc2s(&strval, value, &mut tstatus); /* remove the surrounding quotes */
@@ -2303,10 +2302,10 @@ pub fn ffgkyc_safe(
     }
 
     valstring[0] = bb(b' '); /* delete the opening parenthesis */
-    len = strcspn_safe(&valstring, cs!(")"));
+    len = strcspn_safe(&valstring, cs!(c")"));
     valstring[len] = 0; /* delete the closing parenthesis */
 
-    len = strcspn_safe(&valstring, cs!(","));
+    len = strcspn_safe(&valstring, cs!(c","));
     valstring[len] = 0;
 
     ffc2r(&valstring, &mut value[0], status); /* convert the real part */
@@ -2385,10 +2384,10 @@ pub fn ffgkym_safe(
     }
 
     valstring[0] = bb(b' '); /* delete the opening parenthesis */
-    len = strcspn_safe(&valstring, cs!(")"));
+    len = strcspn_safe(&valstring, cs!(c")"));
     valstring[len] = 0; /* delete the closing parenthesis */
 
-    len = strcspn_safe(&valstring, cs!(","));
+    len = strcspn_safe(&valstring, cs!(c","));
     valstring[len] = 0;
 
     ffc2d(&valstring, &mut value[0], status); /* convert the real part */
@@ -3333,7 +3332,7 @@ pub fn ffgtdm_safe(
         return *status;
     }
 
-    ffkeyn_safe(cs!(TDIM), colnum, &mut keyname, status); /* construct keyword name */
+    ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct keyword name */
 
     ffgkys_safe(fptr, &keyname, &mut tdimstr, None, &mut tstatus); /* try reading keyword */
 
@@ -3368,7 +3367,7 @@ pub unsafe extern "C" fn ffgtdmll(
             return *status;
         }
 
-        ffkeyn_safe(cs!(TDIM), colnum, &mut keyname, status); /* construct keyword name */
+        ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct keyword name */
 
         ffgkys_safe(fptr, &keyname, &mut tdimstr, None, &mut tstatus); /* try reading keyword */
 
@@ -3856,10 +3855,10 @@ pub unsafe extern "C" fn ffghtb(
         /* read the first keyword of the extension */
         ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
 
-        if strcmp_safe(&name, cs!("XTENSION")) == 0 {
+        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             if ffc2s(&value, &mut xtension, status) > 0 {
                 /* get the value string */
-                ffpmsg_slice(cs!("Bad value string for XTENSION keyword:"));
+                ffpmsg_str("Bad value string for XTENSION keyword:");
                 ffpmsg_slice(&value);
                 return *status;
             }
@@ -3867,7 +3866,7 @@ pub unsafe extern "C" fn ffghtb(
             /* allow the quoted string value to begin in any column and */
             /* allow any number of trailing blanks before the closing quote */
             /* first char must be a quote */
-            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!("TABLE")) != 0) {
+            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
                 int_snprintf!(
                     &mut message,
                     FLEN_ERRMSG,
@@ -3958,7 +3957,7 @@ pub unsafe extern "C" fn ffghtb(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TTYPE"),
+                    cs!(c"TTYPE"),
                     1,
                     maxf,
                     &mut v_ttype,
@@ -3977,7 +3976,7 @@ pub unsafe extern "C" fn ffghtb(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TUNIT"),
+                    cs!(c"TUNIT"),
                     1,
                     maxf,
                     &mut v_tunit,
@@ -3993,12 +3992,12 @@ pub unsafe extern "C" fn ffghtb(
             if !tbcol.is_null() {
                 let tbcol = slice::from_raw_parts_mut(tbcol, maxf as usize);
 
-                ffgknj_safe(fptr, cs!("TBCOL"), 1, maxf, tbcol, &mut nfound, status);
+                ffgknj_safe(fptr, cs!(c"TBCOL"), 1, maxf, tbcol, &mut nfound, status);
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtb)."
-                    ));
+                    ffpmsg_str(
+                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtb).",
+                    );
                     *status = NO_TBCOL;
                     return *status;
                 }
@@ -4014,7 +4013,7 @@ pub unsafe extern "C" fn ffghtb(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TFORM"),
+                    cs!(c"TFORM"),
                     1,
                     maxf,
                     &mut v_tform,
@@ -4023,9 +4022,9 @@ pub unsafe extern "C" fn ffghtb(
                 );
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TFORM keyword(s) not found in ASCII table header (ffghtb)."
-                    ));
+                    ffpmsg_str(
+                        "Required TFORM keyword(s) not found in ASCII table header (ffghtb).",
+                    );
                     *status = NO_TFORM;
                     return *status;
                 }
@@ -4037,7 +4036,7 @@ pub unsafe extern "C" fn ffghtb(
             extnm[0] = 0;
 
             tstatus = *status;
-            ffgkys_safe(fptr, cs!("EXTNAME"), extnm, Some(&mut comm), status);
+            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
             if *status == KEY_NO_EXIST {
                 *status = tstatus; /* keyword not required, so ignore error */
@@ -4090,10 +4089,10 @@ pub unsafe extern "C" fn ffghtbll(
         /* read the first keyword of the extension */
         ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
 
-        if strcmp_safe(&name, cs!("XTENSION")) == 0 {
+        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             if ffc2s(&value, &mut xtension, status) > 0 {
                 /* get the value string */
-                ffpmsg_slice(cs!("Bad value string for XTENSION keyword:"));
+                ffpmsg_str("Bad value string for XTENSION keyword:");
                 ffpmsg_slice(&value);
                 return *status;
             }
@@ -4101,7 +4100,7 @@ pub unsafe extern "C" fn ffghtbll(
             /* allow the quoted string value to begin in any column and */
             /* allow any number of trailing blanks before the closing quote */
             /* first char must be a quote */
-            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!("TABLE")) != 0) {
+            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
                 int_snprintf!(
                     &mut message,
                     FLEN_ERRMSG,
@@ -4199,7 +4198,7 @@ pub unsafe extern "C" fn ffghtbll(
 
                 ffgkns_safe(
                     fptr,
-                    cs!("TTYPE"),
+                    cs!(c"TTYPE"),
                     1,
                     maxf,
                     &mut v_ttype,
@@ -4218,7 +4217,7 @@ pub unsafe extern "C" fn ffghtbll(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TUNIT"),
+                    cs!(c"TUNIT"),
                     1,
                     maxf,
                     &mut v_tunit,
@@ -4234,12 +4233,12 @@ pub unsafe extern "C" fn ffghtbll(
             if !tbcol.is_null() {
                 let tbcol = slice::from_raw_parts_mut(tbcol, maxf as usize);
 
-                ffgknjj_safe(fptr, cs!("TBCOL"), 1, maxf, tbcol, &mut nfound, status);
+                ffgknjj_safe(fptr, cs!(c"TBCOL"), 1, maxf, tbcol, &mut nfound, status);
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtbll)."
-                    ));
+                    ffpmsg_str(
+                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtbll).",
+                    );
                     *status = NO_TBCOL;
                     return *status;
                 }
@@ -4255,7 +4254,7 @@ pub unsafe extern "C" fn ffghtbll(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TFORM"),
+                    cs!(c"TFORM"),
                     1,
                     maxf,
                     &mut v_tform,
@@ -4264,9 +4263,9 @@ pub unsafe extern "C" fn ffghtbll(
                 );
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TFORM keyword(s) not found in ASCII table header (ffghtbll)."
-                    ));
+                    ffpmsg_str(
+                        "Required TFORM keyword(s) not found in ASCII table header (ffghtbll).",
+                    );
                     *status = NO_TFORM;
                     return *status;
                 }
@@ -4278,7 +4277,7 @@ pub unsafe extern "C" fn ffghtbll(
             extnm[0] = 0;
 
             tstatus = *status;
-            ffgkys_safe(fptr, cs!("EXTNAME"), extnm, Some(&mut comm), status);
+            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
             if *status == KEY_NO_EXIST {
                 *status = tstatus; /* keyword not required, so ignore error */
@@ -4330,10 +4329,10 @@ pub unsafe extern "C" fn ffghbn(
         /* read the first keyword of the extension */
         ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
 
-        if strcmp_safe(&name, cs!("XTENSION")) == 0 {
+        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             if ffc2s(&value, &mut xtension, status) > 0 {
                 /* get the value string */
-                ffpmsg_slice(cs!("Bad value string for XTENSION keyword:"));
+                ffpmsg_str("Bad value string for XTENSION keyword:");
                 ffpmsg_slice(&value);
                 return *status;
             }
@@ -4342,9 +4341,9 @@ pub unsafe extern "C" fn ffghbn(
             /* allow any number of trailing blanks before the closing quote */
             /* first char must be a quote */
             if (value[0] != bb(b'\''))
-                || (strcmp_safe(&xtension, cs!("BINTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!("A3DTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!("3DTABLE")) != 0)
+                || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
+                    && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
+                    && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
             {
                 int_snprintf!(
                     &mut message,
@@ -4425,7 +4424,7 @@ pub unsafe extern "C" fn ffghbn(
 
                 ffgkns_safe(
                     fptr,
-                    cs!("TTYPE"),
+                    cs!(c"TTYPE"),
                     1,
                     maxf,
                     &mut v_ttype,
@@ -4444,7 +4443,7 @@ pub unsafe extern "C" fn ffghbn(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TUNIT"),
+                    cs!(c"TUNIT"),
                     1,
                     maxf,
                     &mut v_tunit,
@@ -4467,7 +4466,7 @@ pub unsafe extern "C" fn ffghbn(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TFORM"),
+                    cs!(c"TFORM"),
                     1,
                     maxf,
                     &mut v_tform,
@@ -4476,9 +4475,9 @@ pub unsafe extern "C" fn ffghbn(
                 );
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TFORM keyword(s) not found in binary table header (ffghbn)."
-                    ));
+                    ffpmsg_str(
+                        "Required TFORM keyword(s) not found in binary table header (ffghbn).",
+                    );
                     *status = NO_TFORM;
                     return *status;
                 }
@@ -4490,7 +4489,7 @@ pub unsafe extern "C" fn ffghbn(
             extnm[0] = 0;
 
             tstatus = *status;
-            ffgkys_safe(fptr, cs!("EXTNAME"), extnm, Some(&mut comm), status);
+            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
             if *status == KEY_NO_EXIST {
                 *status = tstatus; /* keyword not required, so ignore error */
@@ -4542,10 +4541,10 @@ pub unsafe extern "C" fn ffghbnll(
         /* read the first keyword of the extension */
         ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
 
-        if strcmp_safe(&name, cs!("XTENSION")) == 0 {
+        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             if ffc2s(&value, &mut xtension, status) > 0 {
                 /* get the value string */
-                ffpmsg_slice(cs!("Bad value string for XTENSION keyword:"));
+                ffpmsg_str("Bad value string for XTENSION keyword:");
                 ffpmsg_slice(&value);
                 return *status;
             }
@@ -4554,9 +4553,9 @@ pub unsafe extern "C" fn ffghbnll(
             /* allow any number of trailing blanks before the closing quote */
             /* first char must be a quote */
             if (value[0] != bb(b'\''))
-                || (strcmp_safe(&xtension, cs!("BINTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!("A3DTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!("3DTABLE")) != 0)
+                || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
+                    && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
+                    && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
             {
                 int_snprintf!(
                     &mut message,
@@ -4642,7 +4641,7 @@ pub unsafe extern "C" fn ffghbnll(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TTYPE"),
+                    cs!(c"TTYPE"),
                     1,
                     maxf,
                     &mut v_ttype,
@@ -4661,7 +4660,7 @@ pub unsafe extern "C" fn ffghbnll(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TUNIT"),
+                    cs!(c"TUNIT"),
                     1,
                     maxf,
                     &mut v_tunit,
@@ -4684,7 +4683,7 @@ pub unsafe extern "C" fn ffghbnll(
                 }
                 ffgkns_safe(
                     fptr,
-                    cs!("TFORM"),
+                    cs!(c"TFORM"),
                     1,
                     maxf,
                     &mut v_tform,
@@ -4693,9 +4692,9 @@ pub unsafe extern "C" fn ffghbnll(
                 );
 
                 if *status > 0 || nfound != maxf {
-                    ffpmsg_slice(cs!(
-                        "Required TFORM keyword(s) not found in binary table header (ffghbnll)."
-                    ));
+                    ffpmsg_str(
+                        "Required TFORM keyword(s) not found in binary table header (ffghbnll).",
+                    );
                     *status = NO_TFORM;
                     return *status;
                 }
@@ -4707,7 +4706,7 @@ pub unsafe extern "C" fn ffghbnll(
             extnm[0] = 0;
 
             tstatus = *status;
-            ffgkys_safe(fptr, cs!("EXTNAME"), extnm, Some(&mut comm), status);
+            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
             if *status == KEY_NO_EXIST {
                 *status = tstatus; /* keyword not required, so ignore error */
@@ -4773,7 +4772,7 @@ pub(crate) fn ffgphd(
 
     if fptr.Fptr.curhdu == 0 {
         /* Is this the beginning of the FITS file? */
-        if strcmp_safe(&name, cs!(b"SIMPLE")) == 0 {
+        if strcmp_safe(&name, cs!(c"SIMPLE")) == 0 {
             if value[0] == bb(b'F') {
                 //if !simple.is_null() {
                 *simple = 0; /* not a simple FITS file */
@@ -4798,7 +4797,7 @@ pub(crate) fn ffgphd(
         /* not beginning of the file, so presumably an IMAGE extension */
         /* or it could be a compressed image in a binary table */
 
-        if strcmp_safe(&name, cs!("XTENSION")) == 0 {
+        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             if ffc2s(&value, &mut xtension, status) > 0 {
                 /* get the value string */
                 ffpmsg_str("Bad value string for XTENSION keyword:");
@@ -4810,8 +4809,8 @@ pub(crate) fn ffgphd(
             /* allow any number of trailing blanks before the closing quote */
             /* first char must be a quote */
             if (value[0] != bb(b'\''))
-                || (strcmp_safe(&xtension, cs!("IMAGE")) != 0
-                    && strcmp_safe(&xtension, cs!("IUEIMAGE")) != 0)
+                || (strcmp_safe(&xtension, cs!(c"IMAGE")) != 0
+                    && strcmp_safe(&xtension, cs!(c"IUEIMAGE")) != 0)
             {
                 /* unknown type of extension; press on anyway */
                 unknown = 1;
@@ -4872,7 +4871,7 @@ pub(crate) fn ffgphd(
 
         /* BITPIX = 2nd keyword */
         ffgkyn_safe(fptr, 2, &mut name, &mut value, Some(&mut comm), status);
-        if strcmp_safe(&name, cs!(b"BITPIX")) != 0 {
+        if strcmp_safe(&name, cs!(c"BITPIX")) != 0 {
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,
@@ -4920,7 +4919,7 @@ pub(crate) fn ffgphd(
         /*---------------------------------------------------------------*/
         /*  Get 3rd keyword;  test whether it is NAXIS with legal value  */
         /*---------------------------------------------------------------*/
-        ffgtkn(fptr, 3, cs!(b"NAXIS"), &mut longnaxis, status);
+        ffgtkn(fptr, 3, cs!(c"NAXIS"), &mut longnaxis, status);
         if *status == BAD_ORDER {
             *status = NO_NAXIS;
             return *status;
@@ -4948,7 +4947,7 @@ pub(crate) fn ffgphd(
         ii = 0;
         nextkey = 4;
         while ii < longnaxis {
-            ffkeyn_safe(cs!(b"NAXIS"), ii as c_int + 1, &mut keyword, status);
+            ffkeyn_safe(cs!(c"NAXIS"), ii as c_int + 1, &mut keyword, status);
             ffgtknjj(fptr, 4 + ii as c_int, &keyword, &mut axislen, status);
             if *status == BAD_ORDER {
                 *status = NO_NAXES;
@@ -5037,7 +5036,7 @@ pub(crate) fn ffgphd(
                 };
             }
 
-            if strcmp_safe(&name, cs!("BSCALE")) == 0 {
+            if strcmp_safe(&name, cs!(c"BSCALE")) == 0 {
                 /* todo && !bscale.is_null() */
                 *nspace = 0; /* reset count of blank keywords */
 
@@ -5058,7 +5057,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"BZERO")) == 0 {
+            } else if strcmp_safe(&name, cs!(c"BZERO")) == 0 {
                 /* todo && !bzero.is_null() */
                 *nspace = 0; /* reset count of blank keywords */
 
@@ -5079,7 +5078,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"BLANK")) == 0 {
+            } else if strcmp_safe(&name, cs!(c"BLANK")) == 0 {
                 /* todo && !blank.is_null() */
                 *nspace = 0; /* reset count of blank keywords */
 
@@ -5100,7 +5099,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"PCOUNT")) == 0 {
+            } else if strcmp_safe(&name, cs!(c"PCOUNT")) == 0 {
                 /* todo && !pcount.is_null() */
                 *nspace = 0; /* reset count of blank keywords */
 
@@ -5117,7 +5116,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"GCOUNT")) == 0 {
+            } else if strcmp_safe(&name, cs!(c"GCOUNT")) == 0 {
                 /* todo && !gcount.is_null() */
                 *nspace = 0; /* reset count of blank keywords */
 
@@ -5134,7 +5133,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"EXTEND")) == 0
+            } else if strcmp_safe(&name, cs!(c"EXTEND")) == 0
             /* todo && !extend.is_null() */
             {
                 *nspace = 0; /* reset count of blank keywords */
@@ -5156,7 +5155,7 @@ pub(crate) fn ffgphd(
                     );
                     ffpmsg_slice(&message);
                 };
-            } else if strcmp_safe(&name, cs!(b"END")) == 0 {
+            } else if strcmp_safe(&name, cs!(c"END")) == 0 {
                 found_end = 1;
             } else if card[0] == 0 {
                 *nspace += 1; /* this is a blank card in the header */
@@ -5199,7 +5198,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if fftkyn(fptr, 2, cs!("BITPIX"), cs!("8"), status) == BAD_ORDER {
+    if fftkyn(fptr, 2, cs!(c"BITPIX"), cs!(c"8"), status) == BAD_ORDER {
         /* 2nd keyword */
         *status = NO_BITPIX; /* keyword not BITPIX */
         return *status;
@@ -5208,7 +5207,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if fftkyn(fptr, 3, cs!("NAXIS"), cs!("2"), status) == BAD_ORDER {
+    if fftkyn(fptr, 3, cs!(c"NAXIS"), cs!(c"2"), status) == BAD_ORDER {
         /* 3rd keyword */
         *status = NO_NAXIS; /* keyword not NAXIS */
         return *status;
@@ -5217,7 +5216,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if ffgtknjj(fptr, 4, cs!("NAXIS1"), rowlen, status) == BAD_ORDER {
+    if ffgtknjj(fptr, 4, cs!(c"NAXIS1"), rowlen, status) == BAD_ORDER {
         /* 4th key */
         *status = NO_NAXES; /* keyword not NAXIS1 */
         return *status;
@@ -5226,7 +5225,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if ffgtknjj(fptr, 5, cs!("NAXIS2"), nrows, status) == BAD_ORDER {
+    if ffgtknjj(fptr, 5, cs!(c"NAXIS2"), nrows, status) == BAD_ORDER {
         /* 5th key */
         *status = NO_NAXES; /* keyword not NAXIS2 */
         return *status;
@@ -5235,7 +5234,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if ffgtknjj(fptr, 6, cs!("PCOUNT"), pcount, status) == BAD_ORDER {
+    if ffgtknjj(fptr, 6, cs!(c"PCOUNT"), pcount, status) == BAD_ORDER {
         /* 6th key */
         *status = NO_PCOUNT; /* keyword not PCOUNT */
         return *status;
@@ -5244,7 +5243,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if fftkyn(fptr, 7, cs!("GCOUNT"), cs!("1"), status) == BAD_ORDER {
+    if fftkyn(fptr, 7, cs!(c"GCOUNT"), cs!(c"1"), status) == BAD_ORDER {
         /* 7th keyword */
         *status = NO_GCOUNT; /* keyword not GCOUNT */
         return *status;
@@ -5253,7 +5252,7 @@ pub(crate) fn ffgttb(
         return *status;
     }
 
-    if ffgtkn(fptr, 8, cs!("TFIELDS"), tfields, status) == BAD_ORDER {
+    if ffgtkn(fptr, 8, cs!(c"TFIELDS"), tfields, status) == BAD_ORDER {
         /* 8th key*/
         *status = NO_TFIELDS; /* keyword not TFIELDS */
         return *status;
@@ -5651,16 +5650,18 @@ pub(crate) fn ffhdr2str_safe(
         /* pad record with blanks so that it is at least 80 chars long */
         strcat_safe(
             &mut keybuf,
-            cs!("                                                                                "),
+            cs!(
+                c"                                                                                "
+            ),
         );
 
         keyname[0] = 0;
         strncat_safe(&mut keyname, &keybuf, 8); /* copy the keyword name */
 
         if exclude_comm != 0
-            && (FSTRCMP(cs!("COMMENT "), &keyname) == 0
-                || FSTRCMP(cs!("HISTORY "), &keyname) == 0
-                || FSTRCMP(cs!("        "), &keyname) == 0)
+            && (FSTRCMP(cs!(c"COMMENT "), &keyname) == 0
+                || FSTRCMP(cs!(c"HISTORY "), &keyname) == 0
+                || FSTRCMP(cs!(c"        "), &keyname) == 0)
         {
             continue; /* skip this commentary keyword */
         }
@@ -5687,7 +5688,7 @@ pub(crate) fn ffhdr2str_safe(
     /* add the END keyword */
     strcpy_safe(
         &mut hdr[hi..],
-        cs!("END                                                                             "),
+        cs!(c"END                                                                             "),
     );
     hi += 80;
     (*nkeys) += 1;

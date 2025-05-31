@@ -46,7 +46,7 @@
 
 use crate::c_types::{c_char, c_int, c_long};
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
+
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{Read, Seek};
@@ -378,8 +378,8 @@ fn irafrdimage(
     let fitsheader = buffptr; /* pointer to start of header */
 
     /* Convert pixel file name to character string */
-    hgets(fitsheader, cs!("PIXFILE"), SZ_IM2PIXFILE, &mut pixname);
-    hgeti4(fitsheader, cs!("PIXOFF"), &mut lpixhead);
+    hgets(fitsheader, cs!(c"PIXFILE"), SZ_IM2PIXFILE, &mut pixname);
+    hgeti4(fitsheader, cs!(c"PIXOFF"), &mut lpixhead);
 
     let lpixhead = lpixhead as usize;
 
@@ -454,21 +454,21 @@ fn irafrdimage(
     }
 
     /* Find number of bytes to read */
-    hgeti4(fitsheader, cs!("NAXIS"), &mut nax);
-    hgeti4(fitsheader, cs!("NAXIS1"), &mut naxis1);
-    hgeti4(fitsheader, cs!("NPAXIS1"), &mut npaxis1);
+    hgeti4(fitsheader, cs!(c"NAXIS"), &mut nax);
+    hgeti4(fitsheader, cs!(c"NAXIS1"), &mut naxis1);
+    hgeti4(fitsheader, cs!(c"NPAXIS1"), &mut npaxis1);
     if nax > 1 {
-        hgeti4(fitsheader, cs!("NAXIS2"), &mut naxis2);
-        hgeti4(fitsheader, cs!("NPAXIS2"), &mut npaxis2);
+        hgeti4(fitsheader, cs!(c"NAXIS2"), &mut naxis2);
+        hgeti4(fitsheader, cs!(c"NPAXIS2"), &mut npaxis2);
     }
     if nax > 2 {
-        hgeti4(fitsheader, cs!("NAXIS3"), &mut naxis3);
+        hgeti4(fitsheader, cs!(c"NAXIS3"), &mut naxis3);
     }
     if nax > 3 {
-        hgeti4(fitsheader, cs!("NAXIS4"), &mut naxis4);
+        hgeti4(fitsheader, cs!(c"NAXIS4"), &mut naxis4);
     }
 
-    hgeti4(fitsheader, cs!("BITPIX"), &mut bitpix);
+    hgeti4(fitsheader, cs!(c"BITPIX"), &mut bitpix);
     if bitpix < 0 {
         bytepix = -bitpix / 8;
     } else {
@@ -563,8 +563,8 @@ fn irafrdimage(
 /// Return IRAF image format version number from magic word in IRAF header
 fn head_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_int {
     /* Check header file magic word */
-    if irafncmp(irafheader, cs!("imhdr"), 5) != 0 {
-        if strncmp_safe(irafheader, cs!("imhv2"), 5) != 0 {
+    if irafncmp(irafheader, cs!(c"imhdr"), 5) != 0 {
+        if strncmp_safe(irafheader, cs!(c"imhv2"), 5) != 0 {
             0
         } else {
             2
@@ -578,8 +578,8 @@ fn head_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_in
 /// Return IRAF image format version number from magic word in IRAF pixel file
 fn pix_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_int {
     /* Check pixel file header magic word */
-    if irafncmp(irafheader, cs!("impix"), 5) != 0 {
-        if strncmp_safe(irafheader, cs!("impv2"), 5) != 0 {
+    if irafncmp(irafheader, cs!(c"impix"), 5) != 0 {
+        if strncmp_safe(irafheader, cs!(c"impv2"), 5) != 0 {
             0
         } else {
             2
@@ -650,7 +650,7 @@ fn iraftofits(
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     /* Set up last line of FITS header */
-    strncpy_safe(&mut endline, cs!("END"), 3);
+    strncpy_safe(&mut endline, cs!(c"END"), 3);
     for i in 3..80 {
         endline[i] = bb(b' ');
     }
@@ -712,7 +712,7 @@ fn iraftofits(
 
     let fitsheader = buffptr;
     strncpy_safe(fitsheader, &endline, 80);
-    hputl(fitsheader, cs!("SIMPLE"), 1);
+    hputl(fitsheader, cs!(c"SIMPLE"), 1);
     fhead += 80;
 
     /*  check if the IRAF file is in big endian (sun) format (= 0) or not. */
@@ -771,37 +771,37 @@ fn iraftofits(
         }
     }
 
-    hputi4(fitsheader, cs!("BITPIX"), nbits);
-    hputcom(fitsheader, cs!("BITPIX"), cs!("IRAF .imh pixel type"));
+    hputi4(fitsheader, cs!(c"BITPIX"), nbits);
+    hputcom(fitsheader, cs!(c"BITPIX"), cs!(c"IRAF .imh pixel type"));
     fhead += 80;
 
     /*  Set image dimensions in FITS header */
     nax = irafgeti4(irafheader, imndim);
-    hputi4(fitsheader, cs!("NAXIS"), nax);
-    hputcom(fitsheader, cs!("NAXIS"), cs!("IRAF .imh naxis"));
+    hputi4(fitsheader, cs!(c"NAXIS"), nax);
+    hputcom(fitsheader, cs!(c"NAXIS"), cs!(c"IRAF .imh naxis"));
     fhead += 80;
 
     n = irafgeti4(irafheader, imlen);
-    hputi4(fitsheader, cs!("NAXIS1"), n);
-    hputcom(fitsheader, cs!("NAXIS1"), cs!("IRAF .imh image naxis[1]"));
+    hputi4(fitsheader, cs!(c"NAXIS1"), n);
+    hputcom(fitsheader, cs!(c"NAXIS1"), cs!(c"IRAF .imh image naxis[1]"));
     fhead += 80;
 
     if nax > 1 {
         n = irafgeti4(irafheader, imlen + 4);
-        hputi4(fitsheader, cs!("NAXIS2"), n);
-        hputcom(fitsheader, cs!("NAXIS2"), cs!("IRAF .imh image naxis[2]"));
+        hputi4(fitsheader, cs!(c"NAXIS2"), n);
+        hputcom(fitsheader, cs!(c"NAXIS2"), cs!(c"IRAF .imh image naxis[2]"));
         fhead += 80;
     }
     if nax > 2 {
         n = irafgeti4(irafheader, imlen + 8);
-        hputi4(fitsheader, cs!("NAXIS3"), n);
-        hputcom(fitsheader, cs!("NAXIS3"), cs!("IRAF .imh image naxis[3]"));
+        hputi4(fitsheader, cs!(c"NAXIS3"), n);
+        hputcom(fitsheader, cs!(c"NAXIS3"), cs!(c"IRAF .imh image naxis[3]"));
         fhead += 80;
     }
     if nax > 3 {
         n = irafgeti4(irafheader, imlen + 12);
-        hputi4(fitsheader, cs!("NAXIS4"), n);
-        hputcom(fitsheader, cs!("NAXIS4"), cs!("IRAF .imh image naxis[4]"));
+        hputi4(fitsheader, cs!(c"NAXIS4"), n);
+        hputcom(fitsheader, cs!(c"NAXIS4"), cs!(c"IRAF .imh image naxis[4]"));
         fhead += 80;
     }
 
@@ -822,54 +822,54 @@ fn iraftofits(
         }
         objname[8] = 0;
     }
-    hputs(fitsheader, cs!("OBJECT"), &objname);
-    hputcom(fitsheader, cs!("OBJECT"), cs!("IRAF .imh title"));
+    hputs(fitsheader, cs!(c"OBJECT"), &objname);
+    hputcom(fitsheader, cs!(c"OBJECT"), cs!(c"IRAF .imh title"));
 
     fhead += 80;
 
     /* Save physical axis lengths so image file can be read */
     n = irafgeti4(irafheader, imphyslen);
-    hputi4(fitsheader, cs!("NPAXIS1"), n);
+    hputi4(fitsheader, cs!(c"NPAXIS1"), n);
     hputcom(
         fitsheader,
-        cs!("NPAXIS1"),
-        cs!("IRAF .imh physical naxis[1]"),
+        cs!(c"NPAXIS1"),
+        cs!(c"IRAF .imh physical naxis[1]"),
     );
     fhead += 80;
     if nax > 1 {
         n = irafgeti4(irafheader, imphyslen + 4);
-        hputi4(fitsheader, cs!("NPAXIS2"), n);
+        hputi4(fitsheader, cs!(c"NPAXIS2"), n);
         hputcom(
             fitsheader,
-            cs!("NPAXIS2"),
-            cs!("IRAF .imh physical naxis[2]"),
+            cs!(c"NPAXIS2"),
+            cs!(c"IRAF .imh physical naxis[2]"),
         );
         fhead += 80;
     }
     if nax > 2 {
         n = irafgeti4(irafheader, imphyslen + 8);
-        hputi4(fitsheader, cs!("NPAXIS3"), n);
+        hputi4(fitsheader, cs!(c"NPAXIS3"), n);
         hputcom(
             fitsheader,
-            cs!("NPAXIS3"),
-            cs!("IRAF .imh physical naxis[3]"),
+            cs!(c"NPAXIS3"),
+            cs!(c"IRAF .imh physical naxis[3]"),
         );
         fhead += 80;
     }
     if nax > 3 {
         n = irafgeti4(irafheader, imphyslen + 12);
-        hputi4(fitsheader, cs!("NPAXIS4"), n);
+        hputi4(fitsheader, cs!(c"NPAXIS4"), n);
         hputcom(
             fitsheader,
-            cs!("NPAXIS4"),
-            cs!("IRAF .imh physical naxis[4]"),
+            cs!(c"NPAXIS4"),
+            cs!(c"IRAF .imh physical naxis[4]"),
         );
         fhead += 80;
     }
 
     /* Save image header filename in header */
-    hputs(fitsheader, cs!("IMHFILE"), hdrname);
-    hputcom(fitsheader, cs!("IMHFILE"), cs!("IRAF header file name"));
+    hputs(fitsheader, cs!(c"IMHFILE"), hdrname);
+    hputcom(fitsheader, cs!(c"IMHFILE"), cs!(c"IRAF header file name"));
     fhead += 80;
 
     /* Save image pixel file pathname in header */
@@ -881,7 +881,7 @@ fn iraftofits(
 
     let mut pixname = pixname.unwrap();
 
-    if strncmp_safe(&pixname, cs!("HDR"), 3) == 0 {
+    if strncmp_safe(&pixname, cs!(c"HDR"), 3) == 0 {
         newpixname = same_path(&pixname, hdrname);
         if let Some(newpixname) = newpixname {
             pixname = newpixname;
@@ -897,44 +897,44 @@ fn iraftofits(
     let bang = strchr_safe(&pixname, bb(b'!'));
 
     if let Some(bang) = bang {
-        hputs(fitsheader, cs!("PIXFILE"), &pixname[(bang + 1)..]);
+        hputs(fitsheader, cs!(c"PIXFILE"), &pixname[(bang + 1)..]);
     } else {
-        hputs(fitsheader, cs!("PIXFILE"), &pixname);
+        hputs(fitsheader, cs!(c"PIXFILE"), &pixname);
     }
 
-    hputcom(fitsheader, cs!("PIXFILE"), cs!("IRAF .pix pixel file"));
+    hputcom(fitsheader, cs!(c"PIXFILE"), cs!(c"IRAF .pix pixel file"));
     fhead += 80;
 
     /* Save image offset from star of pixel file */
     let mut pixoff = irafgeti4(irafheader, impixoff);
     pixoff = (pixoff - 1) * 2;
-    hputi4(fitsheader, cs!("PIXOFF"), pixoff);
+    hputi4(fitsheader, cs!(c"PIXOFF"), pixoff);
     hputcom(
         fitsheader,
-        cs!("PIXOFF"),
-        cs!("IRAF .pix pixel offset (Do not change!)"),
+        cs!(c"PIXOFF"),
+        cs!(c"IRAF .pix pixel offset (Do not change!)"),
     );
     fhead += 80;
 
     /* Save IRAF file format version in header */
-    hputi4(fitsheader, cs!("IMHVER"), imhver);
+    hputi4(fitsheader, cs!(c"IMHVER"), imhver);
     hputcom(
         fitsheader,
-        cs!("IMHVER"),
-        cs!("IRAF .imh format version (1 or 2)"),
+        cs!(c"IMHVER"),
+        cs!(c"IRAF .imh format version (1 or 2)"),
     );
     fhead += 80;
 
     /* Save flag as to whether to swap IRAF data for this file and machine */
     if *swapdata {
-        hputl(fitsheader, cs!("PIXSWAP"), 1);
+        hputl(fitsheader, cs!(c"PIXSWAP"), 1);
     } else {
-        hputl(fitsheader, cs!("PIXSWAP"), 0);
+        hputl(fitsheader, cs!(c"PIXSWAP"), 0);
     }
     hputcom(
         fitsheader,
-        cs!("PIXSWAP"),
-        cs!("IRAF pixels, FITS byte orders differ if T"),
+        cs!(c"PIXSWAP"),
+        cs!(c"IRAF pixels, FITS byte orders differ if T"),
     );
     fhead += 80;
 
@@ -954,7 +954,7 @@ fn iraftofits(
             } else if irafchar == 10 {
                 strncpy_safe(&mut fitsheader[fhead..], &fitsline, 80);
                 /* fprintf (stderr,"%80s\n",fitsline); */
-                if strncmp_safe(&fitsline, cs!("OBJECT "), 7) != 0 {
+                if strncmp_safe(&fitsline, cs!(c"OBJECT "), 7) != 0 {
                     fhead += 80;
                 }
                 for k in 0..80 {
@@ -963,7 +963,7 @@ fn iraftofits(
                 j = 0;
             } else {
                 if j > 80 {
-                    if strncmp_safe(&fitsline, cs!("OBJECT "), 7) != 0 {
+                    if strncmp_safe(&fitsline, cs!(c"OBJECT "), 7) != 0 {
                         strncpy_safe(&mut fitsheader[fhead..], &fitsline, 80);
                         /* fprintf (stderr,"%80s\n",fitsline); */
                         j = 9;
@@ -993,7 +993,7 @@ fn iraftofits(
             if irafchar == 0 {
                 break;
             } else if irafchar == 10 {
-                if strncmp_safe(&fitsline, cs!("OBJECT "), 7) != 0 {
+                if strncmp_safe(&fitsline, cs!(c"OBJECT "), 7) != 0 {
                     strncpy_safe(&mut fitsheader[fhead..], &fitsline, 80);
                     fhead += 80;
                 }
@@ -1004,7 +1004,7 @@ fn iraftofits(
                 }
             } else {
                 if j > 80 {
-                    if strncmp_safe(&fitsline, cs!("OBJECT "), 7) != 0 {
+                    if strncmp_safe(&fitsline, cs!(c"OBJECT "), 7) != 0 {
                         strncpy_safe(&mut fitsheader[fhead..], &fitsline, 80);
                         j = 9;
                         fhead += 80;
@@ -1026,13 +1026,13 @@ fn iraftofits(
     strncpy_safe(&mut fitsheader[fhead..], &endline, 80);
 
     /* Find end of last 2880-byte block of header */
-    fhead = ksearch(fitsheader, cs!("END")).unwrap() + 80;
+    fhead = ksearch(fitsheader, cs!(c"END")).unwrap() + 80;
     nblock = *nbfits / BL!();
     let fhead1 = nblock * BL!(); //&fitsheader
     *fitssize = fhead; /* no. of bytes to end of END keyword */
 
     /* Pad rest of header with spaces */
-    strncpy_safe(&mut endline, cs!("   "), 3);
+    strncpy_safe(&mut endline, cs!(c"   "), 3);
     for fp in (fhead..fhead1).step_by(80) {
         strncpy_safe(&mut fitsheader[fp..], &endline, 80);
     }
@@ -1067,7 +1067,7 @@ fn getirafpixname(
     }
     .unwrap();
 
-    if strncmp_safe(&pixname, cs!("HDR"), 3) == 0 {
+    if strncmp_safe(&pixname, cs!(c"HDR"), 3) == 0 {
         newpixname = same_path(&pixname, hdrname);
         if let Some(newpixname) = newpixname {
             pixname = newpixname;
@@ -1109,7 +1109,7 @@ fn same_path(
     }
 
     /* Pixel file is in same directory as header */
-    if strncmp_safe(pixname, cs!("HDR$"), 4) == 0 {
+    if strncmp_safe(pixname, cs!(c"HDR$"), 4) == 0 {
         strncpy_safe(&mut newpixname, hdrname, SZ_IM2PIXFILE);
 
         /* find the end of the pathname */
@@ -1155,7 +1155,7 @@ fn same_path(
         strncat_safe(&mut newpixname, pixname, SZ_IM2PIXFILE);
     }
     /* Pixel file has same name as header file, but with .pix extension */
-    else if strncmp_safe(pixname, cs!("HDR"), 3) == 0 {
+    else if strncmp_safe(pixname, cs!(c"HDR"), 3) == 0 {
         /* load entire header name string into name buffer */
         strncpy_safe(&mut newpixname, hdrname, SZ_IM2PIXFILE);
         let len = strlen_safe(&newpixname);
@@ -1584,10 +1584,11 @@ fn hgetc(
 
         v1 = q1 + 1;
         v2 = q2;
-        c1 = strsrch(&line[q2..], cs!("/"));
+        c1 = strsrch(&line[q2..], cs!(c"/"));
     } else {
-        v1 = strsrch(&line, cs!("=")).expect("Shouldn't be null, not handled in original code") + 1;
-        c1 = strsrch(&line, cs!("/"));
+        v1 =
+            strsrch(&line, cs!(c"=")).expect("Shouldn't be null, not handled in original code") + 1;
+        c1 = strsrch(&line, cs!(c"/"));
         if let Some(c1) = c1 {
             v2 = c1;
         } else {
@@ -1608,7 +1609,7 @@ fn hgetc(
         v2 -= 1;
     }
 
-    if strcmp_safe(&line[v1..], cs!("-0")) == 0 {
+    if strcmp_safe(&line[v1..], cs!(c"-0")) == 0 {
         v1 += 1;
     }
     strcpy_safe(&mut cval, &line[v1..]);
@@ -1730,7 +1731,7 @@ fn blsearch(
 
     /* Find last nonblank line before requested keyword */
     let mut bval = pval - 80;
-    while strncmp_safe(&hstring[bval..], cs!("        "), 8) == 0 {
+    while strncmp_safe(&hstring[bval..], cs!(c"        "), 8) == 0 {
         bval -= 80;
     }
     bval += 80;
@@ -1932,9 +1933,9 @@ fn hputl(
 
     /* Translate value from binary to ASCII */
     if lval != 0 {
-        strcpy_safe(&mut value, cs!("T"));
+        strcpy_safe(&mut value, cs!(c"T"));
     } else {
-        strcpy_safe(&mut value, cs!("F"));
+        strcpy_safe(&mut value, cs!(c"F"));
     }
 
     /* Put value into header string */
@@ -2005,11 +2006,11 @@ fn hputc(
 
     /*  If COMMENT or HISTORY, always add it just before the END */
     if lkeyword == 7
-        && (strncmp_safe(keyword, cs!("COMMENT"), 7) == 0
-            || strncmp_safe(keyword, cs!("HISTORY"), 7) == 0)
+        && (strncmp_safe(keyword, cs!(c"COMMENT"), 7) == 0
+            || strncmp_safe(keyword, cs!(c"HISTORY"), 7) == 0)
     {
         /* Find end of header */
-        let v1_tmp = ksearch(hstring, cs!("END"));
+        let v1_tmp = ksearch(hstring, cs!(c"END"));
         if v1_tmp.is_none() {
             return; /* UB in original code */
         } else {
@@ -2041,11 +2042,11 @@ fn hputc(
     /*  If parameter is not found, find a place to put it */
     if v1_tmp.is_none() {
         /* First look for blank lines before END */
-        let v1_tmp = blsearch(hstring, cs!("END"));
+        let v1_tmp = blsearch(hstring, cs!(c"END"));
 
         /*  Otherwise, create a space for it at the end of the header */
         if v1_tmp.is_none() {
-            let ve_tmp = ksearch(hstring, cs!("END"));
+            let ve_tmp = ksearch(hstring, cs!(c"END"));
             if ve_tmp.is_none() {
                 return; // UB in original code
             }
@@ -2163,11 +2164,11 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
 
     /*  If COMMENT or HISTORY, always add it just before the END */
     if lkeyword == 7
-        && (strncmp_safe(keyword, cs!("COMMENT"), 7) == 0
-            || strncmp_safe(keyword, cs!("HISTORY"), 7) == 0)
+        && (strncmp_safe(keyword, cs!(c"COMMENT"), 7) == 0
+            || strncmp_safe(keyword, cs!(c"HISTORY"), 7) == 0)
     {
         /* Find end of header */
-        let v1_tmp = ksearch(hstring, cs!("END"));
+        let v1_tmp = ksearch(hstring, cs!(c"END"));
         if v1_tmp.is_none() {
             return; /* UB in original code */
         } else {
@@ -2218,7 +2219,7 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
             c0 = v1 + 31;
         }
 
-        strncpy_safe(&mut line[c0..], cs!("/ "), 2);
+        strncpy_safe(&mut line[c0..], cs!(c"/ "), 2);
     }
 
     /* create new entry */

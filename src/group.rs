@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 use bytemuck::cast_slice;
-use cstr::cstr;
+
 use std::ffi::CStr;
 
 use crate::{
@@ -578,7 +578,7 @@ pub(crate) fn ffgtnm_safe(
 
     *status = fits_read_keyword(
         gfptr,
-        cs!("EXTNAME"),
+        cs!(c"EXTNAME"),
         &mut keyvalue,
         Some(&mut comment),
         status,
@@ -589,12 +589,12 @@ pub(crate) fn ffgtnm_safe(
     } else {
         prepare_keyvalue(&keyvalue);
 
-        if fits_strcasecmp(&keyvalue, cs!("GROUPING")) != 0 {
+        if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) != 0 {
             *status = NOT_GROUP_TABLE;
-            ffpmsg_slice(cs!("Specified HDU is not a Grouping table (ffgtnm)"));
+            ffpmsg_str("Specified HDU is not a Grouping table (ffgtnm)");
         }
 
-        *status = fits_read_key_lng(gfptr, cs!("NAXIS2"), nmembers, Some(&mut comment), status);
+        *status = fits_read_key_lng(gfptr, cs!(c"NAXIS2"), nmembers, Some(&mut comment), status);
     }
 
     *status
@@ -1131,7 +1131,7 @@ pub(crate) fn fits_path2url(
                     }
 
                     buff[0] = bb(b'/');
-                    strcat_safe(&mut buff, cs!("/"));
+                    strcat_safe(&mut buff, cs!(c"/"));
                     i += 1;
                 }
 
@@ -1547,7 +1547,7 @@ pub(crate) fn fits_clean_url(
 
     loop {
         /* handle URL scheme and domain if they exist */
-        let tmp = strstr_safe(inURL_ptr, cs!("://"));
+        let tmp = strstr_safe(inURL_ptr, cs!(c"://"));
 
         if let Some(tmp) = tmp {
             // tmp is now the index into the current inURL_ptr
@@ -1579,7 +1579,7 @@ pub(crate) fn fits_clean_url(
 
         /* explicitly copy a leading / (absolute path) */
         if bb(b'/') == inURL_ptr[0] {
-            strcat_safe(outURL, cs!("/"));
+            strcat_safe(outURL, cs!(c"/"));
         }
 
         /* now clean the remainder of the inURL. push URL segments onto stack, dealing with .. and . as we go */
@@ -1639,7 +1639,7 @@ pub(crate) fn fits_clean_url(
 
             outURL[len] = 0; // Manually add the null terminator
 
-            strcat_safe(outURL, cs!("/"));
+            strcat_safe(outURL, cs!(c"/"));
         }
 
         let outurl_len = strlen_safe(outURL);
@@ -1869,19 +1869,19 @@ mod tests {
 
     #[test]
     fn test_fits_is_url_absolute() {
-        assert_eq!(fits_is_url_absolute(cs!("http://example.com")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("ftp://example.com")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("file:///path/to/file")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("mem://memory")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("shmem://shared_memory")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("root://root_path")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("/absolute/path")), 0); // No colon
-        assert_eq!(fits_is_url_absolute(cs!("relative/path")), 0);
-        assert_eq!(fits_is_url_absolute(cs!("C:/absolute/path")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("")), 0);
-        assert_eq!(fits_is_url_absolute(cs!("no_colon_here")), 0);
-        assert_eq!(fits_is_url_absolute(cs!("http:/example.com")), 1);
-        assert_eq!(fits_is_url_absolute(cs!("http:example.com")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"http://example.com")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"ftp://example.com")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"file:///path/to/file")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"mem://memory")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"shmem://shared_memory")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"root://root_path")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"/absolute/path")), 0); // No colon
+        assert_eq!(fits_is_url_absolute(cs!(c"relative/path")), 0);
+        assert_eq!(fits_is_url_absolute(cs!(c"C:/absolute/path")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"")), 0);
+        assert_eq!(fits_is_url_absolute(cs!(c"no_colon_here")), 0);
+        assert_eq!(fits_is_url_absolute(cs!(c"http:/example.com")), 1);
+        assert_eq!(fits_is_url_absolute(cs!(c"http:example.com")), 1);
     }
 
     #[test]

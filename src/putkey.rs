@@ -17,7 +17,6 @@ use chrono::{DateTime, Utc};
 use crate::c_types::*;
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::fitscore::{
     ffbnfm_safe, ffcrhd_safer, ffgabc_safe, ffgthd_safe, ffiblk, ffkeyn_safe, ffmahd_safe,
@@ -443,15 +442,15 @@ pub(crate) fn ffphprll_safe(
     if fptr.Fptr.curhdu == 0 {
         /* write primary array header */
         if simple > 0 {
-            strcpy_safe(&mut comm, cs!("file does conform to FITS standard"));
+            strcpy_safe(&mut comm, cs!(c"file does conform to FITS standard"));
         } else {
-            strcpy_safe(&mut comm, cs!("file does not conform to FITS standard"));
+            strcpy_safe(&mut comm, cs!(c"file does not conform to FITS standard"));
         }
-        ffpkyl_safe(fptr, cs!("SIMPLE"), simple, Some(&comm), status);
+        ffpkyl_safe(fptr, cs!(c"SIMPLE"), simple, Some(&comm), status);
     } else {
         /* write IMAGE extension header */
-        strcpy_safe(&mut comm, cs!("IMAGE extension"));
-        ffpkys_safe(fptr, cs!("XTENSION"), cs!("IMAGE"), Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"IMAGE extension"));
+        ffpkys_safe(fptr, cs!(c"XTENSION"), cs!(c"IMAGE"), Some(&comm), status);
     }
 
     let mut longbitpix = bitpix;
@@ -484,10 +483,10 @@ pub(crate) fn ffphprll_safe(
         return *status;
     }
 
-    strcpy_safe(&mut comm, cs!("number of bits per data pixel"));
+    strcpy_safe(&mut comm, cs!(c"number of bits per data pixel"));
     if ffpkyj_safe(
         fptr,
-        cs!("BITPIX"),
+        cs!(c"BITPIX"),
         longbitpix as LONGLONG,
         Some(&comm),
         status,
@@ -507,10 +506,10 @@ pub(crate) fn ffphprll_safe(
         return *status;
     }
 
-    strcpy_safe(&mut comm, cs!("number of data axes"));
-    ffpkyj_safe(fptr, cs!("NAXIS"), naxis as LONGLONG, Some(&comm), status);
+    strcpy_safe(&mut comm, cs!(c"number of data axes"));
+    ffpkyj_safe(fptr, cs!(c"NAXIS"), naxis as LONGLONG, Some(&comm), status);
 
-    strcpy_safe(&mut comm, cs!("length of data axis "));
+    strcpy_safe(&mut comm, cs!(c"length of data axis "));
     ii = 0;
     while ii < naxis as usize {
         if naxes[ii] < 0 {
@@ -527,7 +526,7 @@ pub(crate) fn ffphprll_safe(
         }
 
         int_snprintf!(&mut comm[20..], FLEN_COMMENT - 20, "{}", ii + 1,);
-        ffkeyn_safe(cs!("NAXIS"), ii as c_int + 1, &mut name, status);
+        ffkeyn_safe(cs!(c"NAXIS"), ii as c_int + 1, &mut name, status);
         ffpkyj_safe(fptr, &name, naxes[ii], Some(&comm), status);
         ii += 1;
     }
@@ -537,8 +536,8 @@ pub(crate) fn ffphprll_safe(
 
         if extend > 0 {
             /* only write EXTEND keyword if value = true */
-            strcpy_safe(&mut comm, cs!("FITS dataset may contain extensions"));
-            ffpkyl_safe(fptr, cs!("EXTEND"), extend, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"FITS dataset may contain extensions"));
+            ffpkyl_safe(fptr, cs!(c"EXTEND"), extend, Some(&comm), status);
         }
 
         if pcount < 0 {
@@ -551,25 +550,27 @@ pub(crate) fn ffphprll_safe(
             return *status;
         } else if pcount > 0 || gcount > 1 {
             /* only write these keyword if non-standard values */
-            strcpy_safe(&mut comm, cs!("random group records are present"));
-            ffpkyl_safe(fptr, cs!("GROUPS"), 1, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"random group records are present"));
+            ffpkyl_safe(fptr, cs!(c"GROUPS"), 1, Some(&comm), status);
 
-            strcpy_safe(&mut comm, cs!("number of random group parameters"));
-            ffpkyj_safe(fptr, cs!("PCOUNT"), pcount, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"number of random group parameters"));
+            ffpkyj_safe(fptr, cs!(c"PCOUNT"), pcount, Some(&comm), status);
 
-            strcpy_safe(&mut comm, cs!("number of random groups"));
-            ffpkyj_safe(fptr, cs!("GCOUNT"), gcount, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"number of random groups"));
+            ffpkyj_safe(fptr, cs!(c"GCOUNT"), gcount, Some(&comm), status);
         }
 
         /* write standard block of self-documentating comments */
         ffprec_safe(
             fptr,
-            cs!("COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"),
+            cs!(
+                c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"
+            ),
             status,
         );
         ffprec_safe(
             fptr,
-            cs!("COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"),
+            cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"),
             status,
         );
     } else
@@ -583,11 +584,11 @@ pub(crate) fn ffphprll_safe(
             ffpmsg_str("image extensions must have gcount = 1");
             *status = BAD_GCOUNT;
         } else {
-            strcpy_safe(&mut comm, cs!("required keyword; must = 0"));
-            ffpkyj_safe(fptr, cs!("PCOUNT"), 0, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"required keyword; must = 0"));
+            ffpkyj_safe(fptr, cs!(c"PCOUNT"), 0, Some(&comm), status);
 
-            strcpy_safe(&mut comm, cs!("required keyword; must = 1"));
-            ffpkyj_safe(fptr, cs!("GCOUNT"), 1, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"required keyword; must = 1"));
+            ffpkyj_safe(fptr, cs!(c"GCOUNT"), 1, Some(&comm), status);
         }
     }
 
@@ -595,29 +596,34 @@ pub(crate) fn ffphprll_safe(
     if bitpix == USHORT_IMG {
         strcpy_safe(
             &mut comm,
-            cs!("offset data range to that of unsigned short"),
+            cs!(c"offset data range to that of unsigned short"),
         );
-        ffpkyg_safe(fptr, cs!("BZERO"), 32768., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(fptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        ffpkyg_safe(fptr, cs!(c"BZERO"), 32768., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(fptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     } else if bitpix == ULONG_IMG {
-        strcpy_safe(&mut comm, cs!("offset data range to that of unsigned long"));
-        ffpkyg_safe(fptr, cs!("BZERO"), 2147483648., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(fptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        strcpy_safe(
+            &mut comm,
+            cs!(c"offset data range to that of unsigned long"),
+        );
+        ffpkyg_safe(fptr, cs!(c"BZERO"), 2147483648., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(fptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     } else if bitpix == ULONGLONG_IMG {
         strcpy_safe(
             &mut card,
-            cs!("BZERO   =  9223372036854775808 / offset data range to that of unsigned long long"),
+            cs!(
+                c"BZERO   =  9223372036854775808 / offset data range to that of unsigned long long"
+            ),
         );
         ffprec_safe(fptr, &card, status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(fptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(fptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     } else if bitpix == SBYTE_IMG {
-        strcpy_safe(&mut comm, cs!("offset data range to that of signed byte"));
-        ffpkyg_safe(fptr, cs!("BZERO"), -128., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(fptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"offset data range to that of signed byte"));
+        ffpkyg_safe(fptr, cs!(c"BZERO"), -128., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(fptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     }
     *status
 }
@@ -766,58 +772,58 @@ pub(crate) fn ffphtb_safe(
 
     ffpkys_safe(
         fptr,
-        cs!("XTENSION"),
-        cs!("TABLE"),
-        Some(cs!("ASCII table extension")),
+        cs!(c"XTENSION"),
+        cs!(c"TABLE"),
+        Some(cs!(c"ASCII table extension")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("BITPIX"),
+        cs!(c"BITPIX"),
         8,
-        Some(cs!("8-bit ASCII characters")),
+        Some(cs!(c"8-bit ASCII characters")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS"),
+        cs!(c"NAXIS"),
         2,
-        Some(cs!("2-dimensional ASCII table")),
+        Some(cs!(c"2-dimensional ASCII table")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS1"),
+        cs!(c"NAXIS1"),
         rowlen as LONGLONG,
-        Some(cs!("width of table in characters")),
+        Some(cs!(c"width of table in characters")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS2"),
+        cs!(c"NAXIS2"),
         naxis2,
-        Some(cs!("number of rows in table")),
+        Some(cs!(c"number of rows in table")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("PCOUNT"),
+        cs!(c"PCOUNT"),
         0,
-        Some(cs!("no group parameters (required keyword)")),
+        Some(cs!(c"no group parameters (required keyword)")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("GCOUNT"),
+        cs!(c"GCOUNT"),
         1,
-        Some(cs!("one data group (required keyword)")),
+        Some(cs!(c"one data group (required keyword)")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("TFIELDS"),
+        cs!(c"TFIELDS"),
         tfields.into(),
-        Some(cs!("number of fields in each row")),
+        Some(cs!(c"number of fields in each row")),
         status,
     );
 
@@ -828,7 +834,7 @@ pub(crate) fn ffphtb_safe(
             /* optional TTYPEn keyword */
             int_snprintf!(&mut comm, FLEN_COMMENT, "label for field {:3}", ii + 1,);
 
-            ffkeyn_safe(cs!(TTYPE), (ii + 1) as c_int, &mut name, status);
+            ffkeyn_safe(cs!(c"TTYPE"), (ii + 1) as c_int, &mut name, status);
             ffpkys_safe(fptr, &name, ttype_item, Some(&comm), status);
         }
 
@@ -842,7 +848,7 @@ pub(crate) fn ffphtb_safe(
             "beginning column of field {:3}",
             ii + 1,
         );
-        ffkeyn_safe(cs!(TBCOL), (ii + 1) as c_int, &mut name, status);
+        ffkeyn_safe(cs!(c"TBCOL"), (ii + 1) as c_int, &mut name, status);
         ffpkyj_safe(
             fptr,
             &name,
@@ -858,12 +864,12 @@ pub(crate) fn ffphtb_safe(
         }
         strcpy_safe(&mut tfmt, tform[ii]); /* required TFORMn keyword */
         ffupch_safe(&mut tfmt);
-        ffkeyn_safe(cs!(TFORM), (ii + 1) as c_int, &mut name, status);
+        ffkeyn_safe(cs!(c"TFORM"), (ii + 1) as c_int, &mut name, status);
         ffpkys_safe(
             fptr,
             &name,
             &tfmt,
-            Some(cs!("Fortran-77 format of field")),
+            Some(cs!(c"Fortran-77 format of field")),
             status,
         );
 
@@ -873,12 +879,12 @@ pub(crate) fn ffphtb_safe(
             {
                 /* optional TUNITn keyword */
 
-                ffkeyn_safe(cs!(TUNIT), (ii + 1) as c_int, &mut name, status);
+                ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
                 ffpkys_safe(
                     fptr,
                     &name,
                     tunit_item,
-                    Some(cs!("physical unit of field")),
+                    Some(cs!(c"physical unit of field")),
                     status,
                 );
             }
@@ -893,9 +899,9 @@ pub(crate) fn ffphtb_safe(
         /* optional EXTNAME keyword */
         ffpkys_safe(
             fptr,
-            cs!("EXTNAME"),
+            cs!(c"EXTNAME"),
             &extnm,
-            Some(cs!("name of this ASCII table extension")),
+            Some(cs!(c"name of this ASCII table extension")),
             status,
         );
     }
@@ -1001,17 +1007,17 @@ pub(crate) fn ffphbn_safe(
     }
     ffpkys_safe(
         fptr,
-        cs!("XTENSION"),
-        cs!("BINTABLE"),
-        Some(cs!("binary table extension")),
+        cs!(c"XTENSION"),
+        cs!(c"BINTABLE"),
+        Some(cs!(c"binary table extension")),
         status,
     );
-    ffpkyj_safe(fptr, cs!("BITPIX"), 8, Some(cs!("8-bit bytes")), status);
+    ffpkyj_safe(fptr, cs!(c"BITPIX"), 8, Some(cs!(c"8-bit bytes")), status);
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS"),
+        cs!(c"NAXIS"),
         2,
-        Some(cs!("2-dimensional binary table")),
+        Some(cs!(c"2-dimensional binary table")),
         status,
     );
 
@@ -1052,16 +1058,16 @@ pub(crate) fn ffphbn_safe(
 
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS1"),
+        cs!(c"NAXIS1"),
         naxis1,
-        Some(cs!("width of table in bytes")),
+        Some(cs!(c"width of table in bytes")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("NAXIS2"),
+        cs!(c"NAXIS2"),
         naxis2,
-        Some(cs!("number of rows in table")),
+        Some(cs!(c"number of rows in table")),
         status,
     );
 
@@ -1072,23 +1078,23 @@ pub(crate) fn ffphbn_safe(
     */
     ffpkyj_safe(
         fptr,
-        cs!("PCOUNT"),
+        cs!(c"PCOUNT"),
         0,
-        Some(cs!("size of special data area")),
+        Some(cs!(c"size of special data area")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("GCOUNT"),
+        cs!(c"GCOUNT"),
         1,
-        Some(cs!("one data group (required keyword)")),
+        Some(cs!(c"one data group (required keyword)")),
         status,
     );
     ffpkyj_safe(
         fptr,
-        cs!("TFIELDS"),
+        cs!(c"TFIELDS"),
         tfields as LONGLONG,
-        Some(cs!("number of fields in each row")),
+        Some(cs!(c"number of fields in each row")),
         status,
     );
 
@@ -1101,7 +1107,7 @@ pub(crate) fn ffphbn_safe(
             /* optional TTYPEn keyword */
 
             int_snprintf!(&mut comm, FLEN_COMMENT, "label for field {:3}", ii + 1,);
-            ffkeyn_safe(cs!("TTYPE"), (ii + 1) as c_int, &mut name, status);
+            ffkeyn_safe(cs!(c"TTYPE"), (ii + 1) as c_int, &mut name, status);
             ffpkys_safe(fptr, &name, ttype_item, Some(&comm), status);
         }
 
@@ -1113,8 +1119,8 @@ pub(crate) fn ffphbn_safe(
         strcpy_safe(&mut tfmt, tform_item); /* required TFORMn keyword */
         ffupch_safe(&mut tfmt);
 
-        ffkeyn_safe(cs!("TFORM"), (ii + 1) as c_int, &mut name, status);
-        strcpy_safe(&mut comm, cs!("data format of field"));
+        ffkeyn_safe(cs!(c"TFORM"), (ii + 1) as c_int, &mut name, status);
+        strcpy_safe(&mut comm, cs!(c"data format of field"));
 
         ffbnfm_safe(
             &tfmt,
@@ -1125,7 +1131,7 @@ pub(crate) fn ffphbn_safe(
         );
 
         if datatype == TSTRING {
-            strcat_safe(&mut comm, cs!(": ASCII Character"));
+            strcat_safe(&mut comm, cs!(c": ASCII Character"));
 
             /* Do sanity check to see if an ASCII table format was used,  */
             /* e.g., 'A8' instead of '8A', or a bad unit width eg '8A9'.  */
@@ -1137,7 +1143,7 @@ pub(crate) fn ffphbn_safe(
             if cptr.is_some() {
                 let c = cptr.unwrap() + 1;
 
-                // iread = sscanf(tfmt[c..].as_ptr(), cstr!("%ld").as_ptr(), &width);
+                // iread = sscanf(tfmt[c..].as_ptr(), c"%ld".as_ptr(), &width);
                 let tmp: Result<c_long, ParseIntError> =
                     atoi(str::from_utf8(cast_slice(&tfmt[c..])).unwrap());
 
@@ -1156,43 +1162,43 @@ pub(crate) fn ffphbn_safe(
                 if repeat == 1 {
                     strcpy_safe(
                         &mut comm,
-                        cs!("ERROR??  USING ASCII TABLE SYNTAX BY MISTAKE??"),
+                        cs!(c"ERROR??  USING ASCII TABLE SYNTAX BY MISTAKE??"),
                     );
                 } else {
                     strcpy_safe(
                         &mut comm,
-                        cs!("rAw FORMAT ERROR! UNIT WIDTH w > COLUMN WIDTH r"),
+                        cs!(c"rAw FORMAT ERROR! UNIT WIDTH w > COLUMN WIDTH r"),
                     );
                 }
             }
         } else if datatype == TBIT {
-            strcat_safe(&mut comm, cs!(": BIT"));
+            strcat_safe(&mut comm, cs!(c": BIT"));
         } else if datatype == TBYTE {
-            strcat_safe(&mut comm, cs!(": BYTE"));
+            strcat_safe(&mut comm, cs!(c": BYTE"));
         } else if datatype == TLOGICAL {
-            strcat_safe(&mut comm, cs!(": 1-byte LOGICAL"));
+            strcat_safe(&mut comm, cs!(c": 1-byte LOGICAL"));
         } else if datatype == TSHORT {
-            strcat_safe(&mut comm, cs!(": 2-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 2-byte INTEGER"));
         } else if datatype == TUSHORT {
-            strcat_safe(&mut comm, cs!(": 2-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 2-byte INTEGER"));
         } else if datatype == TLONG {
-            strcat_safe(&mut comm, cs!(": 4-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 4-byte INTEGER"));
         } else if datatype == TLONGLONG {
-            strcat_safe(&mut comm, cs!(": 8-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 8-byte INTEGER"));
         } else if datatype == TULONG {
-            strcat_safe(&mut comm, cs!(": 4-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 4-byte INTEGER"));
         } else if datatype == TULONGLONG {
-            strcat_safe(&mut comm, cs!(": 8-byte INTEGER"));
+            strcat_safe(&mut comm, cs!(c": 8-byte INTEGER"));
         } else if datatype == TFLOAT {
-            strcat_safe(&mut comm, cs!(": 4-byte REAL"));
+            strcat_safe(&mut comm, cs!(c": 4-byte REAL"));
         } else if datatype == TDOUBLE {
-            strcat_safe(&mut comm, cs!(": 8-byte DOUBLE"));
+            strcat_safe(&mut comm, cs!(c": 8-byte DOUBLE"));
         } else if datatype == TCOMPLEX {
-            strcat_safe(&mut comm, cs!(": COMPLEX"));
+            strcat_safe(&mut comm, cs!(c": COMPLEX"));
         } else if datatype == TDBLCOMPLEX {
-            strcat_safe(&mut comm, cs!(": DOUBLE COMPLEX"));
+            strcat_safe(&mut comm, cs!(c": DOUBLE COMPLEX"));
         } else if datatype < 0 {
-            strcat_safe(&mut comm, cs!(": variable length array"));
+            strcat_safe(&mut comm, cs!(c": variable length array"));
         }
         if datatype.abs() == TSBYTE
         /* signed bytes */
@@ -1206,13 +1212,13 @@ pub(crate) fn ffphbn_safe(
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
 
             /* write the TZEROn and TSCALn keywords */
-            ffkeyn_safe(cs!(TZERO), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("offset for signed bytes"));
+            ffkeyn_safe(cs!(c"TZERO"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"offset for signed bytes"));
 
             ffpkyg_safe(fptr, &name, -128., 0, Some(&comm), status);
 
-            ffkeyn_safe(cs!(TSCAL), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("data are not scaled"));
+            ffkeyn_safe(cs!(c"TSCAL"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"data are not scaled"));
             ffpkyg_safe(fptr, &name, 1.0, 0, Some(&comm), status);
         } else if datatype.abs() == TUSHORT {
             /* Replace the 'U' with an 'I' in the TFORMn code */
@@ -1224,13 +1230,13 @@ pub(crate) fn ffphbn_safe(
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
 
             /* write the TZEROn and TSCALn keywords */
-            ffkeyn_safe(cs!(TZERO), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("offset for unsigned integers"));
+            ffkeyn_safe(cs!(c"TZERO"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"offset for unsigned integers"));
 
             ffpkyg_safe(fptr, &name, 32768., 0, Some(&comm), status);
 
-            ffkeyn_safe(cs!(TSCAL), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("data are not scaled"));
+            ffkeyn_safe(cs!(c"TSCAL"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"data are not scaled"));
             ffpkyg_safe(fptr, &name, 1.0, 0, Some(&comm), status);
         } else if datatype.abs() == TULONG {
             /* Replace the 'V' with an 'J' in the TFORMn code */
@@ -1242,13 +1248,13 @@ pub(crate) fn ffphbn_safe(
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
 
             /* write the TZEROn and TSCALn keywords */
-            ffkeyn_safe(cs!(TZERO), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("offset for unsigned integers"));
+            ffkeyn_safe(cs!(c"TZERO"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"offset for unsigned integers"));
 
             ffpkyg_safe(fptr, &name, 2147483648., 0, Some(&comm), status);
 
-            ffkeyn_safe(cs!(TSCAL), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("data are not scaled"));
+            ffkeyn_safe(cs!(c"TSCAL"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"data are not scaled"));
             ffpkyg_safe(fptr, &name, 1.0, 0, Some(&comm), status);
         } else if datatype.abs() == TULONGLONG {
             /* Replace the 'W' with an 'K' in the TFORMn code */
@@ -1260,18 +1266,18 @@ pub(crate) fn ffphbn_safe(
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
 
             /* write the TZEROn and TSCALn keywords */
-            ffkeyn_safe(cs!("TZERO"), ii as c_int + 1, &mut card, status);
-            strcat_safe(&mut card, cs!("     ")); /* make sure name is >= 8 chars long */
+            ffkeyn_safe(cs!(c"TZERO"), ii as c_int + 1, &mut card, status);
+            strcat_safe(&mut card, cs!(c"     ")); /* make sure name is >= 8 chars long */
 
             card[8] = 0;
             strcat_safe(
                 &mut card,
-                cs!("=  9223372036854775808 / offset for unsigned integers"),
+                cs!(c"=  9223372036854775808 / offset for unsigned integers"),
             );
             ffprec_safe(fptr, &card, status);
 
-            ffkeyn_safe(cs!(TSCAL), (ii + 1) as c_int, &mut name, status);
-            strcpy_safe(&mut comm, cs!("data are not scaled"));
+            ffkeyn_safe(cs!(c"TSCAL"), (ii + 1) as c_int, &mut name, status);
+            strcpy_safe(&mut comm, cs!(c"data are not scaled"));
             ffpkyg_safe(fptr, &name, 1., 0, Some(&comm), status);
         } else {
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
@@ -1283,12 +1289,12 @@ pub(crate) fn ffphbn_safe(
             {
                 /* optional TUNITn keyword */
 
-                ffkeyn_safe(cs!(TUNIT), (ii + 1) as c_int, &mut name, status);
+                ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
                 ffpkys_safe(
                     fptr,
                     &name,
                     tunit_item,
-                    Some(cs!("physical unit of field")),
+                    Some(cs!(c"physical unit of field")),
                     status,
                 );
             }
@@ -1303,9 +1309,9 @@ pub(crate) fn ffphbn_safe(
         /* optional EXTNAME keyword */
         ffpkys_safe(
             fptr,
-            cs!("EXTNAME"),
+            cs!(c"EXTNAME"),
             &extnm,
-            Some(cs!("name of this binary table extension")),
+            Some(cs!(c"name of this binary table extension")),
             status,
         );
     }
@@ -1389,15 +1395,15 @@ pub(crate) fn ffprec_safe(
         tcard[ii] = b' ' as c_char;
         ii += 1;
     }
-    keylength = strcspn_safe(&tcard, cs!("=")) as c_int; /* support for free-format keywords */
+    keylength = strcspn_safe(&tcard, cs!(c"=")) as c_int; /* support for free-format keywords */
     if keylength == 80 {
         keylength = 8;
     }
     /* test for the common commentary keywords which by definition have 8-char names */
-    if fits_strncasecmp(cs!("COMMENT "), &tcard, 8) == 0
-        || fits_strncasecmp(cs!("HISTORY "), &tcard, 8) == 0
-        || fits_strncasecmp(cs!("        "), &tcard, 8) == 0
-        || fits_strncasecmp(cs!("CONTINUE"), &tcard, 8) == 0
+    if fits_strncasecmp(cs!(c"COMMENT "), &tcard, 8) == 0
+        || fits_strncasecmp(cs!(c"HISTORY "), &tcard, 8) == 0
+        || fits_strncasecmp(cs!(c"        "), &tcard, 8) == 0
+        || fits_strncasecmp(cs!(c"CONTINUE"), &tcard, 8) == 0
     {
         keylength = 8;
     }
@@ -1460,7 +1466,7 @@ pub fn ffpkyu_safe(
         return *status;
     }
 
-    strcpy_safe(&mut valstring, cs!(" ")); /* create a dummy value string */
+    strcpy_safe(&mut valstring, cs!(c" ")); /* create a dummy value string */
     ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword */
     ffprec_safe(fptr, &card, status);
 
@@ -1808,7 +1814,7 @@ pub fn ffpkyc_safe(
         return *status;
     }
 
-    strcpy_safe(&mut valstring, cs!("("));
+    strcpy_safe(&mut valstring, cs!(c"("));
     ffr2e(value[0], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 2 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkyc)");
@@ -1817,7 +1823,7 @@ pub fn ffpkyc_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(", "));
+    strcat_safe(&mut valstring, cs!(c", "));
     ffr2e(value[1], decim, &mut tmpstring, status); /* convert to string */
 
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
@@ -1827,7 +1833,7 @@ pub fn ffpkyc_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(")"));
+    strcat_safe(&mut valstring, cs!(c")"));
 
     ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
     ffprec_safe(fptr, &card, status); /* write the keyword*/
@@ -1879,7 +1885,7 @@ pub fn ffpkym_safe(
         return *status;
     }
 
-    strcpy_safe(&mut valstring, cs!("("));
+    strcpy_safe(&mut valstring, cs!(c"("));
     ffd2e(value[0], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 2 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkym)");
@@ -1888,7 +1894,7 @@ pub fn ffpkym_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(", "));
+    strcat_safe(&mut valstring, cs!(c", "));
     ffd2e(value[1], decim, &mut tmpstring, status); /* convert to string */
 
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
@@ -1898,7 +1904,7 @@ pub fn ffpkym_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(")"));
+    strcat_safe(&mut valstring, cs!(c")"));
 
     ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
     ffprec_safe(fptr, &card, status); /* write the keyword*/
@@ -1950,7 +1956,7 @@ pub fn ffpkfc_safe(
         return *status;
     }
 
-    strcpy_safe(&mut valstring, cs!("("));
+    strcpy_safe(&mut valstring, cs!(c"("));
     ffr2f(value[0], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 2 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkfc)");
@@ -1959,7 +1965,7 @@ pub fn ffpkfc_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(", "));
+    strcat_safe(&mut valstring, cs!(c", "));
     ffr2f(value[1], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkfc)");
@@ -1968,7 +1974,7 @@ pub fn ffpkfc_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(")"));
+    strcat_safe(&mut valstring, cs!(c")"));
 
     ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
     ffprec_safe(fptr, &card, status); /* write the keyword*/
@@ -2020,7 +2026,7 @@ pub fn ffpkfm_safe(
         return *status;
     }
 
-    strcpy_safe(&mut valstring, cs!("("));
+    strcpy_safe(&mut valstring, cs!(c"("));
     ffd2f(value[0], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkfm)");
@@ -2029,7 +2035,7 @@ pub fn ffpkfm_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(", "));
+    strcat_safe(&mut valstring, cs!(c", "));
     ffd2f(value[1], decim, &mut tmpstring, status); /* convert to string */
     if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
         ffpmsg_str("Error converting complex to string (ffpkfm)");
@@ -2038,7 +2044,7 @@ pub fn ffpkfm_safe(
     }
 
     strcat_safe(&mut valstring, &tmpstring);
-    strcat_safe(&mut valstring, cs!(")"));
+    strcat_safe(&mut valstring, cs!(c")"));
 
     ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
     ffprec_safe(fptr, &card, status); /* write the keyword*/
@@ -2201,8 +2207,8 @@ pub fn fits_make_longstr_key_util(
         maxvalchars = (FLEN_CARD - 1) - finalnamelen - 2;
     } else {
         if namelen != 0
-            && ((FSTRNCMP(&tmpkeyname, cs!("HIERARCH "), 9) == 0)
-                || (FSTRNCMP(&tmpkeyname, cs!("hierarch "), 9) == 0))
+            && ((FSTRNCMP(&tmpkeyname, cs!(c"HIERARCH "), 9) == 0)
+                || (FSTRNCMP(&tmpkeyname, cs!(c"hierarch "), 9) == 0))
         {
             /* We have an explicitly marked long keyword, so HIERARCH
             will not be prepended.  However it can then have
@@ -2232,12 +2238,12 @@ pub fn fits_make_longstr_key_util(
             let comm = comm.unwrap(); // safe to unwrap because we checked it earlier
 
             if remaincom > (fixedSpaceForComments - 3) {
-                strcpy_safe(&mut valstring, cs!("'&'"));
+                strcpy_safe(&mut valstring, cs!(c"'&'"));
                 nblanks = (FLEN_CARD - 1) - fixedSpaceForComments - 13;
                 valstring[3..(3 + nblanks)].fill(32);
                 valstring[nblanks + 3] = 0;
             } else {
-                strcpy_safe(&mut valstring, cs!("''"));
+                strcpy_safe(&mut valstring, cs!(c"''"));
                 nblanks = (FLEN_CARD - 1) - fixedSpaceForComments - 12;
                 valstring[2..(2 + nblanks)].fill(32);
                 valstring[nblanks + 2] = 0;
@@ -2363,18 +2369,18 @@ pub fn fits_make_longstr_key_util(
             /* This is a CONTINUEd keyword */
 
             if nocomment {
-                ffmkky_safe(cs!("CONTINUE"), &valstring, None, &mut card, status);
+                ffmkky_safe(cs!(c"CONTINUE"), &valstring, None, &mut card, status);
             /* make keyword w/o comment */
             } else {
                 ffmkky_safe(
-                    cs!("CONTINUE"),
+                    cs!(c"CONTINUE"),
                     &valstring,
                     Some(&commstring),
                     &mut card,
                     status,
                 ); /* make keyword */
             }
-            strncpy_safe(&mut card[8..], cs!("   "), 2); /* overwrite the '=' */
+            strncpy_safe(&mut card[8..], cs!(c"   "), 2); /* overwrite the '=' */
         } else if nocomment {
             ffmkky_safe(keyname, &valstring, None, &mut card, status); /* make keyword */
         } else {
@@ -2437,7 +2443,7 @@ pub(crate) fn ffplsw_safe(
     tstatus = 0;
     if ffgkys_safe(
         fptr,
-        cs!("LONGSTRN"),
+        cs!(c"LONGSTRN"),
         &mut valstring,
         Some(&mut comm),
         &mut tstatus,
@@ -2448,33 +2454,33 @@ pub(crate) fn ffplsw_safe(
 
     ffpkys_safe(
         fptr,
-        cs!("LONGSTRN"),
-        cs!("OGIP 1.0"),
-        Some(cs!("The HEASARC Long String Convention may be used.")),
+        cs!(c"LONGSTRN"),
+        cs!(c"OGIP 1.0"),
+        Some(cs!(c"The HEASARC Long String Convention may be used.")),
         status,
     );
 
     ffpcom_safe(
         fptr,
-        cs!("  This FITS file may contain long string keyword values that are"),
+        cs!(c"  This FITS file may contain long string keyword values that are"),
         status,
     );
 
     ffpcom_safe(
         fptr,
-        cs!("  continued over multiple keywords.  The HEASARC convention uses the &"),
+        cs!(c"  continued over multiple keywords.  The HEASARC convention uses the &"),
         status,
     );
 
     ffpcom_safe(
         fptr,
-        cs!("  character at the end of each substring which is then continued"),
+        cs!(c"  character at the end of each substring which is then continued"),
         status,
     );
 
     ffpcom_safe(
         fptr,
-        cs!("  on the next keyword which has the name CONTINUE."),
+        cs!(c"  on the next keyword which has the name CONTINUE."),
         status,
     );
 
@@ -2683,7 +2689,7 @@ pub fn ffpcom_safe(
     let mut ii = 0;
 
     while len > 0 {
-        strcpy_safe(&mut card, cs!("COMMENT "));
+        strcpy_safe(&mut card, cs!(c"COMMENT "));
         strncat_safe(&mut card, &comm[ii..], 72);
         ffprec_safe(fptr, &card, status);
         ii += 72;
@@ -2732,7 +2738,7 @@ pub fn ffphis_safe(
     let mut ii = 0;
 
     while len > 0 {
-        strcpy_safe(&mut card, cs!("HISTORY "));
+        strcpy_safe(&mut card, cs!(c"HISTORY "));
         strncat_safe(&mut card, &history[ii..], 72);
         ffprec_safe(fptr, &card, status);
         ii += 72;
@@ -2779,21 +2785,21 @@ pub fn ffpdat_safe(
 
     if timeref > 0 {
         /* GMT not available on this machine */
-        strcpy_safe(&mut tmzone, cs!(" Local"));
+        strcpy_safe(&mut tmzone, cs!(c" Local"));
     } else {
-        strcpy_safe(&mut tmzone, cs!(" UT"));
+        strcpy_safe(&mut tmzone, cs!(c" UT"));
     }
 
-    strcpy_safe(&mut card, cs!("DATE    = '"));
+    strcpy_safe(&mut card, cs!(c"DATE    = '"));
     strcat_safe(&mut card, &date);
     strcat_safe(
         &mut card,
-        cs!("' / file creation date (YYYY-MM-DDThh:mm:ss"),
+        cs!(c"' / file creation date (YYYY-MM-DDThh:mm:ss"),
     );
     strcat_safe(&mut card, &tmzone);
-    strcat_safe(&mut card, cs!(")"));
+    strcat_safe(&mut card, cs!(c")"));
 
-    ffucrd_safe(fptr, cs!("DATE"), &card, status);
+    ffucrd_safe(fptr, cs!(c"DATE"), &card, status);
 
     *status
 }
@@ -3684,11 +3690,11 @@ pub unsafe extern "C" fn ffptdm(
             return *status;
         }
 
-        strcpy_safe(&mut tdimstr, cs!("(")); /* start constructing the TDIM value */
+        strcpy_safe(&mut tdimstr, cs!(c"(")); /* start constructing the TDIM value */
 
         for ii in 0..(naxis as usize) {
             if ii > 0 {
-                strcat_safe(&mut tdimstr, cs!(",")); /* append the comma separator */
+                strcat_safe(&mut tdimstr, cs!(c",")); /* append the comma separator */
             }
 
             if naxes[ii] < 0 {
@@ -3718,7 +3724,7 @@ pub unsafe extern "C" fn ffptdm(
             /* The colptr->trepeat value may be out of date, so re-read     */
             /* the TFORMn keyword to be sure.                               */
 
-            ffkeyn_safe(cs!("TFORM"), colnum, &mut keyname, status); /* construct TFORMn name  */
+            ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status); /* construct TFORMn name  */
             ffgkys_safe(fptr, &keyname, &mut value, None, status); /* read TFORMn keyword    */
             ffbnfm_safe(&value, None, Some(&mut repeat), None, status); /* parse the repeat count */
 
@@ -3736,10 +3742,10 @@ pub unsafe extern "C" fn ffptdm(
             }
         }
 
-        strcat_safe(&mut tdimstr, cs!(")")); /* append the closing parenthesis */
+        strcat_safe(&mut tdimstr, cs!(c")")); /* append the closing parenthesis */
 
-        strcpy_safe(&mut comm, cs!("size of the multidimensional array"));
-        ffkeyn_safe(cs!("TDIM"), colnum, &mut keyname, status); /* construct TDIMn name */
+        strcpy_safe(&mut comm, cs!(c"size of the multidimensional array"));
+        ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct TDIMn name */
         ffpkys_safe(fptr, &keyname, &tdimstr, Some(&comm), status); /* write the keyword */
         *status
     }
@@ -3847,9 +3853,9 @@ pub(crate) fn ffl2c(
     }
 
     if lval > 0 {
-        strcpy_safe(cval, cs!("T"));
+        strcpy_safe(cval, cs!(c"T"));
     } else {
-        strcpy_safe(cval, cs!("F"));
+        strcpy_safe(cval, cs!(c"F"));
     }
     *status
 }
@@ -3878,7 +3884,7 @@ pub(crate) fn ffs2c(
     if instr.is_empty() {
         /* a null input pointer?? */
 
-        strcpy_safe(outstr, cs!("''")); /* a null FITS string */
+        strcpy_safe(outstr, cs!(c"''")); /* a null FITS string */
         return *status;
     }
 
@@ -3937,7 +3943,7 @@ pub(crate) fn ffs2c_nopad(
 
     if strlen_safe(instr) == 0 {
         /* a null input pointer?? */
-        strcpy_safe(outstr, cs!("''")); /* a null FITS string */
+        strcpy_safe(outstr, cs!(c"''")); /* a null FITS string */
         return *status;
     }
 
@@ -4039,7 +4045,7 @@ pub(crate) fn ffr2e(
         if snprintf_f64_decim(
             cval,
             FLEN_VALUE,
-            cast_slice(cstr!("%.*G").to_bytes_with_nul()),
+            cast_slice(c"%.*G".to_bytes_with_nul()),
             -decim,
             fval as f64,
         ) < 0
@@ -4094,7 +4100,7 @@ pub(crate) fn ffr2e(
             && strlen_safe(cval) < FLEN_VALUE - 1
         {
             /* add decimal point if necessary to distinquish from integer */
-            strcat_safe(cval, cs!("."));
+            strcat_safe(cval, cs!(c"."));
         }
     }
 
@@ -4164,7 +4170,7 @@ pub(crate) fn ffd2e(
         if snprintf_f64_decim(
             cval,
             FLEN_VALUE,
-            cast_slice(cstr!("%.*G").to_bytes_with_nul()),
+            cast_slice(c"%.*G".to_bytes_with_nul()),
             -decim,
             dval,
         ) < 0
@@ -4213,7 +4219,7 @@ pub(crate) fn ffd2e(
             && strlen_safe(cval) < FLEN_VALUE - 1
         {
             /* add decimal point if necessary to distinquish from integer */
-            strcat_safe(cval, cs!("."));
+            strcat_safe(cval, cs!(c"."));
         }
     }
 
