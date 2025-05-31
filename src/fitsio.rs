@@ -1,4 +1,4 @@
-use crate::c_types::c_ulonglong;
+use crate::{c_types::c_ulonglong, helpers::{boxed::box_try_new, vec_raw_parts::vec_into_raw_parts}};
 use bytemuck::{cast_slice, cast_slice_mut};
 use std::{
     cmp,
@@ -741,13 +741,13 @@ impl FITSfile {
         let f_iobuffer: Box<[c_char; NIOBUF as usize * IOBUFLEN as usize]> =
             f_iobuffer.into_boxed_slice().try_into().unwrap();
 
-        let (f_headstart, l, c) = f_headstart.into_raw_parts();
+        let (f_headstart, l, c) = vec_into_raw_parts(f_headstart);
         ALLOCATIONS
             .lock()
             .unwrap()
             .insert(f_headstart as usize, (l, c));
 
-        let (f_filename, l, c) = f_filename.into_raw_parts();
+        let (f_filename, l, c) = vec_into_raw_parts(f_filename);
         ALLOCATIONS
             .lock()
             .unwrap()
@@ -755,7 +755,7 @@ impl FITSfile {
 
         // HEAP ALLOCATION
         /* allocate FITSfile structure and initialize = 0 */
-        let b = Box::try_new(FITSfile {
+        let b = box_try_new(FITSfile {
             iobuffer: f_iobuffer,
             headstart: f_headstart,
             filename: f_filename,

@@ -4,7 +4,7 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
-use core::slice;
+use core::{slice};
 use std::ffi::CStr;
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
@@ -13,7 +13,9 @@ use errno::{Errno, errno, set_errno};
 
 use libc::{ERANGE, fclose, fgets, fopen, fprintf};
 
+use crate::helpers::boxed::box_try_new;
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 
 use crate::aliases::safer::fits_read_key_str;
@@ -263,7 +265,7 @@ pub unsafe extern "C" fn ffomem(
         Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
         Fptr.noextsyntax = 0; /* extended syntax can be used in filename */
 
-        let f_fitsfile = Box::try_new(fitsfile {
+        let f_fitsfile = box_try_new(fitsfile {
             HDUposition: 0,
             Fptr,
         });
@@ -1057,7 +1059,7 @@ pub(crate) unsafe fn ffopen_safer(
 
             // HEAP ALLOCATION
             /* allocate fitsfile structure and initialize = 0 */
-            let f_fitsfile = Box::try_new(fitsfile {
+            let f_fitsfile = box_try_new(fitsfile {
                 HDUposition: 0,
                 Fptr,
             });
@@ -1984,7 +1986,7 @@ pub(crate) unsafe fn fits_already_open(
             let oldFptr = FPTR_TABLE[iMatch];
 
             // HEAP ALLOCATION
-            let f = Box::try_new(fitsfile {
+            let f = box_try_new(fitsfile {
                 HDUposition: 0,               /* set initial position */
                 Fptr: Box::from_raw(oldFptr), /* point to the structure */
             });
@@ -3502,7 +3504,7 @@ pub unsafe fn ffinit_safer(
 
         // HEAP ALLOCATION
         /* allocate fitsfile structure and initialize = 0 */
-        let f_fitsfile = Box::try_new(fitsfile {
+        let f_fitsfile = box_try_new(fitsfile {
             HDUposition: 0,
             Fptr,
         });
@@ -6022,7 +6024,7 @@ pub(crate) unsafe fn ffimport_file_safer(
         fclose(aFile);
 
         // HEAP ALLOCATION
-        let (p, l, c) = lines.into_raw_parts();
+        let (p, l, c) = vec_into_raw_parts(lines);
         ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
         *contents = p;
         *status

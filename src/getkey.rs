@@ -11,6 +11,7 @@ use std::{cmp, ptr};
 
 use crate::aliases::ALLOCATIONS;
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -1416,7 +1417,7 @@ pub unsafe extern "C" fn ffgkls(
                 }
             }
 
-            let (p, l, c) = v.into_raw_parts();
+            let (p, l, c) = vec_into_raw_parts(v);
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
             *value = p;
         }
@@ -5556,7 +5557,7 @@ pub(crate) fn ffh2st_safe(
     ); /* copy header */
     hdr[(nrec as LONGLONG * IOBUFLEN) as usize] = 0;
 
-    let (header_ptr, l, c) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
     ALLOCATIONS
         .lock()
         .unwrap()
@@ -5712,7 +5713,7 @@ pub(crate) fn ffhdr2str_safe(
     hdr.resize(((*nkeys * 80) + 1) as usize, 0);
     hdr.shrink_to_fit();
 
-    let (header_ptr, l, c) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
     ALLOCATIONS
         .lock()
         .unwrap()

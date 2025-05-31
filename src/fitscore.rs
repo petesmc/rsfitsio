@@ -43,6 +43,7 @@ use std::sync::{LazyLock, Mutex};
 use std::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -5938,7 +5939,7 @@ pub(crate) unsafe fn ffainit(
         }
         /* mem for column structures ; space is initialized = 0 */
         if tfield > 0 {
-            let (p, l, c) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            let (p, l, c) = vec_into_raw_parts((vec![tcolumn::default(); tfield as usize]));
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
             colptr = p;
             if colptr.is_null() {
@@ -6192,7 +6193,7 @@ pub(crate) unsafe fn ffbinit(
         }
         /* mem for column structures ; space is initialized = 0  */
         if tfield > 0 {
-            let (p, l, c) = (vec![tcolumn::default(); tfield as usize]).into_raw_parts();
+            let (p, l, c) = vec_into_raw_parts((vec![tcolumn::default(); tfield as usize]));
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
             colptr = p;
             if colptr.is_null() {
@@ -9104,7 +9105,7 @@ pub(crate) unsafe fn ffcrhd_safer(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                let (p, l, c) = vo.into_raw_parts();
+                let (p, l, c) = vec_into_raw_parts(vo);
                 ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
                 fptr.Fptr.headstart = p;
@@ -9898,7 +9899,7 @@ pub(crate) fn ffmahd_safe(
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
-                let (p, l, c) = vo.into_raw_parts();
+                let (p, l, c) = vec_into_raw_parts(vo);
                 ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
                 fptr.Fptr.MAXHDU += 1000;
                 fptr.Fptr.headstart = p;

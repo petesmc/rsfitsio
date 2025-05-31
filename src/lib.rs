@@ -1,7 +1,6 @@
-#![feature(vec_into_raw_parts)]
-#![feature(allocator_api)]
 // These are required for printf in Relibc
 #![feature(c_variadic)]
+
 #![allow(
     non_camel_case_types,
     non_snake_case,
@@ -17,6 +16,7 @@
 #![deny(deprecated)]
 
 pub mod c_types;
+pub mod helpers;
 
 pub mod aliases;
 pub mod buffers;
@@ -86,7 +86,6 @@ pub mod region;
 pub mod relibc;
 pub mod simplerng;
 pub mod swapproc;
-pub mod testhelpers;
 pub mod wcssub;
 pub mod wcsutil;
 pub mod wrappers;
@@ -659,7 +658,7 @@ mod tests {
 
     use crate::{
         fitsio::{USHORT_IMG, fitsfile},
-        testhelpers::with_temp_file,
+        helpers::testhelpers::with_temp_file,
     };
 
     use super::*;

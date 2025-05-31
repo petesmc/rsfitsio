@@ -2,6 +2,7 @@ use core::slice;
 use std::ptr;
 
 use crate::c_types::*;
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::cast_slice;
 
@@ -217,7 +218,7 @@ pub(crate) unsafe fn fits_read_wcstab_safer(
             }
 
             // HEAP ALLOCATION
-            let (ptr, l, c) = tmp.into_raw_parts();
+            let (ptr, l, c) = vec_into_raw_parts(tmp);
             ALLOCATIONS.lock().unwrap().insert(ptr as usize, (l, c));
 
             *wtbp[iwtb].arrayp = ptr;
@@ -1506,7 +1507,7 @@ pub(crate) fn ffgtwcs_safe(
     strcat_safe(&mut hdr[cptr..], cs!(c"END"));
     strncat_safe(&mut hdr[cptr..], blanks, 77);
 
-    let (header_ptr, l, c) = hdr.into_raw_parts();
+    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
     ALLOCATIONS
         .lock()
         .unwrap()

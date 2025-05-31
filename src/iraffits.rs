@@ -45,6 +45,7 @@
 */
 
 use crate::c_types::{c_char, c_int, c_long};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use std::ffi::CStr;
@@ -248,7 +249,7 @@ pub(crate) unsafe fn iraf2mem(
         /* append the image data onto the FITS header */
         irafrdimage(&mut b_ptr, buffsize, filesize, status);
 
-        let (raw_ptr, l, c) = b_ptr.into_raw_parts();
+        let (raw_ptr, l, c) = vec_into_raw_parts(b_ptr);
         ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
 
         *buffptr = raw_ptr;

@@ -3,6 +3,7 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 
+use crate::helpers::boxed::box_try_new;
 use crate::c_types::*;
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -194,7 +195,7 @@ pub(crate) fn fits_read_ascii_region(
         return *status;
     }
 
-    let aRgn = Box::try_new(SAORegion::default());
+    let aRgn = box_try_new(SAORegion::default());
     if aRgn.is_err() {
         ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
         *status = MEMORY_ALLOCATION;
@@ -1834,7 +1835,7 @@ pub(crate) unsafe fn fits_read_fits_region(
             return *status;
         }
 
-        let aRgn = Box::try_new(SAORegion::default());
+        let aRgn = box_try_new(SAORegion::default());
 
         if aRgn.is_err() {
             ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
@@ -1940,7 +1941,7 @@ pub(crate) unsafe fn fits_read_fits_region(
 
         dotransform = false;
         if aRgn.wcs.exists {
-            let tmp_regwcs = Box::try_new(WCSdata::default());
+            let tmp_regwcs = box_try_new(WCSdata::default());
             if tmp_regwcs.is_err() {
                 ffpmsg_str("Failed to allocate memory for Region WCS data");
                 *status = MEMORY_ALLOCATION;

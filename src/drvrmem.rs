@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
+use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -258,7 +259,7 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
             ffpmsg_str("malloc of initial memory failed (mem_createmem)");
             return FILE_NOT_OPENED;
         } else {
-            let (p, l, c) = v.into_raw_parts();
+            let (p, l, c) = vec_into_raw_parts(v);
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
             m[ii].memaddr = p;
         }
