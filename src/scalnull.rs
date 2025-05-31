@@ -10,7 +10,6 @@ use std::ffi::CStr;
 use crate::c_types::*;
 
 use bytemuck::cast_slice;
-use cstr::cstr;
 
 use crate::cs;
 use crate::fitscore::{ffghdt_safe, ffmahd_safe, fits_is_compressed_image_safe};
@@ -65,9 +64,9 @@ pub(crate) fn ffpthp_safe(
 
     ffukyj_safe(
         fptr,
-        cs!("THEAP"),
+        cs!(c"THEAP"),
         theap as LONGLONG,
-        Some(cs!("byte offset to heap area")),
+        Some(cs!(c"byte offset to heap area")),
         status,
     );
     *status

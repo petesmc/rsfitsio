@@ -6,7 +6,6 @@ use std::io::Read;
 use crate::c_types::*;
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::NullValue;
 use crate::aliases::safer::{fits_clear_errmark, fits_write_errmark};
@@ -291,7 +290,7 @@ pub(crate) fn fits_read_ascii_region(
             while isspace(currLine[currLoc]) {
                 currLoc += 1;
             }
-            if fits_strncasecmp(&currLine[currLoc..], cs!("format:"), 7) == 0 {
+            if fits_strncasecmp(&currLine[currLoc..], cs!(c"format:"), 7) == 0 {
                 if aRgn.nShapes != 0 {
                     ffpmsg_str("Format code encountered after reading 1 or more shapes.");
                     *status = PARSE_SYNTAX_ERR;
@@ -302,13 +301,13 @@ pub(crate) fn fits_read_ascii_region(
                 while isspace(currLine[currLoc]) {
                     currLoc += 1;
                 }
-                if fits_strncasecmp(&currLine[currLoc..], cs!("pixel"), 5) == 0 {
+                if fits_strncasecmp(&currLine[currLoc..], cs!(c"pixel"), 5) == 0 {
                     cFmt = CoordFmt::Pixel;
-                } else if fits_strncasecmp(&currLine[currLoc..], cs!("degree"), 6) == 0 {
+                } else if fits_strncasecmp(&currLine[currLoc..], cs!(c"degree"), 6) == 0 {
                     cFmt = CoordFmt::Degree;
-                } else if fits_strncasecmp(&currLine[currLoc..], cs!("hhmmss"), 6) == 0 {
+                } else if fits_strncasecmp(&currLine[currLoc..], cs!(c"hhmmss"), 6) == 0 {
                     cFmt = CoordFmt::HHMMSS;
-                } else if fits_strncasecmp(&currLine[currLoc..], cs!("hms"), 3) == 0 {
+                } else if fits_strncasecmp(&currLine[currLoc..], cs!(c"hms"), 3) == 0 {
                     cFmt = CoordFmt::HHMMSS;
                 } else {
                     ffpmsg_str("Unknown format code encountered in region file.");
@@ -317,7 +316,7 @@ pub(crate) fn fits_read_ascii_region(
                     return *status;
                 }
             }
-        } else if fits_strncasecmp(&currLine[currLoc..], cs!("glob"), 4) == 0 {
+        } else if fits_strncasecmp(&currLine[currLoc..], cs!(c"glob"), 4) == 0 {
             /* skip lines that begin with the word 'global' */
         } else {
             while currLine[currLoc] != 0 {
@@ -407,22 +406,22 @@ pub(crate) fn fits_read_ascii_region(
 
                 /*  Check for format code at beginning of the line */
 
-                if fits_strncasecmp(&currLine[namePtr..], cs!("image;"), 6) == 0 {
+                if fits_strncasecmp(&currLine[namePtr..], cs!(c"image;"), 6) == 0 {
                     namePtr += 6;
                     cFmt = CoordFmt::Pixel;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("physical;"), 9) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"physical;"), 9) == 0 {
                     namePtr += 9;
                     cFmt = CoordFmt::Pixel;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("linear;"), 7) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"linear;"), 7) == 0 {
                     namePtr += 7;
                     cFmt = CoordFmt::Pixel;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("fk4;"), 4) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"fk4;"), 4) == 0 {
                     namePtr += 4;
                     cFmt = CoordFmt::Degree;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("fk5;"), 4) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"fk5;"), 4) == 0 {
                     namePtr += 4;
                     cFmt = CoordFmt::Degree;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("icrs;"), 5) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"icrs;"), 5) == 0 {
                     namePtr += 5;
                     cFmt = CoordFmt::Degree;
 
@@ -432,28 +431,28 @@ pub(crate) fn fits_read_ascii_region(
                     by a ';' (and with no region specifier on the line).  We use
                     the 'continue' statement to jump to the end of the loop and
                     then continue reading the next line of the region file. */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("fk5"), 3) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"fk5"), 3) == 0 {
                     cFmt = CoordFmt::Degree;
                     continue; /* supports POW region file format */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("fk4"), 3) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"fk4"), 3) == 0 {
                     cFmt = CoordFmt::Degree;
                     continue; /* supports POW region file format */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("icrs"), 4) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"icrs"), 4) == 0 {
                     cFmt = CoordFmt::Degree;
                     continue; /* supports POW region file format */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("image"), 5) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"image"), 5) == 0 {
                     cFmt = CoordFmt::Pixel;
                     continue; /* supports POW region file format */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("physical"), 8) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"physical"), 8) == 0 {
                     cFmt = CoordFmt::Pixel;
                     continue; /* supports POW region file format */
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("galactic;"), 9) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"galactic;"), 9) == 0 {
                     ffpmsg_str("Galactic region coordinates not supported");
                     ffpmsg_slice(&currLine[namePtr..]);
                     *status = PARSE_SYNTAX_ERR;
                     fits_free_region(aRgn);
                     return *status;
-                } else if fits_strncasecmp(&currLine[namePtr..], cs!("ecliptic;"), 9) == 0 {
+                } else if fits_strncasecmp(&currLine[namePtr..], cs!(c"ecliptic;"), 9) == 0 {
                     ffpmsg_str("ecliptic region coordinates not supported");
                     ffpmsg_slice(&currLine[namePtr..]);
                     *status = PARSE_SYNTAX_ERR;
@@ -521,19 +520,19 @@ pub(crate) fn fits_read_ascii_region(
 
                 /*  Now identify the region  */
 
-                if fits_strcasecmp(&currLine[namePtr..], cs!("circle")) == 0 {
+                if fits_strcasecmp(&currLine[namePtr..], cs!(c"circle")) == 0 {
                     newShape.shape = ShapeType::Circle;
                     if nParams != 3 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("annulus")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"annulus")) == 0 {
                     newShape.shape = ShapeType::Annulus;
                     if nParams != 4 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("ellipse")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"ellipse")) == 0 {
                     if !(4..=8).contains(&nParams) {
                         *status = PARSE_SYNTAX_ERR;
                     } else if nParams < 6 {
@@ -545,7 +544,7 @@ pub(crate) fn fits_read_ascii_region(
                         newShape.genericParams.p[7] = 0.0;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("elliptannulus")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"elliptannulus")) == 0 {
                     newShape.shape = ShapeType::ElliptAnnulus;
                     if !(nParams == 8 || nParams == 6) {
                         *status = PARSE_SYNTAX_ERR;
@@ -553,8 +552,8 @@ pub(crate) fn fits_read_ascii_region(
                     newShape.genericParams.p[6] = 0.0;
                     newShape.genericParams.p[7] = 0.0;
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("box")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("rotbox")) == 0
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"box")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"rotbox")) == 0
                 {
                     if !(4..=8).contains(&nParams) {
                         *status = PARSE_SYNTAX_ERR;
@@ -567,8 +566,8 @@ pub(crate) fn fits_read_ascii_region(
                         newShape.genericParams.p[7] = 0.0;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("rectangle")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("rotrectangle")) == 0
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"rectangle")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"rotrectangle")) == 0
                 {
                     newShape.shape = ShapeType::Rectangle;
                     if !(4..=5).contains(&nParams) {
@@ -576,10 +575,10 @@ pub(crate) fn fits_read_ascii_region(
                     }
                     newShape.genericParams.p[4] = 0.0;
                     nCoords = 4;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("diamond")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("rotdiamond")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("rhombus")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("rotrhombus")) == 0
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"diamond")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"rotdiamond")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"rhombus")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"rotrhombus")) == 0
                 {
                     newShape.shape = ShapeType::Diamond;
                     if !(4..=5).contains(&nParams) {
@@ -587,46 +586,46 @@ pub(crate) fn fits_read_ascii_region(
                     }
                     newShape.genericParams.p[4] = 0.0;
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("sector")) == 0
-                    || fits_strcasecmp(&currLine[namePtr..], cs!("pie")) == 0
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"sector")) == 0
+                    || fits_strcasecmp(&currLine[namePtr..], cs!(c"pie")) == 0
                 {
                     newShape.shape = ShapeType::Sector;
                     if nParams != 4 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("point")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"point")) == 0 {
                     newShape.shape = ShapeType::Point;
                     if nParams != 2 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("line")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"line")) == 0 {
                     newShape.shape = ShapeType::Line;
                     if nParams != 4 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 4;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("polygon")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"polygon")) == 0 {
                     newShape.shape = ShapeType::Poly;
                     if nParams < 6 || (nParams & 1) != 0 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = nParams;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("panda")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"panda")) == 0 {
                     newShape.shape = ShapeType::Panda;
                     if nParams != 8 {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("epanda")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"epanda")) == 0 {
                     newShape.shape = ShapeType::EPanda;
                     if !(10..=11).contains(&nParams) {
                         *status = PARSE_SYNTAX_ERR;
                     }
                     newShape.genericParams.p[10] = 0.0;
                     nCoords = 2;
-                } else if fits_strcasecmp(&currLine[namePtr..], cs!("bpanda")) == 0 {
+                } else if fits_strcasecmp(&currLine[namePtr..], cs!(c"bpanda")) == 0 {
                     newShape.shape = ShapeType::BPanda;
                     if !(10..=11).contains(&nParams) {
                         *status = PARSE_SYNTAX_ERR;
@@ -1870,7 +1869,7 @@ pub(crate) unsafe fn fits_read_fits_region(
 
         if tstatus != 0 {
             /* couldn't find the required columns, so search for "REGION" extension */
-            if ffmnhd_safe(&mut fptr, BINARY_TBL, cs!("REGION"), 1, status) != 0 {
+            if ffmnhd_safe(&mut fptr, BINARY_TBL, cs!(c"REGION"), 1, status) != 0 {
                 ffpmsg_str("Could not move to REGION extension.");
                 fits_free_region(aRgn);
                 return *status;
@@ -1882,7 +1881,7 @@ pub(crate) unsafe fn fits_read_fits_region(
         if ffgky_safe(
             &mut fptr,
             KeywordDatatypeMut::TINT(&mut aRgn.nShapes),
-            cs!("NAXIS2"),
+            cs!(c"NAXIS2"),
             Some(&mut comment),
             status,
         ) != 0
@@ -2020,7 +2019,7 @@ pub(crate) unsafe fn fits_read_fits_region(
                 i as LONGLONG,
                 1,
                 1,
-                Some(cs!(" ")),
+                Some(cs!(c" ")),
                 &mut [&mut cvalue],
                 Some(&mut anynul),
                 status,
@@ -2035,7 +2034,7 @@ pub(crate) unsafe fn fits_read_fits_region(
 
             newShape.sign = 1;
             let mut cvalue2 = 0; // Index into cvalue
-            if strncmp_safe(&cvalue, cs!("!"), 1) == 0 {
+            if strncmp_safe(&cvalue, cs!(c"!"), 1) == 0 {
                 newShape.sign = 0;
                 cvalue2 += 1;
             }

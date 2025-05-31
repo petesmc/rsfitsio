@@ -23,7 +23,7 @@ use crate::{
 };
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::slice;
-use cstr::cstr;
+
 use libc::fwrite;
 use std::{
     cmp,
@@ -284,7 +284,7 @@ pub(crate) unsafe fn ffcphd_safer(
         naxis = -1; /* negative if HDU is a table */
 
         if infptr.Fptr.hdutype == IMAGE_HDU {
-            ffgkyj_safe(infptr, cs!("NAXIS"), &mut naxis, None, status);
+            ffgkyj_safe(infptr, cs!(c"NAXIS"), &mut naxis, None, status);
         }
         /* set the output pointer to the correct HDU */
         if outfptr.HDUposition != outfptr.Fptr.curhdu {
@@ -314,8 +314,14 @@ pub(crate) unsafe fn ffcphd_safer(
 
         if inPrim == 1 && outPrim == 0 {
             /* copying from primary array to image extension */
-            strcpy_safe(&mut comm, cs!("IMAGE extension"));
-            ffpkys_safe(outfptr, cs!("XTENSION"), cs!("IMAGE"), Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"IMAGE extension"));
+            ffpkys_safe(
+                outfptr,
+                cs!(c"XTENSION"),
+                cs!(c"IMAGE"),
+                Some(&comm),
+                status,
+            );
 
             /* copy BITPIX through NAXISn keywords */
             for ii in 1..(3 + naxis as usize) {
@@ -323,24 +329,24 @@ pub(crate) unsafe fn ffcphd_safer(
                 ffprec_safe(outfptr, card, status);
             }
 
-            strcpy_safe(&mut comm, cs!("number of random group parameters"));
-            ffpkyj_safe(outfptr, cs!("PCOUNT"), 0, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"number of random group parameters"));
+            ffpkyj_safe(outfptr, cs!(c"PCOUNT"), 0, Some(&comm), status);
 
-            strcpy_safe(&mut comm, cs!("number of random groups"));
-            ffpkyj_safe(outfptr, cs!("GCOUNT"), 1, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"number of random groups"));
+            ffpkyj_safe(outfptr, cs!(c"GCOUNT"), 1, Some(&comm), status);
 
             /* copy remaining keywords, excluding EXTEND, and reference COMMENT keywords */
             for ii in (3 + naxis as usize)..(nkeys as usize) {
                 let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                if FSTRNCMP(card, cs!("EXTEND  "), 8) > 0
+                if FSTRNCMP(card, cs!(c"EXTEND  "), 8) > 0
                     && FSTRNCMP(
                         card,
-                        cs!("COMMENT   FITS (Flexible Image Transport System) format is"),
+                        cs!(c"COMMENT   FITS (Flexible Image Transport System) format is"),
                         58,
                     ) > 0
                     && FSTRNCMP(
                         card,
-                        cs!("COMMENT   and Astrophysics', volume 376, page 3"),
+                        cs!(c"COMMENT   and Astrophysics', volume 376, page 3"),
                         47,
                     ) > 0
                 {
@@ -349,8 +355,8 @@ pub(crate) unsafe fn ffcphd_safer(
             }
         } else if inPrim == 0 && outPrim == 1 {
             /* copying between image extension and primary array */
-            strcpy_safe(&mut comm, cs!("file does conform to FITS standard"));
-            ffpkyl_safe(outfptr, cs!("SIMPLE"), TRUE as c_int, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"file does conform to FITS standard"));
+            ffpkyl_safe(outfptr, cs!(c"SIMPLE"), TRUE as c_int, Some(&comm), status);
 
             /* copy BITPIX through NAXISn keywords */
             for ii in 1..(3 + naxis as usize) {
@@ -359,21 +365,21 @@ pub(crate) unsafe fn ffcphd_safer(
             }
 
             /* add the EXTEND keyword */
-            strcpy_safe(&mut comm, cs!("FITS dataset may contain extensions"));
-            ffpkyl_safe(outfptr, cs!("EXTEND"), TRUE as c_int, Some(&comm), status);
+            strcpy_safe(&mut comm, cs!(c"FITS dataset may contain extensions"));
+            ffpkyl_safe(outfptr, cs!(c"EXTEND"), TRUE as c_int, Some(&comm), status);
 
             /* write standard block of self-documentating comments */
             ffprec_safe(
                 outfptr,
                 cs!(
-                    "COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"
+                    c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"
                 ),
                 status,
             );
             ffprec_safe(
                 outfptr,
                 cs!(
-                    "COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"
+                    c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"
                 ),
                 status,
             );
@@ -381,7 +387,8 @@ pub(crate) unsafe fn ffcphd_safer(
             /* copy remaining keywords, excluding pcount, gcount */
             for ii in (3 + naxis as usize)..(nkeys as usize) {
                 let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                if FSTRNCMP(card, cs!("PCOUNT  "), 8) > 0 && FSTRNCMP(card, cs!("GCOUNT  "), 8) > 0
+                if FSTRNCMP(card, cs!(c"PCOUNT  "), 8) > 0
+                    && FSTRNCMP(card, cs!(c"GCOUNT  "), 8) > 0
                 {
                     ffprec_safe(outfptr, card, status);
                 }
@@ -445,8 +452,8 @@ pub unsafe fn ffcpht_safer(
 
         /* Zero out the size-related keywords */
         if *status == 0 {
-            ffukyj_safe(outfptr, cs!("NAXIS2"), 0, None, status); /* NAXIS2 = 0 */
-            ffukyj_safe(outfptr, cs!("PCOUNT"), 0, None, status); /* PCOUNT = 0 */
+            ffukyj_safe(outfptr, cs!(c"NAXIS2"), 0, None, status); /* NAXIS2 = 0 */
+            ffukyj_safe(outfptr, cs!(c"PCOUNT"), 0, None, status); /* PCOUNT = 0 */
             /* Update the internal structure variables within CFITSIO now
             that we have a valid table header */
             ffrdef_safe(outfptr, status);
@@ -790,25 +797,25 @@ pub unsafe fn ffiimgll_safer(
 
             ffgidm_safe(fptr, &mut onaxis, status);
             if onaxis > 0 {
-                ffkeyn_safe(cs!("NAXIS"), onaxis, &mut naxiskey, status);
+                ffkeyn_safe(cs!(c"NAXIS"), onaxis, &mut naxiskey, status);
             } else {
-                strcpy_safe(&mut naxiskey, cs!("NAXIS"));
+                strcpy_safe(&mut naxiskey, cs!(c"NAXIS"));
             }
 
             ffgcrd_safe(fptr, &naxiskey, &mut card, status); /* read last NAXIS keyword */
 
             ffikyj_safe(
                 fptr,
-                cs!("PCOUNT"),
+                cs!(c"PCOUNT"),
                 0,
-                Some(cs!("required keyword")),
+                Some(cs!(c"required keyword")),
                 status,
             ); /* add PCOUNT and */
             ffikyj_safe(
                 fptr,
-                cs!("GCOUNT"),
+                cs!(c"GCOUNT"),
                 1,
-                Some(cs!("required keyword")),
+                Some(cs!(c"required keyword")),
                 status,
             ); /* GCOUNT keywords */
 
@@ -816,7 +823,7 @@ pub unsafe fn ffiimgll_safer(
                 return *status;
             }
 
-            if ffdkey_safe(fptr, cs!("EXTEND"), status) != 0 {
+            if ffdkey_safe(fptr, cs!(c"EXTEND"), status) != 0 {
                 /* delete the EXTEND keyword */
                 *status = 0;
             }

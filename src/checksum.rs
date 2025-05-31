@@ -11,7 +11,6 @@ use std::cmp;
 use crate::c_types::{c_char, c_int, c_long, c_uint, c_ulong};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::aliases::ffpmsg_str;
 use crate::cs;
@@ -320,43 +319,43 @@ pub unsafe extern "C" fn ffpcks_safe(
 
     /* generate current date string and construct the keyword comments */
     ffgstm_safe(&mut datestr, None, status);
-    strcpy_safe(&mut chkcomm, cs!(b"HDU checksum updated "));
+    strcpy_safe(&mut chkcomm, cs!(c"HDU checksum updated "));
     strcat_safe(&mut chkcomm, &datestr);
-    strcpy_safe(&mut datacomm, cs!(b"data unit checksum updated "));
+    strcpy_safe(&mut datacomm, cs!(c"data unit checksum updated "));
     strcat_safe(&mut datacomm, &datestr);
 
     /* write the CHECKSUM keyword if it does not exist */
     let mut tstatus = *status;
     if ffgkys_safe(
         fptr,
-        cs!("CHECKSUM"),
+        cs!(c"CHECKSUM"),
         &mut checksum,
         Some(&mut comm),
         status,
     ) == KEY_NO_EXIST
     {
         *status = tstatus;
-        strcpy_safe(&mut checksum, cs!(b"0000000000000000"));
-        ffpkys_safe(fptr, cs!(b"CHECKSUM"), &checksum, Some(&chkcomm), status);
+        strcpy_safe(&mut checksum, cs!(c"0000000000000000"));
+        ffpkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(&chkcomm), status);
     }
 
     /* write the DATASUM keyword if it does not exist */
     tstatus = *status;
-    if ffgkys_safe(fptr, cs!(b"DATASUM"), &mut datasum, Some(&mut comm), status) == KEY_NO_EXIST {
+    if ffgkys_safe(fptr, cs!(c"DATASUM"), &mut datasum, Some(&mut comm), status) == KEY_NO_EXIST {
         *status = tstatus;
         olddsum = 0;
         ffpkys_safe(
             fptr,
-            cs!(b"DATASUM"),
-            cs!(b"         0"),
+            cs!(c"DATASUM"),
+            cs!(c"         0"),
             Some(&datacomm),
             status,
         );
 
         /* set the CHECKSUM keyword as undefined, if it isn't already */
-        if strcmp_safe(&checksum, cs!(b"0000000000000000")) != 0 {
-            strcpy_safe(&mut checksum, cs!(b"0000000000000000"));
-            ffmkys_safe(fptr, cs!("CHECKSUM"), &checksum, Some(&chkcomm), status);
+        if strcmp_safe(&checksum, cs!(c"0000000000000000")) != 0 {
+            strcpy_safe(&mut checksum, cs!(c"0000000000000000"));
+            ffmkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(&chkcomm), status);
         };
     } else {
         /* decode the datasum into an unsigned long variable */
@@ -406,16 +405,16 @@ pub unsafe extern "C" fn ffpcks_safe(
     if dsum != olddsum {
         /* update the DATASUM keyword with the correct value */
         int_snprintf!(&mut datasum, FLEN_VALUE, "{}", dsum,);
-        ffmkys_safe(fptr, cs!("DATASUM"), &datasum, Some(&datacomm), status);
+        ffmkys_safe(fptr, cs!(c"DATASUM"), &datasum, Some(&datacomm), status);
 
         /* set the CHECKSUM keyword as undefined, if it isn't already */
-        if strcmp_safe(&checksum, cs!(b"0000000000000000")) != 0 {
-            strcpy_safe(&mut checksum, cs!(b"0000000000000000"));
-            ffmkys_safe(fptr, cs!("CHECKSUM"), &checksum, Some(&chkcomm), status);
+        if strcmp_safe(&checksum, cs!(c"0000000000000000")) != 0 {
+            strcpy_safe(&mut checksum, cs!(c"0000000000000000"));
+            ffmkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(&chkcomm), status);
         };
     }
 
-    if strcmp_safe(&checksum, cs!(b"0000000000000000")) != 0 {
+    if strcmp_safe(&checksum, cs!(c"0000000000000000")) != 0 {
         /* check if CHECKSUM is still OK; move to the start of the header */
         ffmbyt_safe(fptr, headstart, REPORT_EOF, status);
 
@@ -433,8 +432,8 @@ pub unsafe extern "C" fn ffpcks_safe(
         /* Zero the CHECKSUM and recompute the new value */
         ffmkys_safe(
             fptr,
-            cs!("CHECKSUM"),
-            cs!("0000000000000000"),
+            cs!(c"CHECKSUM"),
+            cs!(c"0000000000000000"),
             Some(&chkcomm),
             status,
         );
@@ -454,7 +453,7 @@ pub unsafe extern "C" fn ffpcks_safe(
     ffesum_safe(sum, true, (&mut checksum[..17]).try_into().unwrap());
 
     /* update the CHECKSUM keyword value with the new string */
-    ffmkys_safe(fptr, cs!("CHECKSUM"), &checksum, Some(cs!("&")), status);
+    ffmkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(cs!(c"&")), status);
 
     *status
 }
@@ -500,11 +499,11 @@ pub(crate) fn ffupck_safe(
 
     /* generate current date string and construct the keyword comments */
     ffgstm_safe(&mut datestr, None, status);
-    strcpy_safe(&mut chkcomm, cs!(b"HDU checksum updated "));
+    strcpy_safe(&mut chkcomm, cs!(c"HDU checksum updated "));
     strcat_safe(&mut chkcomm, &datestr);
 
     /* get the DATASUM keyword and convert it to a unsigned long */
-    if ffgkys_safe(fptr, cs!("DATASUM"), &mut datasum, Some(&mut comm), status) == KEY_NO_EXIST {
+    if ffgkys_safe(fptr, cs!(c"DATASUM"), &mut datasum, Some(&mut comm), status) == KEY_NO_EXIST {
         ffpmsg_str("DATASUM keyword not found (ffupck");
         return *status;
     }
@@ -529,15 +528,15 @@ pub(crate) fn ffupck_safe(
     let tstatus = *status;
     if ffgkys_safe(
         fptr,
-        cs!("CHECKSUM"),
+        cs!(c"CHECKSUM"),
         &mut checksum,
         Some(&mut comm),
         status,
     ) == KEY_NO_EXIST
     {
         *status = tstatus;
-        strcpy_safe(&mut checksum, cs!(b"0000000000000000"));
-        ffpkys_safe(fptr, cs!("CHECKSUM"), &checksum, Some(&chkcomm), status);
+        strcpy_safe(&mut checksum, cs!(c"0000000000000000"));
+        ffpkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(&chkcomm), status);
     } else {
         /* check if CHECKSUM is still OK */
         /* rewrite END keyword and following blank fill */
@@ -563,8 +562,8 @@ pub(crate) fn ffupck_safe(
         /* Zero the CHECKSUM and recompute the new value */
         ffmkys_safe(
             fptr,
-            cs!("CHECKSUM"),
-            cs!("0000000000000000"),
+            cs!(c"CHECKSUM"),
+            cs!(c"0000000000000000"),
             Some(&chkcomm),
             status,
         );
@@ -584,7 +583,7 @@ pub(crate) fn ffupck_safe(
     ffesum_safe(sum, true, (&mut checksum[..17]).try_into().unwrap());
 
     /* update the CHECKSUM keyword value with the new string */
-    ffmkys_safe(fptr, cs!("CHECKSUM"), &checksum, Some(cs!("&")), status);
+    ffmkys_safe(fptr, cs!(c"CHECKSUM"), &checksum, Some(cs!(c"&")), status);
 
     *status
 }
@@ -637,7 +636,7 @@ pub(crate) fn ffvcks_safe(
     *hdustatus = -1;
 
     let tstatus = *status;
-    if ffgkys_safe(fptr, cs!("CHECKSUM"), &mut chksum, Some(&mut comm), status) == KEY_NO_EXIST {
+    if ffgkys_safe(fptr, cs!(c"CHECKSUM"), &mut chksum, Some(&mut comm), status) == KEY_NO_EXIST {
         /* CHECKSUM keyword does not exist */
         *hdustatus = 0;
         *status = tstatus;
@@ -648,7 +647,7 @@ pub(crate) fn ffvcks_safe(
         *hdustatus = 0;
     }
 
-    if ffgkys_safe(fptr, cs!("DATASUM"), &mut chksum, Some(&mut comm), status) == KEY_NO_EXIST {
+    if ffgkys_safe(fptr, cs!(c"DATASUM"), &mut chksum, Some(&mut comm), status) == KEY_NO_EXIST {
         /* DATASUM keyword does not exist */
         *datastatus = 0;
         *status = tstatus;

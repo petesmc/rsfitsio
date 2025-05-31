@@ -43,7 +43,6 @@ use std::{cmp, ptr};
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::BL;
 use crate::aliases::safer::fits_read_key_dbl;
@@ -276,154 +275,154 @@ pub fn ffgerr_safe(
     errtext[0] = 0;
     let t = if status >= 0 && status < 300 {
         match status {
-            0 => cstr!(b"OK - no error"),
-            1 => cstr!(b"non-CFITSIO program error"),
-            101 => cstr!(b"same input and output files"),
-            103 => cstr!(b"attempt to open too many files"),
-            104 => cstr!(b"could not open the named file"),
-            105 => cstr!(b"couldn't create the named file"),
-            106 => cstr!(b"error writing to FITS file"),
-            107 => cstr!(b"tried to move past end of file"),
-            108 => cstr!(b"error reading from FITS file"),
-            110 => cstr!(b"could not close the file"),
-            111 => cstr!(b"array dimensions too big"),
-            112 => cstr!(b"cannot write to readonly file"),
-            113 => cstr!(b"could not allocate memory"),
-            114 => cstr!(b"invalid fitsfile pointer"),
-            115 => cstr!(b"NULL input pointer"),
-            116 => cstr!(b"error seeking file position"),
-            117 => cstr!(b"bad value for file download timeout setting"),
-            121 => cstr!(b"invalid URL prefix"),
-            122 => cstr!(b"too many I/O drivers"),
-            123 => cstr!(b"I/O driver init failed"),
-            124 => cstr!(b"no I/O driver for this URLtype"),
-            125 => cstr!(b"parse error in input file URL"),
-            126 => cstr!(b"parse error in range list"),
-            151 => cstr!(b"bad argument (shared mem drvr)"),
-            152 => cstr!(b"null ptr arg (shared mem drvr)"),
-            153 => cstr!(b"no free shared memory handles"),
-            154 => cstr!(b"share mem drvr not initialized"),
-            155 => cstr!(b"IPC system error (shared mem)"),
-            156 => cstr!(b"no memory (shared mem drvr)"),
-            157 => cstr!(b"share mem resource deadlock"),
-            158 => cstr!(b"lock file open/create failed"),
-            159 => cstr!(b"can't resize share mem block"),
-            201 => cstr!(b"header already has keywords"),
-            202 => cstr!(b"keyword not found in header"),
-            203 => cstr!(b"keyword number out of bounds"),
-            204 => cstr!(b"keyword value is undefined"),
-            205 => cstr!(b"string missing closing quote"),
-            206 => cstr!(b"error in indexed keyword name"),
-            207 => cstr!(b"illegal character in keyword"),
-            208 => cstr!(b"required keywords out of order"),
-            209 => cstr!(b"keyword value not positive int"),
-            210 => cstr!(b"END keyword not found"),
-            211 => cstr!(b"illegal BITPIX keyword value"),
-            212 => cstr!(b"illegal NAXIS keyword value"),
-            213 => cstr!(b"illegal NAXISn keyword value"),
-            214 => cstr!(b"illegal PCOUNT keyword value"),
-            215 => cstr!(b"illegal GCOUNT keyword value"),
-            216 => cstr!(b"illegal TFIELDS keyword value"),
-            217 => cstr!(b"negative table row size"),
-            218 => cstr!(b"negative number of rows"),
-            219 => cstr!(b"named column not found"),
-            220 => cstr!(b"illegal SIMPLE keyword value"),
-            221 => cstr!(b"first keyword not SIMPLE"),
-            222 => cstr!(b"second keyword not BITPIX"),
-            223 => cstr!(b"third keyword not NAXIS"),
-            224 => cstr!(b"missing NAXISn keywords"),
-            225 => cstr!(b"first keyword not XTENSION"),
-            226 => cstr!(b"CHDU not an ASCII table"),
-            227 => cstr!(b"CHDU not a binary table"),
-            228 => cstr!(b"PCOUNT keyword not found"),
-            229 => cstr!(b"GCOUNT keyword not found"),
-            230 => cstr!(b"TFIELDS keyword not found"),
-            231 => cstr!(b"missing TBCOLn keyword"),
-            232 => cstr!(b"missing TFORMn keyword"),
-            233 => cstr!(b"CHDU not an IMAGE extension"),
-            234 => cstr!(b"illegal TBCOLn keyword value"),
-            235 => cstr!(b"CHDU not a table extension"),
-            236 => cstr!(b"column exceeds width of table"),
-            237 => cstr!(b"more than 1 matching col. name"),
-            241 => cstr!(b"row width not = field widths"),
-            251 => cstr!(b"unknown FITS extension type"),
-            252 => cstr!(b"1st key not SIMPLE or XTENSION"),
-            253 => cstr!(b"END keyword is not blank"),
-            254 => cstr!(b"Header fill area not blank"),
-            255 => cstr!(b"Data fill area invalid"),
-            261 => cstr!(b"illegal TFORM format code"),
-            262 => cstr!(b"unknown TFORM datatype code"),
-            263 => cstr!(b"illegal TDIMn keyword value"),
-            264 => cstr!(b"invalid BINTABLE heap pointer"),
-            _ => cstr!(b"unknown error status"),
+            0 => c"OK - no error",
+            1 => c"non-CFITSIO program error",
+            101 => c"same input and output files",
+            103 => c"attempt to open too many files",
+            104 => c"could not open the named file",
+            105 => c"couldn't create the named file",
+            106 => c"error writing to FITS file",
+            107 => c"tried to move past end of file",
+            108 => c"error reading from FITS file",
+            110 => c"could not close the file",
+            111 => c"array dimensions too big",
+            112 => c"cannot write to readonly file",
+            113 => c"could not allocate memory",
+            114 => c"invalid fitsfile pointer",
+            115 => c"NULL input pointer",
+            116 => c"error seeking file position",
+            117 => c"bad value for file download timeout setting",
+            121 => c"invalid URL prefix",
+            122 => c"too many I/O drivers",
+            123 => c"I/O driver init failed",
+            124 => c"no I/O driver for this URLtype",
+            125 => c"parse error in input file URL",
+            126 => c"parse error in range list",
+            151 => c"bad argument (shared mem drvr)",
+            152 => c"null ptr arg (shared mem drvr)",
+            153 => c"no free shared memory handles",
+            154 => c"share mem drvr not initialized",
+            155 => c"IPC system error (shared mem)",
+            156 => c"no memory (shared mem drvr)",
+            157 => c"share mem resource deadlock",
+            158 => c"lock file open/create failed",
+            159 => c"can't resize share mem block",
+            201 => c"header already has keywords",
+            202 => c"keyword not found in header",
+            203 => c"keyword number out of bounds",
+            204 => c"keyword value is undefined",
+            205 => c"string missing closing quote",
+            206 => c"error in indexed keyword name",
+            207 => c"illegal character in keyword",
+            208 => c"required keywords out of order",
+            209 => c"keyword value not positive int",
+            210 => c"END keyword not found",
+            211 => c"illegal BITPIX keyword value",
+            212 => c"illegal NAXIS keyword value",
+            213 => c"illegal NAXISn keyword value",
+            214 => c"illegal PCOUNT keyword value",
+            215 => c"illegal GCOUNT keyword value",
+            216 => c"illegal TFIELDS keyword value",
+            217 => c"negative table row size",
+            218 => c"negative number of rows",
+            219 => c"named column not found",
+            220 => c"illegal SIMPLE keyword value",
+            221 => c"first keyword not SIMPLE",
+            222 => c"second keyword not BITPIX",
+            223 => c"third keyword not NAXIS",
+            224 => c"missing NAXISn keywords",
+            225 => c"first keyword not XTENSION",
+            226 => c"CHDU not an ASCII table",
+            227 => c"CHDU not a binary table",
+            228 => c"PCOUNT keyword not found",
+            229 => c"GCOUNT keyword not found",
+            230 => c"TFIELDS keyword not found",
+            231 => c"missing TBCOLn keyword",
+            232 => c"missing TFORMn keyword",
+            233 => c"CHDU not an IMAGE extension",
+            234 => c"illegal TBCOLn keyword value",
+            235 => c"CHDU not a table extension",
+            236 => c"column exceeds width of table",
+            237 => c"more than 1 matching col. name",
+            241 => c"row width not = field widths",
+            251 => c"unknown FITS extension type",
+            252 => c"1st key not SIMPLE or XTENSION",
+            253 => c"END keyword is not blank",
+            254 => c"Header fill area not blank",
+            255 => c"Data fill area invalid",
+            261 => c"illegal TFORM format code",
+            262 => c"unknown TFORM datatype code",
+            263 => c"illegal TDIMn keyword value",
+            264 => c"invalid BINTABLE heap pointer",
+            _ => c"unknown error status",
         }
     } else if status < 600 {
         match status {
-            301 => cstr!(b"illegal HDU number"),
-            302 => cstr!(b"column number < 1 or > tfields"),
-            304 => cstr!(b"negative byte address"),
-            306 => cstr!(b"negative number of elements"),
-            307 => cstr!(b"bad first row number"),
-            308 => cstr!(b"bad first element number"),
-            309 => cstr!(b"not an ASCII (A) column"),
-            310 => cstr!(b"not a logical (L) column"),
-            311 => cstr!(b"bad ASCII table datatype"),
-            312 => cstr!(b"bad binary table datatype"),
-            314 => cstr!(b"null value not defined"),
-            317 => cstr!(b"not a variable length column"),
-            320 => cstr!(b"illegal number of dimensions"),
-            321 => cstr!(b"1st pixel no. > last pixel no."),
-            322 => cstr!(b"BSCALE or TSCALn = 0."),
-            323 => cstr!(b"illegal axis length < 1"),
-            340 => cstr!(b"not group table"),
-            341 => cstr!(b"HDU already member of group"),
-            342 => cstr!(b"group member not found"),
-            343 => cstr!(b"group not found"),
-            344 => cstr!(b"bad group id"),
-            345 => cstr!(b"too many HDUs tracked"),
-            346 => cstr!(b"HDU alread tracked"),
-            347 => cstr!(b"bad Grouping option"),
-            348 => cstr!(b"identical pointers (groups)"),
-            360 => cstr!(b"malloc failed in parser"),
-            361 => cstr!(b"file read error in parser"),
-            362 => cstr!(b"null pointer arg (parser)"),
-            363 => cstr!(b"empty line (parser)"),
-            364 => cstr!(b"cannot unread > 1 line"),
-            365 => cstr!(b"parser too deeply nested"),
-            366 => cstr!(b"file open failed (parser)"),
-            367 => cstr!(b"hit EOF (parser)"),
-            368 => cstr!(b"bad argument (parser)"),
-            369 => cstr!(b"unexpected token (parser)"),
-            401 => cstr!(b"bad int to string conversion"),
-            402 => cstr!(b"bad float to string conversion"),
-            403 => cstr!(b"keyword value not integer"),
-            404 => cstr!(b"keyword value not logical"),
-            405 => cstr!(b"keyword value not floating pt"),
-            406 => cstr!(b"keyword value not double"),
-            407 => cstr!(b"bad string to int conversion"),
-            408 => cstr!(b"bad string to float conversion"),
-            409 => cstr!(b"bad string to double convert"),
-            410 => cstr!(b"illegal datatype code value"),
-            411 => cstr!(b"illegal no. of decimals"),
-            412 => cstr!(b"datatype conversion overflow"),
-            413 => cstr!(b"error compressing image"),
-            414 => cstr!(b"error uncompressing image"),
-            420 => cstr!(b"bad date or time conversion"),
-            431 => cstr!(b"syntax error in expression"),
-            432 => cstr!(b"expression result wrong type"),
-            433 => cstr!(b"vector result too large"),
-            434 => cstr!(b"missing output column"),
-            435 => cstr!(b"bad data in parsed column"),
-            436 => cstr!(b"output extension of wrong type"),
-            501 => cstr!(b"WCS angle too large"),
-            502 => cstr!(b"bad WCS coordinate"),
-            503 => cstr!(b"error in WCS calculation"),
-            504 => cstr!(b"bad WCS projection type"),
-            505 => cstr!(b"WCS keywords not found"),
-            _ => cstr!(b"unknown error status"),
+            301 => c"illegal HDU number",
+            302 => c"column number < 1 or > tfields",
+            304 => c"negative byte address",
+            306 => c"negative number of elements",
+            307 => c"bad first row number",
+            308 => c"bad first element number",
+            309 => c"not an ASCII (A) column",
+            310 => c"not a logical (L) column",
+            311 => c"bad ASCII table datatype",
+            312 => c"bad binary table datatype",
+            314 => c"null value not defined",
+            317 => c"not a variable length column",
+            320 => c"illegal number of dimensions",
+            321 => c"1st pixel no. > last pixel no.",
+            322 => c"BSCALE or TSCALn = 0.",
+            323 => c"illegal axis length < 1",
+            340 => c"not group table",
+            341 => c"HDU already member of group",
+            342 => c"group member not found",
+            343 => c"group not found",
+            344 => c"bad group id",
+            345 => c"too many HDUs tracked",
+            346 => c"HDU alread tracked",
+            347 => c"bad Grouping option",
+            348 => c"identical pointers (groups)",
+            360 => c"malloc failed in parser",
+            361 => c"file read error in parser",
+            362 => c"null pointer arg (parser)",
+            363 => c"empty line (parser)",
+            364 => c"cannot unread > 1 line",
+            365 => c"parser too deeply nested",
+            366 => c"file open failed (parser)",
+            367 => c"hit EOF (parser)",
+            368 => c"bad argument (parser)",
+            369 => c"unexpected token (parser)",
+            401 => c"bad int to string conversion",
+            402 => c"bad float to string conversion",
+            403 => c"keyword value not integer",
+            404 => c"keyword value not logical",
+            405 => c"keyword value not floating pt",
+            406 => c"keyword value not double",
+            407 => c"bad string to int conversion",
+            408 => c"bad string to float conversion",
+            409 => c"bad string to double convert",
+            410 => c"illegal datatype code value",
+            411 => c"illegal no. of decimals",
+            412 => c"datatype conversion overflow",
+            413 => c"error compressing image",
+            414 => c"error uncompressing image",
+            420 => c"bad date or time conversion",
+            431 => c"syntax error in expression",
+            432 => c"expression result wrong type",
+            433 => c"vector result too large",
+            434 => c"missing output column",
+            435 => c"bad data in parsed column",
+            436 => c"output extension of wrong type",
+            501 => c"WCS angle too large",
+            502 => c"bad WCS coordinate",
+            503 => c"error in WCS calculation",
+            504 => c"bad WCS projection type",
+            505 => c"WCS keywords not found",
+            _ => c"unknown error status",
         }
     } else {
-        cstr!(b"unknown error status")
+        c"unknown error status"
     };
 
     strcpy_safe(errtext, cast_slice(t.to_bytes_with_nul()));
@@ -871,21 +870,21 @@ pub fn fftrec_safe(
 
             let len = strlen_safe(&msg);
             if card[ii] == 0 {
-                strncat_safe(&mut msg, cs!(b" (NULL char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (NULL char.)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 9 {
-                strncat_safe(&mut msg, cs!(b" (TAB char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (TAB char.)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 10 {
-                strncat_safe(&mut msg, cs!(b" (Line Feed char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Line Feed char.)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 11 {
-                strncat_safe(&mut msg, cs!(b" (Vertical Tab)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Vertical Tab)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 12 {
-                strncat_safe(&mut msg, cs!(b" (Form Feed char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Form Feed char.)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 13 {
-                strncat_safe(&mut msg, cs!(b" (Carriage Return)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Carriage Return)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 27 {
-                strncat_safe(&mut msg, cs!(b" (Escape char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Escape char.)"), FLEN_ERRMSG - len - 1);
             } else if card[ii] == 127 {
-                strncat_safe(&mut msg, cs!(b" (Delete char.)"), FLEN_ERRMSG - len - 1);
+                strncat_safe(&mut msg, cs!(c" (Delete char.)"), FLEN_ERRMSG - len - 1);
             }
             ffpmsg_slice(&msg);
             strncpy_safe(&mut msg, card, 80);
@@ -1028,8 +1027,8 @@ pub fn ffmkky_safe(
         card[9] = bb(b' ');
         card[10] = 0; /* terminate the partial string */
         namelen = 10;
-    } else if (FSTRNCMP(&tmpname, cs!("HIERARCH "), 9) == 0)
-        || (FSTRNCMP(&tmpname, cs!("hierarch "), 9) == 0)
+    } else if (FSTRNCMP(&tmpname, cs!(c"HIERARCH "), 9) == 0)
+        || (FSTRNCMP(&tmpname, cs!(c"hierarch "), 9) == 0)
     {
         /* this is an explicit ESO HIERARCH keyword */
 
@@ -1037,10 +1036,10 @@ pub fn ffmkky_safe(
 
         if namelen + 3 + len > 80 {
             /* save 1 char by not putting a space before the equals sign */
-            strcat_safe(card, cs!("= "));
+            strcat_safe(card, cs!(c"= "));
             namelen += 2;
         } else {
-            strcat_safe(card, cs!(" = "));
+            strcat_safe(card, cs!(c" = "));
             namelen += 3;
         }
     } else {
@@ -1083,16 +1082,16 @@ pub fn ffmkky_safe(
                 *status = BAD_KEYCHAR;
                 return *status;
             }
-            strcat_safe(card, cs!("HIERARCH "));
+            strcat_safe(card, cs!(c"HIERARCH "));
             strcat_safe(card, &tmpname);
             namelen += 9;
 
             if namelen + 3 + len > 80 {
                 /* save 1 char by not putting a space before the equals sign */
-                strcat_safe(card, cs!("= "));
+                strcat_safe(card, cs!(c"= "));
                 namelen += 2;
             } else {
-                strcat_safe(card, cs!(" = "));
+                strcat_safe(card, cs!(c" = "));
                 namelen += 3;
             }
         } else if fftkey_safe(&tmpname, &mut tstatus) <= 0 {
@@ -1100,7 +1099,7 @@ pub fn ffmkky_safe(
             /* allow keyword names longer than 8 characters */
 
             strncat_safe(card, &tmpname, FLEN_KEYWORD - 1);
-            strcat_safe(card, cs!("= "));
+            strcat_safe(card, cs!(c"= "));
             namelen += 2;
         } else {
             /* should never get here (at least for now) */
@@ -1152,7 +1151,7 @@ pub fn ffmkky_safe(
                 return *status;
             } else if namelen + len < 30 {
                 /* add spaces so field ends at least in col 30 */
-                strncat_safe(card, cs!("                    "), 30 - (namelen + len));
+                strncat_safe(card, cs!(c"                    "), 30 - (namelen + len));
             }
 
             strncat_safe(card, value, 80 - namelen); /* append the value string */
@@ -1162,7 +1161,7 @@ pub fn ffmkky_safe(
         if let Some(comm) = comm {
             if (len < 77) && (strlen_safe(comm) > 0) {
                 /* room for a comment? */
-                strcat_safe(card, cs!(" / ")); /* append comment separator */
+                strcat_safe(card, cs!(c" / ")); /* append comment separator */
                 strncat_safe(card, comm, 77 - len); /* append comment (what fits) */
             }
         }
@@ -1225,7 +1224,7 @@ pub(crate) fn ffmkey(
         ii += 1
     }
 
-    keylength = strcspn_safe(&tcard, cs!("="));
+    keylength = strcspn_safe(&tcard, cs!(c"="));
     if keylength == card_len {
         keylength = 8;
     }
@@ -1434,8 +1433,8 @@ pub(crate) fn ffpsvc_safe(
     }
 
     /* support for ESO HIERARCH keywords; find the '=' */
-    if FSTRNCMP(card, cs!(b"HIERARCH "), 9) == 0 {
-        valpos = strcspn_safe(card, cs!(b"="));
+    if FSTRNCMP(card, cs!(c"HIERARCH "), 9) == 0 {
+        valpos = strcspn_safe(card, cs!(c"="));
 
         if valpos == cardlen {
             /* no value indicator ??? */
@@ -1457,11 +1456,11 @@ pub(crate) fn ffpsvc_safe(
         }
         valpos += 1;
     } else if cardlen < 9
-        || FSTRNCMP(card, cs!(b"COMMENT "), 8) == 0
-        || FSTRNCMP(card, cs!(b"HISTORY "), 8) == 0
-        || FSTRNCMP(card, cs!(b"END     "), 8) == 0
-        || FSTRNCMP(card, cs!(b"CONTINUE"), 8) == 0
-        || FSTRNCMP(card, cs!(b"        "), 8) == 0
+        || FSTRNCMP(card, cs!(c"COMMENT "), 8) == 0
+        || FSTRNCMP(card, cs!(c"HISTORY "), 8) == 0
+        || FSTRNCMP(card, cs!(c"END     "), 8) == 0
+        || FSTRNCMP(card, cs!(c"CONTINUE"), 8) == 0
+        || FSTRNCMP(card, cs!(c"        "), 8) == 0
     {
         /* keywords with no value */
 
@@ -1482,12 +1481,12 @@ pub(crate) fn ffpsvc_safe(
         }
 
         return *status;
-    } else if FSTRNCMP(&card[8..], cs!(b"= "), 2) == 0 {
+    } else if FSTRNCMP(&card[8..], cs!(c"= "), 2) == 0 {
         /* normal keyword with '= ' in cols 9-10 */
 
         valpos = 10; /* starting position of the value field */
     } else {
-        valpos = strcspn_safe(card, cs!(b"="));
+        valpos = strcspn_safe(card, cs!(c"="));
         if valpos == cardlen {
             /* no value indicator ??? */
             if let Some(comm) = comm {
@@ -1509,7 +1508,7 @@ pub(crate) fn ffpsvc_safe(
         valpos += 1; /* point to the position after the '=' */
     }
 
-    let mut nblank = strspn_safe(&card[valpos..], cs!(b" ")); /* find number of leading blanks */
+    let mut nblank = strspn_safe(&card[valpos..], cs!(c" ")); /* find number of leading blanks */
 
     if nblank + valpos == cardlen {
         /* the absence of a value string is legal, and simply indicates
@@ -1567,7 +1566,7 @@ pub(crate) fn ffpsvc_safe(
     } else if card[ii] == bb(b'(') {
         /* is this a complex value? */
 
-        nblank = strcspn_safe(&card[ii..], cs!(b")")); /* find closing ) */
+        nblank = strcspn_safe(&card[ii..], cs!(c")")); /* find closing ) */
 
         if nblank == strlen_safe(&card[ii..]) || nblank >= FLEN_VALUE - 1 {
             ffpmsg_str("This complex keyword value has no closing ')' within range:");
@@ -1584,7 +1583,7 @@ pub(crate) fn ffpsvc_safe(
     } else {
         /*  an integer, floating point, or logical FITS value string  */
 
-        nblank = strcspn_safe(&card[ii..], cs!(b" /")); /* find the end of the token */
+        nblank = strcspn_safe(&card[ii..], cs!(c" /")); /* find the end of the token */
 
         if nblank >= FLEN_VALUE {
             /* This should not happen for correct input */
@@ -1597,7 +1596,7 @@ pub(crate) fn ffpsvc_safe(
 
     /*  now find the comment string, if any  */
     if let Some(comm) = comm {
-        nblank = strspn_safe(&card[ii..], cs!(b" ")); /*  find next non-space character  */
+        nblank = strspn_safe(&card[ii..], cs!(c" ")); /*  find next non-space character  */
         ii += nblank;
 
         if ii < 80 {
@@ -1705,7 +1704,7 @@ pub fn ffgthd_safe(
     card[0] = 0;
     *hdtype = 0;
 
-    if FSTRNCMP(tmplt, cs!("        "), 8) == 0 {
+    if FSTRNCMP(tmplt, cs!(c"        "), 8) == 0 {
         /* if first 8 chars of template are blank, then this is a comment */
         strncat_safe(card, tmplt, 80);
         *hdtype = 1;
@@ -1718,11 +1717,11 @@ pub fn ffgthd_safe(
     value[0] = 0;
     comment[0] = 0;
 
-    len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before keyword */
+    len = strspn_safe(&tmplt[tok..], cs!(c" ")); /* no. of spaces before keyword */
     tok += len;
 
     /* test for pecular case where token is a string of dashes */
-    if strncmp_safe(&tmplt[tok..], cs!("--------------------"), 20) == 0 {
+    if strncmp_safe(&tmplt[tok..], cs!(c"--------------------"), 20) == 0 {
         *status = BAD_KEYCHAR;
         return *status;
     }
@@ -1732,10 +1731,10 @@ pub fn ffgthd_safe(
         /* first token is name of keyword to be deleted or renamed */
         *hdtype = -1;
         tok += 1;
-        len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before keyword */
+        len = strspn_safe(&tmplt[tok..], cs!(c" ")); /* no. of spaces before keyword */
         tok += len;
 
-        len = strcspn_safe(&tmplt[tok..], cs!(" =+")); /* length of name */
+        len = strcspn_safe(&tmplt[tok..], cs!(c" =+")); /* length of name */
         if len >= FLEN_KEYWORD {
             *status = BAD_KEYCHAR;
             return *status;
@@ -1767,13 +1766,13 @@ pub fn ffgthd_safe(
 
         /* Check optional "+" indicator to delete multiple keywords */
         if tmplt[tok] == bb(b'+') && len < FLEN_KEYWORD {
-            strcat_safe(card, cs!("+"));
+            strcat_safe(card, cs!(c"+"));
             return *status;
         }
 
         /* second token, if present, is the new name for the keyword */
 
-        len = strspn_safe(&tmplt[tok..], cs!(" ")); /* no. of spaces before next token */
+        len = strspn_safe(&tmplt[tok..], cs!(c" ")); /* no. of spaces before next token */
         tok += len;
 
         if tmplt[tok] == 0 || tmplt[tok] == bb(b'=') {
@@ -1781,7 +1780,7 @@ pub fn ffgthd_safe(
         }
 
         *hdtype = -2;
-        len = strcspn_safe(&tmplt[tok..], cs!(" ")); /* length of new name */
+        len = strcspn_safe(&tmplt[tok..], cs!(c" ")); /* length of new name */
         /* this name has to fit on columns 41-80 of card,
         and first name must now fit in 1-40 */
         if lentok1 > 40 {
@@ -1797,7 +1796,7 @@ pub fn ffgthd_safe(
 
         /* copy the new name to card + 40;  This is awkward, */
         /* but is consistent with the way the Fortran FITSIO works */
-        strcat_safe(card, cs!("                                        "));
+        strcat_safe(card, cs!(c"                                        "));
         strncpy_safe(&mut card[40..], &tmplt[tok..], len);
         card[80] = 0; /* necessary to add terminator in case len = 40 */
 
@@ -1823,7 +1822,7 @@ pub fn ffgthd_safe(
     {
         /* get the keyword name token */
 
-        len = strcspn_safe(&tmplt[tok..], cs!(" =")); /* length of keyword name */
+        len = strcspn_safe(&tmplt[tok..], cs!(c" =")); /* length of keyword name */
         if len >= FLEN_KEYWORD {
             *status = BAD_KEYCHAR;
             return *status;
@@ -1850,17 +1849,17 @@ pub fn ffgthd_safe(
             }
         }
 
-        if FSTRCMP(&keyname, cs!("END")) == 0 {
-            strcpy_safe(card, cs!("END"));
+        if FSTRCMP(&keyname, cs!(c"END")) == 0 {
+            strcpy_safe(card, cs!(c"END"));
             *hdtype = 2;
             return *status;
         }
 
         tok += len; /* move token pointer to end of the keyword */
 
-        if FSTRCMP(&keyname, cs!("COMMENT")) == 0
-            || FSTRCMP(&keyname, cs!("HISTORY")) == 0
-            || FSTRCMP(&keyname, cs!("HIERARCH")) == 0
+        if FSTRCMP(&keyname, cs!(c"COMMENT")) == 0
+            || FSTRCMP(&keyname, cs!(c"HISTORY")) == 0
+            || FSTRCMP(&keyname, cs!(c"HIERARCH")) == 0
         {
             *hdtype = 1; /* simply append COMMENT and HISTORY keywords */
             strcpy_safe(card, &keyname);
@@ -1869,7 +1868,7 @@ pub fn ffgthd_safe(
         }
 
         /* look for the value token */
-        len = strspn_safe(&tmplt[tok..], cs!(" =")); /* spaces or = between name and value */
+        len = strspn_safe(&tmplt[tok..], cs!(c" =")); /* spaces or = between name and value */
         tok += len;
 
         if tmplt[tok] == bb(b'\'') {
@@ -1878,7 +1877,7 @@ pub fn ffgthd_safe(
             remainlen = 139;
             while more {
                 tok += 1; /* temporarily move past the quote char */
-                len = strcspn_safe(&tmplt[tok..], cs!("'")); /* length of quoted string */
+                len = strcspn_safe(&tmplt[tok..], cs!(c"'")); /* length of quoted string */
                 tok -= 1;
                 if len + 2 > remainlen {
                     *status = BAD_KEYCHAR;
@@ -1903,11 +1902,11 @@ pub fn ffgthd_safe(
         } else if tmplt[tok] == bb(b'/') || tmplt[tok] == 0
         /* There is no value */
         {
-            strcat_safe(&mut value, cs!(" "));
+            strcat_safe(&mut value, cs!(c" "));
         } else
         /* not a quoted string value */
         {
-            len = strcspn_safe(&tmplt[tok..], cs!(" /")); /* length of value string */
+            len = strcspn_safe(&tmplt[tok..], cs!(c" /")); /* length of value string */
             if len > 139 {
                 *status = BAD_KEYCHAR;
                 return *status;
@@ -1950,9 +1949,9 @@ pub fn ffgthd_safe(
                         *status = BAD_KEYCHAR;
                         return *status;
                     }
-                    strcpy_safe(&mut value, cs!("'"));
+                    strcpy_safe(&mut value, cs!(c"'"));
                     strncat_safe(&mut value, &tmplt[tok..], len);
-                    strcat_safe(&mut value, cs!("'"));
+                    strcat_safe(&mut value, cs!(c"'"));
 
                     /* the following useless statement stops the compiler warning */
                     /* that dval is not used anywhere */
@@ -1978,15 +1977,15 @@ pub fn ffgthd_safe(
             tok += len;
         }
 
-        len = strspn_safe(&tmplt[tok..], cs!(" /")); /* no. of spaces between value and comment */
+        len = strspn_safe(&tmplt[tok..], cs!(c" /")); /* no. of spaces between value and comment */
         tok += len;
 
         vlen = strlen_safe(&value);
         if vlen > 0 && vlen < 10 && value[0] == bb(b'\'') {
             /* pad quoted string with blanks so it is at least 8 chars long */
             value[vlen - 1] = 0;
-            strncat_safe(&mut value, cs!("        "), 10 - vlen);
-            strcat_safe(&mut value[9..], cs!("'"));
+            strncat_safe(&mut value, cs!(c"        "), 10 - vlen);
+            strcat_safe(&mut value[9..], cs!(c"'"));
         }
 
         /* get the comment string */
@@ -2161,7 +2160,7 @@ pub(crate) fn fits_translate_keyword_safer(
 
     if inrec[0] == 0 {
         /* expand to full 8 char blank keyword name */
-        strcpy_safe(inrec, cs!("        "));
+        strcpy_safe(inrec, cs!(c"        "));
     }
 
     oldp = 0;
@@ -2302,8 +2301,8 @@ pub(crate) fn fits_translate_keyword_safer(
     spat = cast_slice((patterns[pat as usize][1]).to_bytes_with_nul());
 
     /* Return case: explicit deletion, return '-' */
-    if pass && strcmp_safe(spat, cs!("--")) == 0 {
-        strcpy_safe(outrec, cs!("-"));
+    if pass && strcmp_safe(spat, cs!(c"--")) == 0 {
+        strcpy_safe(outrec, cs!(c"-"));
         strncat_safe(outrec, inrec, 8);
         outrec[9] = 0;
 
@@ -2316,7 +2315,7 @@ pub(crate) fn fits_translate_keyword_safer(
     }
 
     /* Return case: no match, or do-not-transfer pattern */
-    if !pass || spat[0] == 0 || strcmp_safe(spat, cs!("-")) == 0 {
+    if !pass || spat[0] == 0 || strcmp_safe(spat, cs!(c"-")) == 0 {
         return 0;
     }
     /* A match: we start by copying the input record to the output */
@@ -2596,108 +2595,108 @@ pub fn fits_copy_pixlist2image_safe(
     let mut lret: c_int = 0;
 
     let patterns: [[*const c_char; 2]; 99] = [
-        [cstr!("TCTYPn").as_ptr(), cstr!("CTYPEn").as_ptr()],
-        [cstr!("TCTYna").as_ptr(), cstr!("CTYPEna").as_ptr()],
-        [cstr!("TCUNIn").as_ptr(), cstr!("CUNITn").as_ptr()],
-        [cstr!("TCUNna").as_ptr(), cstr!("CUNITna").as_ptr()],
-        [cstr!("TCRVLn").as_ptr(), cstr!("CRVALn").as_ptr()],
-        [cstr!("TCRVna").as_ptr(), cstr!("CRVALna").as_ptr()],
-        [cstr!("TCDLTn").as_ptr(), cstr!("CDELTn").as_ptr()],
-        [cstr!("TCDEna").as_ptr(), cstr!("CDELTna").as_ptr()],
-        [cstr!("TCRPXn").as_ptr(), cstr!("CRPIXn").as_ptr()],
-        [cstr!("TCRPna").as_ptr(), cstr!("CRPIXna").as_ptr()],
-        [cstr!("TCROTn").as_ptr(), cstr!("CROTAn").as_ptr()],
-        [cstr!("TPn_ma").as_ptr(), cstr!("PCn_ma").as_ptr()],
-        [cstr!("TPCn_m").as_ptr(), cstr!("PCn_ma").as_ptr()],
-        [cstr!("TCn_ma").as_ptr(), cstr!("CDn_ma").as_ptr()],
-        [cstr!("TCDn_m").as_ptr(), cstr!("CDn_ma").as_ptr()],
-        [cstr!("TVn_la").as_ptr(), cstr!("PVn_la").as_ptr()],
-        [cstr!("TPVn_l").as_ptr(), cstr!("PVn_la").as_ptr()],
-        [cstr!("TSn_la").as_ptr(), cstr!("PSn_la").as_ptr()],
-        [cstr!("TPSn_l").as_ptr(), cstr!("PSn_la").as_ptr()],
-        [cstr!("TWCSna").as_ptr(), cstr!("WCSNAMEa").as_ptr()],
-        [cstr!("TCNAna").as_ptr(), cstr!("CNAMEna").as_ptr()],
-        [cstr!("TCRDna").as_ptr(), cstr!("CRDERna").as_ptr()],
-        [cstr!("TCSYna").as_ptr(), cstr!("CSYERna").as_ptr()],
-        [cstr!("LONPna").as_ptr(), cstr!("LONPOLEa").as_ptr()],
-        [cstr!("LATPna").as_ptr(), cstr!("LATPOLEa").as_ptr()],
-        [cstr!("EQUIna").as_ptr(), cstr!("EQUINOXa").as_ptr()],
-        [cstr!("MJDOBn").as_ptr(), cstr!("MJD-OBS").as_ptr()],
-        [cstr!("MJDAn").as_ptr(), cstr!("MJD-AVG").as_ptr()],
-        [cstr!("DAVGn").as_ptr(), cstr!("DATE-AVG").as_ptr()],
-        [cstr!("RADEna").as_ptr(), cstr!("RADESYSa").as_ptr()],
-        [cstr!("RFRQna").as_ptr(), cstr!("RESTFRQa").as_ptr()],
-        [cstr!("RWAVna").as_ptr(), cstr!("RESTWAVa").as_ptr()],
-        [cstr!("SPECna").as_ptr(), cstr!("SPECSYSa").as_ptr()],
-        [cstr!("SOBSna").as_ptr(), cstr!("SSYSOBSa").as_ptr()],
-        [cstr!("SSRCna").as_ptr(), cstr!("SSYSSRCa").as_ptr()],
+        [c"TCTYPn".as_ptr(), c"CTYPEn".as_ptr()],
+        [c"TCTYna".as_ptr(), c"CTYPEna".as_ptr()],
+        [c"TCUNIn".as_ptr(), c"CUNITn".as_ptr()],
+        [c"TCUNna".as_ptr(), c"CUNITna".as_ptr()],
+        [c"TCRVLn".as_ptr(), c"CRVALn".as_ptr()],
+        [c"TCRVna".as_ptr(), c"CRVALna".as_ptr()],
+        [c"TCDLTn".as_ptr(), c"CDELTn".as_ptr()],
+        [c"TCDEna".as_ptr(), c"CDELTna".as_ptr()],
+        [c"TCRPXn".as_ptr(), c"CRPIXn".as_ptr()],
+        [c"TCRPna".as_ptr(), c"CRPIXna".as_ptr()],
+        [c"TCROTn".as_ptr(), c"CROTAn".as_ptr()],
+        [c"TPn_ma".as_ptr(), c"PCn_ma".as_ptr()],
+        [c"TPCn_m".as_ptr(), c"PCn_ma".as_ptr()],
+        [c"TCn_ma".as_ptr(), c"CDn_ma".as_ptr()],
+        [c"TCDn_m".as_ptr(), c"CDn_ma".as_ptr()],
+        [c"TVn_la".as_ptr(), c"PVn_la".as_ptr()],
+        [c"TPVn_l".as_ptr(), c"PVn_la".as_ptr()],
+        [c"TSn_la".as_ptr(), c"PSn_la".as_ptr()],
+        [c"TPSn_l".as_ptr(), c"PSn_la".as_ptr()],
+        [c"TWCSna".as_ptr(), c"WCSNAMEa".as_ptr()],
+        [c"TCNAna".as_ptr(), c"CNAMEna".as_ptr()],
+        [c"TCRDna".as_ptr(), c"CRDERna".as_ptr()],
+        [c"TCSYna".as_ptr(), c"CSYERna".as_ptr()],
+        [c"LONPna".as_ptr(), c"LONPOLEa".as_ptr()],
+        [c"LATPna".as_ptr(), c"LATPOLEa".as_ptr()],
+        [c"EQUIna".as_ptr(), c"EQUINOXa".as_ptr()],
+        [c"MJDOBn".as_ptr(), c"MJD-OBS".as_ptr()],
+        [c"MJDAn".as_ptr(), c"MJD-AVG".as_ptr()],
+        [c"DAVGn".as_ptr(), c"DATE-AVG".as_ptr()],
+        [c"RADEna".as_ptr(), c"RADESYSa".as_ptr()],
+        [c"RFRQna".as_ptr(), c"RESTFRQa".as_ptr()],
+        [c"RWAVna".as_ptr(), c"RESTWAVa".as_ptr()],
+        [c"SPECna".as_ptr(), c"SPECSYSa".as_ptr()],
+        [c"SOBSna".as_ptr(), c"SSYSOBSa".as_ptr()],
+        [c"SSRCna".as_ptr(), c"SSYSSRCa".as_ptr()],
         /* preserve common keywords */
-        [cstr!("LONPOLEa").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("LATPOLEa").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("EQUINOXa").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("EPOCH").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("MJD-????").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("DATE????").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("TIME????").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("RADESYSa").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("RADECSYS").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("TELESCOP").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("INSTRUME").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("OBSERVER").as_ptr(), cstr!("+").as_ptr()],
-        [cstr!("OBJECT").as_ptr(), cstr!("+").as_ptr()],
+        [c"LONPOLEa".as_ptr(), c"+".as_ptr()],
+        [c"LATPOLEa".as_ptr(), c"+".as_ptr()],
+        [c"EQUINOXa".as_ptr(), c"+".as_ptr()],
+        [c"EPOCH".as_ptr(), c"+".as_ptr()],
+        [c"MJD-????".as_ptr(), c"+".as_ptr()],
+        [c"DATE????".as_ptr(), c"+".as_ptr()],
+        [c"TIME????".as_ptr(), c"+".as_ptr()],
+        [c"RADESYSa".as_ptr(), c"+".as_ptr()],
+        [c"RADECSYS".as_ptr(), c"+".as_ptr()],
+        [c"TELESCOP".as_ptr(), c"+".as_ptr()],
+        [c"INSTRUME".as_ptr(), c"+".as_ptr()],
+        [c"OBSERVER".as_ptr(), c"+".as_ptr()],
+        [c"OBJECT".as_ptr(), c"+".as_ptr()],
         /* Delete general table column keywords */
-        [cstr!("XTENSION").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("BITPIX").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("NAXIS").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("NAXISi").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("PCOUNT").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("GCOUNT").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("TFIELDS").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("TDIM#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("THEAP").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("EXTNAME").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("EXTVER").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("EXTLEVEL").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("CHECKSUM").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("DATASUM").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("NAXLEN").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("AXLEN#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("CPREF").as_ptr(), cstr!("-").as_ptr()],
+        [c"XTENSION".as_ptr(), c"-".as_ptr()],
+        [c"BITPIX".as_ptr(), c"-".as_ptr()],
+        [c"NAXIS".as_ptr(), c"-".as_ptr()],
+        [c"NAXISi".as_ptr(), c"-".as_ptr()],
+        [c"PCOUNT".as_ptr(), c"-".as_ptr()],
+        [c"GCOUNT".as_ptr(), c"-".as_ptr()],
+        [c"TFIELDS".as_ptr(), c"-".as_ptr()],
+        [c"TDIM#".as_ptr(), c"-".as_ptr()],
+        [c"THEAP".as_ptr(), c"-".as_ptr()],
+        [c"EXTNAME".as_ptr(), c"-".as_ptr()],
+        [c"EXTVER".as_ptr(), c"-".as_ptr()],
+        [c"EXTLEVEL".as_ptr(), c"-".as_ptr()],
+        [c"CHECKSUM".as_ptr(), c"-".as_ptr()],
+        [c"DATASUM".as_ptr(), c"-".as_ptr()],
+        [c"NAXLEN".as_ptr(), c"-".as_ptr()],
+        [c"AXLEN#".as_ptr(), c"-".as_ptr()],
+        [c"CPREF".as_ptr(), c"-".as_ptr()],
         /* Delete table keywords related to other columns */
-        [cstr!("T????#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("TC??#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("T??#_#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("TWCS#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("LONP#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("LATP#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("EQUI#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("MJDOB#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("MJDA#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("RADE#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("DAVG#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCTYP#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCTY#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCUNI#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCUN#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCRVL#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCDLT#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCRPX#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCTY#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCUN#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCRV#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCDE#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCRP#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("ijPC#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("ijCD#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iV#_#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iS#_#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCRD#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCSY#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCROT#").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("WCAX#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("WCSN#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("iCNA#a").as_ptr(), cstr!("-").as_ptr()],
-        [cstr!("*").as_ptr(), cstr!("+").as_ptr()],
+        [c"T????#a".as_ptr(), c"-".as_ptr()],
+        [c"TC??#a".as_ptr(), c"-".as_ptr()],
+        [c"T??#_#".as_ptr(), c"-".as_ptr()],
+        [c"TWCS#a".as_ptr(), c"-".as_ptr()],
+        [c"LONP#a".as_ptr(), c"-".as_ptr()],
+        [c"LATP#a".as_ptr(), c"-".as_ptr()],
+        [c"EQUI#a".as_ptr(), c"-".as_ptr()],
+        [c"MJDOB#".as_ptr(), c"-".as_ptr()],
+        [c"MJDA#".as_ptr(), c"-".as_ptr()],
+        [c"RADE#a".as_ptr(), c"-".as_ptr()],
+        [c"DAVG#".as_ptr(), c"-".as_ptr()],
+        [c"iCTYP#".as_ptr(), c"-".as_ptr()],
+        [c"iCTY#a".as_ptr(), c"-".as_ptr()],
+        [c"iCUNI#".as_ptr(), c"-".as_ptr()],
+        [c"iCUN#a".as_ptr(), c"-".as_ptr()],
+        [c"iCRVL#".as_ptr(), c"-".as_ptr()],
+        [c"iCDLT#".as_ptr(), c"-".as_ptr()],
+        [c"iCRPX#".as_ptr(), c"-".as_ptr()],
+        [c"iCTY#a".as_ptr(), c"-".as_ptr()],
+        [c"iCUN#a".as_ptr(), c"-".as_ptr()],
+        [c"iCRV#a".as_ptr(), c"-".as_ptr()],
+        [c"iCDE#a".as_ptr(), c"-".as_ptr()],
+        [c"iCRP#a".as_ptr(), c"-".as_ptr()],
+        [c"ijPC#a".as_ptr(), c"-".as_ptr()],
+        [c"ijCD#a".as_ptr(), c"-".as_ptr()],
+        [c"iV#_#a".as_ptr(), c"-".as_ptr()],
+        [c"iS#_#a".as_ptr(), c"-".as_ptr()],
+        [c"iCRD#a".as_ptr(), c"-".as_ptr()],
+        [c"iCSY#a".as_ptr(), c"-".as_ptr()],
+        [c"iCROT#".as_ptr(), c"-".as_ptr()],
+        [c"WCAX#a".as_ptr(), c"-".as_ptr()],
+        [c"WCSN#a".as_ptr(), c"-".as_ptr()],
+        [c"iCNA#a".as_ptr(), c"-".as_ptr()],
+        [c"*".as_ptr(), c"+".as_ptr()],
     ]; /* copy all other keywords */
 
     if *status > 0 {
@@ -3372,7 +3371,7 @@ pub(crate) fn ffbnfm_safe(
 
         /*
         unsafe {
-            if sscanf(temp.as_ptr(), cstr!("%ld").as_ptr(), &repeat) != 1 {
+            if sscanf(temp.as_ptr(), c"%ld".as_ptr(), &repeat) != 1 {
                 /* read repeat count */
 
                 ffpmsg_str("Error: Bad repeat format in TFORM (ffbnfm).");
@@ -3441,7 +3440,7 @@ pub(crate) fn ffbnfm_safe(
             }
 
             /*
-            iread = unsafe { sscanf(temp[(fi + 1)..].as_ptr(), cstr!("%ld").as_ptr(), &width) };
+            iread = unsafe { sscanf(temp[(fi + 1)..].as_ptr(), c"%ld".as_ptr(), &width) };
             */
 
             let tmp: Result<c_long, ParseIntError> =
@@ -3594,7 +3593,7 @@ pub unsafe extern "C" fn ffbnfmll(
             /* print as double, because the string-to-64-bit int conversion */
             /* character is platform dependent (%lld, %ld, %I64d)           */
 
-            sscanf(temp[fi..].as_ptr(), cstr!("%lf").as_ptr(), &mut drepeat);
+            sscanf(temp[fi..].as_ptr(), c"%lf".as_ptr(), &mut drepeat);
             repeat = (drepeat + 0.1) as LONGLONG;
         }
         /*-----------------------------------------------*/
@@ -3657,7 +3656,7 @@ pub unsafe extern "C" fn ffbnfmll(
                     fi += 1; /* variable length column width */
                 }
 
-                iread = sscanf(temp[(1 + fi)..].as_ptr(), cstr!("%ld").as_ptr(), &mut width);
+                iread = sscanf(temp[(1 + fi)..].as_ptr(), c"%ld".as_ptr(), &mut width);
             }
 
             if iread != 1 || (variable == 0 && (width as LONGLONG > repeat)) {
@@ -3771,18 +3770,18 @@ pub(crate) fn ffcfmt(
     strcpy_safe(&mut cform[1..], &tform[(istart + 1)..]); /* append the width and decimal code */
 
     if tform[istart] == bb(b'A') {
-        strcat_safe(cform, cs!("s"));
+        strcat_safe(cform, cs!(c"s"));
     } else if tform[istart] == bb(b'I') {
-        strcat_safe(cform, cs!(".0f")); /*  0 precision to suppress decimal point */
+        strcat_safe(cform, cs!(c".0f")); /*  0 precision to suppress decimal point */
     }
     if tform[istart] == bb(b'F') {
-        strcat_safe(cform, cs!("f"));
+        strcat_safe(cform, cs!(c"f"));
     }
     if tform[istart] == bb(b'E') {
-        strcat_safe(cform, cs!("E"));
+        strcat_safe(cform, cs!(c"E"));
     }
     if tform[istart] == bb(b'D') {
-        strcat_safe(cform, cs!("E"));
+        strcat_safe(cform, cs!(c"E"));
     }
 }
 
@@ -3819,21 +3818,21 @@ pub(crate) fn ffcdsp(
     strcpy_safe(&mut cform[1..], &tform[(ii + 1)..]); /* append the width and decimal code */
 
     if tform[ii] == bb(b'A') || tform[ii] == bb(b'a') {
-        strcat_safe(cform, cs!("s"));
+        strcat_safe(cform, cs!(c"s"));
     } else if tform[ii] == bb(b'I') || tform[ii] == bb(b'i') {
-        strcat_safe(cform, cs!("d"));
+        strcat_safe(cform, cs!(c"d"));
     } else if tform[ii] == bb(b'O') || tform[ii] == bb(b'o') {
-        strcat_safe(cform, cs!("o"));
+        strcat_safe(cform, cs!(c"o"));
     } else if tform[ii] == bb(b'Z') || tform[ii] == bb(b'z') {
-        strcat_safe(cform, cs!("X"));
+        strcat_safe(cform, cs!(c"X"));
     } else if tform[ii] == bb(b'F') || tform[ii] == bb(b'f') {
-        strcat_safe(cform, cs!("f"));
+        strcat_safe(cform, cs!(c"f"));
     } else if tform[ii] == bb(b'E') || tform[ii] == bb(b'e') {
-        strcat_safe(cform, cs!("E"));
+        strcat_safe(cform, cs!(c"E"));
     } else if tform[ii] == bb(b'D') || tform[ii] == bb(b'd') {
-        strcat_safe(cform, cs!("E"));
+        strcat_safe(cform, cs!(c"E"));
     } else if tform[ii] == bb(b'G') || tform[ii] == bb(b'g') {
-        strcat_safe(cform, cs!("G"));
+        strcat_safe(cform, cs!(c"G"));
     } else {
         cform[0] = 0; /* unrecognized tform code */
     }
@@ -4924,7 +4923,7 @@ pub unsafe extern "C" fn ffgacl(
 
         /* read keywords to get additional parameters */
         if !tunit.is_null() {
-            ffkeyn_safe(cs!(TUNIT), colnum, &mut name, status);
+            ffkeyn_safe(cs!(c"TUNIT"), colnum, &mut name, status);
             tstatus = 0;
 
             let tunit = slice::from_raw_parts_mut(tunit, FLEN_VALUE);
@@ -4933,7 +4932,7 @@ pub unsafe extern "C" fn ffgacl(
         }
 
         if !tdisp.is_null() {
-            ffkeyn_safe(cs!(TDISP), colnum, &mut name, status);
+            ffkeyn_safe(cs!(c"TDISP"), colnum, &mut name, status);
             tstatus = 0;
 
             let tdisp = slice::from_raw_parts_mut(tdisp, FLEN_VALUE);
@@ -5140,7 +5139,7 @@ pub fn ffgbclll_safe(
     if let Some(dtype) = dtype {
         if c[ci].tdatatype < 0 {
             /* add the "P" prefix for */
-            strcpy_safe(dtype, cs!("P")); /* variable length columns */
+            strcpy_safe(dtype, cs!(c"P")); /* variable length columns */
         } else {
             dtype[0] = 0;
         }
@@ -5148,27 +5147,27 @@ pub fn ffgbclll_safe(
         let abs_datatype = (c[ci].tdatatype).abs();
 
         if abs_datatype == TBIT {
-            strcat_safe(dtype, cs!("X"));
+            strcat_safe(dtype, cs!(c"X"));
         } else if abs_datatype == TBYTE {
-            strcat_safe(dtype, cs!("B"));
+            strcat_safe(dtype, cs!(c"B"));
         } else if abs_datatype == TLOGICAL {
-            strcat_safe(dtype, cs!("L"));
+            strcat_safe(dtype, cs!(c"L"));
         } else if abs_datatype == TSTRING {
-            strcat_safe(dtype, cs!("A"));
+            strcat_safe(dtype, cs!(c"A"));
         } else if abs_datatype == TSHORT {
-            strcat_safe(dtype, cs!("I"));
+            strcat_safe(dtype, cs!(c"I"));
         } else if abs_datatype == TLONG {
-            strcat_safe(dtype, cs!("J"));
+            strcat_safe(dtype, cs!(c"J"));
         } else if abs_datatype == TLONGLONG {
-            strcat_safe(dtype, cs!("K"));
+            strcat_safe(dtype, cs!(c"K"));
         } else if abs_datatype == TFLOAT {
-            strcat_safe(dtype, cs!("E"));
+            strcat_safe(dtype, cs!(c"E"));
         } else if abs_datatype == TDOUBLE {
-            strcat_safe(dtype, cs!("D"));
+            strcat_safe(dtype, cs!(c"D"));
         } else if abs_datatype == TCOMPLEX {
-            strcat_safe(dtype, cs!("C"));
+            strcat_safe(dtype, cs!(c"C"));
         } else if abs_datatype == TDBLCOMPLEX {
-            strcat_safe(dtype, cs!("M"));
+            strcat_safe(dtype, cs!(c"M"));
         }
     }
 
@@ -5191,7 +5190,7 @@ pub fn ffgbclll_safe(
     /* read keywords to get additional parameters */
 
     if let Some(tunit) = tunit {
-        ffkeyn_safe(cs!(TUNIT), colnum, &mut name, status);
+        ffkeyn_safe(cs!(c"TUNIT"), colnum, &mut name, status);
         tstatus = 0;
 
         tunit[0] = 0;
@@ -5199,7 +5198,7 @@ pub fn ffgbclll_safe(
     }
 
     if let Some(tdisp) = tdisp {
-        ffkeyn_safe(cs!(TDISP), colnum, &mut name, status);
+        ffkeyn_safe(cs!(c"TDISP"), colnum, &mut name, status);
         tstatus = 0;
 
         tdisp[0] = 0;
@@ -5483,14 +5482,14 @@ pub(crate) unsafe fn ffrhdu_safer(
             return *status;
         }
 
-        if strcmp_safe(&name, cs!(b"SIMPLE")) == 0 {
+        if strcmp_safe(&name, cs!(c"SIMPLE")) == 0 {
             /* this is the primary array */
 
             ffpinit(fptr, status); /* initialize the primary array */
             if let Some(hdutype) = hdutype.as_deref_mut() {
                 *hdutype = 0;
             };
-        } else if strcmp_safe(&name, cs!(b"XTENSION")) == 0 {
+        } else if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
             /* this is an XTENSION keyword */
 
             if ffc2s(&value, &mut xname, status) > 0 {
@@ -5506,14 +5505,14 @@ pub(crate) unsafe fn ffrhdu_safer(
                 xtension += 1;
             }
 
-            if strcmp_safe(&xname[xtension..], cs!(b"TABLE")) == 0 {
+            if strcmp_safe(&xname[xtension..], cs!(c"TABLE")) == 0 {
                 ffainit(fptr, status); /* initialize the ASCII table */
                 if let Some(hdutype) = hdutype.as_deref_mut() {
                     *hdutype = 1;
                 };
-            } else if strcmp_safe(&xname[xtension..], cs!(b"BINTABLE")) == 0
-                || strcmp_safe(&xname[xtension..], cs!(b"A3DTABLE")) == 0
-                || strcmp_safe(&xname[xtension..], cs!(b"3DTABLE")) == 0
+            } else if strcmp_safe(&xname[xtension..], cs!(c"BINTABLE")) == 0
+                || strcmp_safe(&xname[xtension..], cs!(c"A3DTABLE")) == 0
+                || strcmp_safe(&xname[xtension..], cs!(c"3DTABLE")) == 0
             {
                 ffbinit(fptr, status); /* initialize the binary table */
                 if let Some(hdutype) = hdutype.as_deref_mut() {
@@ -5567,8 +5566,8 @@ pub(crate) unsafe fn ffrhdu_safer(
 
             ffurlt_safe(fptr, &mut urltype, status);
 
-            if strcmp_safe(&urltype, cs!(b"mem://")) == 0
-                || strcmp_safe(&urltype, cs!("memkeep://")) == 0
+            if strcmp_safe(&urltype, cs!(c"mem://")) == 0
+                || strcmp_safe(&urltype, cs!(c"memkeep://")) == 0
             {
                 fftrun(fptr, filesize, status);
             };
@@ -5658,7 +5657,7 @@ pub(crate) unsafe fn ffpinit(
             ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
             if ffgkyl_safe(
                 fptr,
-                cs!(b"GROUPS"),
+                cs!(c"GROUPS"),
                 &mut groups,
                 Some(&mut comm),
                 &mut tstatus,
@@ -5803,7 +5802,7 @@ pub(crate) unsafe fn ffpinit(
 
             /*  if colptr.is_null() {
                 ffpmsg(
-                    cstr!(b"malloc failed to get memory for FITS array descriptors (ffpinit)").as_ptr(),
+                    c"malloc failed to get memory for FITS array descriptors (ffpinit)".as_ptr(),
                 );
                 fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
                 return {
@@ -5986,7 +5985,7 @@ pub(crate) unsafe fn ffainit(
 
             /* try to ignore minor syntax errors */
             if *status == NO_QUOTE {
-                strcat_safe(&mut value, cs!("'"));
+                strcat_safe(&mut value, cs!(c"'"));
                 *status = 0;
             } else if *status == BAD_KEYCHAR {
                 *status = 0;
@@ -6001,7 +6000,7 @@ pub(crate) unsafe fn ffainit(
             } else if name[0] == bb(b'T') {
                 /* keyword starts with 'T' ? */
                 ffgtbp(fptr, &name, &value, status); /* test if column keyword */
-            } else if FSTRCMP(&name, cs!("END")) == 0 {
+            } else if FSTRCMP(&name, cs!(c"END")) == 0 {
                 /* is this the END keyword? */
                 break;
             }
@@ -6024,7 +6023,7 @@ pub(crate) unsafe fn ffainit(
                 tbcoln = c[ci].tbcol; /* the starting column number (zero based) */
 
                 if c[ci].tdatatype == -9999 {
-                    ffkeyn_safe(cs!(TFORM), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    ffkeyn_safe(cs!(c"TFORM"), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
                     int_snprintf!(
                         &mut message,
                         FLEN_ERRMSG,
@@ -6035,7 +6034,7 @@ pub(crate) unsafe fn ffainit(
                     *status = NO_TFORM;
                     return *status;
                 } else if tbcoln == -1 {
-                    ffkeyn_safe(cs!(TBCOL), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    ffkeyn_safe(cs!(c"TBCOL"), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
                     int_snprintf!(
                         &mut message,
                         FLEN_ERRMSG,
@@ -6047,7 +6046,7 @@ pub(crate) unsafe fn ffainit(
                     return *status;
                 } else if fptr.Fptr.rowlength != 0 && (tbcoln < 0 || tbcoln >= fptr.Fptr.rowlength)
                 {
-                    ffkeyn_safe(cs!(TBCOL), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    ffkeyn_safe(cs!(c"TBCOL"), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
                     int_snprintf!(
                         &mut message,
                         FLEN_ERRMSG,
@@ -6237,7 +6236,7 @@ pub(crate) unsafe fn ffbinit(
 
             /* try to ignore minor syntax errors */
             if *status == NO_QUOTE {
-                strcat_safe(&mut value, cs!("'"));
+                strcat_safe(&mut value, cs!(c"'"));
                 *status = 0;
             } else if *status == BAD_KEYCHAR {
                 *status = 0;
@@ -6252,11 +6251,11 @@ pub(crate) unsafe fn ffbinit(
             } else if name[0] == bb(b'T') {
                 /* keyword starts with 'T' ? */
                 ffgtbp(fptr, &name, &value, status); /* test if column keyword */
-            } else if FSTRCMP(&name, cs!("ZIMAGE")) == 0 {
+            } else if FSTRCMP(&name, cs!(c"ZIMAGE")) == 0 {
                 if value[0] == bb(b'T') {
                     fptr.Fptr.compressimg = 1; /* this is a compressed image */
                 }
-            } else if FSTRCMP(&name, cs!("END")) == 0 {
+            } else if FSTRCMP(&name, cs!(c"END")) == 0 {
                 /* is this the END keyword? */
                 break;
             }
@@ -6277,7 +6276,7 @@ pub(crate) unsafe fn ffbinit(
 
             for ii in 0..(tfield as usize) {
                 if c[ii].tdatatype == -9999 {
-                    ffkeyn_safe(cs!(TFORM), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
+                    ffkeyn_safe(cs!(c"TFORM"), (ii + 1) as c_int, &mut name, status); /* construct keyword name */
                     int_snprintf!(
                         &mut message,
                         FLEN_ERRMSG,
@@ -6532,7 +6531,7 @@ pub(crate) fn ffgtbp(
 
     let mut ci: usize = 0;
 
-    if FSTRNCMP(&name[1..], cs!("TYPE"), 4) == 0 {
+    if FSTRNCMP(&name[1..], cs!(c"TYPE"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6552,7 +6551,7 @@ pub(crate) fn ffgtbp(
         }
 
         strcpy_safe(&mut c[ci].ttype, &tvalue); /* copy col name to structure */
-    } else if FSTRNCMP(&name[1..], cs!("FORM"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"FORM"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6615,7 +6614,7 @@ pub(crate) fn ffgtbp(
                 c[ci].twidth = width; /*  width of a unit value in chars */
             }
         }
-    } else if FSTRNCMP(&name[1..], cs!("BCOL"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"BCOL"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6646,7 +6645,7 @@ pub(crate) fn ffgtbp(
             return *status;
         }
         c[ci].tbcol = ivalue as LONGLONG - 1; /* convert to zero base */
-    } else if FSTRNCMP(&name[1..], cs!("SCAL"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"SCAL"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6674,7 +6673,7 @@ pub(crate) fn ffgtbp(
             return *status;
         }
         c[ci].tscale = dvalue;
-    } else if FSTRNCMP(&name[1..], cs!("ZERO"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"ZERO"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6701,7 +6700,7 @@ pub(crate) fn ffgtbp(
             return *status;
         }
         c[ci].tzero = dvalue;
-    } else if FSTRNCMP(&name[1..], cs!("NULL"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"NULL"), 4) == 0 {
         /* get the index number */
         if ffc2ii(&name[5..], &mut nfield, &mut tstatus) > 0 {
             /* read index no. */
@@ -6742,7 +6741,7 @@ pub(crate) fn ffgtbp(
             }
             c[ci].tnull = jjvalue; /* null value for integer column */
         }
-    } else if FSTRNCMP(&name[1..], cs!("DIM"), 3) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"DIM"), 3) == 0 {
         if fptr.Fptr.hdutype == ASCII_TBL {
             /* ASCII table */
             return *status; /* ASCII tables don't support TDIMn keyword */
@@ -6780,7 +6779,7 @@ pub(crate) fn ffgtbp(
             return *status; /* string length is greater than column width */
         }
         c[ci].twidth = width; /* set width of a unit string in chars */
-    } else if FSTRNCMP(&name[1..], cs!("HEAP"), 4) == 0 {
+    } else if FSTRNCMP(&name[1..], cs!(c"HEAP"), 4) == 0 {
         if fptr.Fptr.hdutype == ASCII_TBL {
             /* ASCII table */
             return *status; /* ASCII tables don't have a heap */
@@ -6870,7 +6869,7 @@ pub(crate) fn ffgcprll(
 
         let mut st = STREAM_DRIVER.lock().unwrap();
         if *st <= 0 || *st > 40 {
-            urltype2driver(cs!(b"stream://"), st.borrow_mut());
+            urltype2driver(cs!(c"stream://"), st.borrow_mut());
         }
 
         if fptr.Fptr.driver == *st
@@ -6976,7 +6975,7 @@ pub(crate) fn ffgcprll(
     if *hdutype == ASCII_TBL && snull[0] == 0 {
         /* In ASCII tables, a null value is equivalent to all spaces */
 
-        strcpy_safe(snull, cs!(b"                 ")); /* maximum of 17 spaces */
+        strcpy_safe(snull, cs!(c"                 ")); /* maximum of 17 spaces */
         nulpos = cmp::min(17, *twidth); /* truncate to width of column */
         snull[nulpos as usize] = 0;
     }
@@ -7668,7 +7667,7 @@ pub(crate) unsafe fn ffcmph_safer(
         let mut tptr: Option<Box<fitsfile>> = None;
 
         /* copy the current HDU to a temporary file in memory */
-        if ffinit_safer(&mut tptr, cs!("mem://tempheapfile"), status) != 0 {
+        if ffinit_safer(&mut tptr, cs!(c"mem://tempheapfile"), status) != 0 {
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,
@@ -7834,9 +7833,15 @@ pub(crate) unsafe fn ffcmph_safer(
         /* update the PCOUNT value (size of heap) */
         ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
 
-        ffgkyjj_safe(fptr, cs!("PCOUNT"), &mut pcount, Some(&mut comm), status);
+        ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
         if fptr.Fptr.heapsize != pcount {
-            ffmkyj_safe(fptr, cs!("PCOUNT"), fptr.Fptr.heapsize, Some(&comm), status);
+            ffmkyj_safe(
+                fptr,
+                cs!(c"PCOUNT"),
+                fptr.Fptr.heapsize,
+                Some(&comm),
+                status,
+            );
         }
 
         /* rescan new HDU structure */
@@ -8340,7 +8345,7 @@ pub(crate) unsafe fn ffchdu(
             ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
             /* no need to do any further updating of the HDU */
         } else if fptr.Fptr.writemode == 1 {
-            urltype2driver(cs!(b"stream://"), &mut stdriver);
+            urltype2driver(cs!(c"stream://"), &mut stdriver);
 
             /* don't rescan header in special case of writing to stdout */
             if fptr.Fptr.driver != stdriver {
@@ -8418,13 +8423,25 @@ pub(crate) fn ffuptf(
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
-    ffgkyjj_safe(fptr, cs!("NAXIS2"), &mut naxis2, Some(&mut comment), status);
-    ffgkyj_safe(fptr, cs!("TFIELDS"), &mut tflds, Some(&mut comment), status);
+    ffgkyjj_safe(
+        fptr,
+        cs!(c"NAXIS2"),
+        &mut naxis2,
+        Some(&mut comment),
+        status,
+    );
+    ffgkyj_safe(
+        fptr,
+        cs!(c"TFIELDS"),
+        &mut tflds,
+        Some(&mut comment),
+        status,
+    );
 
     for ii in 1..=(tflds as usize) {
         /* loop over all the columns */
 
-        ffkeyn_safe(cs!("TFORM"), ii as c_int, &mut keyname, status); /* construct name */
+        ffkeyn_safe(cs!(c"TFORM"), ii as c_int, &mut keyname, status); /* construct name */
         if ffgkys_safe(fptr, &keyname, &mut tform, Some(&mut comment), status) > 0 {
             int_snprintf!(
                 &mut message,
@@ -8459,7 +8476,7 @@ pub(crate) fn ffuptf(
             }
 
             /* construct the new keyword value */
-            strcpy_safe(&mut newform, cs!("'"));
+            strcpy_safe(&mut newform, cs!(c"'"));
             let tmp = strchr_safe(&tform, bb(b'(')); /* truncate old length, if present */
             if let Some(tmp) = tmp {
                 tform[tmp] = 0;
@@ -8481,9 +8498,9 @@ pub(crate) fn ffuptf(
             strcat_safe(&mut newform, &lenval);
 
             while strlen_safe(&newform) < 9 {
-                strcat_safe(&mut newform, cs!(" ")); /* append spaces 'till length = 8 */
+                strcat_safe(&mut newform, cs!(c" ")); /* append spaces 'till length = 8 */
             }
-            strcat_safe(&mut newform, cs!("'")); /* append closing parenthesis */
+            strcat_safe(&mut newform, cs!(c"'")); /* append closing parenthesis */
             /* would be simpler to just call ffmkyj here, but this */
             /* would force linking in all the modkey & putkey routines */
             ffmkky_safe(&keyname, &newform, Some(&comment), &mut card, status); /* make new card */
@@ -8547,7 +8564,7 @@ pub fn ffrdef_safe(
                     ffmaky_safe(fptr, 2, status);
                     if ffgkyjj_safe(
                         fptr,
-                        cs!("NAXIS2"),
+                        cs!(c"NAXIS2"),
                         &mut naxis2,
                         Some(&mut comm),
                         &mut tstatus,
@@ -8573,7 +8590,7 @@ pub fn ffrdef_safe(
                             "{:.0}",
                             (fptr.Fptr.numrows) as f64,
                         );
-                        ffmkky_safe(cs!("NAXIS2"), &valstring, Some(&comm), &mut card, status);
+                        ffmkky_safe(cs!(c"NAXIS2"), &valstring, Some(&comm), &mut card, status);
                         ffmkey(fptr, &card, status);
                     };
                 }
@@ -8582,9 +8599,15 @@ pub fn ffrdef_safe(
                 /* binary table, then we may need to update the PCOUNT value */
                 if fptr.Fptr.heapsize > 0 {
                     ffmaky_safe(fptr, 2, status);
-                    ffgkyjj_safe(fptr, cs!("PCOUNT"), &mut pcount, Some(&mut comm), status);
+                    ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
                     if fptr.Fptr.heapsize != pcount {
-                        ffmkyj_safe(fptr, cs!("PCOUNT"), fptr.Fptr.heapsize, Some(&comm), status);
+                        ffmkyj_safe(
+                            fptr,
+                            cs!(c"PCOUNT"),
+                            fptr.Fptr.heapsize,
+                            Some(&comm),
+                            status,
+                        );
                     };
                 };
             }
@@ -8694,14 +8717,20 @@ pub(crate) fn ffwend(
     let nspace = ((fptr.Fptr.datastart - endpos) / 80i64) as c_long;
     strcpy_safe(
         &mut blankkey,
-        cs!("                                        "),
+        cs!(c"                                        "),
     );
     strcat_safe(
         &mut blankkey,
-        cs!("                                        "),
+        cs!(c"                                        "),
     );
-    strcpy_safe(&mut endkey, cs!("END                                     "));
-    strcat_safe(&mut endkey, cs!("                                        "));
+    strcpy_safe(
+        &mut endkey,
+        cs!(c"END                                     "),
+    );
+    strcat_safe(
+        &mut endkey,
+        cs!(c"                                        "),
+    );
 
     /* check if header is already correctly terminated with END and fill */
     let mut tstatus = 0;
@@ -8894,7 +8923,7 @@ pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
         let mut gotend = false;
         for i in 0..nblank {
             ffgbyt(fptr, 80, cast_slice_mut(&mut rec), status);
-            if strncmp_safe(&rec, cs!("END     "), 8) == 0 {
+            if strncmp_safe(&rec, cs!(c"END     "), 8) == 0 {
                 if gotend {
                     /*   There is a duplicate END record   */
                     *status = BAD_HEADER_FILL;
@@ -9417,7 +9446,7 @@ pub fn ffgidt_safe(
         ffgky_safe(
             fptr,
             crate::KeywordDatatypeMut::TINT(imgtype),
-            cs!("BITPIX"),
+            cs!(c"BITPIX"),
             None,
             status,
         );
@@ -9426,7 +9455,7 @@ pub fn ffgidt_safe(
         ffgky_safe(
             fptr,
             crate::KeywordDatatypeMut::TINT(imgtype),
-            cs!("ZBITPIX"),
+            cs!(c"ZBITPIX"),
             None,
             status,
         );
@@ -9489,7 +9518,7 @@ pub(crate) fn ffgiet_safe(
         ffgky_safe(
             fptr,
             crate::KeywordDatatypeMut::TINT(imgtype),
-            cs!("BITPIX"),
+            cs!(c"BITPIX"),
             None,
             status,
         );
@@ -9498,7 +9527,7 @@ pub(crate) fn ffgiet_safe(
         ffgky_safe(
             fptr,
             crate::KeywordDatatypeMut::TINT(imgtype),
-            cs!("ZBITPIX"),
+            cs!(c"ZBITPIX"),
             None,
             status,
         );
@@ -9510,13 +9539,13 @@ pub(crate) fn ffgiet_safe(
     /* check if the BSCALE and BZERO keywords are defined, which might
     change the effective datatype of the image  */
     tstatus = 0;
-    fits_read_key_dbl(fptr, cs!("BSCALE"), &mut bscale, None, &mut tstatus);
+    fits_read_key_dbl(fptr, cs!(c"BSCALE"), &mut bscale, None, &mut tstatus);
     if tstatus != 0 {
         bscale = 1.0;
     }
 
     tstatus = 0;
-    fits_read_key_dbl(fptr, cs!("BZERO"), &mut bzero, None, &mut tstatus);
+    fits_read_key_dbl(fptr, cs!(c"BZERO"), &mut bzero, None, &mut tstatus);
 
     if tstatus != 0 {
         bzero = 0.0;
@@ -10045,7 +10074,7 @@ pub fn ffmnhd_safe(
         /* Does this HDU have a matching type? */
         if exttype == ANY_HDU || hdutype == exttype || hdutype == alttype {
             ffmaky_safe(fptr, 2, status); /* reset to the 2nd keyword in the header */
-            if ffgkys_safe(fptr, cs!("EXTNAME"), &mut extname, None, &mut tstatus) <= 0 {
+            if ffgkys_safe(fptr, cs!(c"EXTNAME"), &mut extname, None, &mut tstatus) <= 0 {
                 /* get keyword */
                 if putback != 0 {
                     /* more of the kludge */
@@ -10072,7 +10101,7 @@ pub fn ffmnhd_safe(
             /* if EXTNAME keyword doesn't exist, or it does not match, then try HDUNAME */
             if tstatus != 0 || exact == 0 {
                 tstatus = 0;
-                if ffgkys_safe(fptr, cs!("HDUNAME"), &mut extname, None, &mut tstatus) <= 0 {
+                if ffgkys_safe(fptr, cs!(c"HDUNAME"), &mut extname, None, &mut tstatus) <= 0 {
                     if putback != 0 {
                         /* more of the kludge */
                         chopped = 0;
@@ -10100,7 +10129,7 @@ pub fn ffmnhd_safe(
                 if hduver != 0
                 /* need to check if version numbers match? */
                 {
-                    if ffgkyj_safe(fptr, cs!("EXTVER"), &mut extver, None, &mut tstatus) > 0 {
+                    if ffgkyj_safe(fptr, cs!(c"EXTVER"), &mut extver, None, &mut tstatus) > 0 {
                         extver = 1; /* assume default EXTVER value */
                     }
 
@@ -10239,7 +10268,7 @@ pub(crate) fn ffiblk(
         insertpt = 0;
         strcpy_safe(
             &mut card,
-            cs!("XTENSION= 'IMAGE   '          / IMAGE extension"),
+            cs!(c"XTENSION= 'IMAGE   '          / IMAGE extension"),
         );
     } else
     /* at end of data, */
@@ -10429,7 +10458,7 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
     card[0] = 0;
 
     strncat_safe(&mut card, tcard, 8); /* copy the keyword name */
-    strcat_safe(&mut card, cs!("        ")); /* append blanks to make at least 8 chars long */
+    strcat_safe(&mut card, cs!(c"        ")); /* append blanks to make at least 8 chars long */
     ffupch_safe(&mut card); /* make sure it is in upper case */
 
     let card1 = &card[1..]; /* pointer to 2nd character */
@@ -10437,78 +10466,78 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
 
     /* the strncmp function is slow, so try to be more efficient */
     if card[0] == bb(b'Z') {
-        if FSTRNCMP(card1, cs!(b"IMAGE  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"IMAGE  "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"CMPTYPE"), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CMPTYPE"), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"NAME"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"NAME"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_CMPRS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"VAL"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"VAL"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_CMPRS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"TILE"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"TILE"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_CMPRS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"BITPIX "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"BITPIX "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"NAXIS"), 5) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"NAXIS"), 5) == 0 {
             if (card[6] >= bb(b'0') && card[6] <= bb(b'9')) || (card[6] == bb(b' ')) {
                 return TYP_CMPRS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"SCALE  "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"SCALE  "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"ZERO   "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"ZERO   "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"BLANK  "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"BLANK  "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"SIMPLE "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"SIMPLE "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"TENSION"), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"TENSION"), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"EXTEND "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"EXTEND "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"BLOCKED"), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"BLOCKED"), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"PCOUNT "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"PCOUNT "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"GCOUNT "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"GCOUNT "), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"QUANTIZ"), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"QUANTIZ"), 7) == 0 {
             return TYP_CMPRS_KEY;
-        } else if FSTRNCMP(card1, cs!(b"DITHER0"), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DITHER0"), 7) == 0 {
             return TYP_CMPRS_KEY;
         };
     } else if card[0] == bb(b' ') {
         return TYP_COMM_KEY;
     } else if card[0] == bb(b'B') {
-        if FSTRNCMP(card1, cs!(b"ITPIX  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ITPIX  "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"LOCKED "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"LOCKED "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"LANK   "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"LANK   "), 7) == 0 {
             return TYP_NULL_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"SCALE  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"SCALE  "), 7) == 0 {
             return TYP_SCAL_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ZERO   "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ZERO   "), 7) == 0 {
             return TYP_SCAL_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"UNIT   "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"UNIT   "), 7) == 0 {
             return TYP_UNIT_KEY;
         };
     } else if card[0] == bb(b'C') {
         /* new comment string starting Oct 2001 */
-        if FSTRNCMP(card1, cs!(b"OMMENT"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"OMMENT"), 6) == 0 {
             if FSTRNCMP(
                 tcard,
-                cs!(b"COMMENT   and Astrophysics\', volume 376, page 3"),
+                cs!(c"COMMENT   and Astrophysics\', volume 376, page 3"),
                 47,
             ) == 0
             {
@@ -10518,7 +10547,7 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             /* original COMMENT strings from 1993 - 2001 */
             if FSTRNCMP(
                 tcard,
-                cs!(b"COMMENT   FITS (Flexible Image Transport System"),
+                cs!(c"COMMENT   FITS (Flexible Image Transport System"),
                 47,
             ) == 0
             {
@@ -10526,7 +10555,7 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             }
             if FSTRNCMP(
                 tcard,
-                cs!(b"COMMENT   Astrophysics Supplement Series v44/p3"),
+                cs!(c"COMMENT   Astrophysics Supplement Series v44/p3"),
                 47,
             ) == 0
             {
@@ -10534,7 +10563,7 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             }
             if FSTRNCMP(
                 tcard,
-                cs!(b"COMMENT   Contact the NASA Science Office of St"),
+                cs!(c"COMMENT   Contact the NASA Science Office of St"),
                 47,
             ) == 0
             {
@@ -10542,7 +10571,7 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             }
             if FSTRNCMP(
                 tcard,
-                cs!(b"COMMENT   FITS Definition document #100 and oth"),
+                cs!(c"COMMENT   FITS Definition document #100 and oth"),
                 47,
             ) == 0
             {
@@ -10554,41 +10583,41 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
                 return TYP_USER_KEY;
             };
         }
-        if FSTRNCMP(card1, cs!(b"HECKSUM"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"HECKSUM"), 7) == 0 {
             return TYP_CKSUM_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ONTINUE"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ONTINUE"), 7) == 0 {
             return TYP_CONT_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"TYPE"), 4) == 0 {
+        if FSTRNCMP(card1, cs!(c"TYPE"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"UNIT"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"UNIT"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"RVAL"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"RVAL"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"RPIX"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"RPIX"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"ROTA"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"ROTA"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"RDER"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"RDER"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"SYER"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"SYER"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"DELT"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DELT"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
@@ -10596,66 +10625,66 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             return TYP_WCS_KEY;
         };
     } else if card[0] == bb(b'D') {
-        if FSTRNCMP(card1, cs!(b"ATASUM "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ATASUM "), 7) == 0 {
             return TYP_CKSUM_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ATAMIN "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ATAMIN "), 7) == 0 {
             return TYP_RANG_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ATAMAX "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ATAMAX "), 7) == 0 {
             return TYP_RANG_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ATE-OBS"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ATE-OBS"), 7) == 0 {
             return TYP_REFSYS_KEY;
         };
     } else if card[0] == bb(b'E') {
-        if FSTRNCMP(card1, cs!(b"XTEND  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"XTEND  "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ND     "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ND     "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"XTNAME "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"XTNAME "), 7) == 0 {
             /* check for special compressed image value */
-            if FSTRNCMP(tcard, cs!(b"EXTNAME = \'COMPRESSED_IMAGE\'"), 28) == 0 {
+            if FSTRNCMP(tcard, cs!(c"EXTNAME = \'COMPRESSED_IMAGE\'"), 28) == 0 {
                 return TYP_CMPRS_KEY;
             } else {
                 return TYP_HDUID_KEY;
             };
         }
-        if FSTRNCMP(card1, cs!(b"XTVER  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"XTVER  "), 7) == 0 {
             return TYP_HDUID_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"XTLEVEL"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"XTLEVEL"), 7) == 0 {
             return TYP_HDUID_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"QUINOX"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"QUINOX"), 6) == 0 {
             return TYP_REFSYS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"QUI"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+        if FSTRNCMP(card1, cs!(c"QUI"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
             return TYP_REFSYS_KEY;
         };
-        if FSTRNCMP(card1, cs!(b"POCH   "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"POCH   "), 7) == 0 {
             return TYP_REFSYS_KEY;
         };
     } else if card[0] == bb(b'G') {
-        if FSTRNCMP(card1, cs!(b"COUNT  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"COUNT  "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ROUPS  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ROUPS  "), 7) == 0 {
             return TYP_STRUC_KEY;
         };
     } else if card[0] == bb(b'H') {
-        if FSTRNCMP(card1, cs!(b"DUNAME "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"DUNAME "), 7) == 0 {
             return TYP_HDUID_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"DUVER  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"DUVER  "), 7) == 0 {
             return TYP_HDUID_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"DULEVEL"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"DULEVEL"), 7) == 0 {
             return TYP_HDUID_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ISTORY"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"ISTORY"), 6) == 0 {
             if card[7] == bb(b' ') {
                 return TYP_COMM_KEY;
             } else {
@@ -10663,35 +10692,35 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             };
         };
     } else if card[0] == bb(b'L') {
-        if FSTRNCMP(card1, cs!(b"ONPOLE"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"ONPOLE"), 6) == 0 {
             return TYP_WCS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ATPOLE"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"ATPOLE"), 6) == 0 {
             return TYP_WCS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ONP"), 3) == 0 {
+        if FSTRNCMP(card1, cs!(c"ONP"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"ATP"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
+        } else if FSTRNCMP(card1, cs!(c"ATP"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
         {
             return TYP_WCS_KEY;
         };
     } else if card[0] == bb(b'M') {
-        if FSTRNCMP(card1, cs!(b"JD-OBS "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"JD-OBS "), 7) == 0 {
             return TYP_REFSYS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"JDOB"), 4) == 0 && card[5] >= bb(b'0') && card[5] <= bb(b'9') {
+        if FSTRNCMP(card1, cs!(c"JDOB"), 4) == 0 && card[5] >= bb(b'0') && card[5] <= bb(b'9') {
             return TYP_REFSYS_KEY;
         };
     } else if card[0] == bb(b'N') {
-        if FSTRNCMP(card1, cs!(b"AXIS"), 4) == 0
+        if FSTRNCMP(card1, cs!(c"AXIS"), 4) == 0
             && ((card5 >= bb(b'0') && card5 <= bb(b'9')) || (card5 == bb(b' ')))
         {
             return TYP_STRUC_KEY;
         };
     } else if card[0] == bb(b'P') {
-        if FSTRNCMP(card1, cs!(b"COUNT  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"COUNT  "), 7) == 0 {
             return TYP_STRUC_KEY;
         }
         if card1[0] == bb(b'C') {
@@ -10706,227 +10735,227 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
             return TYP_WCS_KEY;
         };
     } else if card[0] == bb(b'R') {
-        if FSTRNCMP(card1, cs!(b"ADECSYS"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"ADECSYS"), 7) == 0 {
             return TYP_REFSYS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ADESYS"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"ADESYS"), 6) == 0 {
             return TYP_REFSYS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"ADE"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
+        if FSTRNCMP(card1, cs!(c"ADE"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9') {
             return TYP_REFSYS_KEY;
         };
     } else if card[0] == bb(b'S') {
-        if FSTRNCMP(card1, cs!(b"IMPLE  "), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"IMPLE  "), 7) == 0 {
             return TYP_STRUC_KEY;
         };
     } else if card[0] == bb(b'T') {
-        if FSTRNCMP(card1, cs!(b"TYPE"), 4) == 0 {
+        if FSTRNCMP(card1, cs!(c"TYPE"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_STRUC_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"FORM"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"FORM"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_STRUC_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"BCOL"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"BCOL"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_STRUC_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"FIELDS "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"FIELDS "), 7) == 0 {
             return TYP_STRUC_KEY;
-        } else if FSTRNCMP(card1, cs!(b"HEAP   "), 7) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"HEAP   "), 7) == 0 {
             return TYP_STRUC_KEY;
-        } else if FSTRNCMP(card1, cs!(b"NULL"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"NULL"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_NULL_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"DIM"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DIM"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_DIM_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"UNIT"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"UNIT"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_UNIT_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"DISP"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DISP"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_DISP_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"SCAL"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"SCAL"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_SCAL_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"ZERO"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"ZERO"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_SCAL_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"LMIN"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"LMIN"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_RANG_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"LMAX"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"LMAX"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_RANG_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"DMIN"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DMIN"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_RANG_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"DMAX"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"DMAX"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_RANG_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CTYP"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CTYP"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CTY"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CTY"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CUNI"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CUNI"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CUN"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CUN"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CRVL"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CRVL"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CRV"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CRV"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CRPX"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CRPX"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CRP"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CRP"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CROT"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CROT"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CDLT"), 4) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CDLT"), 4) == 0 {
             if card5 >= bb(b'0') && card5 <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CDE"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CDE"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CRD"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CRD"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CSY"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"CSY"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"WCS"), 3) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"WCS"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"C"), 1) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"C"), 1) == 0 {
             if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"P"), 1) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"P"), 1) == 0 {
             if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"V"), 1) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"V"), 1) == 0 {
             if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"S"), 1) == 0 && card[2] >= bb(b'0') && card[2] <= bb(b'9') {
+        } else if FSTRNCMP(card1, cs!(c"S"), 1) == 0 && card[2] >= bb(b'0') && card[2] <= bb(b'9') {
             return TYP_WCS_KEY;
         };
     } else if card[0] == bb(b'X') {
-        if FSTRNCMP(card1, cs!(b"TENSION"), 7) == 0 {
+        if FSTRNCMP(card1, cs!(c"TENSION"), 7) == 0 {
             return TYP_STRUC_KEY;
         };
     } else if card[0] == bb(b'W') {
-        if FSTRNCMP(card1, cs!(b"CSAXES"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"CSAXES"), 6) == 0 {
             return TYP_WCS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"CSNAME"), 6) == 0 {
+        if FSTRNCMP(card1, cs!(c"CSNAME"), 6) == 0 {
             return TYP_WCS_KEY;
         }
-        if FSTRNCMP(card1, cs!(b"CAX"), 3) == 0 {
+        if FSTRNCMP(card1, cs!(c"CAX"), 3) == 0 {
             if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"CSN"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
+        } else if FSTRNCMP(card1, cs!(c"CSN"), 3) == 0 && card[4] >= bb(b'0') && card[4] <= bb(b'9')
         {
             return TYP_WCS_KEY;
         };
     } else if card[0] >= bb(b'0') && card[0] <= bb(b'9') {
         if card1[0] == bb(b'C') {
-            if FSTRNCMP(card1, cs!(b"CTYP"), 4) == 0 {
+            if FSTRNCMP(card1, cs!(c"CTYP"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CTY"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CTY"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CUNI"), 4) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CUNI"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CUN"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CUN"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CRVL"), 4) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CRVL"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CRV"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CRV"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CRPX"), 4) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CRPX"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CRP"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CRP"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CROT"), 4) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CROT"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CDLT"), 4) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CDLT"), 4) == 0 {
                 if card5 >= bb(b'0') && card5 <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CDE"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CDE"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CRD"), 3) == 0 {
+            } else if FSTRNCMP(card1, cs!(c"CRD"), 3) == 0 {
                 if card[4] >= bb(b'0') && card[4] <= bb(b'9') {
                     return TYP_WCS_KEY;
                 };
-            } else if FSTRNCMP(card1, cs!(b"CSY"), 3) == 0
+            } else if FSTRNCMP(card1, cs!(c"CSY"), 3) == 0
                 && card[4] >= bb(b'0')
                 && card[4] <= bb(b'9')
             {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"V"), 1) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"V"), 1) == 0 {
             if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
-        } else if FSTRNCMP(card1, cs!(b"S"), 1) == 0 {
+        } else if FSTRNCMP(card1, cs!(c"S"), 1) == 0 {
             if card[2] >= bb(b'0') && card[2] <= bb(b'9') {
                 return TYP_WCS_KEY;
             };
@@ -11090,37 +11119,37 @@ pub unsafe extern "C" fn ffinttyp(
             *status = BAD_INTKEY;
         } else if (*negative) == 0 {
             if len == 3 {
-                if strcmp_safe(&cval[p..], cs!(b"127")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"127")) <= 0 {
                     *dtype = TSBYTE;
-                } else if strcmp_safe(&cval[p..], cs!(b"255")) <= 0 {
+                } else if strcmp_safe(&cval[p..], cs!(c"255")) <= 0 {
                     *dtype = TBYTE;
                 } else {
                     *dtype = TSHORT;
                 };
             } else if len == 5 {
-                if strcmp_safe(&cval[p..], cs!(b"32767")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"32767")) <= 0 {
                     *dtype = TSHORT;
-                } else if strcmp_safe(&cval[p..], cs!(b"65535")) <= 0 {
+                } else if strcmp_safe(&cval[p..], cs!(c"65535")) <= 0 {
                     *dtype = TUSHORT;
                 } else {
                     *dtype = TINT;
                 };
             } else if len == 10 {
-                if strcmp_safe(&cval[p..], cs!(b"2147483647")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"2147483647")) <= 0 {
                     *dtype = TINT;
-                } else if strcmp_safe(&cval[p..], cs!(b"4294967295")) <= 0 {
+                } else if strcmp_safe(&cval[p..], cs!(c"4294967295")) <= 0 {
                     *dtype = TUINT;
                 } else {
                     *dtype = TLONGLONG;
                 };
             } else if len == 19 {
-                if strcmp_safe(&cval[p..], cs!(b"9223372036854775807")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"9223372036854775807")) <= 0 {
                     *dtype = TLONGLONG;
                 } else {
                     *dtype = TULONGLONG;
                 };
             } else if len == 20 {
-                if strcmp_safe(&cval[p..], cs!(b"18446744073709551615")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"18446744073709551615")) <= 0 {
                     *dtype = TULONGLONG;
                 } else {
                     *status = BAD_INTKEY;
@@ -11130,25 +11159,25 @@ pub unsafe extern "C" fn ffinttyp(
             /* negative integers */
 
             if len == 3 {
-                if strcmp_safe(&cval[p..], cs!(b"128")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"128")) <= 0 {
                     *dtype = TSBYTE;
                 } else {
                     *dtype = TSHORT;
                 };
             } else if len == 5 {
-                if strcmp_safe(&cval[p..], cs!(b"32768")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"32768")) <= 0 {
                     *dtype = TSHORT;
                 } else {
                     *dtype = TINT;
                 };
             } else if len == 10 {
-                if strcmp_safe(&cval[p..], cs!(b"2147483648")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"2147483648")) <= 0 {
                     *dtype = TINT;
                 } else {
                     *dtype = TLONGLONG;
                 };
             } else if len == 19 {
-                if strcmp_safe(&cval[p..], cs!(b"9223372036854775808")) <= 0 {
+                if strcmp_safe(&cval[p..], cs!(c"9223372036854775808")) <= 0 {
                     *dtype = TLONGLONG;
                 } else {
                     *status = BAD_INTKEY;
@@ -11298,7 +11327,7 @@ pub(crate) fn ffc2i(
 
         strcpy_safe(
             &mut msg,
-            cs!("Error in ffc2i evaluating string as an integer: "),
+            cs!(c"Error in ffc2i evaluating string as an integer: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11363,7 +11392,7 @@ pub(crate) fn ffc2j(
         *ival = 0;
         strcpy_safe(
             &mut msg,
-            cs!("Error in ffc2j evaluating string as a long integer: "),
+            cs!(c"Error in ffc2j evaluating string as a long integer: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11428,7 +11457,7 @@ pub(crate) fn ffc2uj(
         *ival = 0;
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2j evaluating string as a long integer: "),
+            cs!(c"Error in ffc2j evaluating string as a long integer: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11477,7 +11506,7 @@ pub(crate) fn ffc2l(
         *lval = 0;
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2l evaluating string as a logical: "),
+            cs!(c"Error in ffc2l evaluating string as a logical: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11543,7 +11572,7 @@ pub(crate) fn ffc2r(
         *fval = 0.0;
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2r evaluating string as a float: "),
+            cs!(c"Error in ffc2r evaluating string as a float: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11595,7 +11624,7 @@ pub(crate) fn ffc2d(
         *dval = 0.0;
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2d evaluating string as a double: "),
+            cs!(c"Error in ffc2d evaluating string as a double: "),
         );
 
         strncat_safe(&mut msg, cval, 30);
@@ -11641,7 +11670,7 @@ pub(crate) fn ffc2ii(
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
-                    cs!("Range Error in ffc2ii converting string to long int: "),
+                    cs!(c"Range Error in ffc2ii converting string to long int: "),
                 );
                 strncat_safe(&mut msg, cast_slice(cval), 25);
                 ffpmsg_slice(&msg);
@@ -11691,7 +11720,7 @@ pub(crate) fn ffc2jj(
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
-                    cs!("Range Error in ffc2jj converting string to longlong int: "),
+                    cs!(c"Range Error in ffc2jj converting string to longlong int: "),
                 );
                 strncat_safe(&mut msg, cast_slice(cval), 25);
                 ffpmsg_slice(&msg);
@@ -11741,7 +11770,7 @@ pub(crate) fn ffc2ujj(
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
-                    cs!("Range Error in ffc2ujj converting string to unsigned longlong int: "),
+                    cs!(c"Range Error in ffc2ujj converting string to unsigned longlong int: "),
                 );
                 strncat_safe(&mut msg, cast_slice(cval), 25);
                 ffpmsg_slice(&msg);
@@ -11873,7 +11902,7 @@ pub(crate) fn ffc2rr(
     if strchr_safe(cval, bb(b'D')).is_some() || decimalpt == bb(b',') {
         /* need to modify a temporary copy of the string before parsing it */
         if strlen_safe(cval) > 72 {
-            strcpy_safe(&mut msg, cs!(b"Error: Invalid string to float in ffc2rr"));
+            strcpy_safe(&mut msg, cs!(c"Error: Invalid string to float in ffc2rr"));
             ffpmsg_slice(&msg);
             *status = BAD_C2F;
             return *status;
@@ -11918,7 +11947,7 @@ pub(crate) fn ffc2rr(
         Err(err) => {
             strcpy_safe(
                 &mut msg,
-                cs!(b"Error in ffc2rr converting string to float: "),
+                cs!(c"Error in ffc2rr converting string to float: "),
             );
             strncat_safe(&mut msg, cval, 30);
             ffpmsg_slice(&msg);
@@ -11940,7 +11969,7 @@ pub(crate) fn ffc2rr(
     if iret == 1 {
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2rr converting string to float: "),
+            cs!(c"Error in ffc2rr converting string to float: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);
@@ -11977,7 +12006,7 @@ pub(crate) fn ffc2dd(
     if strchr_safe(cval, bb(b'D')).is_some() || decimalpt == bb(b',') {
         /* need to modify a temporary copy of the string before parsing it */
         if strlen_safe(cval) > 72 {
-            strcpy_safe(&mut msg, cs!(b"Error: Invalid string to double in ffc2dd"));
+            strcpy_safe(&mut msg, cs!(c"Error: Invalid string to double in ffc2dd"));
             ffpmsg_slice(&msg);
             *status = BAD_C2D;
             return *status;
@@ -12022,7 +12051,7 @@ pub(crate) fn ffc2dd(
         Err(err) => {
             strcpy_safe(
                 &mut msg,
-                cs!(b"Error in ffc2dd converting string to double: "),
+                cs!(c"Error in ffc2dd converting string to double: "),
             );
             strncat_safe(&mut msg, cval, 30);
             ffpmsg_slice(&msg);
@@ -12044,7 +12073,7 @@ pub(crate) fn ffc2dd(
     if iret == 1 {
         strcpy_safe(
             &mut msg,
-            cs!(b"Error in ffc2dd converting string to double: "),
+            cs!(c"Error in ffc2dd converting string to double: "),
         );
         strncat_safe(&mut msg, cval, 30);
         ffpmsg_slice(&msg);

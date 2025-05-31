@@ -172,7 +172,7 @@ macro_rules! slice_to_str {
 #[macro_export]
 macro_rules! cs {
     ($e: expr) => {
-        cast_slice(cstr!($e).to_bytes_with_nul())
+        cast_slice($e.to_bytes_with_nul())
     };
 }
 
@@ -653,7 +653,6 @@ mod tests {
     use crate::{aliases::ffclos_safer, cs};
     use bytemuck::cast_slice;
     use cfileio::ffinit_safer;
-    use cstr::cstr;
 
     use putkey::ffcrim_safer;
     use tempfile::Builder;
@@ -735,8 +734,8 @@ mod tests {
                 fits_update_key(
                     &mut fptr,
                     KeywordDatatype::TLONG(&exposure),
-                    cs!("EXPOSURE"),
-                    Some(cs!("Total Exposure Time")),
+                    cs!(c"EXPOSURE"),
+                    Some(cs!(c"Total Exposure Time")),
                     &mut status,
                 );
                 assert_eq!(status, 0);

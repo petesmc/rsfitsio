@@ -14,7 +14,6 @@ use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_v
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::aliases::ffclos_safer;
 use crate::cfileio::MAX_PREFIX_LEN;
@@ -135,9 +134,9 @@ pub(crate) fn mem_create_comp_unsafe(
 
         /* first, create disk file for the compressed output */
 
-        if strcmp_safe(filename, cs!("-.gz")) == 0
-            || strcmp_safe(filename, cs!("stdout.gz")) == 0
-            || strcmp_safe(filename, cs!("STDOUT.gz")) == 0
+        if strcmp_safe(filename, cs!(c"-.gz")) == 0
+            || strcmp_safe(filename, cs!(c"stdout.gz")) == 0
+            || strcmp_safe(filename, cs!(c"STDOUT.gz")) == 0
         {
             /* special case: create uncompressed FITS file in memory, then
             compress it an write it out to 'stdout' when it is closed.  */
@@ -146,7 +145,7 @@ pub(crate) fn mem_create_comp_unsafe(
         } else {
             /* normal case: create disk file for the compressed output */
 
-            strcpy_safe(&mut mode, cs!("w+b")); /* create file with read-write */
+            strcpy_safe(&mut mode, cs!(c"w+b")); /* create file with read-write */
 
             let filename_str = CStr::from_bytes_until_nul(cast_slice(filename))
                 .unwrap()
@@ -161,7 +160,7 @@ pub(crate) fn mem_create_comp_unsafe(
                 /* specify VMS record structure: fixed format, 2880 byte records */
                 /* but force stream mode access to enable random I/O access      */
                 todo!();
-                // diskfile = fopen(filename.as_ptr(), mode, cstr!("rfm=fix").as_ptr(), cstr!("mrs=2880).as_ptr()"), cstr!("ctx=stm").as_ptr());
+                // diskfile = fopen(filename.as_ptr(), mode, (c"rfm=fix").as_ptr(), (c"mrs=2880).as_ptr()"), (c"ctx=stm").as_ptr());
             } else {
                 diskfile = fopen(filename.as_ptr(), mode.as_ptr());
             }
@@ -324,7 +323,7 @@ pub(crate) fn stdin_checkfile(
     if strlen_safe(outfile) > 0 {
         s[0] = 0;
         strncat_safe(&mut s[..], outfile, FLEN_FILENAME - 1); /* an output file is specified */
-        strcpy_safe(urltype, cs!("stdinfile://"));
+        strcpy_safe(urltype, cs!(c"stdinfile://"));
     } else {
         s[0] = 0; /* no output file was specified */
     }
@@ -1139,7 +1138,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
 
         let mut m = MEM_TABLE.lock().unwrap();
 
-        if strstr_safe(filename, cs!(".Z")).is_some() {
+        if strstr_safe(filename, cs!(c".Z")).is_some() {
             todo!();
             /*
             zuncompress2mem(
@@ -1152,7 +1151,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
                 &status,  /* returned file size and status*/
             );
             */
-        } else if strstr_safe(filename, cs!(".bz2")).is_some() {
+        } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
             #[cfg(feature = "bzip2")]
             bzip2uncompress2mem(filename, diskfile, hdl, &mut finalsize, &mut status);
         } else {
@@ -1453,21 +1452,21 @@ pub(crate) unsafe fn bzip2uncompress2mem(
                 total_read += nread as usize;
             } else {
                 if bzerror == BZ_IO_ERROR {
-                    strcpy_safe(&mut errormsg, cs!("failed to read bzip2 file: I/O error"));
+                    strcpy_safe(&mut errormsg, cs!(c"failed to read bzip2 file: I/O error"));
                 } else if bzerror == BZ_UNEXPECTED_EOF {
                     strcpy_safe(
                         &mut errormsg,
-                        cs!("failed to read bzip2 file: unexpected end-of-file"),
+                        cs!(c"failed to read bzip2 file: unexpected end-of-file"),
                     );
                 } else if bzerror == BZ_DATA_ERROR {
                     strcpy_safe(
                         &mut errormsg,
-                        cs!(b"failed to read bzip2 file: data integrity error"),
+                        cs!(c"failed to read bzip2 file: data integrity error"),
                     );
                 } else if bzerror == BZ_MEM_ERROR {
                     strcpy_safe(
                         &mut errormsg,
-                        cs!("failed to read bzip2 file: insufficient memory"),
+                        cs!(c"failed to read bzip2 file: insufficient memory"),
                     );
                 }
             }

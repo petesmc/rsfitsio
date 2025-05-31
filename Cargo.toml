@@ -31,7 +31,6 @@ shared_mem= []
 libz-rs-sys = { version = "0.5" }
 libbz2-rs-sys = { version = "0.2", optional = true}
 libc="0.2"
-cstr="0.2"
 errno=">=0.3.12"
 bytemuck = "1.22"
 tempfile = "3.19"

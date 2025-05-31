@@ -4,7 +4,6 @@ use std::ptr;
 use crate::c_types::*;
 
 use bytemuck::cast_slice;
-use cstr::cstr;
 
 use crate::aliases::ffdelt_safer;
 use crate::cfileio::ffinit_safer;
@@ -391,49 +390,49 @@ pub(crate) fn ffgics_safe(
     }
 
     tstat = 0;
-    if ffgkyd_safe(fptr, cs!("CRVAL1"), xrval, None, &mut tstat) != 0 {
+    if ffgkyd_safe(fptr, cs!(c"CRVAL1"), xrval, None, &mut tstat) != 0 {
         *xrval = 0.0;
     }
 
     tstat = 0;
-    if ffgkyd_safe(fptr, cs!("CRVAL2"), yrval, None, &mut tstat) != 0 {
+    if ffgkyd_safe(fptr, cs!(c"CRVAL2"), yrval, None, &mut tstat) != 0 {
         *yrval = 0.0;
     }
 
     tstat = 0;
-    if ffgkyd_safe(fptr, cs!("CRPIX1"), xrpix, None, &mut tstat) != 0 {
+    if ffgkyd_safe(fptr, cs!(c"CRPIX1"), xrpix, None, &mut tstat) != 0 {
         *xrpix = 0.0;
     }
 
     tstat = 0;
-    if ffgkyd_safe(fptr, cs!("CRPIX2"), yrpix, None, &mut tstat) != 0 {
+    if ffgkyd_safe(fptr, cs!(c"CRPIX2"), yrpix, None, &mut tstat) != 0 {
         *yrpix = 0.0;
     }
 
     /* look for CDELTn first, then CDi_j keywords */
     tstat = 0;
-    if ffgkyd_safe(fptr, cs!("CDELT1"), xinc, None, &mut tstat) != 0 {
+    if ffgkyd_safe(fptr, cs!(c"CDELT1"), xinc, None, &mut tstat) != 0 {
         /* CASE 1: no CDELTn keyword, so look for the CD matrix */
         tstat = 0;
-        if ffgkyd_safe(fptr, cs!("CD1_1"), &mut cd11, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CD1_1"), &mut cd11, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
         } else {
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        if ffgkyd_safe(fptr, cs!("CD2_1"), &mut cd21, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CD2_1"), &mut cd21, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
         } else {
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        if ffgkyd_safe(fptr, cs!("CD1_2"), &mut cd12, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CD1_2"), &mut cd12, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
         } else {
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        if ffgkyd_safe(fptr, cs!("CD2_2"), &mut cd22, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CD2_2"), &mut cd22, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
         } else {
             cd_exists = true; /* found at least 1 CD_ keyword */
@@ -487,46 +486,46 @@ pub(crate) fn ffgics_safe(
 
             /* there was no CDELT1 keyword, but check for CDELT2 just in case */
             tstat = 0;
-            if ffgkyd_safe(fptr, cs!("CDELT2"), yinc, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"CDELT2"), yinc, None, &mut tstat) != 0 {
                 *yinc = 1.;
             }
 
             tstat = 0;
-            if ffgkyd_safe(fptr, cs!("CROTA2"), rot, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"CROTA2"), rot, None, &mut tstat) != 0 {
                 *rot = 0.0;
             }
         }
     } else {
         /* Case 2: CDELTn + optional PC matrix */
-        if ffgkyd_safe(fptr, cs!("CDELT2"), yinc, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CDELT2"), yinc, None, &mut tstat) != 0 {
             *yinc = 1.;
         }
 
         tstat = 0;
-        if ffgkyd_safe(fptr, cs!("CROTA2"), rot, None, &mut tstat) != 0 {
+        if ffgkyd_safe(fptr, cs!(c"CROTA2"), rot, None, &mut tstat) != 0 {
             *rot = 0.0;
 
             /* no CROTA2 keyword, so look for the PC matrix */
             tstat = 0;
-            if ffgkyd_safe(fptr, cs!("PC1_1"), &mut pc11, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"PC1_1"), &mut pc11, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
             } else {
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            if ffgkyd_safe(fptr, cs!("PC2_1"), &mut pc21, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"PC2_1"), &mut pc21, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
             } else {
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            if ffgkyd_safe(fptr, cs!("PC1_2"), &mut pc12, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"PC1_2"), &mut pc12, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
             } else {
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            if ffgkyd_safe(fptr, cs!("PC2_2"), &mut pc22, None, &mut tstat) != 0 {
+            if ffgkyd_safe(fptr, cs!(c"PC2_2"), &mut pc22, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
             } else {
                 pc_exists = true; /* found at least 1 PC_ keyword */
@@ -568,7 +567,7 @@ pub(crate) fn ffgics_safe(
 
     /* get the type of projection, if any */
     tstat = 0;
-    if ffgkys_safe(fptr, cs!("CTYPE1"), &mut ctype, None, &mut tstat) != 0 {
+    if ffgkys_safe(fptr, cs!(c"CTYPE1"), &mut ctype, None, &mut tstat) != 0 {
         (*ptype)[0] = 0;
     } else {
         /* copy the projection type string */
@@ -576,8 +575,8 @@ pub(crate) fn ffgics_safe(
         (*ptype)[4] = 0;
 
         /* check if RA and DEC are inverted */
-        if strncmp_safe(&ctype, cs!("DEC-"), 4) == 0
-            || strncmp_safe(&ctype[1..], cs!("LAT"), 3) == 0
+        if strncmp_safe(&ctype, cs!(c"DEC-"), 4) == 0
+            || strncmp_safe(&ctype[1..], cs!(c"LAT"), 3) == 0
         {
             /* the latitudinal axis is given first, so swap them */
 
@@ -712,28 +711,28 @@ pub(crate) fn ffgicsa_safe(
     alt[1] = 0;
 
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CRVAL1"));
+    strcpy_safe(&mut keyname, cs!(c"CRVAL1"));
     strcat_safe(&mut keyname, &alt);
     if ffgkyd_safe(fptr, &keyname, xrval, None, &mut tstat) != 0 {
         *xrval = 0.0;
     }
 
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CRVAL2"));
+    strcpy_safe(&mut keyname, cs!(c"CRVAL2"));
     strcat_safe(&mut keyname, &alt);
     if ffgkyd_safe(fptr, &keyname, yrval, None, &mut tstat) != 0 {
         *yrval = 0.0;
     }
 
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CRPIX1"));
+    strcpy_safe(&mut keyname, cs!(c"CRPIX1"));
     strcat_safe(&mut keyname, &alt);
     if ffgkyd_safe(fptr, &keyname, xrpix, None, &mut tstat) != 0 {
         *xrpix = 0.0;
     }
 
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CRPIX2"));
+    strcpy_safe(&mut keyname, cs!(c"CRPIX2"));
     strcat_safe(&mut keyname, &alt);
     if ffgkyd_safe(fptr, &keyname, yrpix, None, &mut tstat) != 0 {
         *yrpix = 0.0;
@@ -741,12 +740,12 @@ pub(crate) fn ffgicsa_safe(
 
     /* look for CDELTn first, then CDi_j keywords */
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CDELT1"));
+    strcpy_safe(&mut keyname, cs!(c"CDELT1"));
     strcat_safe(&mut keyname, &alt);
     if ffgkyd_safe(fptr, &keyname, xinc, None, &mut tstat) != 0 {
         /* CASE 1: no CDELTn keyword, so look for the CD matrix */
         tstat = 0;
-        strcpy_safe(&mut keyname, cs!("CD1_1"));
+        strcpy_safe(&mut keyname, cs!(c"CD1_1"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, &mut cd11, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
@@ -754,7 +753,7 @@ pub(crate) fn ffgicsa_safe(
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        strcpy_safe(&mut keyname, cs!("CD2_1"));
+        strcpy_safe(&mut keyname, cs!(c"CD2_1"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, &mut cd21, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
@@ -762,7 +761,7 @@ pub(crate) fn ffgicsa_safe(
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        strcpy_safe(&mut keyname, cs!("CD1_2"));
+        strcpy_safe(&mut keyname, cs!(c"CD1_2"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, &mut cd12, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
@@ -770,7 +769,7 @@ pub(crate) fn ffgicsa_safe(
             cd_exists = true; /* found at least 1 CD_ keyword */
         }
 
-        strcpy_safe(&mut keyname, cs!("CD2_2"));
+        strcpy_safe(&mut keyname, cs!(c"CD2_2"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, &mut cd22, None, &mut tstat) != 0 {
             tstat = 0; /* reset keyword not found error */
@@ -827,14 +826,14 @@ pub(crate) fn ffgicsa_safe(
 
             /* there was no CDELT1 keyword, but check for CDELT2 just in case */
             tstat = 0;
-            strcpy_safe(&mut keyname, cs!("CDELT2"));
+            strcpy_safe(&mut keyname, cs!(c"CDELT2"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, yinc, None, &mut tstat) != 0 {
                 *yinc = 1.;
             }
 
             tstat = 0;
-            strcpy_safe(&mut keyname, cs!("CROTA2"));
+            strcpy_safe(&mut keyname, cs!(c"CROTA2"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, rot, None, &mut tstat) != 0 {
                 *rot = 0.0;
@@ -843,21 +842,21 @@ pub(crate) fn ffgicsa_safe(
     } else {
         /* Case 2: CDELTn + optional PC matrix */
 
-        strcpy_safe(&mut keyname, cs!("CDELT2"));
+        strcpy_safe(&mut keyname, cs!(c"CDELT2"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, yinc, None, &mut tstat) != 0 {
             *yinc = 1.;
         }
 
         tstat = 0;
-        strcpy_safe(&mut keyname, cs!("CROTA2"));
+        strcpy_safe(&mut keyname, cs!(c"CROTA2"));
         strcat_safe(&mut keyname, &alt);
         if ffgkyd_safe(fptr, &keyname, rot, None, &mut tstat) != 0 {
             *rot = 0.0;
 
             /* no CROTA2 keyword, so look for the PC matrix */
             tstat = 0;
-            strcpy_safe(&mut keyname, cs!("PC1_1"));
+            strcpy_safe(&mut keyname, cs!(c"PC1_1"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, &mut pc11, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
@@ -865,7 +864,7 @@ pub(crate) fn ffgicsa_safe(
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            strcpy_safe(&mut keyname, cs!("PC2_1"));
+            strcpy_safe(&mut keyname, cs!(c"PC2_1"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, &mut pc21, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
@@ -873,7 +872,7 @@ pub(crate) fn ffgicsa_safe(
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            strcpy_safe(&mut keyname, cs!("PC1_2"));
+            strcpy_safe(&mut keyname, cs!(c"PC1_2"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, &mut pc12, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
@@ -881,7 +880,7 @@ pub(crate) fn ffgicsa_safe(
                 pc_exists = true; /* found at least 1 PC_ keyword */
             }
 
-            strcpy_safe(&mut keyname, cs!("PC2_2"));
+            strcpy_safe(&mut keyname, cs!(c"PC2_2"));
             strcat_safe(&mut keyname, &alt);
             if ffgkyd_safe(fptr, &keyname, &mut pc22, None, &mut tstat) != 0 {
                 tstat = 0; /* reset keyword not found error */
@@ -925,7 +924,7 @@ pub(crate) fn ffgicsa_safe(
 
     /* get the type of projection, if any */
     tstat = 0;
-    strcpy_safe(&mut keyname, cs!("CTYPE1"));
+    strcpy_safe(&mut keyname, cs!(c"CTYPE1"));
     strcat_safe(&mut keyname, &alt);
     if ffgkys_safe(fptr, &keyname, &mut ctype, None, &mut tstat) != 0 {
         ptype[0] = 0;
@@ -935,8 +934,8 @@ pub(crate) fn ffgicsa_safe(
         ptype[4] = 0;
 
         /* check if RA and DEC are inverted */
-        if strncmp_safe(&ctype, cs!("DEC-"), 4) == 0
-            || strncmp_safe(&ctype[1..], cs!("LAT"), 3) == 0
+        if strncmp_safe(&ctype, cs!(c"DEC-"), 4) == 0
+            || strncmp_safe(&ctype[1..], cs!(c"LAT"), 3) == 0
         {
             /* the latitudinal axis is given first, so swap them */
 
@@ -1034,7 +1033,7 @@ pub(crate) unsafe fn ffgtcs_safer(
         naxes[1] = 10;
 
         /* create temporary  FITS file, in memory */
-        ffinit_safer(&mut tptr, cs!("mem://"), status);
+        ffinit_safer(&mut tptr, cs!(c"mem://"), status);
 
         let mut tptr = tptr.unwrap();
 
@@ -1171,11 +1170,11 @@ pub(crate) fn ffgtwcs_safe(
     comm[0] = 0;
 
     tstatus = 0;
-    ffkeyn_safe(cs!("TLMIN"), xcol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TLMIN"), xcol, &mut keyname, status);
     ffgkyj_safe(fptr, &keyname, &mut tlmin, None, &mut tstatus);
 
     if tstatus == 0 {
-        ffkeyn_safe(cs!("TLMAX"), xcol, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TLMAX"), xcol, &mut keyname, status);
         ffgkyj_safe(fptr, &keyname, &mut tlmax, None, &mut tstatus);
     }
 
@@ -1184,11 +1183,11 @@ pub(crate) fn ffgtwcs_safe(
     }
 
     tstatus = 0;
-    ffkeyn_safe(cs!("TLMIN"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TLMIN"), ycol, &mut keyname, status);
     ffgkyj_safe(fptr, &keyname, &mut tlmin, None, &mut tstatus);
 
     if tstatus == 0 {
-        ffkeyn_safe(cs!("TLMAX"), ycol, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TLMAX"), ycol, &mut keyname, status);
         ffgkyj_safe(fptr, &keyname, &mut tlmax, None, &mut tstatus);
     }
 
@@ -1197,13 +1196,13 @@ pub(crate) fn ffgtwcs_safe(
     }
 
     /*            123456789012345678901234567890    */
-    strcat_safe(&mut hdr[cptr..], cs!("NAXIS   =                    2"));
+    strcat_safe(&mut hdr[cptr..], cs!(c"NAXIS   =                    2"));
     strncat_safe(&mut hdr[cptr..], blanks, 50);
     cptr += 80;
 
     ffi2c(naxis1, &mut valstring, status); /* convert to formatted string */
     ffmkky_safe(
-        cs!("NAXIS1"),
+        cs!(c"NAXIS1"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1212,7 +1211,7 @@ pub(crate) fn ffgtwcs_safe(
     strncat_safe(&mut hdr[cptr..], blanks, 50); /* pad with blanks */
     cptr += 80;
 
-    strcpy_safe(&mut keyname, cs!("NAXIS2"));
+    strcpy_safe(&mut keyname, cs!(c"NAXIS2"));
     ffi2c(naxis2, &mut valstring, status); /* convert to formatted string */
     ffmkky_safe(&keyname, &valstring, Some(&comm), &mut hdr[cptr..], status); /* construct the keyword*/
     strncat_safe(&mut hdr[cptr..], blanks, 50); /* pad with blanks */
@@ -1222,12 +1221,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CTYPE1 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCTYP"), xcol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCTYP"), xcol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
         valstring[0] = 0;
     }
     ffmkky_safe(
-        cs!("CTYPE1"),
+        cs!(c"CTYPE1"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1239,12 +1238,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CTYPE2 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCTYP"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCTYP"), ycol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
         valstring[0] = 0;
     }
     ffmkky_safe(
-        cs!("CTYPE2"),
+        cs!(c"CTYPE2"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1256,12 +1255,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CRPIX1 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCRPX"), xcol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCRPX"), xcol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CRPIX1"),
+        cs!(c"CRPIX1"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1272,12 +1271,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CRPIX2 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCRPX"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCRPX"), ycol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CRPIX2"),
+        cs!(c"CRPIX2"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1288,12 +1287,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CRVAL1 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCRVL"), xcol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCRVL"), xcol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CRVAL1"),
+        cs!(c"CRVAL1"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1304,12 +1303,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CRVAL2 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCRVL"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCRVL"), ycol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CRVAL2"),
+        cs!(c"CRVAL2"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1320,12 +1319,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CDELT1 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCDLT"), xcol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCDLT"), xcol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CDELT1"),
+        cs!(c"CDELT1"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1336,12 +1335,12 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CDELT2 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCDLT"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCDLT"), ycol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) != 0 {
-        strcpy_safe(&mut valstring, cs!("1"));
+        strcpy_safe(&mut valstring, cs!(c"1"));
     }
     ffmkky_safe(
-        cs!("CDELT2"),
+        cs!(c"CDELT2"),
         &valstring,
         Some(&comm),
         &mut hdr[cptr..],
@@ -1354,10 +1353,10 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  CROTA2 keyword */
     tstatus = 0;
-    ffkeyn_safe(cs!("TCROT"), ycol, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TCROT"), ycol, &mut keyname, status);
     if ffgkey_safe(fptr, &keyname, &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("CROTA2"),
+            cs!(c"CROTA2"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1369,9 +1368,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  EPOCH keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("EPOCH"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"EPOCH"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("EPOCH"),
+            cs!(c"EPOCH"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1384,9 +1383,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  EQUINOX keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("EQUINOX"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"EQUINOX"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("EQUINOX"),
+            cs!(c"EQUINOX"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1399,9 +1398,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  RADECSYS keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("RADECSYS"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"RADECSYS"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("RADECSYS"),
+            cs!(c"RADECSYS"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1414,9 +1413,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  TELESCOPE keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("TELESCOP"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"TELESCOP"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("TELESCOP"),
+            cs!(c"TELESCOP"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1429,9 +1428,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  INSTRUME keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("INSTRUME"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"INSTRUME"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("INSTRUME"),
+            cs!(c"INSTRUME"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1444,9 +1443,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  DETECTOR keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("DETECTOR"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"DETECTOR"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("DETECTOR"),
+            cs!(c"DETECTOR"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1459,9 +1458,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  MJD-OBS keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("MJD-OBS"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"MJD-OBS"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("MJD-OBS"),
+            cs!(c"MJD-OBS"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1474,9 +1473,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  DATE-OBS keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("DATE-OBS"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"DATE-OBS"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("DATE-OBS"),
+            cs!(c"DATE-OBS"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1489,9 +1488,9 @@ pub(crate) fn ffgtwcs_safe(
 
     /*  DATE keyword */
     tstatus = 0;
-    if ffgkey_safe(fptr, cs!("DATE"), &mut valstring, None, &mut tstatus) == 0 {
+    if ffgkey_safe(fptr, cs!(c"DATE"), &mut valstring, None, &mut tstatus) == 0 {
         ffmkky_safe(
-            cs!("DATE"),
+            cs!(c"DATE"),
             &valstring,
             Some(&comm),
             &mut hdr[cptr..],
@@ -1502,7 +1501,7 @@ pub(crate) fn ffgtwcs_safe(
         cptr += 80;
     }
 
-    strcat_safe(&mut hdr[cptr..], cs!("END"));
+    strcat_safe(&mut hdr[cptr..], cs!(c"END"));
     strncat_safe(&mut hdr[cptr..], blanks, 77);
 
     let (header_ptr, _, _) = hdr.into_raw_parts();

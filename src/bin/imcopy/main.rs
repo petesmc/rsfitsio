@@ -5,7 +5,7 @@ use std::ffi::CString;
 use std::{process::ExitCode, ptr};
 
 use bytemuck::cast_slice;
-use cstr::cstr;
+
 use rsfitsio::aliases::fits_is_compressed_image;
 use rsfitsio::c_types::{FILE, c_char};
 use rsfitsio::{STDERR, cs};
@@ -223,7 +223,7 @@ pub fn main() -> ExitCode {
                     tstatus = 0;
                     fits_read_card(
                         infptr.as_mut(),
-                        cstr!("EXTNAME").as_ptr(),
+                        c"EXTNAME".as_ptr(),
                         card.as_mut_ptr(),
                         &mut tstatus,
                     );
@@ -232,7 +232,7 @@ pub fn main() -> ExitCode {
                         strcpy_safe(
                             &mut card,
                             cs!(
-                                "EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"
+                                c"EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"
                             ),
                         );
                         fits_write_record(outfptr.as_mut(), card.as_ptr(), &mut status);

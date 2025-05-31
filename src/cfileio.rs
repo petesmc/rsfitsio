@@ -15,7 +15,6 @@ use libc::{ERANGE, fclose, fgets, fopen, fprintf};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::aliases::safer::fits_read_key_str;
 use crate::aliases::{ffgisz_safe, ffpmsg_cstr};
@@ -142,11 +141,8 @@ pub unsafe extern "C" fn ffomem(
         let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
         let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let hdtype: [*const c_char; 3] = [
-            cstr!(b"IMAGE").as_ptr(),
-            cstr!("TABLE").as_ptr(),
-            cstr!("BINTABLE").as_ptr(),
-        ];
+        let hdtype: [*const c_char; 3] =
+            [c"IMAGE".as_ptr(), c"TABLE".as_ptr(), c"BINTABLE".as_ptr()];
 
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -196,7 +192,7 @@ pub unsafe extern "C" fn ffomem(
             status,
         );
 
-        strcpy_safe(&mut urltype, cs!("memkeep://")); /* URL type for pre-existing memory file */
+        strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
 
         *status = urltype2driver(&urltype, &mut driver);
 
@@ -236,7 +232,7 @@ pub unsafe extern "C" fn ffomem(
             &d[driver as usize],
             handle,
             &name[url..],
-            cs!("ffomem"),
+            cs!(c"ffomem"),
             status,
         );
         if Fptr.is_err() {
@@ -748,11 +744,8 @@ pub(crate) unsafe fn ffopen_safer(
         let mut open_disk_file = false;
         let colname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
         let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let hdtype: [*const c_char; 3] = [
-            cstr!(b"IMAGE").as_ptr(),
-            cstr!("TABLE").as_ptr(),
-            cstr!("BINTABLE").as_ptr(),
-        ];
+        let hdtype: [*const c_char; 3] =
+            [c"IMAGE".as_ptr(), c"TABLE".as_ptr(), c"BINTABLE".as_ptr()];
 
         let rowselect = None;
 
@@ -835,7 +828,7 @@ pub(crate) unsafe fn ffopen_safer(
             }
 
             strcpy_safe(&mut infile, url);
-            strcpy_safe(&mut urltype, cs!(b"file://"));
+            strcpy_safe(&mut urltype, cs!(c"file://"));
             outfile[0] = 0;
             extspec[0] = 0;
             binspec[0] = 0;
@@ -1033,7 +1026,7 @@ pub(crate) unsafe fn ffopen_safer(
                 return *status;
             }
 
-            let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!("ffopen"), status);
+            let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffopen"), status);
             if Fptr.is_err() {
                 return *status;
             }
@@ -1218,8 +1211,13 @@ pub(crate) unsafe fn ffopen_safer(
                                 ffmaky_safe(f, 2, status);
 
                                 let mut group_val = 0;
-                                if ffgkyl_safe(f, cs!("GROUPS"), &mut group_val, None, &mut tstatus)
-                                    != 0
+                                if ffgkyl_safe(
+                                    f,
+                                    cs!(c"GROUPS"),
+                                    &mut group_val,
+                                    None,
+                                    &mut tstatus,
+                                ) != 0
                                 {
                                     no_primary_data = true; /* GROUPS keyword not found */
                                 }
@@ -1259,11 +1257,11 @@ pub(crate) unsafe fn ffopen_safer(
                         } else {
                             tstatus = 0;
                             tblname[0] = 0;
-                            fits_read_key_str(f, cs!(b"EXTNAME"), &mut tblname, None, &mut tstatus);
+                            fits_read_key_str(f, cs!(c"EXTNAME"), &mut tblname, None, &mut tstatus);
 
-                            if (strstr_safe(&tblname, cs!(b"GTI")).is_none()
-                                && strstr_safe(&tblname, cs!(b"gti")).is_none())
-                                && fits_strncasecmp(&tblname, cs!(b"OBSTABLE"), 8) != 0
+                            if (strstr_safe(&tblname, cs!(c"GTI")).is_none()
+                                && strstr_safe(&tblname, cs!(c"gti")).is_none())
+                                && fits_strncasecmp(&tblname, cs!(c"OBSTABLE"), 8) != 0
                             {
                                 break; /* found an interesting table */
                             };
@@ -1282,7 +1280,7 @@ pub(crate) unsafe fn ffopen_safer(
 
             if !isdigit_safe(rowexpress[0]) {
                 /* is the row specification a number? */
-                sscanf(rowexpress.as_ptr(), cstr!(b"%ld").as_ptr(), &mut rownum);
+                sscanf(rowexpress.as_ptr(), c"%ld".as_ptr(), &mut rownum);
                 if rownum < 1 {
                     ffpmsg_str("illegal rownum for image cell:");
                     ffpmsg_slice(&rowexpress);
@@ -1318,7 +1316,7 @@ pub(crate) unsafe fn ffopen_safer(
             if histfilename[0] != 0 && (pixfilter[0]) == 0 {
                 strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
             } else {
-                strcpy_safe(&mut outfile, cs!(b"mem://_1")); /* create image file in memory */
+                strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* create image file in memory */
             }
 
             /* Copy the image into new primary array and open it as the current */
@@ -1369,7 +1367,7 @@ pub(crate) unsafe fn ffopen_safer(
                 if filtfilename[0] != 0 && outfile[0] == 0 {
                     strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
                 } else {
-                    strcpy_safe(&mut outfile, cs!(b"mem://_1")); /* will create copy in memory */
+                    strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* will create copy in memory */
                 }
 
                 writecopy = true;
@@ -1406,7 +1404,7 @@ pub(crate) unsafe fn ffopen_safer(
                     strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
                 } else if outfile[0] == 0 {
                     /* output file name not already defined? */
-                    strcpy_safe(&mut outfile, cs!(b"mem://_2")); /* will create file in memory */
+                    strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create file in memory */
                 }
 
                 /* create new file containing the image section, plus a copy of */
@@ -1482,7 +1480,7 @@ pub(crate) unsafe fn ffopen_safer(
                             strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
                         } else if outfile[0] == 0 {
                             /* output filename not already defined? */
-                            strcpy_safe(&mut outfile, cs!(b"mem://_2")); /* will create copy in memory */
+                            strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create copy in memory */
                         };
                     } else {
                         f.Fptr.writemode = READWRITE; /* we have write access */
@@ -1508,7 +1506,7 @@ pub(crate) unsafe fn ffopen_safer(
                     /* write history records */
                     ffphis_safe(
                     f,
-                    cs!(b"CFITSIO used the following filtering expression to create this table:"),
+                    cs!(c"CFITSIO used the following filtering expression to create this table:"),
                     status,
                 );
                     ffphis_safe(f, name, status);
@@ -1525,7 +1523,7 @@ pub(crate) unsafe fn ffopen_safer(
             if histfilename[0] != 0 && (pixfilter[0]) == 0 {
                 strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
             } else {
-                strcpy_safe(&mut outfile, cs!(b"mem://_3")); /* create histogram in memory */
+                strcpy_safe(&mut outfile, cs!(c"mem://_3")); /* create histogram in memory */
                 /* if not already copied the file */
             }
 
@@ -1613,7 +1611,7 @@ pub(crate) unsafe fn ffopen_safer(
             /* write history records */
             ffphis_safe(
                 f,
-                cs!(b"CFITSIO used the following expression to create this histogram:"),
+                cs!(c"CFITSIO used the following expression to create this histogram:"),
                 status,
             );
 
@@ -1625,7 +1623,7 @@ pub(crate) unsafe fn ffopen_safer(
             if histfilename[0] != 0 {
                 strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
             } else {
-                strcpy_safe(&mut outfile, cs!(b"mem://_4")); /* create in memory */
+                strcpy_safe(&mut outfile, cs!(c"mem://_4")); /* create in memory */
                 /* if not already copied the file */
             }
 
@@ -1651,7 +1649,7 @@ pub(crate) unsafe fn ffopen_safer(
                 /* write history records */
                 ffphis_safe(
                     f,
-                    cs!(b"CFITSIO used the following expression to create this image:"),
+                    cs!(c"CFITSIO used the following expression to create this image:"),
                     status,
                 );
 
@@ -1849,7 +1847,7 @@ pub(crate) unsafe fn fits_already_open(
         }
 
         strcpy_safe(&mut tmpinfile, infile);
-        if fits_strcasecmp(urltype, cs!(b"FILE://")) == 0
+        if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0
             && standardize_path(&mut tmpinfile, status) != 0
         {
             return *status;
@@ -1862,7 +1860,7 @@ pub(crate) unsafe fn fits_already_open(
 
                 if oldFptr.noextsyntax != 0 {
                     /* old urltype must be "file://" */
-                    if fits_strcasecmp(urltype, cs!(b"FILE://")) == 0 {
+                    if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0 {
                         /* compare tmpinfile to adjusted oldFptr->filename */
 
                         let ofn = cast_slice(CStr::from_ptr(oldFptr.filename).to_bytes_with_nul());
@@ -1928,7 +1926,7 @@ pub(crate) unsafe fn fits_already_open(
                         return *status;
                     }
 
-                    if fits_strcasecmp(&oldurltype, cs!(b"FILE://")) == 0
+                    if fits_strcasecmp(&oldurltype, cs!(c"FILE://")) == 0
                         && standardize_path(&mut oldinfile, status) != 0
                     {
                         return *status;
@@ -2037,7 +2035,7 @@ fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
             *status = FILE_NOT_OPENED;
             return *status;
         }
-        strcat_safe(&mut cwd, cs!("/"));
+        strcat_safe(&mut cwd, cs!(c"/"));
         strcat_safe(&mut cwd, &tmpPath);
         fits_clean_url(&cwd, &mut tmpPath, status);
     }
@@ -2053,17 +2051,17 @@ fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
 pub(crate) fn fits_is_this_a_copy(urltype: [c_char; 20] /* I - type of file */) -> c_int {
     let mut iscopy: c_int = 0;
 
-    if strncmp_safe(&urltype, cs!("mem"), 3) == 0 {
+    if strncmp_safe(&urltype, cs!(c"mem"), 3) == 0 {
         iscopy = 1; /* file copy is in memory */
-    } else if strncmp_safe(&urltype, cs!("compress"), 8) == 0 {
+    } else if strncmp_safe(&urltype, cs!(c"compress"), 8) == 0 {
         iscopy = 1; /* compressed diskfile that is uncompressed in memory */
-    } else if strncmp_safe(&urltype, cs!("http"), 4) == 0 {
+    } else if strncmp_safe(&urltype, cs!(c"http"), 4) == 0 {
         iscopy = 1; /* copied file using http protocol */
-    } else if strncmp_safe(&urltype, cs!("ftp"), 3) == 0 {
+    } else if strncmp_safe(&urltype, cs!(c"ftp"), 3) == 0 {
         iscopy = 1; /* copied file using ftp protocol */
-    } else if strncmp_safe(&urltype, cs!("gsiftp"), 6) == 0 {
+    } else if strncmp_safe(&urltype, cs!(c"gsiftp"), 6) == 0 {
         iscopy = 1; /* copied file using gsiftp protocol */
-    } else if strncmp_safe(&urltype, cs!("stdin"), 5) == 0 {
+    } else if strncmp_safe(&urltype, cs!(c"stdin"), 5) == 0 {
         //NOTE looks like a bug in original code
         iscopy = 1; /* piped stdin has been copied to memory */
     } else {
@@ -2504,7 +2502,7 @@ pub(crate) unsafe fn ffedit_columns(
             slen = fits_get_token2_safe(
                 cptr,
                 &mut cptr_idx,
-                cast_slice(cstr!(";").to_bytes_with_nul()),
+                cast_slice(c";".to_bytes_with_nul()),
                 &mut tmp_clause,
                 None,
                 status,
@@ -2697,7 +2695,7 @@ pub(crate) unsafe fn ffedit_columns(
                 slen = fits_get_token2_safe(
                     &clause[cptr2..],
                     &mut ptr_index,
-                    cs!("( ="),
+                    cs!(c"( ="),
                     &mut tstbuff,
                     None,
                     status,
@@ -2733,7 +2731,7 @@ pub(crate) unsafe fn ffedit_columns(
                    where n is the previously used column number
                 */
                 if colname[0] == bb(b'#')
-                    && strstr_safe(&colname[1..], cs!("#")) == Some(strlen_safe(&colname) - 1)
+                    && strstr_safe(&colname[1..], cs!(c"#")) == Some(strlen_safe(&colname) - 1)
                 {
                     if colnum <= 0 {
                         ffpmsg_str("The keyword name:");
@@ -2751,7 +2749,7 @@ pub(crate) unsafe fn ffedit_columns(
                     }
                     /* Re-copy back into colname */
                     strcpy_safe(&mut colname[1..], &oldname);
-                } else if strstr_safe(&colname, cs!("#")) == Some(strlen_safe(&colname) - 1) {
+                } else if strstr_safe(&colname, cs!(c"#")) == Some(strlen_safe(&colname) - 1) {
                     /*  colname is of the form "NAME#";  if
                           a) colnum is defined, and
                           b) a column with literal name "NAME#" does not exist, and
@@ -2800,13 +2798,13 @@ pub(crate) unsafe fn ffedit_columns(
                     if fits_get_token2_safe(
                         &clause[cptr2..],
                         &mut ptr_index,
-                        cs!(")"),
+                        cs!(c")"),
                         &mut tstbuff,
                         None,
                         status,
                     ) == 0
                     {
-                        strcat_safe(&mut colname, cs!(")"));
+                        strcat_safe(&mut colname, cs!(c")"));
                     } else {
                         cptr2 += ptr_index;
                         let tstbuff = tstbuff.unwrap();
@@ -2816,7 +2814,7 @@ pub(crate) unsafe fn ffedit_columns(
                             return *status;
                         }
                         strcat_safe(&mut colname, &tstbuff);
-                        strcat_safe(&mut colname, cs!(")"));
+                        strcat_safe(&mut colname, cs!(c")"));
                         drop(tstbuff);
                     }
                     cptr2 += 1;
@@ -2900,7 +2898,7 @@ pub(crate) unsafe fn ffedit_columns(
                         if fits_get_token2_safe(
                             &clause[cptr2..],
                             &mut ptr_index,
-                            cs!(" "),
+                            cs!(c" "),
                             &mut tstbuff,
                             None,
                             status,
@@ -2925,7 +2923,7 @@ pub(crate) unsafe fn ffedit_columns(
                         if ffgcno_safe(fptr, CASEINSEN as c_int, &oldname, &mut colnum, status) <= 0
                         {
                             /* modify the TTYPEn keyword value with the new name */
-                            ffkeyn_safe(cs!("TTYPE"), colnum, &mut keyname, status);
+                            ffkeyn_safe(cs!(c"TTYPE"), colnum, &mut keyname, status);
 
                             if ffmkys_safe(fptr, &keyname, &colname, None, status) > 0 {
                                 ffpmsg_str("failed to rename column in input file");
@@ -2968,7 +2966,7 @@ pub(crate) unsafe fn ffedit_columns(
                         if fits_get_token2_safe(
                             cptr3,
                             &mut ptr_index,
-                            cs!("("),
+                            cs!(c"("),
                             &mut tstbuff,
                             None,
                             status,
@@ -2996,7 +2994,7 @@ pub(crate) unsafe fn ffedit_columns(
                             if fits_get_token2_safe(
                                 cptr3,
                                 &mut ptr_index,
-                                cs!(")"),
+                                cs!(c")"),
                                 &mut tstbuff,
                                 None,
                                 status,
@@ -3394,7 +3392,7 @@ pub unsafe fn ffinit_safer(
             }
 
             strcpy_safe(&mut outfile, &url[j..]);
-            strcpy_safe(&mut urltype, cs!("file://"));
+            strcpy_safe(&mut urltype, cs!(c"file://"));
             tmplfile[0] = 0;
             compspec[0] = 0;
         } else {
@@ -3472,7 +3470,7 @@ pub unsafe fn ffinit_safer(
         let d = DRIVER_TABLE.get().unwrap();
 
         /* allocate fitsfile structure and initialize = 0 */
-        let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!("ffinit"), status);
+        let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffinit"), status);
         if Fptr.is_err() {
             return *status;
         }
@@ -4329,18 +4327,18 @@ pub(crate) fn ffifile2_safer(
             /* names that begin with a minus sign, e.g., "-55d33m.fits"  */
 
             if !urltype.is_null() {
-                strcat(urltype, cstr!(b"stdin://").as_ptr());
+                strcat(urltype, c"stdin://".as_ptr());
             }
 
             ptr1_index += 1;
-        } else if fits_strncasecmp(ptr1, cs!(b"stdin"), 5) == 0 {
+        } else if fits_strncasecmp(ptr1, cs!(c"stdin"), 5) == 0 {
             if !urltype.is_null() {
-                strcat(urltype, cstr!(b"stdin://").as_ptr());
+                strcat(urltype, c"stdin://".as_ptr());
             }
             ptr1_index += 5;
         } else {
-            let mut ptr2 = strstr_safe(ptr1, cs!(b"://"));
-            let ptr3 = strstr_safe(ptr1, cs!(b"("));
+            let mut ptr2 = strstr_safe(ptr1, cs!(c"://"));
+            let ptr3 = strstr_safe(ptr1, cs!(c"("));
             if ptr3.is_some() && (ptr3.unwrap() < ptr2.unwrap()) {
                 /* the urltype follows a '(' character, so it must apply */
                 /* to the output file, and is not the urltype of the input file */
@@ -4359,46 +4357,46 @@ pub(crate) fn ffifile2_safer(
                     strncat(urltype, ptr1.as_ptr(), ptr2 + 3);
                 }
                 ptr1_index += 3;
-            } else if strncmp_safe(ptr1, cs!(b"ftp:"), 4) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"ftp:"), 4) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"ftp://").as_ptr());
+                    strcat(urltype, c"ftp://".as_ptr());
                 }
                 ptr1_index += 4;
-            } else if strncmp_safe(ptr1, cs!(b"gsiftp:"), 7) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"gsiftp:"), 7) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"gsiftp://").as_ptr());
+                    strcat(urltype, c"gsiftp://".as_ptr());
                 }
                 ptr1_index += 7;
-            } else if strncmp_safe(ptr1, cs!(b"http:"), 5) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"http:"), 5) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"http://").as_ptr());
+                    strcat(urltype, c"http://".as_ptr());
                 }
                 ptr1_index += 5;
-            } else if strncmp_safe(ptr1, cs!(b"mem:"), 4) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"mem:"), 4) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"mem://").as_ptr());
+                    strcat(urltype, c"mem://".as_ptr());
                 }
                 ptr1_index += 4;
-            } else if strncmp_safe(ptr1, cs!(b"shmem:"), 6) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"shmem:"), 6) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"shmem://").as_ptr());
+                    strcat(urltype, c"shmem://".as_ptr());
                 }
                 ptr1_index += 6;
-            } else if strncmp_safe(ptr1, cs!(b"file:"), 5) == 0 {
+            } else if strncmp_safe(ptr1, cs!(c"file:"), 5) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"file://").as_ptr());
+                    strcat(urltype, c"file://".as_ptr());
                 }
                 ptr1_index += 5;
             } else {
                 /* assume file driver    */
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!(b"file://").as_ptr());
+                    strcat(urltype, c"file://".as_ptr());
                 };
             };
         }
@@ -4417,7 +4415,7 @@ pub(crate) fn ffifile2_safer(
         ptr1 = &ptr1[ptr1_index..];
         ptr1_index = 0;
 
-        if !urltype.is_null() && strncmp(urltype, cstr!(b"http://").as_ptr(), 7) == 0 {
+        if !urltype.is_null() && strncmp(urltype, c"http://".as_ptr(), 7) == 0 {
             /* test for opening parenthesis or bracket in the file name */
             if strchr_safe(ptr1, bb(b'(')).is_some() || strchr_safe(ptr1, bb(b'[')).is_some() {
                 slen = strlen_safe(ptr1);
@@ -4461,7 +4459,7 @@ pub(crate) fn ffifile2_safer(
                 tmptr = &ptr1[1..]; /* these 2 chars are part of the VMS disk and directory */
             };
         } else {
-            let tmp_index = strstr_safe(ptr1, cs!(b":["));
+            let tmp_index = strstr_safe(ptr1, cs!(c":["));
             if let Some(tmp_index) = tmp_index {
                 tmptr = &ptr1[(tmp_index + 2)..];
             } else {
@@ -4550,11 +4548,11 @@ pub(crate) fn ffifile2_safer(
         /* --------------------------------------------- */
         /* check if this is an IRAF file (.imh extension */
         /* --------------------------------------------- */
-        let ptr4 = strstr_safe(infile, cs!(b".imh"));
-        /* did the infile name end with cstr!(b".imh").as_ptr() ? */
+        let ptr4 = strstr_safe(infile, cs!(c".imh"));
+        /* did the infile name end with c".imh".as_ptr() ? */
         if let Some(p4) = ptr4 {
             if infile[p4] == 0 && !urltype.is_null() {
-                strcpy(urltype, cstr!(b"irafmem://").as_ptr());
+                strcpy(urltype, c"irafmem://".as_ptr());
             };
         }
 
@@ -4682,10 +4680,10 @@ pub(crate) fn ffifile2_safer(
                     } /* find the closing ] char */
                     if *ptr1 == bb(b',') || *ptr1 == bb(b':') || *ptr1 == bb(b']') {
                         if !urltype.is_null() {
-                            if !strstr(urltype, cstr!(b"stdin").as_ptr()).is_null() {
-                                strcpy(urltype, cstr!(b"rawstdin://").as_ptr()); /* terminate string after the ] */
+                            if !strstr(urltype, c"stdin".as_ptr()).is_null() {
+                                strcpy(urltype, c"rawstdin://".as_ptr()); /* terminate string after the ] */
                             } else {
-                                strcpy(urltype, cstr!(b"rawfile://").as_ptr()); /* the 0 ext number is implicit */
+                                strcpy(urltype, c"rawfile://".as_ptr()); /* the 0 ext number is implicit */
                             }; /* search for another [ char */
                         } /* copy any remaining characters into rowfilterx  */
                         if !infilex.is_null() {
@@ -4774,7 +4772,7 @@ pub(crate) fn ffifile2_safer(
                    [StatusCol==0]
                    [StatusCol || x>6]
                    [gtifilter()]
-                   [regfilter(cstr!(b"region.reg").as_ptr())]
+                   [regfilter(c"region.reg".as_ptr())]
 
                    [compress Rice]
 
@@ -4794,7 +4792,7 @@ pub(crate) fn ffifile2_safer(
 
                    - if the token begins with '@' and contains a '.'
                    - if the token contains an operator: = > < || &&
-                   - if the token begins with cstr!(b"gtifilter(" or "regfilter(").as_ptr()
+                   - if the token begins with c"gtifilter(" or "regfilter(".as_ptr()
                    - if the token is terminated by a space and is followed by
                       additional characters (not a ']')  AND any of the following:
                         - the token is 'col'
@@ -4826,22 +4824,22 @@ pub(crate) fn ffifile2_safer(
 
                 let _tp = cast_slice(CStr::from_ptr(tmptr).to_bytes_with_nul());
 
-                if fits_strncasecmp(_tp, cs!(b"col "), 4) == 0 {
+                if fits_strncasecmp(_tp, cs!(c"col "), 4) == 0 {
                     colStart = 1;
                 }
-                if fits_strncasecmp(_tp, cs!(b"bin"), 3) == 0 {
+                if fits_strncasecmp(_tp, cs!(c"bin"), 3) == 0 {
                     binStart = 1;
                 }
-                if fits_strncasecmp(_tp, cs!(b"pix"), 3) == 0 {
+                if fits_strncasecmp(_tp, cs!(c"pix"), 3) == 0 {
                     pixStart = 1;
                 }
-                if fits_strncasecmp(_tp, cs!(b"compress "), 9) == 0
-                    || fits_strncasecmp(_tp, cs!(b"compress]"), 9) == 0
+                if fits_strncasecmp(_tp, cs!(c"compress "), 9) == 0
+                    || fits_strncasecmp(_tp, cs!(c"compress]"), 9) == 0
                 {
                     compStart = 1;
                 }
-                if fits_strncasecmp(_tp, cs!(b"gtifilter("), 10) == 0
-                    || fits_strncasecmp(_tp, cs!(b"regfilter("), 10) == 0
+                if fits_strncasecmp(_tp, cs!(c"gtifilter("), 10) == 0
+                    || fits_strncasecmp(_tp, cs!(c"regfilter("), 10) == 0
                 {
                     rowFilter = 1;
                 } else {
@@ -4935,14 +4933,14 @@ pub(crate) fn ffifile2_safer(
         /* does the filter contain a binning specification? */
         /* ------------------------------------------------ */
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(b"[bin")); /* search for "[bin" */
+        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[bin")); /* search for "[bin" */
 
         if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(b"[BIN")); /* search for "[BIN" */
+            ptr1 = strstr_safe(rowfilter, cs!(c"[BIN")); /* search for "[BIN" */
         }
 
         if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(b"[Bin")); /* search for "[Bin" */
+            ptr1 = strstr_safe(rowfilter, cs!(c"[Bin")); /* search for "[Bin" */
         }
 
         if ptr1.is_some() {
@@ -5012,11 +5010,11 @@ pub(crate) fn ffifile2_safer(
         /* does the filter contain a column selection specification? */
         /* --------------------------------------------------------- */
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(b"[col "));
+        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
         if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(b"[COL "));
+            ptr1 = strstr_safe(rowfilter, cs!(c"[COL "));
             if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(b"[Col "));
+                ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
             };
         }
 
@@ -5084,7 +5082,7 @@ pub(crate) fn ffifile2_safer(
                     strncpy(colspec, rowfilter[(p1 + 1)..].as_ptr(), collen);
                     *colspec.add(collen) = 0;
                 } else {
-                    strcat(colspec, cstr!(b";").as_ptr());
+                    strcat(colspec, c";".as_ptr());
                     strncat(colspec, rowfilter[(p1 + 5)..].as_ptr(), collen - 4);
                     /* Note that strncat always null-terminates the destination string */
 
@@ -5109,12 +5107,12 @@ pub(crate) fn ffifile2_safer(
             strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
 
             /* Check for additional column specifiers */
-            ptr1 = strstr_safe(rowfilter, cs!(b"[col "));
+            ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
             if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(b"[COL "));
+                ptr1 = strstr_safe(rowfilter, cs!(c"[COL "));
             }
             if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(b"[Col "));
+                ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
             };
         }
 
@@ -5122,11 +5120,11 @@ pub(crate) fn ffifile2_safer(
         /* does the filter contain a pixel filter specification?     */
         /* --------------------------------------------------------- */
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(b"[pix"));
+        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[pix"));
         if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(b"[PIX"));
+            ptr1 = strstr_safe(rowfilter, cs!(c"[PIX"));
             if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(b"[Pix"));
+                ptr1 = strstr_safe(rowfilter, cs!(c"[Pix"));
             };
         }
 
@@ -5218,7 +5216,7 @@ pub(crate) fn ffifile2_safer(
         /* does the filter contain an image compression specification?  */
         /* ------------------------------------------------------------ */
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(b"[compress")); /* end of the '[compress' string */
+        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[compress")); /* end of the '[compress' string */
 
         if ptr1.is_some() {
             let p2 = ptr1.unwrap() + 9; /* compress string must be followed by space or ] */
@@ -5264,14 +5262,14 @@ pub(crate) fn ffifile2_safer(
         }
 
         /* copy the remaining string to the rowfilter output... should only */
-        /* contain a rowfilter expression of the form cstr!(b"[expr]").as_ptr()
+        /* contain a rowfilter expression of the form c"[expr]".as_ptr()
          */
         if !rowfilterx.is_null() && rowfilter[0] != 0 {
             hasAt = 0;
 
-            /* Check for multiple expressions, which would appear as cstr!(b"[expr][expr]...").as_ptr() */
+            /* Check for multiple expressions, which would appear as c"[expr][expr]...".as_ptr() */
             let mut p1 = 0; // rowfilter;
-            let mut p2 = strstr_safe(rowfilter, cs!(b"][")).unwrap() - p1;
+            let mut p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap() - p1;
 
             while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
                 /* Advance past any white space */
@@ -5285,7 +5283,7 @@ pub(crate) fn ffifile2_safer(
                     hasAt = 1;
                 }
 
-                /* Add expression of the form cstr!(b"((expr))&&").as_ptr(), note the addition of 6 characters */
+                /* Add expression of the form c"((expr))&&".as_ptr(), note the addition of 6 characters */
                 if (strlen(rowfilterx) + (p2 - p1) + 6) > FLEN_FILENAME - 1 {
                     *status = URL_PARSE_ERROR;
                     return *status;
@@ -5300,15 +5298,15 @@ pub(crate) fn ffifile2_safer(
                 }
 
                 /* Append the expression */
-                strcat(rowfilterx, cstr!(b"((").as_ptr());
+                strcat(rowfilterx, c"((".as_ptr());
                 strncat(rowfilterx, rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1);
                 /* Note that strncat always null-terminates the destination string */
-                strcat(rowfilterx, cstr!(b"))&&").as_ptr());
+                strcat(rowfilterx, c"))&&".as_ptr());
 
                 /* Advance to next expression */
                 p1 = p2 + 1;
 
-                p2 = strstr_safe(rowfilter, cs!(b"][")).unwrap() - p1;
+                p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap() - p1;
             }
 
             /* At final iteration, ptr1 points to beginning [ and ptr2 to ending ] */
@@ -5343,10 +5341,10 @@ pub(crate) fn ffifile2_safer(
 
                 if *rowfilterx != 0 {
                     /* A pre-existing row filter: we bracket by ((expr)) to be sure */
-                    strcat(rowfilterx, cstr!(b"((").as_ptr());
+                    strcat(rowfilterx, c"((".as_ptr());
 
                     strncat(rowfilterx, rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1);
-                    strcat(rowfilterx, cstr!(b"))").as_ptr());
+                    strcat(rowfilterx, c"))".as_ptr());
                 } else {
                     /* We have only one filter, so just copy the expression alone.
                     This will be the most typical case */
@@ -5426,20 +5424,20 @@ pub(crate) unsafe fn ffourl(
         }
 
         if ((ptr1[0] == bb(b'-')) && (ptr1[1] == 0 || ptr1[1] == bb(b' ')))
-            || strcmp_safe(ptr1, cs!("stdout")) == 0
-            || strcmp_safe(ptr1, cs!("STDOUT")) == 0
+            || strcmp_safe(ptr1, cs!(c"stdout")) == 0
+            || strcmp_safe(ptr1, cs!(c"STDOUT")) == 0
         /* "-" means write to stdout;  also support "- "            */
         /* but exclude disk file names that begin with a minus sign */
         /* e.g., "-55d33m.fits"   */
         {
             if !urltype.is_null() {
-                strcpy(urltype, cstr!("stdout://").as_ptr());
+                strcpy(urltype, c"stdout://".as_ptr());
             }
         } else {
             /* not writing to stdout */
             /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
 
-            let ptr2 = strstr_safe(ptr1, cs!("://"));
+            let ptr2 = strstr_safe(ptr1, cs!(c"://"));
 
             if let Some(ptr2) = ptr2 {
                 /* copy the explicit urltype string */
@@ -5458,7 +5456,7 @@ pub(crate) unsafe fn ffourl(
                 /* assume file driver    */
 
                 if !urltype.is_null() {
-                    strcat(urltype, cstr!("file://").as_ptr());
+                    strcat(urltype, c"file://".as_ptr());
                 }
             }
 
@@ -5551,16 +5549,13 @@ pub(crate) unsafe fn ffourl(
                 raw_to_slice!(urltype);
                 raw_to_slice!(outfile);
 
-                if strcmp_safe(urltype, cs!("file://")) == 0 {
-                    let ptr1 = strstr_safe(outfile, cs!(".gz"));
+                if strcmp_safe(urltype, cs!(c"file://")) == 0 {
+                    let ptr1 = strstr_safe(outfile, cs!(c".gz"));
                     if let Some(mut ptr1) = ptr1 {
                         /* make sure the ".gz" is at the end of the file name */
                         ptr1 += 3;
                         if outfile[ptr1] == 0 || outfile[ptr1] == bb(b' ') {
-                            strcpy(
-                                urltype.as_ptr() as *mut _,
-                                cstr!("compressoutfile://").as_ptr(),
-                            );
+                            strcpy(urltype.as_ptr() as *mut _, c"compressoutfile://".as_ptr());
                         }
                     }
                 }
@@ -5717,7 +5712,7 @@ pub(crate) unsafe fn ffexts_safer(
 
             /* don't use space char as end indicator, because there */
             /* may be imbedded spaces in the EXTNAME value */
-            slen = strcspn_safe(&extspec[ptr1..], cs!(",:;")); /* length of EXTNAME */
+            slen = strcspn_safe(&extspec[ptr1..], cs!(c",:;")); /* length of EXTNAME */
 
             if slen > FLEN_VALUE - 1 {
                 *status = URL_PARSE_ERROR;
@@ -5733,12 +5728,12 @@ pub(crate) unsafe fn ffexts_safer(
             }
 
             ptr1 += slen;
-            slen = strspn_safe(&extspec[ptr1..], cs!(" ,:")); /* skip delimiter characters */
+            slen = strspn_safe(&extspec[ptr1..], cs!(c" ,:")); /* skip delimiter characters */
             ptr1 += slen;
 
-            slen = strcspn_safe(&extspec[ptr1..], cs!(" ,:;")); /* length of EXTVERS */
+            slen = strcspn_safe(&extspec[ptr1..], cs!(c" ,:;")); /* length of EXTVERS */
             if slen != 0 {
-                nvals = sscanf(extspec[ptr1..].as_ptr(), cstr!("%d").as_ptr(), extvers); /* EXTVERS value */
+                nvals = sscanf(extspec[ptr1..].as_ptr(), c"%d".as_ptr(), extvers); /* EXTVERS value */
                 if nvals != 1 {
                     ffpmsg_str("illegal EXTVER value in input URL:");
                     ffpmsg_slice(extspec);
@@ -5747,10 +5742,10 @@ pub(crate) unsafe fn ffexts_safer(
                 }
 
                 ptr1 += slen;
-                slen = strspn_safe(&extspec[ptr1..], cs!(" ,:")); /* skip delimiter characters */
+                slen = strspn_safe(&extspec[ptr1..], cs!(c" ,:")); /* skip delimiter characters */
                 ptr1 += slen;
 
-                slen = strcspn_safe(&extspec[ptr1..], cs!(";")); /* length of HDUTYPE */
+                slen = strcspn_safe(&extspec[ptr1..], cs!(c";")); /* length of HDUTYPE */
                 if slen != 0 {
                     if extspec[ptr1] == bb(b'b') || extspec[ptr1] == bb(b'B') {
                         *hdutype = BINARY_TBL;
@@ -5772,8 +5767,8 @@ pub(crate) unsafe fn ffexts_safer(
             } else {
                 strcpy_safe(&mut tmpname, &_extname);
                 ffupch_safe(&mut tmpname);
-                if strcmp_safe(&tmpname, cs!("PRIMARY")) == 0
-                    || strcmp_safe(&tmpname, cs!("P")) == 0
+                if strcmp_safe(&tmpname, cs!(c"PRIMARY")) == 0
+                    || strcmp_safe(&tmpname, cs!(c"P")) == 0
                 {
                     _extname[0] = 0; /* return extnum = 0 */
                 }
@@ -5970,7 +5965,7 @@ pub(crate) unsafe fn ffimport_file_safer(
         }
         lines[0] = 0;
 
-        let aFile = fopen(filename.as_ptr(), cstr!("r").as_ptr());
+        let aFile = fopen(filename.as_ptr(), c"r".as_ptr());
         if aFile.is_null() {
             int_snprintf!(
                 &mut line,
@@ -6019,7 +6014,7 @@ pub(crate) unsafe fn ffimport_file_safer(
             totalLen += llen;
 
             if eoline {
-                strcpy_safe(&mut lines[totalLen..], cs!(" ")); /* add a space between lines */
+                strcpy_safe(&mut lines[totalLen..], cs!(c" ")); /* add a space between lines */
                 totalLen += 1;
             }
         }
@@ -6160,12 +6155,12 @@ pub unsafe extern "C" fn ffclos(
         match fptr {
             None => {
                 *status = NULL_INPUT_PTR;
-                return *status;
+                *status
             }
             Some(fptr) => {
-                return ffclos_safer(fptr, status);
+                ffclos_safer(fptr, status)
             }
-        };
+        }
     }
 }
 
@@ -6567,14 +6562,14 @@ pub unsafe extern "C" fn ffrprt(stream: *mut FILE, status: c_int) {
             ffgerr_safe(status, &mut status_str); /* get the error description */
             fprintf(
                 stream,
-                cstr!("\nFITSIO status = %d: %s\n").as_ptr(),
+                c"\nFITSIO status = %d: %s\n".as_ptr(),
                 status,
                 status_str.as_ptr(),
             );
 
             while ffgmsg_safe(&mut errmsg) > 0 {
                 /* get error stack messages */
-                fprintf(stream, cstr!("%s\n").as_ptr(), errmsg.as_ptr());
+                fprintf(stream, c"%s\n".as_ptr(), errmsg.as_ptr());
             }
         }
     }

@@ -12,7 +12,6 @@ use std::{cmp, mem};
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use cstr::cstr;
 
 use crate::buffers::{ffgbyt, ffgbytoff, ffmbyt_safe};
 use crate::fitscore::{
@@ -282,12 +281,12 @@ pub(crate) fn ffgcls(
             /* convert logical values to "T", "F", or "N" (Null) */
             for ii in 0..(nelem as usize) {
                 if carray[ii] == 1 {
-                    strcpy_safe(array[ii], cs!("T"));
+                    strcpy_safe(array[ii], cs!(c"T"));
                 } else if carray[ii] == 0 {
-                    strcpy_safe(array[ii], cs!("F"));
+                    strcpy_safe(array[ii], cs!(c"F"));
                 } else {
                     /* undefined values = 2 */
-                    strcpy_safe(array[ii], cs!("N"));
+                    strcpy_safe(array[ii], cs!(c"N"));
                 }
             }
         }
@@ -317,7 +316,7 @@ pub(crate) fn ffgcls(
             dwidth = (dwidth - 3) / 2;
 
             /* use the TDISPn keyword if it exists */
-            ffkeyn_safe(cs!(TDISP), colnum, &mut keyname, status);
+            ffkeyn_safe(cs!(c"TDISP"), colnum, &mut keyname, status);
             tstatus = 0;
             cform[0] = 0;
 
@@ -344,16 +343,16 @@ pub(crate) fn ffgcls(
             }
 
             if cform[0] == 0 {
-                strcpy_safe(&mut cform, cs!("%14.6E"));
+                strcpy_safe(&mut cform, cs!(c"%14.6E"));
             }
             /* write the formated string for each value:  "(real,imag)" */
             jj = 0;
             for ii in 0..(nelem as usize) {
-                strcpy_safe(array[ii], cs!("("));
+                strcpy_safe(array[ii], cs!(c"("));
 
                 /* test for null value */
                 if earray[jj] == FLOATNULLVALUE {
-                    strcpy_safe(&mut tmpstr, cs!("NULL"));
+                    strcpy_safe(&mut tmpstr, cs!(c"NULL"));
                     if nultyp == NullCheckType::SetNullArray {
                         nularray[ii] = 1;
                     }
@@ -364,12 +363,12 @@ pub(crate) fn ffgcls(
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
-                strcat_safe(array[ii], cs!(","));
+                strcat_safe(array[ii], cs!(c","));
                 jj += 1;
 
                 /* test for null value */
                 if earray[jj] == FLOATNULLVALUE {
-                    strcpy_safe(&mut tmpstr, cs!("NULL"));
+                    strcpy_safe(&mut tmpstr, cs!(c"NULL"));
                     if nultyp == NullCheckType::SetNullArray {
                         nularray[ii] = 1;
                     }
@@ -380,7 +379,7 @@ pub(crate) fn ffgcls(
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
-                strcat_safe(array[ii], cs!(")"));
+                strcat_safe(array[ii], cs!(c")"));
                 jj += 1;
             }
         }
@@ -410,7 +409,7 @@ pub(crate) fn ffgcls(
             dwidth = (dwidth - 3) / 2;
 
             /* use the TDISPn keyword if it exists */
-            ffkeyn_safe(cs!(TDISP), colnum, &mut keyname, status);
+            ffkeyn_safe(cs!(c"TDISP"), colnum, &mut keyname, status);
             tstatus = 0;
             cform[0] = 0;
 
@@ -437,16 +436,16 @@ pub(crate) fn ffgcls(
             }
 
             if cform[0] == 0 {
-                strcpy_safe(&mut cform, cs!("%23.15E"));
+                strcpy_safe(&mut cform, cs!(c"%23.15E"));
             }
             /* write the formated string for each value:  "(real,imag)" */
             jj = 0;
             for ii in 0..(nelem as usize) {
-                strcpy_safe(array[ii], cs!("("));
+                strcpy_safe(array[ii], cs!(c"("));
 
                 /* test for null value */
                 if darray[jj] == DOUBLENULLVALUE {
-                    strcpy_safe(&mut tmpstr, cs!("NULL"));
+                    strcpy_safe(&mut tmpstr, cs!(c"NULL"));
                     if nultyp == NullCheckType::SetNullArray {
                         nularray[ii] = 1;
                     }
@@ -457,12 +456,12 @@ pub(crate) fn ffgcls(
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
-                strcat_safe(array[ii], cs!(","));
+                strcat_safe(array[ii], cs!(c","));
                 jj += 1;
 
                 /* test for null value */
                 if darray[jj] == DOUBLENULLVALUE {
-                    strcpy_safe(&mut tmpstr, cs!("NULL"));
+                    strcpy_safe(&mut tmpstr, cs!(c"NULL"));
                     if nultyp == NullCheckType::SetNullArray {
                         nularray[ii] = 1;
                     }
@@ -473,7 +472,7 @@ pub(crate) fn ffgcls(
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
-                strcat_safe(array[ii], cs!(")"));
+                strcat_safe(array[ii], cs!(c")"));
                 jj += 1;
             }
         }
@@ -507,7 +506,7 @@ pub(crate) fn ffgcls(
                 nulwidth = strlen_safe(&tmpnull) as c_int;
             }
             None => {
-                strcpy_safe(&mut tmpnull, cs!(" "));
+                strcpy_safe(&mut tmpnull, cs!(c" "));
                 nulwidth = 1;
             }
         }
@@ -569,7 +568,7 @@ pub(crate) fn ffgcls(
                 nulwidth = strlen_safe(&tmpnull) as c_int;
             }
             None => {
-                strcpy_safe(&mut tmpnull, cs!(" "));
+                strcpy_safe(&mut tmpnull, cs!(c" "));
                 nulwidth = 1;
             }
         }
@@ -580,7 +579,7 @@ pub(crate) fn ffgcls(
                 if dwidth < nulwidth {
                     strncat_safe(array[ii], &tmpnull, dwidth as usize);
                 } else {
-                    sprintf_string_width(cast_slice_mut(array[ii]), cs!("%*s"), dwidth, &tmpnull);
+                    sprintf_string_width(cast_slice_mut(array[ii]), cs!(c"%*s"), dwidth, &tmpnull);
                 }
                 if nultyp == NullCheckType::SetNullArray {
                     nularray[ii] = 1;
@@ -620,7 +619,7 @@ pub(crate) fn ffgcls(
         ffgcdw_safe(fptr, colnum, &mut dwidth, status);
 
         /* check if  column is scaled */
-        ffkeyn_safe(cs!(TSCAL), colnum, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TSCAL"), colnum, &mut keyname, status);
         tstatus = 0;
         scaled = 0;
         if ffgkyd_safe(fptr, &keyname, &mut tscale, None, &mut tstatus) == 0 && tscale != 1.0 {
@@ -632,7 +631,7 @@ pub(crate) fn ffgcls(
             intcol = 1; /* this is an unscaled integer column */
         }
         /* use the TDISPn keyword if it exists */
-        ffkeyn_safe(cs!(TDISP), colnum, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TDISP"), colnum, &mut keyname, status);
         tstatus = 0;
         cform[0] = 0;
 
@@ -661,18 +660,18 @@ pub(crate) fn ffgcls(
         if cform[0] == 0 {
             /* no TDISPn keyword; use TFORMn instead */
 
-            ffkeyn_safe(cs!(TFORM), colnum, &mut keyname, status);
+            ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status);
             ffgkys_safe(fptr, &keyname, &mut dispfmt, None, status);
 
             if scaled > 0 && tcode <= TSHORT {
                 /* scaled short integer column == float */
-                strcpy_safe(&mut cform, cs!("%#14.6G"));
+                strcpy_safe(&mut cform, cs!(c"%#14.6G"));
             } else if scaled > 0 && tcode == TLONG {
                 /* scaled long integer column == double */
-                strcpy_safe(&mut cform, cs!("%#23.15G"));
+                strcpy_safe(&mut cform, cs!(c"%#23.15G"));
             } else if scaled > 0 && tcode == TLONGLONG {
                 /* scaled long long integer column == double */
-                strcpy_safe(&mut cform, cs!("%#23.15G"));
+                strcpy_safe(&mut cform, cs!(c"%#23.15G"));
             } else {
                 ffghdt_safe(fptr, &mut hdutype, status);
                 if hdutype == ASCII_TBL {
@@ -682,23 +681,23 @@ pub(crate) fn ffgcls(
                     /* this is a binary table, need to convert the format */
                     if tcode == TBIT {
                         /* 'X' */
-                        strcpy_safe(&mut cform, cs!("%4d"));
+                        strcpy_safe(&mut cform, cs!(c"%4d"));
                     } else if tcode == TBYTE {
                         /* 'B' */
-                        strcpy_safe(&mut cform, cs!("%4d"));
+                        strcpy_safe(&mut cform, cs!(c"%4d"));
                     } else if tcode == TSHORT {
                         /* 'I' */
-                        strcpy_safe(&mut cform, cs!("%6d"));
+                        strcpy_safe(&mut cform, cs!(c"%6d"));
                     } else if tcode == TLONG {
                         /* 'J' */
-                        strcpy_safe(&mut cform, cs!("%11.0f"));
+                        strcpy_safe(&mut cform, cs!(c"%11.0f"));
                         intcol = 0; /* needed to support unsigned int */
                     } else if tcode == TFLOAT {
                         /* 'E' */
-                        strcpy_safe(&mut cform, cs!("%#14.6G"));
+                        strcpy_safe(&mut cform, cs!(c"%#14.6G"));
                     } else if tcode == TDOUBLE {
                         /* 'D' */
-                        strcpy_safe(&mut cform, cs!("%#23.15G"));
+                        strcpy_safe(&mut cform, cs!(c"%#23.15G"));
                     }
                 }
             }
@@ -711,7 +710,7 @@ pub(crate) fn ffgcls(
                 nulwidth = strlen_safe(&tmpnull) as c_int;
             }
             None => {
-                strcpy_safe(&mut tmpnull, cs!(" "));
+                strcpy_safe(&mut tmpnull, cs!(c" "));
                 nulwidth = 1;
             }
         }
@@ -738,7 +737,7 @@ pub(crate) fn ffgcls(
                 if dwidth < nulwidth {
                     strncat_safe(array[ii], &tmpnull, dwidth as usize);
                 } else {
-                    sprintf_string_width(cast_slice_mut(array[ii]), cs!("%*s"), dwidth, &tmpnull);
+                    sprintf_string_width(cast_slice_mut(array[ii]), cs!(c"%*s"), dwidth, &tmpnull);
                 }
             } else {
                 if intcol > 0 {
@@ -822,7 +821,7 @@ pub fn ffgcdw_safe(
     tcode = (c[ci].tdatatype).abs();
 
     /* use the TDISPn keyword if it exists */
-    ffkeyn_safe(cs!(TDISP), colnum, &mut keyname, status);
+    ffkeyn_safe(cs!(c"TDISP"), colnum, &mut keyname, status);
 
     *width = 0;
     tstatus = 0;
@@ -865,11 +864,11 @@ pub fn ffgcdw_safe(
     if *width == 0 {
         /* no valid TDISPn keyword; use TFORMn instead */
 
-        ffkeyn_safe(cs!(TFORM), colnum, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status);
         ffgkys_safe(fptr, &keyname, &mut dispfmt, None, status);
 
         /* check if  column is scaled */
-        ffkeyn_safe(cs!(TSCAL), colnum, &mut keyname, status);
+        ffkeyn_safe(cs!(c"TSCAL"), colnum, &mut keyname, status);
         tstatus = 0;
         scaled = 0;
 
@@ -1232,7 +1231,7 @@ pub(crate) fn ffgcls2(
                     if let Some(nulval) = nulval {
                         strcpy_safe(array[ii as usize], nulval);
                     } else {
-                        strcpy_safe(array[ii as usize], cs!(" "));
+                        strcpy_safe(array[ii as usize], cs!(c" "));
                     }
                 } else {
                     nularray[ii as usize] = 1;

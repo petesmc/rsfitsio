@@ -5,7 +5,7 @@ use std::ptr;
 use std::{ffi::CStr, process::ExitCode};
 
 use bytemuck::cast_slice;
-use cstr::cstr;
+
 use libc::{c_int, c_long, c_short, c_uchar, free, malloc, strcpy, strncpy};
 
 use rsfitsio::buffers::{ffflus, ffgtbb, ffptbb};
@@ -317,7 +317,7 @@ pub fn main() -> ExitCode {
             comms[0] = comm.as_mut_ptr();
 
             /* delete previous version of the file, if it exists (with ! prefix) */
-            strcpy_safe(&mut filename, cs!("!testprog.fit"));
+            strcpy_safe(&mut filename, cs!(c"!testprog.fit"));
 
             status = 0;
 
@@ -380,8 +380,8 @@ pub fn main() -> ExitCode {
             }
 
             print!("\ntest writing of long string keywords:\n");
-            strcpy_safe(&mut card, cs!("1234567890123456789012345678901234567890"));
-            strcat_safe(&mut card, cs!("12345678901234567890123456789012345"));
+            strcpy_safe(&mut card, cs!(c"1234567890123456789012345678901234567890"));
+            strcat_safe(&mut card, cs!(c"12345678901234567890123456789012345"));
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"card1".as_ptr(),
@@ -402,8 +402,8 @@ pub fn main() -> ExitCode {
                 byte_slice_to_str!(&card2)
             );
 
-            strcpy_safe(&mut card, cs!("1234567890123456789012345678901234567890"));
-            strcat_safe(&mut card, cs!("123456789012345678901234'6789012345"));
+            strcpy_safe(&mut card, cs!(c"1234567890123456789012345678901234567890"));
+            strcat_safe(&mut card, cs!(c"123456789012345678901234'6789012345"));
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"card2".as_ptr(),
@@ -424,8 +424,8 @@ pub fn main() -> ExitCode {
                 byte_slice_to_str!(&card2)
             );
 
-            strcpy_safe(&mut card, cs!("1234567890123456789012345678901234567890"));
-            strcat_safe(&mut card, cs!("123456789012345678901234''789012345"));
+            strcpy_safe(&mut card, cs!(c"1234567890123456789012345678901234567890"));
+            strcat_safe(&mut card, cs!(c"123456789012345678901234''789012345"));
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"card3".as_ptr(),
@@ -446,8 +446,8 @@ pub fn main() -> ExitCode {
                 byte_slice_to_str!(&card2)
             );
 
-            strcpy_safe(&mut card, cs!("1234567890123456789012345678901234567890"));
-            strcat_safe(&mut card, cs!("123456789012345678901234567'9012345"));
+            strcpy_safe(&mut card, cs!(c"1234567890123456789012345678901234567890"));
+            strcat_safe(&mut card, cs!(c"123456789012345678901234567'9012345"));
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"card4".as_ptr(),
@@ -657,7 +657,7 @@ pub fn main() -> ExitCode {
 
             comms[0] = comm.as_mut_ptr(); /* use the inskey array of pointers for the comments */
 
-            strcpy_safe(&mut comm, cs!("fxpkns comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpkns comment&"));
             if ffpkns(
                 fptr.as_mut_ptr(),
                 c"ky_pkns".as_ptr(),
@@ -671,7 +671,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkns status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpknl comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpknl comment&"));
             if ffpknl(
                 fptr.as_mut_ptr(),
                 c"ky_pknl".as_ptr(),
@@ -685,7 +685,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknl status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpknj comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpknj comment&"));
             if ffpknj(
                 fptr.as_mut_ptr(),
                 c"ky_pknj".as_ptr(),
@@ -699,7 +699,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknj status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpknf comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpknf comment&"));
             if ffpknf(
                 fptr.as_mut_ptr(),
                 c"ky_pknf".as_ptr(),
@@ -714,7 +714,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknf status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpkne comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpkne comment&"));
             if ffpkne(
                 fptr.as_mut_ptr(),
                 c"ky_pkne".as_ptr(),
@@ -729,7 +729,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkne status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpkng comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpkng comment&"));
             if ffpkng(
                 fptr.as_mut_ptr(),
                 c"ky_pkng".as_ptr(),
@@ -744,7 +744,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkng status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!("fxpknd comment&"));
+            strcpy_safe(&mut comm, cs!(c"fxpknd comment&"));
             if ffpknd(
                 fptr.as_mut_ptr(),
                 c"ky_pknd".as_ptr(),
@@ -765,7 +765,7 @@ pub fn main() -> ExitCode {
               ############################
             */
 
-            strcpy_safe(&mut oskey, cs!("1"));
+            strcpy_safe(&mut oskey, cs!(c"1"));
             if ffpky(
                 fptr.as_mut_ptr(),
                 TSTRING,
@@ -1391,7 +1391,7 @@ pub fn main() -> ExitCode {
 
             ffgrec(fptr.as_mut_ptr(), 9, card.as_mut_ptr(), &mut status);
             println!("{}", byte_slice_to_str!(&card));
-            if strncmp_safe(&card, cs!("KEY_PREC= 'This"), 15) != 0 {
+            if strncmp_safe(&card, cs!(c"KEY_PREC= 'This"), 15) != 0 {
                 println!("ERROR in ffgrec");
             }
 
@@ -1409,7 +1409,7 @@ pub fn main() -> ExitCode {
                 byte_slice_to_str!(&value),
                 byte_slice_to_str!(&comment)
             );
-            if strncmp_safe(&keyword, cs!("KEY_PREC"), 8) != 0 {
+            if strncmp_safe(&keyword, cs!(c"KEY_PREC"), 8) != 0 {
                 println!("ERROR in ffgkyn: {}", byte_slice_to_str!(&keyword));
             }
 
@@ -1438,7 +1438,7 @@ pub fn main() -> ExitCode {
                 byte_slice_to_str!(&comment)
             );
 
-            if strncmp_safe(&value, cs!("'first string'"), 14) != 0 {
+            if strncmp_safe(&value, cs!(c"'first string'"), 14) != 0 {
                 println!("ERROR in ffgkey: {}", byte_slice_to_str!(&value));
             }
 
@@ -3505,7 +3505,7 @@ pub fn main() -> ExitCode {
             bitpix = 16;
             naxis = 0;
 
-            strcpy_safe(&mut filename, cs!("!t1q2s3v6.tmp"));
+            strcpy_safe(&mut filename, cs!(c"!t1q2s3v6.tmp"));
             ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
             println!("Create temporary file: ffinit status = {status}");
 
@@ -4461,7 +4461,7 @@ pub fn main() -> ExitCode {
             bitpix = 16;
             naxis = 0;
 
-            strcpy_safe(&mut filename, cs!("!t1q2s3v5.tmp"));
+            strcpy_safe(&mut filename, cs!(c"!t1q2s3v5.tmp"));
             ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
             println!("Create temporary file: ffinit status = {status}");
 
@@ -4947,7 +4947,7 @@ pub fn main() -> ExitCode {
             print!("\nCreate image extension: ffiimg status = {status}\n");
             println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
 
-            strcpy_safe(&mut filename, cs!("t1q2s3v4.tmp"));
+            strcpy_safe(&mut filename, cs!(c"t1q2s3v4.tmp"));
             ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
             println!("Create temporary file: ffinit status = {status}");
 
@@ -5073,7 +5073,7 @@ pub fn main() -> ExitCode {
             */
 
             /* initialize arrays of values to write to table */
-            strcpy_safe(&mut iskey, cs!("abcdefghijklmnopqrst"));
+            strcpy_safe(&mut iskey, cs!(c"abcdefghijklmnopqrst"));
 
             for ii in 0..20 {
                 boutarray[ii] = (ii + 1) as c_uchar;
@@ -5282,7 +5282,7 @@ pub fn main() -> ExitCode {
 
             /* initialize the variables to be read */
             strcpy(inskey[0], c" ".as_ptr());
-            strcpy_safe(&mut iskey, cs!(" "));
+            strcpy_safe(&mut iskey, cs!(c" "));
 
             println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
             for ii in 1..=20 as LONGLONG
@@ -5794,7 +5794,7 @@ pub fn main() -> ExitCode {
 
             nrows = 11;
             tfields = 5;
-            strcpy_safe(&mut tblname, cs!("new_table"));
+            strcpy_safe(&mut tblname, cs!(c"new_table"));
 
             ffcrtb(
                 fptr.as_mut_ptr(),
@@ -6075,7 +6075,7 @@ pub fn main() -> ExitCode {
                 status
             );
 
-            strcpy_safe(&mut tblname, cs!("Test-ASCII"));
+            strcpy_safe(&mut tblname, cs!(c"Test-ASCII"));
             extvers = 2;
             ffmnhd(
                 fptr.as_mut_ptr(),
@@ -6093,7 +6093,7 @@ pub fn main() -> ExitCode {
                 status
             );
 
-            strcpy_safe(&mut tblname, cs!("new_table"));
+            strcpy_safe(&mut tblname, cs!(c"new_table"));
             extvers = 5;
             ffmnhd(
                 fptr.as_mut_ptr(),

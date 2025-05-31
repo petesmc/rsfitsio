@@ -18,7 +18,7 @@ use crate::c_types::{
 use libc::realloc;
 
 use bytemuck::{cast, cast_slice, cast_slice_mut};
-use cstr::cstr;
+
 use pliocomp::{pl_l2pi, pl_p2li};
 
 use crate::aliases::{not_safe::*, safe::*, safer::*};
@@ -798,26 +798,26 @@ pub(crate) fn fits_set_compression_pref_safe(
     for ii in 2..=nkeys {
         ffgrec_safe(infptr, ii, Some(&mut card), status);
 
-        if strncmp_safe(&card, cs!("FZ"), 2) == 0 {
+        if strncmp_safe(&card, cs!(c"FZ"), 2) == 0 {
             /* get the keyword value string */
             ffpsvc_safe(&mut card, &mut value, None, status);
 
-            if strncmp_safe(&card[2..], cs!("ALGOR"), 5) == 0 {
+            if strncmp_safe(&card[2..], cs!(c"ALGOR"), 5) == 0 {
                 /* set the desired compression algorithm */
                 /* allowed values: RICE_1, GZIP_1, GZIP_2, PLIO_1,     */
                 /*  HCOMPRESS_1, BZIP2_1, and NOCOMPRESS               */
 
-                if fits_strncasecmp(&value, cs!("'RICE_1"), 7) == 0 {
+                if fits_strncasecmp(&value, cs!(c"'RICE_1"), 7) == 0 {
                     comptype = RICE_1;
-                } else if fits_strncasecmp(&value, cs!("'GZIP_1"), 7) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'GZIP_1"), 7) == 0 {
                     comptype = GZIP_1;
-                } else if fits_strncasecmp(&value, cs!("'GZIP_2"), 7) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'GZIP_2"), 7) == 0 {
                     comptype = GZIP_2;
-                } else if fits_strncasecmp(&value, cs!("'PLIO_1"), 7) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'PLIO_1"), 7) == 0 {
                     comptype = PLIO_1;
-                } else if fits_strncasecmp(&value, cs!("'HCOMPRESS_1"), 12) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'HCOMPRESS_1"), 12) == 0 {
                     comptype = HCOMPRESS_1;
-                } else if fits_strncasecmp(&value, cs!("'NONE"), 5) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'NONE"), 5) == 0 {
                     comptype = NOCOMPRESS;
                 } else {
                     ffpmsg_str("Unknown FZALGOR keyword compression algorithm:");
@@ -827,10 +827,10 @@ pub(crate) fn fits_set_compression_pref_safe(
                 }
 
                 fits_set_compression_type_safe(outfptr, comptype, status);
-            } else if strncmp_safe(&card[2..], cs!("TILE  "), 6) != 0 {
-                if fits_strncasecmp(&value, cs!("'row"), 4) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"TILE  "), 6) != 0 {
+                if fits_strncasecmp(&value, cs!(c"'row"), 4) == 0 {
                     tiledim[0] = -1;
-                } else if fits_strncasecmp(&value, cs!("'whole"), 6) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'whole"), 6) == 0 {
                     tiledim[0] = -1;
                     tiledim[1] = -1;
                     tiledim[2] = -1;
@@ -840,7 +840,7 @@ pub(crate) fn fits_set_compression_pref_safe(
 
                 /* set the desired tile size */
                 fits_set_tile_dim_safe(outfptr, 6, &tiledim, status);
-            } else if strncmp_safe(&card[2..], cs!("QVALUE"), 6) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"QVALUE"), 6) == 0 {
                 /* set the desired Q quantization value */
                 let qvalue: f64 = CStr::from_bytes_until_nul(cast_slice(&value))
                     .unwrap()
@@ -849,12 +849,12 @@ pub(crate) fn fits_set_compression_pref_safe(
                     .parse()
                     .unwrap();
                 fits_set_quantize_level_safe(outfptr, qvalue as f32, status);
-            } else if strncmp_safe(&card[2..], cs!("QMETHD"), 6) == 0 {
-                if fits_strncasecmp(&value, cs!("'no_dither"), 10) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"QMETHD"), 6) == 0 {
+                if fits_strncasecmp(&value, cs!(c"'no_dither"), 10) == 0 {
                     ivalue = -1; /* just quantize, with no dithering */
-                } else if fits_strncasecmp(&value, cs!("'subtractive_dither_1"), 21) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'subtractive_dither_1"), 21) == 0 {
                     ivalue = SUBTRACTIVE_DITHER_1 as c_int; /* use subtractive dithering */
-                } else if fits_strncasecmp(&value, cs!("'subtractive_dither_2"), 21) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'subtractive_dither_2"), 21) == 0 {
                     ivalue = SUBTRACTIVE_DITHER_2 as c_int; /* dither, except preserve zero-valued pixels */
                 } else {
                     ffpmsg_str("Unknown value for FZQUANT keyword: (set_compression_pref)");
@@ -864,10 +864,10 @@ pub(crate) fn fits_set_compression_pref_safe(
                 }
 
                 fits_set_quantize_method_safe(outfptr, ivalue, status);
-            } else if strncmp_safe(&card[2..], cs!("DTHRSD"), 6) == 0 {
-                if fits_strncasecmp(&value, cs!("'checksum"), 9) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"DTHRSD"), 6) == 0 {
+                if fits_strncasecmp(&value, cs!(c"'checksum"), 9) == 0 {
                     ivalue = -1; /* use checksum of first tile */
-                } else if fits_strncasecmp(&value, cs!("'clock"), 6) == 0 {
+                } else if fits_strncasecmp(&value, cs!(c"'clock"), 6) == 0 {
                     ivalue = 0; /* set dithering seed based on system clock */
                 } else {
                     /* read integer value */
@@ -898,11 +898,11 @@ pub(crate) fn fits_set_compression_pref_safe(
 
                 /* set the desired dithering */
                 fits_set_dither_seed_safe(outfptr, ivalue, status);
-            } else if strncmp_safe(&card[2..], cs!("I2F"), 3) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"I2F"), 3) == 0 {
                 /* set whether to convert integers to float then use lossy compression */
-                if fits_strcasecmp(&value, cs!("t")) == 0 {
+                if fits_strcasecmp(&value, cs!(c"t")) == 0 {
                     fits_set_lossy_int_safe(outfptr, 1, status);
-                } else if fits_strcasecmp(&value, cs!("f")) == 0 {
+                } else if fits_strcasecmp(&value, cs!(c"f")) == 0 {
                     fits_set_lossy_int_safe(outfptr, 0, status);
                 } else {
                     ffpmsg_str("Unknown value for FZI2F keyword: (set_compression_pref)");
@@ -910,7 +910,7 @@ pub(crate) fn fits_set_compression_pref_safe(
                     *status = DATA_COMPRESSION_ERR;
                     return *status;
                 }
-            } else if strncmp_safe(&card[2..], cs!("HSCALE "), 6) == 0 {
+            } else if strncmp_safe(&card[2..], cs!(c"HSCALE "), 6) == 0 {
                 /* set the desired Hcompress scale value */
                 let dvalue: f64 = CStr::from_bytes_until_nul(cast_slice(&value))
                     .unwrap()
@@ -1208,7 +1208,7 @@ pub(crate) fn imcomp_init_table(
     let mut ncols: c_int = 0;
     let mut bitpix: c_int = 0;
     let mut nrows: c_long = 0;
-    let ttype: [&[c_char]; 3] = [cs!("COMPRESSED_DATA"), cs!("ZSCALE"), cs!("ZZERO")];
+    let ttype: [&[c_char]; 3] = [cs!(c"COMPRESSED_DATA"), cs!(c"ZSCALE"), cs!(c"ZZERO")];
 
     let mut tform: [[c_char; 4]; 3] = [[0; 4]; 3];
     let mut tf0: [c_char; 4] = [0; 4];
@@ -1461,12 +1461,12 @@ pub(crate) fn imcomp_init_table(
 
     /* ---- set up array of TFORM strings -------------------------------*/
     if (outfptr.Fptr).request_huge_hdu != 0 {
-        strcpy_safe(&mut tf0, cs!("1QB"));
+        strcpy_safe(&mut tf0, cs!(c"1QB"));
     } else {
-        strcpy_safe(&mut tf0, cs!("1PB"));
+        strcpy_safe(&mut tf0, cs!(c"1PB"));
     }
-    strcpy_safe(&mut tf1, cs!("1D"));
-    strcpy_safe(&mut tf2, cs!("1D"));
+    strcpy_safe(&mut tf1, cs!(c"1D"));
+    strcpy_safe(&mut tf2, cs!(c"1D"));
 
     tform[0] = tf0;
     tform[1] = tf1;
@@ -1486,25 +1486,25 @@ pub(crate) fn imcomp_init_table(
     }
 
     if (outfptr.Fptr).request_compress_type == RICE_1 {
-        strcpy_safe(&mut zcmptype, cs!("RICE_1"));
+        strcpy_safe(&mut zcmptype, cs!(c"RICE_1"));
     } else if (outfptr.Fptr).request_compress_type == GZIP_1 {
-        strcpy_safe(&mut zcmptype, cs!("GZIP_1"));
+        strcpy_safe(&mut zcmptype, cs!(c"GZIP_1"));
     } else if (outfptr.Fptr).request_compress_type == GZIP_2 {
-        strcpy_safe(&mut zcmptype, cs!("GZIP_2"));
+        strcpy_safe(&mut zcmptype, cs!(c"GZIP_2"));
     } else if (outfptr.Fptr).request_compress_type == BZIP2_1 {
-        strcpy_safe(&mut zcmptype, cs!("BZIP2_1"));
+        strcpy_safe(&mut zcmptype, cs!(c"BZIP2_1"));
     } else if (outfptr.Fptr).request_compress_type == PLIO_1 {
-        strcpy_safe(&mut zcmptype, cs!("PLIO_1"));
+        strcpy_safe(&mut zcmptype, cs!(c"PLIO_1"));
         /* the PLIO compression algorithm outputs short integers, not bytes */
         if (outfptr.Fptr).request_huge_hdu != 0 {
-            strcpy_safe(&mut tform[0], cs!("1QI"));
+            strcpy_safe(&mut tform[0], cs!(c"1QI"));
         } else {
-            strcpy_safe(&mut tform[0], cs!("1PI"));
+            strcpy_safe(&mut tform[0], cs!(c"1PI"));
         }
     } else if (outfptr.Fptr).request_compress_type == HCOMPRESS_1 {
-        strcpy_safe(&mut zcmptype, cs!("HCOMPRESS_1"));
+        strcpy_safe(&mut zcmptype, cs!(c"HCOMPRESS_1"));
     } else if (outfptr.Fptr).request_compress_type == NOCOMPRESS {
-        strcpy_safe(&mut zcmptype, cs!("NOCOMPRESS"));
+        strcpy_safe(&mut zcmptype, cs!(c"NOCOMPRESS"));
     } else {
         ffpmsg_str("unknown compression type (imcomp_init_table)");
         *status = DATA_COMPRESSION_ERR;
@@ -1538,9 +1538,9 @@ pub(crate) fn imcomp_init_table(
     /* Add standard header keywords. */
     ffpkyl_safe(
         outfptr,
-        cs!("ZIMAGE"),
+        cs!(c"ZIMAGE"),
         1,
-        Some(cs!("extension contains compressed image")),
+        Some(cs!(c"extension contains compressed image")),
         status,
     );
 
@@ -1552,24 +1552,24 @@ pub(crate) fn imcomp_init_table(
         if is_primary {
             ffpkyl_safe(
                 outfptr,
-                cs!("ZSIMPLE"),
+                cs!(c"ZSIMPLE"),
                 1,
-                Some(cs!("file does conform to FITS standard")),
+                Some(cs!(c"file does conform to FITS standard")),
                 status,
             );
         }
         ffpkyj_safe(
             outfptr,
-            cs!("ZBITPIX"),
+            cs!(c"ZBITPIX"),
             bitpix as LONGLONG,
-            Some(cs!("data type of original image")),
+            Some(cs!(c"data type of original image")),
             status,
         );
         ffpkyj_safe(
             outfptr,
-            cs!("ZNAXIS"),
+            cs!(c"ZNAXIS"),
             naxis as LONGLONG,
-            Some(cs!("dimension of original image")),
+            Some(cs!(c"dimension of original image")),
             status,
         );
 
@@ -1579,7 +1579,7 @@ pub(crate) fn imcomp_init_table(
                 outfptr,
                 &keyname,
                 naxes[ii],
-                Some(cs!("length of original image axis")),
+                Some(cs!(c"length of original image axis")),
                 status,
             );
         }
@@ -1591,7 +1591,7 @@ pub(crate) fn imcomp_init_table(
             outfptr,
             &keyname,
             actual_tilesize[ii],
-            Some(cs!("size of tiles to be compressed")),
+            Some(cs!(c"size of tiles to be compressed")),
             status,
         );
     }
@@ -1600,9 +1600,9 @@ pub(crate) fn imcomp_init_table(
         if (outfptr.Fptr).request_quantize_level == NO_QUANTIZE {
             ffpkys_safe(
                 outfptr,
-                cs!("ZQUANTIZ"),
-                cs!("NONE"),
-                Some(cs!("Lossless compression without quantization")),
+                cs!(c"ZQUANTIZ"),
+                cs!(c"NONE"),
+                Some(cs!(c"Lossless compression without quantization")),
                 status,
             );
         } else {
@@ -1617,7 +1617,7 @@ pub(crate) fn imcomp_init_table(
             /* HCompress must not use SUBTRACTIVE_DITHER_2. If user is
             requesting this, assign SUBTRACTIVE_DITHER_1 instead. */
             if (outfptr.Fptr).request_quantize_method == SUBTRACTIVE_DITHER_2
-                && (strcmp_safe(&zcmptype, cs!("HCOMPRESS_1"))) == 0
+                && (strcmp_safe(&zcmptype, cs!(c"HCOMPRESS_1"))) == 0
             {
                 (outfptr.Fptr).request_quantize_method = SUBTRACTIVE_DITHER_1;
                 eprintln!(
@@ -1628,9 +1628,9 @@ pub(crate) fn imcomp_init_table(
             if (outfptr.Fptr).request_quantize_method == SUBTRACTIVE_DITHER_1 {
                 ffpkys_safe(
                     outfptr,
-                    cs!("ZQUANTIZ"),
-                    cs!("SUBTRACTIVE_DITHER_1"),
-                    Some(cs!("Pixel Quantization Algorithm")),
+                    cs!(c"ZQUANTIZ"),
+                    cs!(c"SUBTRACTIVE_DITHER_1"),
+                    Some(cs!(c"Pixel Quantization Algorithm")),
                     status,
                 );
 
@@ -1638,17 +1638,17 @@ pub(crate) fn imcomp_init_table(
                 /* which may get updated later. */
                 fits_write_key_lng(
                     outfptr,
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     ((outfptr.Fptr).request_dither_seed) as LONGLONG,
-                    Some(cs!("dithering offset when quantizing floats")),
+                    Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
             } else if (outfptr.Fptr).request_quantize_method == SUBTRACTIVE_DITHER_2 {
                 ffpkys_safe(
                     outfptr,
-                    cs!("ZQUANTIZ"),
-                    cs!("SUBTRACTIVE_DITHER_2"),
-                    Some(cs!("Pixel Quantization Algorithm")),
+                    cs!(c"ZQUANTIZ"),
+                    cs!(c"SUBTRACTIVE_DITHER_2"),
+                    Some(cs!(c"Pixel Quantization Algorithm")),
                     status,
                 );
 
@@ -1656,25 +1656,25 @@ pub(crate) fn imcomp_init_table(
                 /* which may get updated later. */
                 fits_write_key_lng(
                     outfptr,
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     ((outfptr.Fptr).request_dither_seed) as LONGLONG,
-                    Some(cs!("dithering offset when quantizing floats")),
+                    Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
 
-                if strcmp_safe(&zcmptype, cs!("RICE_1")) == 0 {
+                if strcmp_safe(&zcmptype, cs!(c"RICE_1")) == 0 {
                     /* when using this new dithering method, change the compression type */
                     /* to an alias, so that old versions of funpack will not be able to */
                     /* created a corrupted uncompressed image. */
                     /* ******* can remove this cludge after about June 2015, after most old versions of fpack are gone */
-                    strcpy_safe(&mut zcmptype, cs!("RICE_ONE"));
+                    strcpy_safe(&mut zcmptype, cs!(c"RICE_ONE"));
                 }
             } else if (outfptr.Fptr).request_quantize_method == NO_DITHER {
                 ffpkys_safe(
                     outfptr,
-                    cs!("ZQUANTIZ"),
-                    cs!("NO_DITHER"),
-                    Some(cs!("No dithering during quantization")),
+                    cs!(c"ZQUANTIZ"),
+                    cs!(c"NO_DITHER"),
+                    Some(cs!(c"No dithering during quantization")),
                     status,
                 );
             }
@@ -1683,9 +1683,9 @@ pub(crate) fn imcomp_init_table(
 
     ffpkys_safe(
         outfptr,
-        cs!("ZCMPTYPE"),
+        cs!(c"ZCMPTYPE"),
         &zcmptype,
-        Some(cs!("compression algorithm")),
+        Some(cs!(c"compression algorithm")),
         status,
     );
 
@@ -1693,83 +1693,83 @@ pub(crate) fn imcomp_init_table(
     if (outfptr.Fptr).request_compress_type == RICE_1 {
         ffpkys_safe(
             outfptr,
-            cs!("ZNAME1"),
-            cs!("BLOCKSIZE"),
-            Some(cs!("compression block size")),
+            cs!(c"ZNAME1"),
+            cs!(c"BLOCKSIZE"),
+            Some(cs!(c"compression block size")),
             status,
         );
 
         /* for now at least, the block size is always 32 */
         ffpkyj_safe(
             outfptr,
-            cs!("ZVAL1"),
+            cs!(c"ZVAL1"),
             32,
-            Some(cs!("pixels per block")),
+            Some(cs!(c"pixels per block")),
             status,
         );
 
         ffpkys_safe(
             outfptr,
-            cs!("ZNAME2"),
-            cs!("BYTEPIX"),
-            Some(cs!("bytes per pixel (1, 2, 4, or 8)")),
+            cs!(c"ZNAME2"),
+            cs!(c"BYTEPIX"),
+            Some(cs!(c"bytes per pixel (1, 2, 4, or 8)")),
             status,
         );
 
         if bitpix == BYTE_IMG {
             ffpkyj_safe(
                 outfptr,
-                cs!("ZVAL2"),
+                cs!(c"ZVAL2"),
                 1,
-                Some(cs!("bytes per pixel (1, 2, 4, or 8)")),
+                Some(cs!(c"bytes per pixel (1, 2, 4, or 8)")),
                 status,
             );
         } else if bitpix == SHORT_IMG {
             ffpkyj_safe(
                 outfptr,
-                cs!("ZVAL2"),
+                cs!(c"ZVAL2"),
                 2,
-                Some(cs!("bytes per pixel (1, 2, 4, or 8)")),
+                Some(cs!(c"bytes per pixel (1, 2, 4, or 8)")),
                 status,
             );
         } else {
             ffpkyj_safe(
                 outfptr,
-                cs!("ZVAL2"),
+                cs!(c"ZVAL2"),
                 4,
-                Some(cs!("bytes per pixel (1, 2, 4, or 8)")),
+                Some(cs!(c"bytes per pixel (1, 2, 4, or 8)")),
                 status,
             );
         }
     } else if (outfptr.Fptr).request_compress_type == HCOMPRESS_1 {
         ffpkys_safe(
             outfptr,
-            cs!("ZNAME1"),
-            cs!("SCALE"),
-            Some(cs!("HCOMPRESS scale factor")),
+            cs!(c"ZNAME1"),
+            cs!(c"SCALE"),
+            Some(cs!(c"HCOMPRESS scale factor")),
             status,
         );
         ffpkye_safe(
             outfptr,
-            cs!("ZVAL1"),
+            cs!(c"ZVAL1"),
             (outfptr.Fptr).request_hcomp_scale,
             7,
-            Some(cs!("HCOMPRESS scale factor")),
+            Some(cs!(c"HCOMPRESS scale factor")),
             status,
         );
 
         ffpkys_safe(
             outfptr,
-            cs!("ZNAME2"),
-            cs!("SMOOTH"),
-            Some(cs!("HCOMPRESS smooth option")),
+            cs!(c"ZNAME2"),
+            cs!(c"SMOOTH"),
+            Some(cs!(c"HCOMPRESS smooth option")),
             status,
         );
         ffpkyj_safe(
             outfptr,
-            cs!("ZVAL2"),
+            cs!(c"ZVAL2"),
             (outfptr.Fptr).request_hcomp_smooth as c_long,
-            Some(cs!("HCOMPRESS smooth option")),
+            Some(cs!(c"HCOMPRESS smooth option")),
             status,
         );
     }
@@ -1778,21 +1778,24 @@ pub(crate) fn imcomp_init_table(
     if inbitpix == USHORT_IMG {
         strcpy_safe(
             &mut comm,
-            cs!("offset data range to that of unsigned short"),
+            cs!(c"offset data range to that of unsigned short"),
         );
-        ffpkyg_safe(outfptr, cs!("BZERO"), 32768., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(outfptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        ffpkyg_safe(outfptr, cs!(c"BZERO"), 32768., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(outfptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     } else if inbitpix == SBYTE_IMG {
-        strcpy_safe(&mut comm, cs!("offset data range to that of signed byte"));
-        ffpkyg_safe(outfptr, cs!("BZERO"), -128., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(outfptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"offset data range to that of signed byte"));
+        ffpkyg_safe(outfptr, cs!(c"BZERO"), -128., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(outfptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     } else if inbitpix == ULONG_IMG {
-        strcpy_safe(&mut comm, cs!("offset data range to that of unsigned long"));
-        ffpkyg_safe(outfptr, cs!("BZERO"), 2147483648., 0, Some(&comm), status);
-        strcpy_safe(&mut comm, cs!("default scaling factor"));
-        ffpkyg_safe(outfptr, cs!("BSCALE"), 1.0, 0, Some(&comm), status);
+        strcpy_safe(
+            &mut comm,
+            cs!(c"offset data range to that of unsigned long"),
+        );
+        ffpkyg_safe(outfptr, cs!(c"BZERO"), 2147483648., 0, Some(&comm), status);
+        strcpy_safe(&mut comm, cs!(c"default scaling factor"));
+        ffpkyg_safe(outfptr, cs!(c"BSCALE"), 1.0, 0, Some(&comm), status);
     }
 
     *status
@@ -2181,12 +2184,12 @@ unsafe fn imcomp_compress_image(
 
         /* insert ZBLANK keyword if necessary; only for TFLOAT or TDOUBLE images */
         if gotnulls {
-            ffgcrd_safe(outfptr, cs!("ZCMPTYPE"), &mut card, status);
+            ffgcrd_safe(outfptr, cs!(c"ZCMPTYPE"), &mut card, status);
             ffikyj_safe(
                 outfptr,
-                cs!("ZBLANK"),
+                cs!(c"ZBLANK"),
                 COMPRESS_NULL_VALUE as LONGLONG,
-                Some(cs!("null value in the compressed integer array")),
+                Some(cs!(c"null value in the compressed integer array")),
                 status,
             );
         }
@@ -2889,16 +2892,16 @@ unsafe fn imcomp_compress_tile(
                     fits_insert_col(
                         outfptr,
                         999,
-                        cs!("GZIP_COMPRESSED_DATA"),
-                        cs!("1QB"),
+                        cs!(c"GZIP_COMPRESSED_DATA"),
+                        cs!(c"1QB"),
                         status,
                     );
                 } else {
                     fits_insert_col(
                         outfptr,
                         999,
-                        cs!("GZIP_COMPRESSED_DATA"),
-                        cs!("1PB"),
+                        cs!(c"GZIP_COMPRESSED_DATA"),
+                        cs!(c"1PB"),
                         status,
                     );
                 }
@@ -2909,7 +2912,7 @@ unsafe fn imcomp_compress_tile(
                     ffgcno_safe(
                         outfptr,
                         CASEINSEN.try_into().unwrap(),
-                        cs!("GZIP_COMPRESSED_DATA"),
+                        cs!(c"GZIP_COMPRESSED_DATA"),
                         &mut cn_gzip_data,
                         status,
                     );
@@ -3042,11 +3045,11 @@ unsafe fn imcomp_write_nocompress_tile(
             /* uncompressed data column doesn't exist, so append new column to table
              */
             if datatype == TSHORT {
-                strcpy_safe(&mut coltype, cs!("1PI"));
+                strcpy_safe(&mut coltype, cs!(c"1PI"));
             } else if datatype == TINT {
-                strcpy_safe(&mut coltype, cs!("1PJ"));
+                strcpy_safe(&mut coltype, cs!(c"1PJ"));
             } else if datatype == TFLOAT {
-                strcpy_safe(&mut coltype, cs!("1QE"));
+                strcpy_safe(&mut coltype, cs!(c"1QE"));
             } else {
                 ffpmsg_cstr(
                     c"NOCOMPRESSION option only supported for int*2, int*4, and float*4 images",
@@ -3055,7 +3058,7 @@ unsafe fn imcomp_write_nocompress_tile(
                 return *status;
             }
 
-            fits_insert_col(outfptr, 999, cs!("UNCOMPRESSED_DATA"), &coltype, status);
+            fits_insert_col(outfptr, 999, cs!(c"UNCOMPRESSED_DATA"), &coltype, status);
             /* create column */
         }
 
@@ -3063,7 +3066,7 @@ unsafe fn imcomp_write_nocompress_tile(
         fits_get_colnum(
             outfptr,
             CASEINSEN.try_into().unwrap(),
-            cs!("UNCOMPRESSED_DATA"),
+            cs!(c"UNCOMPRESSED_DATA"),
             &mut cn,
             status,
         ); /* save col. num. */
@@ -3698,7 +3701,7 @@ unsafe fn imcomp_convert_tile_tfloat(
                 fits_update_key(
                     outfptr,
                     crate::KeywordDatatype::TINT(&dither_seed),
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     None,
                     status,
                 );
@@ -3719,7 +3722,7 @@ unsafe fn imcomp_convert_tile_tfloat(
                 fits_update_key(
                     outfptr,
                     crate::KeywordDatatype::TINT(&dither_seed),
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     None,
                     status,
                 );
@@ -3874,7 +3877,7 @@ fn imcomp_convert_tile_tdouble(
                 fits_update_key(
                     outfptr,
                     KeywordDatatype::TINT(&dither_seed),
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     None,
                     status,
                 );
@@ -3890,7 +3893,7 @@ fn imcomp_convert_tile_tdouble(
                 fits_update_key(
                     outfptr,
                     KeywordDatatype::TINT(&dither_seed),
-                    cs!("ZDITHER0"),
+                    cs!(c"ZDITHER0"),
                     None,
                     status,
                 );
@@ -4889,16 +4892,16 @@ pub(crate) unsafe fn fits_write_compressed_img(
             not there then we need to insert the keyword.
             */
             tstatus = 0;
-            ffgcrd_safe(fptr, cs!("ZBLANK"), &mut card, &mut tstatus);
+            ffgcrd_safe(fptr, cs!(c"ZBLANK"), &mut card, &mut tstatus);
 
             if tstatus != 0 {
                 /* have to insert the ZBLANK keyword */
-                ffgcrd_safe(fptr, cs!("ZCMPTYPE"), &mut card, status);
+                ffgcrd_safe(fptr, cs!(c"ZCMPTYPE"), &mut card, status);
                 ffikyj_safe(
                     fptr,
-                    cs!("ZBLANK"),
+                    cs!(c"ZBLANK"),
                     COMPRESS_NULL_VALUE as LONGLONG,
-                    Some(cs!("null value in the compressed integer array")),
+                    Some(cs!(c"null value in the compressed integer array")),
                     status,
                 );
 
@@ -5568,7 +5571,7 @@ pub(crate) unsafe fn fits_img_decompress_header_safer(
 
         /* Was the input compressed HDU originally the primary array image? */
         tstatus = 0;
-        if fits_read_card(infptr, cs!("ZSIMPLE"), &mut card, &mut tstatus) == 0 {
+        if fits_read_card(infptr, cs!(c"ZSIMPLE"), &mut card, &mut tstatus) == 0 {
             /* yes, input HDU was a primary array (not an IMAGE extension) */
             /* Now determine if we can uncompress it into the primary array of */
             /* the output file.  This is only possible if the output file */
@@ -5617,7 +5620,7 @@ pub(crate) unsafe fn fits_img_decompress_header_safer(
             /* if the ZTENSION keyword doesn't exist, then we have to
             write the required keywords manually */
             tstatus = 0;
-            if fits_read_card(infptr, cs!("ZTENSION"), &mut card, &mut tstatus) != 0 {
+            if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
                 /* create an empty output image with the correct dimensions */
                 if ffcrim_safer(
                     outfptr,
@@ -6681,7 +6684,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     }
 
     /* Copy relevant header keyword values to structure */
-    if fits_read_key_str(infptr, cs!("ZCMPTYPE"), &mut value, None, status) > 0 {
+    if fits_read_key_str(infptr, cs!(c"ZCMPTYPE"), &mut value, None, status) > 0 {
         ffpmsg_str("required ZCMPTYPE compression keyword not found in");
         ffpmsg_str(" imcomp_get_compressed_image_par");
         return *status;
@@ -6690,19 +6693,19 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     (infptr.Fptr).zcmptype[0] = 0;
     strncat_safe(&mut (infptr.Fptr).zcmptype, &value, 11);
 
-    if FSTRCMP(&value, cs!("RICE_1")) == 0 || FSTRCMP(&value, cs!("RICE_ONE")) == 0 {
+    if FSTRCMP(&value, cs!(c"RICE_1")) == 0 || FSTRCMP(&value, cs!(c"RICE_ONE")) == 0 {
         (infptr.Fptr).compress_type = RICE_1;
-    } else if FSTRCMP(&value, cs!("HCOMPRESS_1")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"HCOMPRESS_1")) == 0 {
         (infptr.Fptr).compress_type = HCOMPRESS_1;
-    } else if FSTRCMP(&value, cs!("GZIP_1")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"GZIP_1")) == 0 {
         (infptr.Fptr).compress_type = GZIP_1;
-    } else if FSTRCMP(&value, cs!("GZIP_2")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"GZIP_2")) == 0 {
         (infptr.Fptr).compress_type = GZIP_2;
-    } else if FSTRCMP(&value, cs!("BZIP2_1")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"BZIP2_1")) == 0 {
         (infptr.Fptr).compress_type = BZIP2_1;
-    } else if FSTRCMP(&value, cs!("PLIO_1")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"PLIO_1")) == 0 {
         (infptr.Fptr).compress_type = PLIO_1;
-    } else if FSTRCMP(&value, cs!("NOCOMPRESS")) == 0 {
+    } else if FSTRCMP(&value, cs!(c"NOCOMPRESS")) == 0 {
         (infptr.Fptr).compress_type = NOCOMPRESS;
     } else {
         ffpmsg_str("Unknown image compression type:");
@@ -6715,7 +6718,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgky_safe(
         infptr,
         KeywordDatatypeMut::TINT(&mut zbitpix),
-        cs!("ZBITPIX"),
+        cs!(c"ZBITPIX"),
         None,
         status,
     );
@@ -6736,14 +6739,14 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         && (fits_get_colnum(
             infptr,
             CASEINSEN as c_int,
-            cs!("ZZERO"),
+            cs!(c"ZZERO"),
             &mut colNum,
             &mut tstatus,
         ) == COL_NOT_FOUND)
         && (fits_get_colnum(
             infptr,
             CASEINSEN as c_int,
-            cs!("ZSCALE"),
+            cs!(c"ZSCALE"),
             &mut colNum,
             &mut tstatus2,
         ) == COL_NOT_FOUND)
@@ -6753,16 +6756,16 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         /* get the floating point to integer quantization type, if present. */
         /* FITS files produced before 2009 will not have this keyword */
         tstatus = 0;
-        if fits_read_key_str(infptr, cs!("ZQUANTIZ"), &mut value, None, &mut tstatus) > 0 {
+        if fits_read_key_str(infptr, cs!(c"ZQUANTIZ"), &mut value, None, &mut tstatus) > 0 {
             (infptr.Fptr).quantize_method = 0;
             (infptr.Fptr).quantize_level = 0.0;
-        } else if FSTRCMP(&value, cs!("NONE")) == 0 {
+        } else if FSTRCMP(&value, cs!(c"NONE")) == 0 {
             (infptr.Fptr).quantize_level = NO_QUANTIZE;
-        } else if FSTRCMP(&value, cs!("SUBTRACTIVE_DITHER_1")) == 0 {
+        } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_1")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_1;
-        } else if FSTRCMP(&value, cs!("SUBTRACTIVE_DITHER_2")) == 0 {
+        } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_2")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_2;
-        } else if FSTRCMP(&value, cs!("NO_DITHER")) == 0 {
+        } else if FSTRCMP(&value, cs!(c"NO_DITHER")) == 0 {
             (infptr.Fptr).quantize_method = NO_DITHER;
         } else {
             (infptr.Fptr).quantize_method = 0;
@@ -6775,7 +6778,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     if ffgky_safe(
         infptr,
         KeywordDatatypeMut::TINT(&mut doffset),
-        cs!("ZDITHER0"),
+        cs!(c"ZDITHER0"),
         None,
         &mut tstatus,
     ) > 0
@@ -6790,7 +6793,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgky_safe(
         infptr,
         KeywordDatatypeMut::TINT(&mut zndim),
-        cs!("ZNAXIS"),
+        cs!(c"ZNAXIS"),
         None,
         status,
     );
@@ -6878,7 +6881,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         let r = ffgky_safe(
             infptr,
             KeywordDatatypeMut::TINT(&mut rice_blocksize),
-            cs!("ZVAL1"),
+            cs!(c"ZVAL1"),
             None,
             status,
         );
@@ -6892,8 +6895,8 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         tstatus = 0;
         /* First check for very old files, where ZVAL2 wasn't yet designated
         for bytepix */
-        if fits_read_key_str(infptr, cs!("ZNAME2"), &mut value, None, &mut tstatus) != 0
-            && FSTRCMP(&value, cs!("NOISEBIT")) == 0
+        if fits_read_key_str(infptr, cs!(c"ZNAME2"), &mut value, None, &mut tstatus) != 0
+            && FSTRCMP(&value, cs!(c"NOISEBIT")) == 0
         {
             oldFormat = true;
         }
@@ -6904,7 +6907,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
             || ffgky_safe(
                 infptr,
                 KeywordDatatypeMut::TINT(&mut rice_bytepix),
-                cs!("ZVAL2"),
+                cs!(c"ZVAL2"),
                 None,
                 &mut tstatus,
             ) > 0
@@ -6921,7 +6924,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         }
     } else if (infptr.Fptr).compress_type == HCOMPRESS_1 {
         let mut hcomp_scale = (infptr.Fptr).hcomp_scale;
-        let r = fits_read_key_flt(infptr, cs!("ZVAL1"), &mut hcomp_scale, None, status);
+        let r = fits_read_key_flt(infptr, cs!(c"ZVAL1"), &mut hcomp_scale, None, status);
         (infptr.Fptr).hcomp_scale = hcomp_scale;
 
         if r > 0 {
@@ -6934,7 +6937,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         ffgky_safe(
             infptr,
             KeywordDatatypeMut::TINT(&mut hcomp_smooth),
-            cs!("ZVAL2"),
+            cs!(c"ZVAL2"),
             None,
             &mut tstatus,
         );
@@ -6964,7 +6967,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("COMPRESSED_DATA"),
+        cs!(c"COMPRESSED_DATA"),
         &mut cn_compressed,
         status,
     );
@@ -6983,7 +6986,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("UNCOMPRESSED_DATA"),
+        cs!(c"UNCOMPRESSED_DATA"),
         &mut cn_uncompressed,
         &mut tstatus,
     );
@@ -6994,7 +6997,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("GZIP_COMPRESSED_DATA"),
+        cs!(c"GZIP_COMPRESSED_DATA"),
         &mut cn_gzip_data,
         &mut tstatus,
     );
@@ -7005,7 +7008,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("ZSCALE"),
+        cs!(c"ZSCALE"),
         &mut cn_zscale,
         &mut tstatus,
     );
@@ -7015,7 +7018,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         /* CMPSCALE column doesn't exist; see if there is a keyword */
         tstatus = 0;
         let mut zscale = (infptr.Fptr).zscale;
-        let r = fits_read_key_dbl(infptr, cs!("ZSCALE"), &mut zscale, None, &mut tstatus);
+        let r = fits_read_key_dbl(infptr, cs!(c"ZSCALE"), &mut zscale, None, &mut tstatus);
         (infptr.Fptr).zscale = zscale;
 
         if r <= 0 {
@@ -7028,7 +7031,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("ZZERO"),
+        cs!(c"ZZERO"),
         &mut cn_zzero,
         &mut tstatus,
     );
@@ -7038,7 +7041,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         /* CMPZERO column doesn't exist; see if there is a keyword */
         tstatus = 0;
         let mut zzero = (infptr.Fptr).zzero;
-        let r = fits_read_key_dbl(infptr, cs!("ZZERO"), &mut zzero, None, &mut tstatus);
+        let r = fits_read_key_dbl(infptr, cs!(c"ZZERO"), &mut zzero, None, &mut tstatus);
         (infptr.Fptr).zzero = zzero;
 
         if r <= 0 {
@@ -7052,7 +7055,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     let r = ffgcno_safe(
         infptr,
         CASEINSEN as c_int,
-        cs!("ZBLANK"),
+        cs!(c"ZBLANK"),
         &mut cn_zblank,
         &mut tstatus,
     );
@@ -7066,7 +7069,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
         let r = ffgky_safe(
             infptr,
             KeywordDatatypeMut::TINT(&mut zblank),
-            cs!("ZBLANK"),
+            cs!(c"ZBLANK"),
             None,
             &mut tstatus,
         );
@@ -7081,7 +7084,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
             let r = ffgky_safe(
                 infptr,
                 KeywordDatatypeMut::TINT(&mut zblank),
-                cs!("BLANK"),
+                cs!(c"BLANK"),
                 None,
                 &mut tstatus,
             );
@@ -7096,7 +7099,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
     /* read the conventional BSCALE and BZERO scaling keywords, if present */
     tstatus = 0;
     let mut cn_bscale = (infptr.Fptr).cn_bscale;
-    let r = fits_read_key_dbl(infptr, cs!("BSCALE"), &mut cn_bscale, None, &mut tstatus);
+    let r = fits_read_key_dbl(infptr, cs!(c"BSCALE"), &mut cn_bscale, None, &mut tstatus);
     (infptr.Fptr).cn_bscale = cn_bscale;
     if r > 0 {
         (infptr.Fptr).cn_bscale = 1.0;
@@ -7104,7 +7107,7 @@ unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_
 
     tstatus = 0;
     let mut cn_bzero = (infptr.Fptr).cn_bzero;
-    let r = fits_read_key_dbl(infptr, cs!("BZERO"), &mut cn_bzero, None, &mut tstatus);
+    let r = fits_read_key_dbl(infptr, cs!(c"BZERO"), &mut cn_bzero, None, &mut tstatus);
     (infptr.Fptr).cn_bzero = cn_bzero;
 
     if r > 0 {
@@ -7156,16 +7159,16 @@ fn imcomp_copy_imheader(
             continue;
         }
 
-        if FSTRNCMP(&card, cs!("DATE "), 5) == 0 {
+        if FSTRNCMP(&card, cs!(c"DATE "), 5) == 0 {
             /* write current date */
 
             ffpdat_safe(outfptr, status);
-        } else if FSTRNCMP(&card, cs!("EXTNAME "), 8) == 0 {
+        } else if FSTRNCMP(&card, cs!(c"EXTNAME "), 8) == 0 {
             /* don't copy default EXTNAME keyword from a compressed image */
-            if FSTRNCMP(&card, cs!("EXTNAME = 'COMPRESSED_IMAGE'"), 28) != 0 {
+            if FSTRNCMP(&card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"), 28) != 0 {
                 /* if EXTNAME keyword already exists, overwrite it */
                 /* otherwise append a new EXTNAME keyword */
-                ffucrd_safe(outfptr, cs!("EXTNAME"), &card, status);
+                ffucrd_safe(outfptr, cs!(c"EXTNAME"), &card, status);
             }
         } else {
             /* just copy the keyword to the output header */
@@ -7233,11 +7236,11 @@ unsafe fn imcomp_copy_img2comp(
         }
 
         /* write a default EXTNAME keyword if it doesn't exist in input file*/
-        fits_read_card(infptr, cs!("EXTNAME"), &mut card, status);
+        fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, status);
 
         if *status != 0 {
             *status = 0;
-            strcpy_safe(&mut card, cs!("EXTNAME = 'COMPRESSED_IMAGE'"));
+            strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"));
             fits_write_record(outfptr, &card, status);
         }
 
@@ -7253,21 +7256,21 @@ unsafe fn imcomp_copy_img2comp(
             fits_read_key(
                 infptr,
                 crate::KeywordDatatypeMut::TINT(&mut bitpix),
-                cs!("BITPIX"),
+                cs!(c"BITPIX"),
                 None,
                 status,
             );
 
             if *status <= 0 && bitpix > 0 {
-                fits_modify_key_lng(outfptr, cs!("ZBITPIX"), -32, None, status);
+                fits_modify_key_lng(outfptr, cs!(c"ZBITPIX"), -32, None, status);
 
                 /* also delete the BSCALE, BZERO, and BLANK keywords */
                 tstatus = 0;
-                fits_delete_key(outfptr, cs!("BSCALE"), &mut tstatus);
+                fits_delete_key(outfptr, cs!(c"BSCALE"), &mut tstatus);
                 tstatus = 0;
-                fits_delete_key(outfptr, cs!("BZERO"), &mut tstatus);
+                fits_delete_key(outfptr, cs!(c"BZERO"), &mut tstatus);
                 tstatus = 0;
-                fits_delete_key(outfptr, cs!("BLANK"), &mut tstatus);
+                fits_delete_key(outfptr, cs!(c"BLANK"), &mut tstatus);
             }
         }
 
@@ -7285,19 +7288,19 @@ unsafe fn imcomp_copy_img2comp(
         */
 
         tstatus = 0;
-        if fits_read_card(outfptr, cs!("ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!("ZQUANTIZ"), status);
+        if fits_read_card(outfptr, cs!(c"ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
+            fits_delete_key(outfptr, cs!(c"ZQUANTIZ"), status);
 
             /* rewrite the deleted keyword at the end of the header */
             fits_write_record(outfptr, &card, status);
 
             /* write some associated HISTORY keywords */
             fits_parse_value(&card, &mut card2, None, status);
-            if fits_strncasecmp(&card2, cs!("'NONE"), 5) != 0 {
+            if fits_strncasecmp(&card2, cs!(c"'NONE"), 5) != 0 {
                 /* the value is not 'NONE' */
                 fits_write_history(
                     outfptr,
-                    cs!("Image was compressed by CFITSIO using scaled integer quantization:"),
+                    cs!(c"Image was compressed by CFITSIO using scaled integer quantization:"),
                     status,
                 );
                 int_snprintf!(
@@ -7312,8 +7315,8 @@ unsafe fn imcomp_copy_img2comp(
         }
 
         tstatus = 0;
-        if fits_read_card(outfptr, cs!("ZDITHER0"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!("ZDITHER0"), status);
+        if fits_read_card(outfptr, cs!(c"ZDITHER0"), &mut card, &mut tstatus) == 0 {
+            fits_delete_key(outfptr, cs!(c"ZDITHER0"), status);
 
             /* rewrite the deleted keyword at the end of the header */
             fits_write_record(outfptr, &card, status);
@@ -7327,7 +7330,7 @@ unsafe fn imcomp_copy_img2comp(
 
         for jj in 0..(nmore as usize) {
             for ii in 0..36 {
-                fits_write_record(outfptr, cs!("    "), status);
+                fits_write_record(outfptr, cs!(c"    "), status);
             }
         }
 
@@ -7345,8 +7348,8 @@ unsafe fn imcomp_copy_comp2img(
     status: &mut c_int,
 ) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD]; /* a header record */
-    let mut patterns: [[&CStr; 2]; 40] = [[cstr!(""); 2]; 40];
-    let negative: &CStr = cstr!("-");
+    let mut patterns: [[&CStr; 2]; 40] = [[c""; 2]; 40];
+    let negative: &CStr = c"-";
     let ii: c_int = 0;
     let jj: c_int = 0;
     let mut npat: c_int = 0;
@@ -7362,43 +7365,43 @@ unsafe fn imcomp_copy_comp2img(
 
     /*  only translate these if required keywords not already written */
     let reqkeys: [[&CStr; 2]; 11] = [
-        [cstr!("ZSIMPLE"), cstr!("SIMPLE")],
-        [cstr!("ZTENSION"), cstr!("XTENSION")],
-        [cstr!("ZBITPIX"), cstr!("BITPIX")],
-        [cstr!("ZNAXIS"), cstr!("NAXIS")],
-        [cstr!("ZNAXISm"), cstr!("NAXISm")],
-        [cstr!("ZEXTEND"), cstr!("EXTEND")],
-        [cstr!("ZBLOCKED"), cstr!("BLOCKED")],
-        [cstr!("ZPCOUNT"), cstr!("PCOUNT")],
-        [cstr!("ZGCOUNT"), cstr!("GCOUNT")],
-        [cstr!("ZHECKSUM"), cstr!("CHECKSUM")], /* restore original checksums */
-        [cstr!("ZDATASUM"), cstr!("DATASUM")],
+        [c"ZSIMPLE", c"SIMPLE"],
+        [c"ZTENSION", c"XTENSION"],
+        [c"ZBITPIX", c"BITPIX"],
+        [c"ZNAXIS", c"NAXIS"],
+        [c"ZNAXISm", c"NAXISm"],
+        [c"ZEXTEND", c"EXTEND"],
+        [c"ZBLOCKED", c"BLOCKED"],
+        [c"ZPCOUNT", c"PCOUNT"],
+        [c"ZGCOUNT", c"GCOUNT"],
+        [c"ZHECKSUM", c"CHECKSUM"], /* restore original checksums */
+        [c"ZDATASUM", c"DATASUM"],
     ];
 
     /* other special keywords */
     let spkeys: [[&CStr; 2]; 22] = [
-        [cstr!("XTENSION"), cstr!("-")],
-        [cstr!("BITPIX"), cstr!("-")],
-        [cstr!("NAXIS"), cstr!("-")],
-        [cstr!("NAXISm"), cstr!("-")],
-        [cstr!("PCOUNT"), cstr!("-")],
-        [cstr!("GCOUNT"), cstr!("-")],
-        [cstr!("TFIELDS"), cstr!("-")],
-        [cstr!("TTYPEm"), cstr!("-")],
-        [cstr!("TFORMm"), cstr!("-")],
-        [cstr!("THEAP"), cstr!("-")],
-        [cstr!("ZIMAGE"), cstr!("-")],
-        [cstr!("ZQUANTIZ"), cstr!("-")],
-        [cstr!("ZDITHER0"), cstr!("-")],
-        [cstr!("ZTILEm"), cstr!("-")],
-        [cstr!("ZCMPTYPE"), cstr!("-")],
-        [cstr!("ZBLANK"), cstr!("-")],
-        [cstr!("ZNAMEm"), cstr!("-")],
-        [cstr!("ZVALm"), cstr!("-")],
-        [cstr!("CHECKSUM"), cstr!("-")], /* delete checksums */
-        [cstr!("DATASUM"), cstr!("-")],
-        [cstr!("EXTNAME"), cstr!("+")], /* we may change this, below */
-        [cstr!("*"), cstr!("+")],
+        [c"XTENSION", c"-"],
+        [c"BITPIX", c"-"],
+        [c"NAXIS", c"-"],
+        [c"NAXISm", c"-"],
+        [c"PCOUNT", c"-"],
+        [c"GCOUNT", c"-"],
+        [c"TFIELDS", c"-"],
+        [c"TTYPEm", c"-"],
+        [c"TFORMm", c"-"],
+        [c"THEAP", c"-"],
+        [c"ZIMAGE", c"-"],
+        [c"ZQUANTIZ", c"-"],
+        [c"ZDITHER0", c"-"],
+        [c"ZTILEm", c"-"],
+        [c"ZCMPTYPE", c"-"],
+        [c"ZBLANK", c"-"],
+        [c"ZNAMEm", c"-"],
+        [c"ZVALm", c"-"],
+        [c"CHECKSUM", c"-"], /* delete checksums */
+        [c"DATASUM", c"-"],
+        [c"EXTNAME", c"+"], /* we may change this, below */
+        [c"*", c"+"],
     ];
 
     if *status > 0 {
@@ -7428,9 +7431,9 @@ unsafe fn imcomp_copy_comp2img(
     npat = nreq + nsp;
 
     /* see if the EXTNAME keyword should be copied or not */
-    fits_read_card(infptr, cs!("EXTNAME"), &mut card, &mut tstatus);
+    fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, &mut tstatus);
 
-    if tstatus == 0 && strncmp_safe(&card, cs!("EXTNAME = 'COMPRESSED_IMAGE'"), 28) == 0 {
+    if tstatus == 0 && strncmp_safe(&card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"), 28) == 0 {
         patterns[npat as usize - 2][1] = negative;
     }
 
@@ -7445,7 +7448,7 @@ unsafe fn imcomp_copy_comp2img(
 
     for jj in 0..(nmore as usize) {
         for ii in 0..36 {
-            fits_write_record(outfptr, cs!("    "), status);
+            fits_write_record(outfptr, cs!(c"    "), status);
         }
     }
 
@@ -10847,7 +10850,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
         fits_read_key(
             infptr,
             crate::KeywordDatatypeMut::TLONGLONG(&mut naxis1),
-            cs!("NAXIS1"),
+            cs!(c"NAXIS1"),
             None,
             status,
         );
@@ -10868,20 +10871,20 @@ pub(crate) unsafe fn fits_compress_table_safer(
         if fits_read_key(
             infptr,
             crate::KeywordDatatypeMut::TSTRING(&mut tempstring),
-            cs!("FZALGOR"),
+            cs!(c"FZALGOR"),
             None,
             &mut tstatus,
         ) == 0
         {
-            if fits_strcasecmp(&tempstring, cs!("NONE")) == 0 {
+            if fits_strcasecmp(&tempstring, cs!(c"NONE")) == 0 {
                 default_algor = NOCOMPRESS;
-            } else if fits_strcasecmp(&tempstring, cs!("GZIP")) == 0
-                || fits_strcasecmp(&tempstring, cs!("GZIP_1")) == 0
+            } else if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
+                || fits_strcasecmp(&tempstring, cs!(c"GZIP_1")) == 0
             {
                 default_algor = GZIP_1;
-            } else if fits_strcasecmp(&tempstring, cs!("GZIP_2")) == 0 {
+            } else if fits_strcasecmp(&tempstring, cs!(c"GZIP_2")) == 0 {
                 default_algor = GZIP_2;
-            } else if fits_strcasecmp(&tempstring, cs!("RICE_1")) == 0 {
+            } else if fits_strcasecmp(&tempstring, cs!(c"RICE_1")) == 0 {
                 default_algor = RICE_1;
             } else {
                 ffpmsg_str("FZALGOR specifies unsupported table compression algorithm:");
@@ -10905,7 +10908,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
         if fits_read_key(
             infptr,
             crate::KeywordDatatypeMut::TLONG(&mut rowspertile),
-            cs!("FZTILELN"),
+            cs!(c"FZTILELN"),
             None,
             &mut tstatus,
         ) != 0
@@ -10945,45 +10948,45 @@ pub(crate) unsafe fn fits_compress_table_safer(
         fits_write_key(
             outfptr,
             crate::KeywordDatatype::TLOGICAL(&ltrue),
-            cs!("ZTABLE"),
-            Some(cs!("this is a compressed table")),
+            cs!(c"ZTABLE"),
+            Some(cs!(c"this is a compressed table")),
             status,
         );
         fits_write_key(
             outfptr,
             crate::KeywordDatatype::TLONG(&rowspertile),
-            cs!("ZTILELEN"),
-            Some(cs!("number of rows in each tile")),
+            cs!(c"ZTILELEN"),
+            Some(cs!(c"number of rows in each tile")),
             status,
         );
 
-        fits_read_card(outfptr, cs!("NAXIS1"), &mut card, status); /* copy NAXIS1 to ZNAXIS1 */
-        strncpy_safe(&mut card, cs!("ZNAXIS1"), 7);
+        fits_read_card(outfptr, cs!(c"NAXIS1"), &mut card, status); /* copy NAXIS1 to ZNAXIS1 */
+        strncpy_safe(&mut card, cs!(c"ZNAXIS1"), 7);
         fits_write_record(outfptr, &card, status);
 
-        fits_read_card(outfptr, cs!("NAXIS2"), &mut card, status); /* copy NAXIS2 to ZNAXIS2 */
-        strncpy_safe(&mut card, cs!("ZNAXIS2"), 7);
+        fits_read_card(outfptr, cs!(c"NAXIS2"), &mut card, status); /* copy NAXIS2 to ZNAXIS2 */
+        strncpy_safe(&mut card, cs!(c"ZNAXIS2"), 7);
         fits_write_record(outfptr, &card, status);
 
-        fits_read_card(outfptr, cs!("PCOUNT"), &mut card, status); /* copy PCOUNT to ZPCOUNT */
-        strncpy_safe(&mut card, cs!("ZPCOUNT"), 7);
+        fits_read_card(outfptr, cs!(c"PCOUNT"), &mut card, status); /* copy PCOUNT to ZPCOUNT */
+        strncpy_safe(&mut card, cs!(c"ZPCOUNT"), 7);
         fits_write_record(outfptr, &card, status);
 
-        fits_modify_key_lng(outfptr, cs!("NAXIS2"), nchunks, Some(cs!("&")), status); /* 1 row per chunk */
+        fits_modify_key_lng(outfptr, cs!(c"NAXIS2"), nchunks, Some(cs!(c"&")), status); /* 1 row per chunk */
         fits_modify_key_lng(
             outfptr,
-            cs!("NAXIS1"),
+            cs!(c"NAXIS1"),
             (ncols * 16) as LONGLONG,
-            Some(cs!("&")),
+            Some(cs!(c"&")),
             status,
         ); /* 16 bytes for each 1QB column */
-        fits_modify_key_lng(outfptr, cs!("PCOUNT"), 0, Some(cs!("&")), status); /* reset PCOUNT to 0 */
+        fits_modify_key_lng(outfptr, cs!(c"PCOUNT"), 0, Some(cs!(c"&")), status); /* reset PCOUNT to 0 */
 
         /* rename the Checksum keywords, if they exist */
         tstatus = 0;
-        fits_modify_name(outfptr, cs!("CHECKSUM"), cs!("ZHECKSUM"), &mut tstatus);
+        fits_modify_name(outfptr, cs!(c"CHECKSUM"), cs!(c"ZHECKSUM"), &mut tstatus);
         tstatus = 0;
-        fits_modify_name(outfptr, cs!("DATASUM"), cs!("ZDATASUM"), &mut tstatus);
+        fits_modify_name(outfptr, cs!(c"DATASUM"), cs!(c"ZDATASUM"), &mut tstatus);
 
         /* ==================================================================================
          */
@@ -10998,7 +11001,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
         for ii in 0..(ncols as usize) {
             /* get the structural parameters of the original uncompressed column */
             fits_make_keyn(
-                cs!("TFORM"),
+                cs!(c"TFORM"),
                 (ii + 1).try_into().unwrap(),
                 &mut keyname,
                 status,
@@ -11025,7 +11028,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
             fits_write_record(outfptr, &card, status);
 
             /* All columns in the compressed table will have a variable-length array type. */
-            fits_modify_key_str(outfptr, &keyname, cs!("1QB"), Some(cs!("&")), status); /* Use 'Q' pointers (64-bit) */
+            fits_modify_key_str(outfptr, &keyname, cs!(c"1QB"), Some(cs!(c"&")), status); /* Use 'Q' pointers (64-bit) */
 
             /* deal with special cases: bit, string, and variable length array columns */
             if coltype[ii] == TBIT {
@@ -11054,7 +11057,7 @@ pub(crate) unsafe fn fits_compress_table_safer(
             algorithm to the default */
 
             /*  check if a compression method has been specified for this column */
-            fits_make_keyn(cs!("FZALG"), (ii as c_int) + 1, &mut keyname, status);
+            fits_make_keyn(cs!(c"FZALG"), (ii as c_int) + 1, &mut keyname, status);
             tstatus = 0;
             if fits_read_key(
                 outfptr,
@@ -11064,13 +11067,13 @@ pub(crate) unsafe fn fits_compress_table_safer(
                 &mut tstatus,
             ) == 0
             {
-                if fits_strcasecmp(&tempstring, cs!("GZIP")) == 0
-                    || fits_strcasecmp(&tempstring, cs!("GZIP_1")) == 0
+                if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
+                    || fits_strcasecmp(&tempstring, cs!(c"GZIP_1")) == 0
                 {
                     compalgor[ii] = GZIP_1;
-                } else if fits_strcasecmp(&tempstring, cs!("GZIP_2")) == 0 {
+                } else if fits_strcasecmp(&tempstring, cs!(c"GZIP_2")) == 0 {
                     compalgor[ii] = GZIP_2;
-                } else if fits_strcasecmp(&tempstring, cs!("RICE_1")) == 0 {
+                } else if fits_strcasecmp(&tempstring, cs!(c"RICE_1")) == 0 {
                     compalgor[ii] = RICE_1;
                 } else {
                     ffpmsg_str("Unsupported table compression algorithm specification.");
@@ -11591,21 +11594,21 @@ pub(crate) unsafe fn fits_compress_table_safer(
                         if ll == 0 {
                             /* only write the ZCTYPn keyword once, while
                             processing the first column */
-                            fits_make_keyn(cs!("ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
+                            fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
 
                             if compalgor[ii] == RICE_1 {
-                                strcpy_safe(&mut keyvalue, cs!("RICE_1"));
+                                strcpy_safe(&mut keyvalue, cs!(c"RICE_1"));
                             } else if compalgor[ii] == GZIP_2 {
-                                strcpy_safe(&mut keyvalue, cs!("GZIP_2"));
+                                strcpy_safe(&mut keyvalue, cs!(c"GZIP_2"));
                             } else {
-                                strcpy_safe(&mut keyvalue, cs!("GZIP_1"));
+                                strcpy_safe(&mut keyvalue, cs!(c"GZIP_1"));
                             }
 
                             fits_write_key(
                                 outfptr,
                                 crate::KeywordDatatype::TSTRING(&keyvalue),
                                 &keyname,
-                                Some(cs!("compression algorithm for column")),
+                                Some(cs!(c"compression algorithm for column")),
                                 status,
                             );
                         }
@@ -11710,21 +11713,21 @@ pub(crate) unsafe fn fits_compress_table_safer(
                     if ll == 0 {
                         /* only write the ZCTYPn keyword once, while
                         processing the first column */
-                        fits_make_keyn(cs!("ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
+                        fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
 
                         if compalgor[ii] == RICE_1 {
-                            strcpy_safe(&mut keyvalue, cs!("RICE_1"));
+                            strcpy_safe(&mut keyvalue, cs!(c"RICE_1"));
                         } else if compalgor[ii] == GZIP_2 {
-                            strcpy_safe(&mut keyvalue, cs!("GZIP_2"));
+                            strcpy_safe(&mut keyvalue, cs!(c"GZIP_2"));
                         } else {
-                            strcpy_safe(&mut keyvalue, cs!("GZIP_1"));
+                            strcpy_safe(&mut keyvalue, cs!(c"GZIP_1"));
                         }
 
                         fits_write_key(
                             outfptr,
                             crate::KeywordDatatype::TSTRING(&keyvalue),
                             &keyname,
-                            Some(cs!("compression algorithm for column")),
+                            Some(cs!(c"compression algorithm for column")),
                             status,
                         );
                     }
@@ -11876,7 +11879,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
             return *status;
         }
 
-        if fits_read_key_log(infptr, cs!("ZTABLE"), &mut tstatus, None, status) != 0 {
+        if fits_read_key_log(infptr, cs!(c"ZTABLE"), &mut tstatus, None, status) != 0 {
             /* just copy the HDU if the table is not compressed */
             if !std::ptr::eq(infptr, outfptr) {
                 fits_copy_hdu(infptr, outfptr, 0, status);
@@ -11897,7 +11900,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
 
         fits_read_key_lng(
             infptr,
-            cs!("ZTILELEN"),
+            cs!(c"ZTILELEN"),
             &mut rowspertile,
             Some(&mut comm),
             status,
@@ -11909,14 +11912,26 @@ pub unsafe extern "C" fn fits_uncompress_table(
         }
 
         /**** get size of the uncompressed table */
-        fits_read_key_lng(infptr, cs!("ZNAXIS1"), &mut naxis1, Some(&mut comm), status);
+        fits_read_key_lng(
+            infptr,
+            cs!(c"ZNAXIS1"),
+            &mut naxis1,
+            Some(&mut comm),
+            status,
+        );
         if *status > 0 {
             ffpmsg_str("Could not find the required ZNAXIS1 keyword");
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
         }
 
-        fits_read_key_lng(infptr, cs!("ZNAXIS2"), &mut naxis2, Some(&mut comm), status);
+        fits_read_key_lng(
+            infptr,
+            cs!(c"ZNAXIS2"),
+            &mut naxis2,
+            Some(&mut comm),
+            status,
+        );
         if *status > 0 {
             ffpmsg_str("Could not find the required ZNAXIS2 keyword");
             *status = DATA_DECOMPRESSION_ERR;
@@ -11928,7 +11943,13 @@ pub unsafe extern "C" fn fits_uncompress_table(
             rowspertile = naxis2;
         }
 
-        fits_read_key_lng(infptr, cs!("ZPCOUNT"), &mut pcount, Some(&mut comm), status);
+        fits_read_key_lng(
+            infptr,
+            cs!(c"ZPCOUNT"),
+            &mut pcount,
+            Some(&mut comm),
+            status,
+        );
         if *status > 0 {
             ffpmsg_str("Could not find the required ZPCOUNT keyword");
             *status = DATA_DECOMPRESSION_ERR;
@@ -11938,7 +11959,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
         tstatus = 0;
         fits_read_key_lng(
             infptr,
-            cs!("ZHEAPPTR"),
+            cs!(c"ZHEAPPTR"),
             &mut zheapptr,
             Some(&mut comm),
             &mut tstatus,
@@ -11956,32 +11977,32 @@ pub unsafe extern "C" fn fits_uncompress_table(
         fits_copy_header(infptr, outfptr, status);
 
         /* reset the NAXIS1, NAXIS2. and PCOUNT keywords to the original */
-        fits_read_card(outfptr, cs!("ZNAXIS1"), &mut card, status);
-        strncpy_safe(&mut card, cs!("NAXIS1"), 7);
-        fits_update_card(outfptr, cs!("NAXIS1"), &mut card, status);
+        fits_read_card(outfptr, cs!(c"ZNAXIS1"), &mut card, status);
+        strncpy_safe(&mut card, cs!(c"NAXIS1"), 7);
+        fits_update_card(outfptr, cs!(c"NAXIS1"), &mut card, status);
 
-        fits_read_card(outfptr, cs!("ZNAXIS2"), &mut card, status);
-        strncpy_safe(&mut card, cs!("NAXIS2"), 7);
-        fits_update_card(outfptr, cs!("NAXIS2"), &mut card, status);
+        fits_read_card(outfptr, cs!(c"ZNAXIS2"), &mut card, status);
+        strncpy_safe(&mut card, cs!(c"NAXIS2"), 7);
+        fits_update_card(outfptr, cs!(c"NAXIS2"), &mut card, status);
 
-        fits_read_card(outfptr, cs!("ZPCOUNT"), &mut card, status);
-        strncpy_safe(&mut card, cs!("PCOUNT"), 7);
-        fits_update_card(outfptr, cs!("PCOUNT"), &mut card, status);
+        fits_read_card(outfptr, cs!(c"ZPCOUNT"), &mut card, status);
+        strncpy_safe(&mut card, cs!(c"PCOUNT"), 7);
+        fits_update_card(outfptr, cs!(c"PCOUNT"), &mut card, status);
 
-        fits_delete_key(outfptr, cs!("ZTABLE"), status);
-        fits_delete_key(outfptr, cs!("ZTILELEN"), status);
-        fits_delete_key(outfptr, cs!("ZNAXIS1"), status);
-        fits_delete_key(outfptr, cs!("ZNAXIS2"), status);
-        fits_delete_key(outfptr, cs!("ZPCOUNT"), status);
+        fits_delete_key(outfptr, cs!(c"ZTABLE"), status);
+        fits_delete_key(outfptr, cs!(c"ZTILELEN"), status);
+        fits_delete_key(outfptr, cs!(c"ZNAXIS1"), status);
+        fits_delete_key(outfptr, cs!(c"ZNAXIS2"), status);
+        fits_delete_key(outfptr, cs!(c"ZPCOUNT"), status);
         tstatus = 0;
-        fits_delete_key(outfptr, cs!("CHECKSUM"), &mut tstatus);
+        fits_delete_key(outfptr, cs!(c"CHECKSUM"), &mut tstatus);
         tstatus = 0;
-        fits_delete_key(outfptr, cs!("DATASUM"), &mut tstatus);
+        fits_delete_key(outfptr, cs!(c"DATASUM"), &mut tstatus);
         /* restore the Checksum keywords, if they exist */
         tstatus = 0;
-        fits_modify_name(outfptr, cs!("ZHECKSUM"), cs!("CHECKSUM"), &mut tstatus);
+        fits_modify_name(outfptr, cs!(c"ZHECKSUM"), cs!(c"CHECKSUM"), &mut tstatus);
         tstatus = 0;
-        fits_modify_name(outfptr, cs!("ZDATASUM"), cs!("DATASUM"), &mut tstatus);
+        fits_modify_name(outfptr, cs!(c"ZDATASUM"), cs!(c"DATASUM"), &mut tstatus);
 
         /* ==================================================================================
          */
@@ -11991,7 +12012,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
         for ii in 0..(ncols as usize) {
             /* get the original column type, repeat count, and unit width */
             fits_make_keyn(
-                cs!("ZFORM"),
+                cs!(c"ZFORM"),
                 (ii + 1).try_into().unwrap(),
                 &mut keyname,
                 status,
@@ -12052,7 +12073,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
             rmajor_colwidth[ii] = rmajor_repeat[ii] * width;
 
             /* construct the ZCTYPn keyword name then read the keyword */
-            fits_make_keyn(cs!("ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
+            fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
             tstatus = 0;
             fits_read_key(
                 infptr,
@@ -12064,11 +12085,11 @@ pub unsafe extern "C" fn fits_uncompress_table(
             if tstatus != 0 {
                 zctype[ii] = GZIP_2;
             } else {
-                if strcmp_safe(&zvalue, cs!("GZIP_2")) == 0 {
+                if strcmp_safe(&zvalue, cs!(c"GZIP_2")) == 0 {
                     zctype[ii] = GZIP_2;
-                } else if strcmp_safe(&zvalue, cs!("GZIP_1")) == 0 {
+                } else if strcmp_safe(&zvalue, cs!(c"GZIP_1")) == 0 {
                     zctype[ii] = GZIP_1;
-                } else if strcmp_safe(&zvalue, cs!("RICE_1")) == 0 {
+                } else if strcmp_safe(&zvalue, cs!(c"RICE_1")) == 0 {
                     zctype[ii] = RICE_1;
                 } else {
                     ffpmsg_str("Unrecognized ZCTYPn keyword compression code:");
