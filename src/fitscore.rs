@@ -38,7 +38,6 @@ use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::num::{ParseFloatError, ParseIntError};
-use std::ptr::addr_of;
 use std::sync::{LazyLock, Mutex};
 use std::{cmp, ptr};
 
@@ -5740,7 +5739,7 @@ pub(crate) unsafe fn ffpinit(
             if !fptr.Fptr.tilerow.is_null() {
                 // HEAP DEALLOCATION
                 let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-                let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
                 drop(tilestruct_lock);
 
                 fptr.Fptr.tileanynull = ptr::null_mut();
@@ -5791,7 +5790,7 @@ pub(crate) unsafe fn ffpinit(
             if !fptr.Fptr.tilerow.is_null() {
                 // HEAP DEALLOCATION
                 let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-                let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
                 drop(tilestruct_lock);
 
                 fptr.Fptr.tileanynull = ptr::null_mut();
@@ -5924,7 +5923,7 @@ pub(crate) unsafe fn ffainit(
         if !fptr.Fptr.tilerow.is_null() {
             // HEAP DEALLOCATION
             let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-            let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+            let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
             drop(tilestruct_lock);
 
             fptr.Fptr.tileanynull = ptr::null_mut();
@@ -6189,7 +6188,7 @@ pub(crate) unsafe fn ffbinit(
         if !fptr.Fptr.tilerow.is_null() {
             // HEAP DEALLOCATION
             let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-            let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+            let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
             drop(tilestruct_lock);
 
             fptr.Fptr.tileanynull = ptr::null_mut();
@@ -8434,7 +8433,7 @@ pub(crate) unsafe fn ffchdu(
                 if !fptr.Fptr.tilerow.is_null() {
                     // HEAP DEALLOCATION
                     let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-                    let _ = tilestruct_lock.remove_entry(&(addr_of!(fptr.Fptr) as usize));
+                    let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
                     drop(tilestruct_lock);
 
                     fptr.Fptr.tileanynull = ptr::null_mut();

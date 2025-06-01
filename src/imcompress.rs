@@ -2,7 +2,6 @@ use core::slice;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::c_schar;
-use std::ptr::addr_of;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::{cmp, mem, ptr};
 
@@ -7580,7 +7579,7 @@ fn imcomp_decompress_tile(
                 tileanynull: vec![0; ntilebins as usize],
             };
 
-            let ptr_addr = addr_of!(infptr.Fptr) as usize;
+            let ptr_addr = (&raw const infptr.Fptr) as usize;
             (infptr.Fptr).tilerow = tile_struct.tilerow.as_mut_ptr();
             (infptr.Fptr).tiledata = tile_struct.tiledata.as_mut_ptr() as *mut *mut c_void;
             (infptr.Fptr).tilenullarray =
@@ -7608,7 +7607,7 @@ fn imcomp_decompress_tile(
         let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
 
         let tilestruct = tilestruct_lock
-            .get_mut(&(addr_of!(infptr.Fptr) as usize))
+            .get_mut(&(&raw const infptr.Fptr as usize))
             .unwrap();
 
         if nrow == tilestruct.tilerow[tilecol as usize]
@@ -9374,7 +9373,7 @@ fn imcomp_decompress_tile(
             let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
 
             let tilestruct = tilestruct_lock
-                .get_mut(&(addr_of!(infptr.Fptr) as usize))
+                .get_mut(&(&raw const infptr.Fptr as usize))
                 .unwrap();
 
             tilesize = pixlen as LONGLONG * tilelen as LONGLONG;

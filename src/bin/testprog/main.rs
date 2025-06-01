@@ -656,9 +656,9 @@ pub fn main() -> ExitCode {
             */
             nkeys = 3;
 
-            comms[0] = comm.as_mut_ptr(); /* use the inskey array of pointers for the comments */
+            /* use the inskey array of pointers for the comments */
 
-            strcpy_safe(&mut comm, cs!(c"fxpkns comment&"));
+            strcpy(comms[0], (c"fxpkns comment&".as_ptr()));
             if ffpkns(
                 fptr.as_mut_ptr(),
                 c"ky_pkns".as_ptr(),
@@ -672,7 +672,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkns status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpknl comment&"));
+            strcpy(comms[0], (c"fxpknl comment&".as_ptr()));
             if ffpknl(
                 fptr.as_mut_ptr(),
                 c"ky_pknl".as_ptr(),
@@ -686,7 +686,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknl status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpknj comment&"));
+            strcpy(comms[0], (c"fxpknj comment&".as_ptr()));
             if ffpknj(
                 fptr.as_mut_ptr(),
                 c"ky_pknj".as_ptr(),
@@ -700,7 +700,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknj status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpknf comment&"));
+            strcpy(comms[0], (c"fxpknf comment&".as_ptr()));
             if ffpknf(
                 fptr.as_mut_ptr(),
                 c"ky_pknf".as_ptr(),
@@ -715,7 +715,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknf status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpkne comment&"));
+            strcpy(comms[0], (c"fxpkne comment&".as_ptr()));
             if ffpkne(
                 fptr.as_mut_ptr(),
                 c"ky_pkne".as_ptr(),
@@ -730,7 +730,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkne status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpkng comment&"));
+            strcpy(comms[0], (c"fxpkng comment&".as_ptr()));
             if ffpkng(
                 fptr.as_mut_ptr(),
                 c"ky_pkng".as_ptr(),
@@ -745,7 +745,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkng status = {status}");
             }
 
-            strcpy_safe(&mut comm, cs!(c"fxpknd comment&"));
+            strcpy(comms[0], (c"fxpknd comment&".as_ptr()));
             if ffpknd(
                 fptr.as_mut_ptr(),
                 c"ky_pknd".as_ptr(),
@@ -2273,31 +2273,35 @@ pub fn main() -> ExitCode {
               #  copy index keyword      #
               ############################
             */
-            ffcpky(
-                fptr.as_mut_ptr(),
-                fptr.as_mut_ptr(),
-                1,
-                4,
-                c"KY_PKNE".as_ptr(),
-                &mut status,
-            );
-            ffgkne(
-                fptr.as_mut_ptr(),
-                c"ky_pkne".as_ptr(),
-                2,
-                3,
-                inekey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
-            );
-            print!(
-                "\nCopied keyword: ffgkne:  {:.6}, {:.6}, {:.6}\n",
-                inekey[0], inekey[1], inekey[2]
-            );
 
-            if status > 0 {
-                print!("\nERROR in ffgkne {nfound}, {status}\n");
-                break 'mainloop;
+            // MIRI doesn't support this function call because it requires two mutable references to same object.
+            if cfg!(not(miri)) {
+                ffcpky(
+                    fptr.as_mut_ptr(),
+                    fptr.as_mut_ptr(),
+                    1,
+                    4,
+                    c"KY_PKNE".as_ptr(),
+                    &mut status,
+                );
+                ffgkne(
+                    fptr.as_mut_ptr(),
+                    c"ky_pkne".as_ptr(),
+                    2,
+                    3,
+                    inekey.as_mut_ptr(),
+                    &mut nfound,
+                    &mut status,
+                );
+                print!(
+                    "\nCopied keyword: ffgkne:  {:.6}, {:.6}, {:.6}\n",
+                    inekey[0], inekey[1], inekey[2]
+                );
+
+                if status > 0 {
+                    print!("\nERROR in ffgkne {nfound}, {status}\n");
+                    break 'mainloop;
+                }
             }
 
             /*
@@ -4815,7 +4819,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0],
                 naxes[1],
-                imgarray[0].as_ptr(),
+                imgarray.as_ptr() as *const c_short,
                 &mut status,
             );
             print!("\nWrote whole 2D array: ffp2di status = {status}\n");
@@ -4833,7 +4837,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0],
                 naxes[1],
-                imgarray[0].as_mut_ptr(),
+                imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
             );
@@ -4869,7 +4873,7 @@ pub fn main() -> ExitCode {
                 naxes.as_ptr(),
                 fpixels.as_ptr(),
                 lpixels.as_ptr(),
-                imgarray2[0].as_ptr(),
+                imgarray2.as_ptr() as *const c_short,
                 &mut status,
             );
             print!("\nWrote subset 2D array: ffpssi status = {status}\n");
@@ -4881,7 +4885,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0],
                 naxes[1],
-                imgarray[0].as_mut_ptr(),
+                imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
             );
@@ -4916,7 +4920,7 @@ pub fn main() -> ExitCode {
                 lpixels.as_ptr(),
                 inc.as_ptr(),
                 0,
-                imgarray[0].as_mut_ptr(),
+                imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
             );

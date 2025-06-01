@@ -60,5 +60,5 @@ RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-iso
 
 MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
 
-RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full -Zmiri-disable-stacked-borrows" cargo miri run --bin testprog
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo miri run --bin testprog
 ```

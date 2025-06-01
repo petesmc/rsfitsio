@@ -4,6 +4,7 @@ Cargo.lock
 .vscode
 *.log
 *.lis
+checks.json
 /lib
 
 testprog.fit
