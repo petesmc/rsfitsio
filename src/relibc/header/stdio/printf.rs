@@ -124,120 +124,118 @@ pub(crate) enum VaArg {
 
 impl VaArg {
     unsafe fn arg_from(fmtkind: FmtKind, intkind: IntKind, ap: &mut CustomVaList) -> VaArg {
-        unsafe {
-            // Per the C standard using va_arg with a type with a size
-            // less than that of an int for integers and double for floats
-            // is invalid. As a result any arguments smaller than an int or
-            // double passed to a function will be promoted to the smallest
-            // possible size. The VaList::arg function will handle this
-            // automagically.
+        // Per the C standard using va_arg with a type with a size
+        // less than that of an int for integers and double for floats
+        // is invalid. As a result any arguments smaller than an int or
+        // double passed to a function will be promoted to the smallest
+        // possible size. The VaList::arg function will handle this
+        // automagically.
 
-            match (fmtkind, intkind) {
-                (FmtKind::Percent, _) => panic!("Can't call arg_from on %"),
+        match (fmtkind, intkind) {
+            (FmtKind::Percent, _) => panic!("Can't call arg_from on %"),
 
-                (FmtKind::Char, IntKind::Long) | (FmtKind::Char, IntKind::LongLong) => {
-                    match ap.arg() {
-                        // If the argument is a wint_t, we can safely return it
-                        // as a wint_t. This is because the C standard guarantees
-                        // that wint_t is an integer type.
-                        VaArg::wint_t(i) => VaArg::wint_t(i),
-                        _ => panic!("Expected wint_t for %c with long or long long"),
-                    }
+            (FmtKind::Char, IntKind::Long) | (FmtKind::Char, IntKind::LongLong) => {
+                match ap.arg() {
+                    // If the argument is a wint_t, we can safely return it
+                    // as a wint_t. This is because the C standard guarantees
+                    // that wint_t is an integer type.
+                    VaArg::wint_t(i) => VaArg::wint_t(i),
+                    _ => panic!("Expected wint_t for %c with long or long long"),
                 }
+            }
 
-                (FmtKind::Char, _)
-                | (FmtKind::Unsigned, IntKind::Byte)
-                | (FmtKind::Signed, IntKind::Byte) => {
-                    match ap.arg() {
-                        // If the argument is a c_char, we can safely return it
-                        // as a c_char. This is because the C standard guarantees
-                        // that c_char is an integer type.
-                        VaArg::c_char(i) => VaArg::c_char(i),
-                        _ => panic!("Expected c_char for %c with byte"),
-                    }
+            (FmtKind::Char, _)
+            | (FmtKind::Unsigned, IntKind::Byte)
+            | (FmtKind::Signed, IntKind::Byte) => {
+                match ap.arg() {
+                    // If the argument is a c_char, we can safely return it
+                    // as a c_char. This is because the C standard guarantees
+                    // that c_char is an integer type.
+                    VaArg::c_char(i) => VaArg::c_char(i),
+                    _ => panic!("Expected c_char for %c with byte"),
                 }
-                (FmtKind::Unsigned, IntKind::Short) | (FmtKind::Signed, IntKind::Short) => {
-                    match ap.arg() {
-                        // If the argument is a c_short, we can safely return it
-                        // as a c_short. This is because the C standard guarantees
-                        // that c_short is an integer type.
-                        VaArg::c_short(i) => VaArg::c_short(i),
-                        _ => panic!("Expected c_short for %hd with short"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::Short) | (FmtKind::Signed, IntKind::Short) => {
+                match ap.arg() {
+                    // If the argument is a c_short, we can safely return it
+                    // as a c_short. This is because the C standard guarantees
+                    // that c_short is an integer type.
+                    VaArg::c_short(i) => VaArg::c_short(i),
+                    _ => panic!("Expected c_short for %hd with short"),
                 }
-                (FmtKind::Unsigned, IntKind::Int) | (FmtKind::Signed, IntKind::Int) => {
-                    match ap.arg() {
-                        // If the argument is a c_int, we can safely return it
-                        // as a c_int. This is because the C standard guarantees
-                        // that c_int is an integer type.
-                        VaArg::c_int(i) => VaArg::c_int(i),
-                        _ => panic!("Expected c_int for %d with int"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::Int) | (FmtKind::Signed, IntKind::Int) => {
+                match ap.arg() {
+                    // If the argument is a c_int, we can safely return it
+                    // as a c_int. This is because the C standard guarantees
+                    // that c_int is an integer type.
+                    VaArg::c_int(i) => VaArg::c_int(i),
+                    _ => panic!("Expected c_int for %d with int"),
                 }
-                (FmtKind::Unsigned, IntKind::Long) | (FmtKind::Signed, IntKind::Long) => {
-                    match ap.arg() {
-                        // If the argument is a c_long, we can safely return it
-                        // as a c_long. This is because the C standard guarantees
-                        // that c_long is an integer type.
-                        VaArg::c_long(i) => VaArg::c_long(i),
-                        _ => panic!("Expected c_long for %ld with long"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::Long) | (FmtKind::Signed, IntKind::Long) => {
+                match ap.arg() {
+                    // If the argument is a c_long, we can safely return it
+                    // as a c_long. This is because the C standard guarantees
+                    // that c_long is an integer type.
+                    VaArg::c_long(i) => VaArg::c_long(i),
+                    _ => panic!("Expected c_long for %ld with long"),
                 }
-                (FmtKind::Unsigned, IntKind::LongLong) | (FmtKind::Signed, IntKind::LongLong) => {
-                    match ap.arg() {
-                        // If the argument is a c_longlong, we can safely return it
-                        // as a c_longlong. This is because the C standard guarantees
-                        // that c_longlong is an integer type.
-                        VaArg::c_longlong(i) => VaArg::c_longlong(i),
-                        _ => panic!("Expected c_longlong for %lld with long long"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::LongLong) | (FmtKind::Signed, IntKind::LongLong) => {
+                match ap.arg() {
+                    // If the argument is a c_longlong, we can safely return it
+                    // as a c_longlong. This is because the C standard guarantees
+                    // that c_longlong is an integer type.
+                    VaArg::c_longlong(i) => VaArg::c_longlong(i),
+                    _ => panic!("Expected c_longlong for %lld with long long"),
                 }
-                (FmtKind::Unsigned, IntKind::IntMax) | (FmtKind::Signed, IntKind::IntMax) => {
-                    match ap.arg() {
-                        // If the argument is an intmax_t, we can safely return it
-                        // as an intmax_t. This is because the C standard guarantees
-                        // that intmax_t is an integer type.
-                        VaArg::intmax_t(i) => VaArg::intmax_t(i),
-                        _ => panic!("Expected intmax_t for %jd with intmax_t"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::IntMax) | (FmtKind::Signed, IntKind::IntMax) => {
+                match ap.arg() {
+                    // If the argument is an intmax_t, we can safely return it
+                    // as an intmax_t. This is because the C standard guarantees
+                    // that intmax_t is an integer type.
+                    VaArg::intmax_t(i) => VaArg::intmax_t(i),
+                    _ => panic!("Expected intmax_t for %jd with intmax_t"),
                 }
-                (FmtKind::Unsigned, IntKind::PtrDiff) | (FmtKind::Signed, IntKind::PtrDiff) => {
-                    match ap.arg() {
-                        // If the argument is a ptrdiff_t, we can safely return it
-                        // as a ptrdiff_t. This is because the C standard guarantees
-                        // that ptrdiff_t is an integer type.
-                        VaArg::ptrdiff_t(i) => VaArg::ptrdiff_t(i),
-                        _ => panic!("Expected ptrdiff_t for %td with ptrdiff_t"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::PtrDiff) | (FmtKind::Signed, IntKind::PtrDiff) => {
+                match ap.arg() {
+                    // If the argument is a ptrdiff_t, we can safely return it
+                    // as a ptrdiff_t. This is because the C standard guarantees
+                    // that ptrdiff_t is an integer type.
+                    VaArg::ptrdiff_t(i) => VaArg::ptrdiff_t(i),
+                    _ => panic!("Expected ptrdiff_t for %td with ptrdiff_t"),
                 }
-                (FmtKind::Unsigned, IntKind::Size) | (FmtKind::Signed, IntKind::Size) => {
-                    match ap.arg() {
-                        // If the argument is a ssize_t, we can safely return it
-                        // as a ssize_t. This is because the C standard guarantees
-                        // that ssize_t is an integer type.
-                        VaArg::ssize_t(i) => VaArg::ssize_t(i),
-                        _ => panic!("Expected ssize_t for %zd with size"),
-                    }
+            }
+            (FmtKind::Unsigned, IntKind::Size) | (FmtKind::Signed, IntKind::Size) => {
+                match ap.arg() {
+                    // If the argument is a ssize_t, we can safely return it
+                    // as a ssize_t. This is because the C standard guarantees
+                    // that ssize_t is an integer type.
+                    VaArg::ssize_t(i) => VaArg::ssize_t(i),
+                    _ => panic!("Expected ssize_t for %zd with size"),
                 }
+            }
 
-                (FmtKind::AnyNotation, _) | (FmtKind::Decimal, _) | (FmtKind::Scientific, _) => {
-                    match ap.arg() {
-                        // If the argument is a c_double, we can safely return it
-                        // as a c_double. This is because the C standard guarantees
-                        // that c_double is a floating point type.
-                        VaArg::c_double(i) => VaArg::c_double(i),
-                        _ => panic!("Expected c_double for %f with double"),
-                    }
+            (FmtKind::AnyNotation, _) | (FmtKind::Decimal, _) | (FmtKind::Scientific, _) => {
+                match ap.arg() {
+                    // If the argument is a c_double, we can safely return it
+                    // as a c_double. This is because the C standard guarantees
+                    // that c_double is a floating point type.
+                    VaArg::c_double(i) => VaArg::c_double(i),
+                    _ => panic!("Expected c_double for %f with double"),
                 }
+            }
 
-                (FmtKind::GetWritten, _) | (FmtKind::Pointer, _) | (FmtKind::String, _) => {
-                    match ap.arg() {
-                        // If the argument is a pointer, we can safely return it
-                        // as a pointer. This is because the C standard guarantees
-                        // that pointers are valid for printf.
-                        VaArg::pointer(i) => VaArg::pointer(i),
-                        _ => panic!("Expected pointer for %p with pointer"),
-                    }
+            (FmtKind::GetWritten, _) | (FmtKind::Pointer, _) | (FmtKind::String, _) => {
+                match ap.arg() {
+                    // If the argument is a pointer, we can safely return it
+                    // as a pointer. This is because the C standard guarantees
+                    // that pointers are valid for printf.
+                    VaArg::pointer(i) => VaArg::pointer(i),
+                    _ => panic!("Expected pointer for %p with pointer"),
                 }
             }
         }
@@ -611,7 +609,7 @@ impl Iterator for PrintfIter {
                 len += 1;
             }
             if len > 0 {
-                let slice = slice::from_raw_parts(self.format as *const u8, len);
+                let slice = slice::from_raw_parts(self.format, len);
                 self.format = self.format.add(len);
                 return Some(Ok(PrintfFmt::Plain(slice)));
             }

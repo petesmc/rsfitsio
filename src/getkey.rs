@@ -1387,7 +1387,7 @@ pub unsafe extern "C" fn ffgkls(
                             strcat_safe(&mut v, &valstring); /* append the continued chars */
                         }
 
-                        if nextcomm[0] != 0 && (commspace > 0) && (nextcomm[0] != 0) {
+                        if (commspace > 0) && (nextcomm[0] != 0) {
                             /* If in here, input 'comm' cannot be 0 */
                             /* concantenate comment strings (if any) */
 
@@ -1552,7 +1552,7 @@ pub unsafe extern "C" fn ffgsky(
                             strcat_safe(tempstring.as_mut_slice(), &valstring); /* append the continued chars */
                         }
 
-                        if nextcomm[0] != 0 && (commspace > 0) && (nextcomm[0] != 0) {
+                        if (commspace > 0) && (nextcomm[0] != 0) {
                             /* If in here, input 'comm' cannot be 0 */
                             /* concantenate comment strings (if any) */
 

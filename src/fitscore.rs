@@ -3158,9 +3158,7 @@ pub(crate) fn ffasfm_safe(
         datacode = TSTRING;
     } else if temp[form] == bb(b'I') {
         datacode = TLONG;
-    } else if temp[form] == bb(b'F') {
-        datacode = TFLOAT;
-    } else if temp[form] == bb(b'E') {
+    } else if temp[form] == bb(b'F') || temp[form] == bb(b'E') {
         datacode = TFLOAT;
     } else if temp[form] == bb(b'D') {
         datacode = TDOUBLE;
@@ -3833,9 +3831,11 @@ pub(crate) fn ffcdsp(
         strcat_safe(cform, cs!(c"X"));
     } else if tform[ii] == bb(b'F') || tform[ii] == bb(b'f') {
         strcat_safe(cform, cs!(c"f"));
-    } else if tform[ii] == bb(b'E') || tform[ii] == bb(b'e') {
-        strcat_safe(cform, cs!(c"E"));
-    } else if tform[ii] == bb(b'D') || tform[ii] == bb(b'd') {
+    } else if tform[ii] == bb(b'E')
+        || tform[ii] == bb(b'e')
+        || tform[ii] == bb(b'D')
+        || tform[ii] == bb(b'd')
+    {
         strcat_safe(cform, cs!(c"E"));
     } else if tform[ii] == bb(b'G') || tform[ii] == bb(b'g') {
         strcat_safe(cform, cs!(c"G"));

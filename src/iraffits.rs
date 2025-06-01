@@ -169,7 +169,7 @@ pub(crate) fn fits_delete_iraf_file_safe(
         return *status;
     }
 
-    let mut irafheader = irafheader.unwrap();
+    let irafheader = irafheader.unwrap();
 
     getirafpixname(filename, &irafheader, &mut pixfilename, status);
 
@@ -224,7 +224,7 @@ pub(crate) unsafe fn iraf2mem(
             return *status;
         }
 
-        let mut irafheader = irafheader.unwrap();
+        let irafheader = irafheader.unwrap();
 
         /* convert IRAF header to FITS header in memory */
         let tmp_buffer = iraftofits(
