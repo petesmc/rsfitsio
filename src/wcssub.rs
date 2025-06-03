@@ -6,7 +6,7 @@ use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::cast_slice;
 
-use crate::aliases::ffdelt_safer;
+use crate::cfileio::ffdelt_safer;
 use crate::cfileio::ffinit_safer;
 
 use crate::fitscore::{
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn fits_read_wcstab(
 ///  constructing -TAB coordinates.  This helper routine is intended for
 ///  use by routines in the WCSLIB library when dealing with the -TAB table
 ///  look up WCS convention.
-pub(crate) unsafe fn fits_read_wcstab_safer(
+pub unsafe fn fits_read_wcstab_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     nwtb: c_int,         /* Number of arrays to be read from the binary table(s) */
     wtb: &[wtbarr],
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn ffgiwcs(
 /// This string is then used as input to the wcsinit WCSlib routine.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
-pub(crate) fn ffgiwcs_safe(
+pub fn ffgiwcs_safe(
     fptr: &mut fitsfile,      /* I - FITS file pointer                    */
     header: &mut *mut c_char, /* O - pointer to the WCS related keywords  */
     status: &mut c_int,       /* IO - error status                        */
@@ -356,7 +356,7 @@ pub unsafe extern "C" fn ffgics(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
-pub(crate) fn ffgics_safe(
+pub fn ffgics_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer           */
     xrval: &mut f64,         /* O - X reference value           */
     yrval: &mut f64,         /* O - Y reference value           */
@@ -657,7 +657,7 @@ pub unsafe extern "C" fn ffgicsa(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
-pub(crate) fn ffgicsa_safe(
+pub fn ffgicsa_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     version: c_char,     /* I - character code of desired version */
     /*     A - Z or blank */
@@ -1006,7 +1006,7 @@ pub unsafe extern "C" fn ffgtcs(
 /// from the image file.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
-pub(crate) unsafe fn ffgtcs_safer(
+pub unsafe fn ffgtcs_safer(
     fptr: &mut fitsfile,     /* I - FITS file pointer           */
     xcol: c_int,             /* I - column containing the RA coordinate  */
     ycol: c_int,             /* I - column containing the DEC coordinate */
@@ -1107,7 +1107,7 @@ pub unsafe extern "C" fn ffgtwcs(
 /// when it is no longer needed.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
-pub(crate) fn ffgtwcs_safe(
+pub fn ffgtwcs_safe(
     fptr: &mut fitsfile,      /* I - FITS file pointer              */
     xcol: c_int,              /* I - column number for the X column  */
     ycol: c_int,              /* I - column number for the Y column  */

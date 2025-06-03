@@ -53,7 +53,7 @@ pub unsafe extern "C" fn ffpcll(
 
 /*--------------------------------------------------------------------------*/
 /// Write an array of logical values to a column in the current FITS HDU.
-pub(crate) fn ffpcll_safe(
+pub fn ffpcll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn ffpcnl(
 /// Write an array of elements to the specified column of a table.  Any input
 /// pixels flagged as null will be replaced by the appropriate
 /// null value in the output FITS file.
-pub(crate) fn ffpcnl_safe(
+pub fn ffpcnl_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
@@ -366,7 +366,7 @@ pub unsafe extern "C" fn ffpclx(
 /// column of the binary table.   If larray is TRUE, then the corresponding
 /// bit is set to 1, otherwise it is set to 0.
 /// The binary table column being written to must have datatype 'B' or 'X'.
-pub(crate) fn ffpclx_safe(
+pub fn ffpclx_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     frow: LONGLONG,      /* I - first row to write (1 = 1st row)        */

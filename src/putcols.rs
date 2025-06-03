@@ -58,7 +58,7 @@ pub unsafe extern "C" fn ffpcls(
 
 /*--------------------------------------------------------------------------*/
 /// Write an array of string values to a column in the current FITS HDU.
-pub(crate) fn ffpcls_safe(
+pub fn ffpcls_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
@@ -380,7 +380,7 @@ pub unsafe extern "C" fn ffpcns(
 ///  Write an array of elements to the specified column of a table.  Any input
 ///  pixels flagged as null will be replaced by the appropriate
 ///  null value in the output FITS file.
-pub(crate) fn ffpcns_safe(
+pub fn ffpcns_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */

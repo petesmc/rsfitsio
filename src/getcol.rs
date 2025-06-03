@@ -89,7 +89,7 @@ pub unsafe extern "C" fn ffgpxv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
-pub(crate) fn ffgpxv_safe(
+pub fn ffgpxv_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     firstpix: &[c_long],        /* I - coord of first pixel to read (1s based) */
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn ffgpxvll(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffgpxvll_safe(
+pub fn ffgpxvll_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     firstpix: &[LONGLONG],      /* I - coord of first pixel to read (1s based) */
@@ -862,7 +862,7 @@ pub unsafe extern "C" fn ffgpxfll(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffgpxfll_safe(
+pub fn ffgpxfll_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     firstpix: &[LONGLONG],      /* I - coord of first pixel to read (1s based) */
@@ -1164,7 +1164,7 @@ pub unsafe extern "C" fn ffgsv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
-pub(crate) fn ffgsv_safe(
+pub fn ffgsv_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     blc: &[c_long],             /* I - 'bottom left corner' of the subsection  */
@@ -1608,7 +1608,7 @@ pub unsafe extern "C" fn ffgpv(
 /// and the second column contains the image itself.
 ///
 /// anynul can be a null pointer
-pub(crate) fn ffgpv_safe(
+pub fn ffgpv_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
@@ -1957,7 +1957,7 @@ pub unsafe extern "C" fn ffgpf(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffgpf_safe(
+pub fn ffgpf_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
@@ -2080,7 +2080,7 @@ pub unsafe extern "C" fn ffgcv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of true if any pixels are undefined.
-pub(crate) fn ffgcv_safe(
+pub fn ffgcv_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     colnum: c_int,              /* I - number of column to read (1 = 1st col) */
@@ -2837,7 +2837,7 @@ pub unsafe extern "C" fn ffgcvn(
 /// Undefined elements for column i will be set equal to *(nulval[i]), unless nulval[i]=0
 /// in which case no checking for undefined values will be performed.
 /// anynul[i] is returned with a value of true if any pixels in column i are undefined.
-pub(crate) unsafe fn ffgcvn_safer(
+pub unsafe fn ffgcvn_safer(
     fptr: &mut fitsfile,          /* I - FITS file pointer                       */
     ncols: c_int,                 /* I - number of columns to read               */
     datatype: &[c_int],           /* I - datatypes of the values                 */
@@ -3080,7 +3080,7 @@ pub unsafe extern "C" fn ffgcf(
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
 /// ANYNUL is returned with a value of true if any pixels are undefined.
-pub(crate) fn ffgcf_safe(
+pub fn ffgcf_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     datatype: c_int,            /* I - datatype of the value                   */
     colnum: c_int,              /* I - number of column to write (1 = 1st col) */

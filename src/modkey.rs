@@ -235,7 +235,7 @@ pub unsafe extern "C" fn ffukls(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn ffukls_safe(
+pub fn ffukls_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer  */
     keyname: &[c_char],      /* I - keyword name       */
     value: &[c_char],        /* I - keyword value      */
@@ -1022,7 +1022,7 @@ pub unsafe extern "C" fn ffpunt(
 /// square brackets following the '/' comment field delimiter, e.g.:
 ///
 /// KEYWORD =                   12 / [kpc] comment string goes here
-pub(crate) fn ffpunt_safe(
+pub fn ffpunt_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     keyname: &[c_char],  /* I - keyword name        */
     unit: &[c_char],     /* I - keyword unit string */
@@ -2382,7 +2382,7 @@ pub unsafe extern "C" fn ffdkey(
 
 /*--------------------------------------------------------------------------*/
 /// delete a specified header keyword
-pub(crate) fn ffdkey_safe(
+pub fn ffdkey_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer  */
     keyname: &[c_char],  /* I - keyword name       */
     status: &mut c_int,  /* IO - error status      */

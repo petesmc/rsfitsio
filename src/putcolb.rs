@@ -200,7 +200,7 @@ pub unsafe extern "C" fn ffp2db(
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
-pub(crate) fn ffp2db_safe(
+pub fn ffp2db_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -257,7 +257,7 @@ pub unsafe extern "C" fn ffp3db(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffp3db_safe(
+pub fn ffp3db_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -560,7 +560,7 @@ pub unsafe extern "C" fn ffpgpb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpgpb_safe(
+pub fn ffpgpb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                      */
     group: c_long,       /* I - group to write(1 = 1st group)          */
     firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
@@ -1184,7 +1184,7 @@ pub unsafe extern "C" fn ffpextn(
 /// Write a stream of bytes to the current FITS HDU.  This primative routine is mainly
 /// for writing non-standard "conforming" extensions and should not be used
 /// for standard IMAGE, TABLE or BINTABLE extensions.
-pub(crate) fn ffpextn_safe(
+pub fn ffpextn_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     offset: LONGLONG,    /* I - byte offset from start of extension data */
     nelem: LONGLONG,     /* I - number of elements to write              */

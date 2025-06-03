@@ -149,7 +149,7 @@ pub unsafe extern "C" fn ffppne(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffppne_safe(
+pub fn ffppne_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     group: c_long,       /* I - group to write(1 = 1st group)           */
     firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn ffp2de(
 ///
 /// This routine does not support writing to large images with
 /// more than 2**31 pixels.
-pub(crate) fn ffp2de_safe(
+pub fn ffp2de_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -281,7 +281,7 @@ pub unsafe extern "C" fn ffp3de(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffp3de_safe(
+pub fn ffp3de_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -583,7 +583,7 @@ pub unsafe extern "C" fn ffpgpe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpgpe_safe(
+pub fn ffpgpe_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                      */
     group: c_long,       /* I - group to write(1 = 1st group)          */
     firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
@@ -1018,7 +1018,7 @@ pub unsafe extern "C" fn ffpclc(
 /// TZERO keywords should not be used with complex numbers because mathmatically
 /// the scaling should only be applied to the real (first) component of the
 /// complex value.
-pub(crate) fn ffpclc_safe(
+pub fn ffpclc_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
@@ -1084,7 +1084,7 @@ pub unsafe extern "C" fn ffpcne(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
-pub(crate) fn ffpcne_safe(
+pub fn ffpcne_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */

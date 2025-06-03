@@ -8,7 +8,7 @@
 use core::slice;
 use std::cmp;
 
-use crate::c_types::{c_char, c_int, c_long, c_uchar};
+use crate::c_types::{c_char, c_int, c_long, c_uchar, c_uint, c_ushort};
 
 use bytemuck::cast_slice_mut;
 
@@ -538,4 +538,110 @@ pub fn ffgcx_safe(
         }
         bitloc = 0;
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read a consecutive string of bits from an 'X' or 'B' column and
+/// interprete them as an unsigned integer.  The number of bits must be
+/// less than or equal to 16 or the total number of bits in the column,
+/// which ever is less.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgcxui(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: *mut c_ushort,    /* O - array of integer values            */
+    status: *mut c_int,      /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let array = slice::from_raw_parts_mut(array, nrows as usize);
+
+        ffgcxui_safe(
+            fptr,
+            colnum,
+            firstrow,
+            nrows,
+            input_first_bit,
+            input_nbits,
+            array,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read a consecutive string of bits from an 'X' or 'B' column and
+/// interprete them as an unsigned integer.  The number of bits must be
+/// less than or equal to 16 or the total number of bits in the column,
+/// which ever is less.
+pub fn ffgcxui_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: &mut [c_ushort],  /* O - array of integer values            */
+    status: &mut c_int,      /* IO - error status                           */
+) -> c_int {
+    todo!()
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read a consecutive string of bits from an 'X' or 'B' column and
+/// interprete them as an unsigned integer.  The number of bits must be
+/// less than or equal to 32 or the total number of bits in the column,
+/// which ever is less.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgcxuk(
+    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: *mut c_uint,      /* O - array of integer values            */
+    status: *mut c_int,      /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let array = slice::from_raw_parts_mut(array, nrows as usize);
+
+        ffgcxuk_safe(
+            fptr,
+            colnum,
+            firstrow,
+            nrows,
+            input_first_bit,
+            input_nbits,
+            array,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read a consecutive string of bits from an 'X' or 'B' column and
+/// interprete them as an unsigned integer.  The number of bits must be
+/// less than or equal to 32 or the total number of bits in the column,
+/// which ever is less.
+pub fn ffgcxuk_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: &mut [c_uint],    /* O - array of integer values            */
+    status: &mut c_int,      /* IO - error status                           */
+) -> c_int {
+    todo!()
 }

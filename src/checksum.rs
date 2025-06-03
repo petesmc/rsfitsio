@@ -12,8 +12,8 @@ use crate::c_types::{c_char, c_int, c_long, c_uint, c_ulong};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::aliases::ffpmsg_str;
 use crate::cs;
+use crate::fitscore::ffpmsg_str;
 use crate::fitscore::{ffghadll_safe, ffpdfl, ffrdef_safe, ffuptf, ffwend};
 use crate::fitsio::*;
 use crate::fitsio2::*;
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn ffcsum(
 /// This uses a 32-bit 1's complement checksum in which the overflow bits
 /// are permuted back into the sum and therefore all bit positions are
 /// sampled evenly.
-pub(crate) fn ffcsum_safe(
+pub fn ffcsum_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                  */
     nrec: c_long,        /* I - number of 2880-byte blocks to sum  */
     sum: &mut c_ulong,   /* IO - accumulated checksum              */
@@ -238,7 +238,7 @@ pub unsafe extern "C" fn ffdsum(
 /// This routine is based on the C algorithm developed by Rob
 /// Seaman at NOAO that was presented at the 1994 ADASS conference,
 /// published in the Astronomical Society of the Pacific Conference Series.
-pub(crate) fn ffdsum_safe(
+pub fn ffdsum_safe(
     ascii: &[c_char; 17], /* I - 16-char ASCII encoded checksum   */
     complm: bool,         /* I - =1 to decode complement of the   */
     sum: &mut c_ulong,    /* O - 32-bit checksum           */
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn ffupck(
 /*------------------------------------------------------------------------*/
 /// Update the CHECKSUM keyword value.  This assumes that the DATASUM
 /// keyword exists and has the correct value.
-pub(crate) fn ffupck_safe(
+pub fn ffupck_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                  */
     status: &mut c_int,  /* IO - error status                      */
 ) -> c_int {
@@ -614,7 +614,7 @@ pub unsafe extern "C" fn ffvcks(
 /*------------------------------------------------------------------------*/
 /// Verify the HDU by comparing the value of the computed checksums against
 /// the values of the DATASUM and CHECKSUM keywords if they are present.
-pub(crate) fn ffvcks_safe(
+pub fn ffvcks_safe(
     fptr: &mut fitsfile,    /* I - FITS file pointer                  */
     datastatus: &mut c_int, /* O - data checksum status               */
     hdustatus: &mut c_int,  /* O - hdu checksum status                */
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn ffgcks(
 
 /*------------------------------------------------------------------------*/
 /// calculate the checksums of the data unit and the total HDU
-pub(crate) fn ffgcks_safe(
+pub fn ffgcks_safe(
     fptr: &mut fitsfile,   /* I - FITS file pointer             */
     datasum: &mut c_ulong, /* O - data checksum                 */
     hdusum: &mut c_ulong,  /* O - hdu checksum                  */

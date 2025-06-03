@@ -221,7 +221,7 @@ pub unsafe extern "C" fn ffcphd(
 
 /*--------------------------------------------------------------------------*/
 /// copy the header keywords from infptr to outfptr.
-pub(crate) unsafe fn ffcphd_safer(
+pub unsafe fn ffcphd_safer(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     status: &mut c_int,     /* IO - error status     */
@@ -1329,7 +1329,7 @@ pub unsafe extern "C" fn ffdhdu(
 /// Delete the CHDU.  If the CHDU is the primary array, then replace the HDU
 /// with an empty primary array with no data.   Return the
 /// type of the new CHDU after the old CHDU is deleted.
-pub(crate) unsafe fn ffdhdu_safer(
+pub unsafe fn ffdhdu_safer(
     fptr: &mut fitsfile,         /* I - FITS file pointer                   */
     hdutype: Option<&mut c_int>, /* O - type of the new CHDU after deletion */
     status: &mut c_int,          /* IO - error status                       */

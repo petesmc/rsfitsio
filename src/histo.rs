@@ -6,11 +6,11 @@ use std::ffi::c_void;
 use std::ptr;
 
 use crate::c_types::{c_char, c_int, c_long, c_short};
+use crate::fitscore::ffgnrw_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::aliases::ffgnrw_safe;
-use crate::aliases::safer::{fits_read_key_str, fits_write_key_str};
+use crate::aliases::rust_api::{fits_read_key_str, fits_write_key_str};
 
 use crate::cs;
 use crate::eval_defs::{ParseData, parseInfo};
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn ffbins(
 
 /*--------------------------------------------------------------------------*/
 /// Parse non-extended expression, but otherwise the same as ffbinse()
-pub(crate) fn ffbins_safe(
+pub fn ffbins_safe(
     binspec: &[c_char],                  /* I - binning specification */
     imagetype: &mut c_int,               /* O - image type, TINT or TSHORT */
     histaxis: &mut c_int,                /* O - no. of axes in the histogram */
@@ -229,7 +229,8 @@ pub(crate) fn ffbinre(
 ///
 /// This is the non-extended version of the parser which disallows
 /// binning expressions.  Only column names are allowed.
-pub(crate) fn ffbinr(
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffbinr(
     ptr: *mut *mut c_char,
     colname: *mut c_char,
     minin: *mut f64,
@@ -344,7 +345,7 @@ pub unsafe extern "C" fn ffhist2(
 
 /*--------------------------------------------------------------------------*/
 /// Non-extended-syntax version of ffhist2e()
-pub(crate) fn ffhist2_safe(
+pub fn ffhist2_safe(
     fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to table with X and Y cols;    */
     /*     on output, points to histogram image    */
     outfile: &[c_char], /* I - name for the output histogram file      */
@@ -433,7 +434,7 @@ pub unsafe extern "C" fn ffhist3(
 /*--------------------------------------------------------------------------*/
 /// ffhist3: same as ffhist2, but does not close the original file
 ///  and/or replace the original file pointer
-pub(crate) fn ffhist3_safe(
+pub fn ffhist3_safe(
     fptr: &&mut fitsfile, /* IO - pointer to table with X and Y cols;    */
     outfile: &[c_char],   /* I - name for the output histogram file      */
     imagetype: c_int,     /* I - datatype for image: TINT, TSHORT, etc   */
@@ -514,7 +515,7 @@ pub unsafe extern "C" fn ffhist(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn ffhist_safe(
+pub fn ffhist_safe(
     fptr: &mut &mut fitsfile, /* I - pointer to table with X and Y cols; on output, points to histogram image    */
     outfile: &[c_char],       /* I - name for the output histogram file      */
     imagetype: c_int,         /* I - datatype for image: TINT, TSHORT, etc   */
@@ -599,7 +600,7 @@ pub unsafe extern "C" fn fits_calc_binning(
 
 /*--------------------------------------------------------------------------*/
 /// Single-precision version
-pub(crate) fn fits_calc_binning_safe(
+pub fn fits_calc_binning_safe(
     fptr: &mut fitsfile, /* IO - pointer to table to be binned      ;       */
     naxis: c_int,        /* I - number of axes/columns in the binned image  */
     colname: Option<&[[c_char; FLEN_VALUE]; 4]>, /* I - optional column names         */
@@ -712,7 +713,7 @@ pub unsafe extern "C" fn fits_calc_binningd(
 /*--------------------------------------------------------------------------*/
 /// Double-precision version, with non-extended syntax
 /// Calculate the actual binning parameters, based on various user inputoptions.
-pub(crate) fn fits_calc_binningd_safe(
+pub fn fits_calc_binningd_safe(
     fptr: &mut fitsfile, /* IO - pointer to table to be binned      ;       */
     naxis: c_int,        /* I - number of axes/columns in the binned image  */
     colname: Option<&[[c_char; FLEN_VALUE]; 4]>, /* I - optional column names         */
@@ -881,7 +882,7 @@ pub unsafe extern "C" fn fits_write_keys_histo(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn fits_write_keys_histo_safe(
+pub fn fits_write_keys_histo_safe(
     fptr: &mut fitsfile,    /* I - pointer to table to be binned              */
     histptr: &mut fitsfile, /* I - pointer to output histogram image HDU      */
     naxis: c_int,           /* I - number of axes in the histogram image      */
@@ -911,7 +912,7 @@ pub unsafe extern "C" fn fits_rebin_wcs(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn fits_rebin_wcs_safe(
+pub fn fits_rebin_wcs_safe(
     fptr: &mut fitsfile, /* I - pointer to table to be binned           */
     naxis: c_int,        /* I - number of axes in the histogram image   */
     amin: &mut [f32],    /* I - first pixel include in each axis        */
@@ -960,7 +961,7 @@ pub unsafe extern "C" fn fits_rebin_wcsd(
 /// Double precision version
 /// Update the  WCS keywords that define the location of the reference
 /// pixel, and the pixel size, along each axis.
-pub(crate) fn fits_rebin_wcsd_safe(
+pub fn fits_rebin_wcsd_safe(
     fptr: &mut fitsfile, /* I - pointer to table to be binned           */
     naxis: c_int,        /* I - number of axes in the histogram image   */
     amin: &mut [f64],    /* I - first pixel include in each axis        */
@@ -1022,7 +1023,7 @@ pub unsafe extern "C" fn fits_make_hist(
 
 /*--------------------------------------------------------------------------*/
 /// Single-precision version
-pub(crate) fn fits_make_hist_safe(
+pub fn fits_make_hist_safe(
     fptr: &mut fitsfile,          /* IO - pointer to table with X and Y cols; */
     histptr: &fitsfile,           /* I - pointer to output FITS image      */
     bitpix: c_int,                /* I - datatype for image: 16, 32, -32, etc    */
@@ -1150,7 +1151,7 @@ pub unsafe extern "C" fn fits_make_histd(
 
 /*--------------------------------------------------------------------------*/
 /// Double-precision version, non-extended syntax
-pub(crate) fn fits_make_histd_safe(
+pub fn fits_make_histd_safe(
     fptr: &mut fitsfile,          /* IO - pointer to table with X and Y cols; */
     histptr: &fitsfile,           /* I - pointer to output FITS image      */
     bitpix: c_int,                /* I - datatype for image: 16, 32, -32, etc    */

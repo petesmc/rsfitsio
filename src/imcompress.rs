@@ -10,9 +10,49 @@ use hcompress::write::HCEncoder;
 use ricecomp::read::RCDecoder;
 use ricecomp::write::RCEncoder;
 
+use crate::aliases::rust_api::{
+    fits_binary_tform, fits_copy_hdu, fits_copy_header, fits_create_hdu, fits_delete_key,
+    fits_delete_record, fits_get_colnum, fits_get_hdrspace, fits_get_hdu_num, fits_get_hdu_type,
+    fits_get_hduaddrll, fits_get_img_param, fits_get_num_cols, fits_get_num_rowsll,
+    fits_insert_col, fits_make_keyn, fits_modify_key_lng, fits_modify_key_str, fits_modify_name,
+    fits_movabs_hdu, fits_movabs_key, fits_parse_value, fits_read_card, fits_read_col,
+    fits_read_col_byt, fits_read_colnull, fits_read_descript, fits_read_descriptll, fits_read_key,
+    fits_read_key_dbl, fits_read_key_flt, fits_read_key_lng, fits_read_key_log, fits_read_key_str,
+    fits_set_hdustruc, fits_set_tscale, fits_update_card, fits_update_key, fits_write_col,
+    fits_write_descript, fits_write_history, fits_write_img, fits_write_imgnull, fits_write_key,
+    fits_write_key_lng, fits_write_record, fits_write_subset,
+};
+use crate::buffers::{ffgbyt, ffmbyt_safe, ffpbyt};
 use crate::c_types::{
     c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_ushort, c_void, size_t,
 };
+use crate::fitsio::{
+    BAD_DATATYPE, BAD_DIMEN, BAD_NAXIS, BAD_PIX_NUM, BINARY_TBL, BYTE_IMG, BZIP2_1, CASEINSEN,
+    COL_NOT_FOUND, DATA_COMPRESSION_ERR, DATA_DECOMPRESSION_ERR, DOUBLE_IMG, DOUBLENULLVALUE,
+    END_OF_FILE, FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE, FLOAT_IMG, FLOATNULLVALUE,
+    GZIP_1, GZIP_2, HCOMPRESS_1, INT32BIT, LONG_IMG, LONGLONG, MAX_COMPRESS_DIM, MEMORY_ALLOCATION,
+    NEG_AXIS, NO_COMPRESSED_TILE, NO_DITHER, NOCOMPRESS, NOT_BTABLE, NULL_MSG, NUM_OVERFLOW,
+    OVERFLOW_ERR, PLIO_1, RICE_1, SBYTE_IMG, SHORT_IMG, SUBTRACTIVE_DITHER_1, SUBTRACTIVE_DITHER_2,
+    TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG, TLONGLONG, TSBYTE,
+    TSHORT, TSTRING, TUINT, TULONG, TUSHORT, TYP_CKSUM_KEY, TYP_CMPRS_KEY, ULONG_IMG, USHORT_IMG,
+    fitsfile,
+};
+use crate::getcolb::{fffi1i1, fffi2i1, fffi4i1, ffgsvb_safe};
+use crate::getcold::{
+    fffi1r8, fffi2r8, fffi4r8, fffr4r8, fffr8r8, fffr8r8_inplace, ffgcvd_safe, ffgsvd_safe,
+};
+use crate::getcole::{fffi1r4, fffi2r4, fffi4r4, fffr4r4, fffr4r4_inplace, fffr8r4, ffgsve_safe};
+use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffr4i2, fffr8i2, ffgsvi_safe};
+use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffr4i4, fffr8i4};
+use crate::getcolk::{fffi1int, fffi2int, fffi4int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe};
+use crate::getcolsb::{fffi1s1, fffi2s1, fffi4s1};
+use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffr4u2, fffr8u2};
+use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffr4u4, fffr8u4};
+use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffr4uint, fffr8uint};
+use crate::putcolb::ffpclb_safe;
+use crate::putcold::ffpcld_safe;
+use crate::putcoli::ffpcli_safe;
+use crate::scalnull::ffpscl_safe;
 
 use libc::realloc;
 
@@ -20,14 +60,18 @@ use bytemuck::{cast, cast_slice, cast_slice_mut};
 
 use pliocomp::{pl_l2pi, pl_p2li};
 
-use crate::aliases::{not_safe::*, safe::*, safer::*};
 use crate::fitscore::{
-    ffcrhd_safer, ffghadll_safe, ffgidm_safe, ffgisz_safe, ffpsvc_safe, ffrdef_safe,
-    fits_is_compressed_image_safe, fits_strcasecmp, fits_strncasecmp,
+    ffcmrk_safe, ffcrhd_safer, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
+    ffgisz_safe, ffgkcl_safe, ffmahd_safe, ffpmrk_safe, ffpmsg_cstr, ffpmsg_slice, ffpmsg_str,
+    ffpsvc_safe, ffpxsz, ffrdef_safe, fits_is_compressed_image_safe, fits_strcasecmp,
+    fits_strncasecmp, fits_translate_keywords_safer,
 };
 use crate::getkey::{ffdtdm_safe, ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgrec_safe};
-use crate::modkey::ffikyj_safe;
-use crate::putkey::{ffcrim_safer, ffcrtb_safer, ffpkyj_safe, ffpkyl_safe};
+use crate::modkey::{ffikyj_safe, ffucrd_safe};
+use crate::putkey::{
+    ffcrim_safer, ffcrtb_safer, ffpdat_safe, ffpkye_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe,
+    ffpkys_safe, ffprec_safe,
+};
 use crate::quantize::{
     DitherType, fits_img_stats_int_safe, fits_quantize_double_inplace, fits_quantize_float_inplace,
 };
@@ -168,7 +212,7 @@ pub unsafe extern "C" fn fits_set_compression_type(
 /// used when writing a FITS image.  The image is divided into tiles, and
 /// each tile is compressed and stored in a row of at variable length binary
 /// table column.
-pub(crate) fn fits_set_compression_type_safe(
+pub fn fits_set_compression_type_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer     */
     ctype: c_int,        /* image compression type code;                        */
     /* allowed values: RICE_1, GZIP_1, GZIP_2, PLIO_1,     */
@@ -227,7 +271,7 @@ pub unsafe extern "C" fn fits_set_tile_dim(
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
-pub(crate) fn fits_set_tile_dim_safe(
+pub fn fits_set_tile_dim_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     ndim: c_int,         /* number of dimensions in the compressed image      */
     dims: &[c_long],     /* size of image compression tile in each dimension  */
@@ -271,7 +315,7 @@ pub unsafe extern "C" fn fits_set_quantize_level(
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
-pub(crate) fn fits_set_quantize_level_safe(
+pub fn fits_set_quantize_level_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     qlevel: f32,         /* floating point quantization level      */
     status: &mut c_int,  /* IO - error status                */
@@ -313,7 +357,7 @@ pub unsafe extern "C" fn fits_set_quantize_method(
 ///compression.   A value of -1 means do no dithering.  A value of 0 means
 ///use the default SUBTRACTIVE_DITHER_1 (which is equivalent to dither = 1).
 ///A value of 2 means use SUBTRACTIVE_DITHER_2.
-pub(crate) fn fits_set_quantize_method_safe(
+pub fn fits_set_quantize_method_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     method: c_int,       /* quantization method       */
     status: &mut c_int,  /* IO - error status                */
@@ -388,7 +432,7 @@ pub unsafe extern "C" fn fits_set_dither_seed(
 /// offset = 0 means use the default random dithering based on system time
 /// offset = negative means randomly chose dithering based on 1st tile checksum
 /// offset = [1 - 10000] means use that particular dithering pattern
-pub(crate) fn fits_set_dither_seed_safe(
+pub fn fits_set_dither_seed_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     seed: c_int,         /* random dithering seed value (1 to 10000) */
     status: &mut c_int,  /* IO - error status                */
@@ -480,7 +524,7 @@ pub unsafe extern "C" fn fits_set_hcomp_scale(
 }
 /*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the hcompress scale parameter.
-pub(crate) fn fits_set_hcomp_scale_safe(
+pub fn fits_set_hcomp_scale_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     scale: f32,          /* hcompress scale parameter value       */
     /* (default = 0.0)                    */
@@ -536,7 +580,7 @@ pub unsafe extern "C" fn fits_set_lossy_int(
 /// quantized and compressed the same way float images are compressed.
 /// The default is to not do this, and instead apply a lossless compression
 /// algorithm to integer images.
-pub(crate) fn fits_set_lossy_int_safe(
+pub fn fits_set_lossy_int_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     lossy_int: c_int,    /* I - True (!= 0) or False (0) */
     status: &mut c_int,  /* IO - error status                */
@@ -569,7 +613,7 @@ pub unsafe extern "C" fn fits_set_huge_hdu(
 /// (i.e., > 4 GB) that the 'Q' type variable length array columns should be used
 /// rather than the normal 'P' type.  The allows the heap pointers to be stored
 /// as 64-bit quantities, rather than just 32-bits.
-pub(crate) fn fits_set_huge_hdu_safe(
+pub fn fits_set_huge_hdu_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer   */
     huge: c_int,         /* I - True (!= 0) or False (0) */
     status: &mut c_int,  /* IO - error status                */
@@ -649,7 +693,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
-pub(crate) unsafe fn fits_get_tile_dim_safer(
+pub unsafe fn fits_get_tile_dim_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     ndim: c_int,         /* number of dimensions in the compressed image      */
     dims: &mut [c_long], /* size of image compression tile in each dimension  */
@@ -684,7 +728,7 @@ pub unsafe extern "C" fn fits_unset_compression_param(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn fits_unset_compression_param_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
+pub fn fits_unset_compression_param_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     (fptr.Fptr).compress_type = 0;
     (fptr.Fptr).quantize_level = 0.0;
     (fptr.Fptr).quantize_method = 0;
@@ -713,10 +757,7 @@ pub unsafe extern "C" fn fits_unset_compression_request(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn fits_unset_compression_request_safe(
-    fptr: &mut fitsfile,
-    status: &mut c_int,
-) -> c_int {
+pub fn fits_unset_compression_request_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     (fptr.Fptr).request_compress_type = 0;
     (fptr.Fptr).request_quantize_level = 0.0;
     (fptr.Fptr).request_quantize_method = 0;
@@ -757,7 +798,7 @@ pub unsafe extern "C" fn fits_set_compression_pref(
 /// on keywords in the input file that
 /// provide guidance about how the HDU should be compressed when written
 /// to the output file.
-pub(crate) fn fits_set_compression_pref_safe(
+pub fn fits_set_compression_pref_safe(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
@@ -5254,7 +5295,7 @@ pub unsafe extern "C" fn fits_img_decompress(
 
 /*--------------------------------------------------------------------------*/
 /// This routine decompresses the whole image and writes it to the output file.
-pub(crate) unsafe fn fits_img_decompress_safer(
+pub unsafe fn fits_img_decompress_safer(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
@@ -5529,7 +5570,7 @@ pub unsafe extern "C" fn fits_img_decompress_header(
 /*--------------------------------------------------------------------------*/
 /// This routine reads the header of the input tile compressed image and
 /// converts it to that of a standard uncompress FITS image.
-pub(crate) unsafe fn fits_img_decompress_header_safer(
+pub unsafe fn fits_img_decompress_header_safer(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
@@ -10748,7 +10789,7 @@ pub unsafe extern "C" fn fits_compress_table(
     }
 }
 
-pub(crate) unsafe fn fits_compress_table_safer(
+pub unsafe fn fits_compress_table_safer(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,

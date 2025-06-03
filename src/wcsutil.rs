@@ -87,7 +87,7 @@ pub unsafe extern "C" fn ffwldp(
 /// Output:                                                               
 ///   d   *xpos   x (RA) coordinate (deg)                                 
 ///   d   *ypos   y (dec) coordinate (deg)    
-pub(crate) fn ffwldp_safe(
+pub fn ffwldp_safe(
     xpix: f64,
     ypix: f64,
     xref: f64,
@@ -506,7 +506,7 @@ pub unsafe extern "C" fn ffxypx(
 /// Output:                                                               
 ///   f  *xpix    x pixel number  (RA or long without rotation)           
 ///   f  *ypiy    y pixel number  (dec or lat without rotation)       
-pub(crate) fn ffxypx_safe(
+pub fn ffxypx_safe(
     xpos: f64,
     ypos: f64,
     xref: f64,

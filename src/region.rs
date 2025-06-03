@@ -9,8 +9,8 @@ use crate::helpers::boxed::box_try_new;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::NullValue;
-use crate::aliases::safer::{fits_clear_errmark, fits_write_errmark};
-use crate::aliases::{ffclos_safer, ffopen_safer};
+use crate::aliases::rust_api::{fits_clear_errmark, fits_write_errmark};
+use crate::cfileio::{ffclos_safer, ffopen_safer};
 use crate::fitscore::{
     ffgcno_safe, ffmnhd_safe, ffpmsg_slice, ffpmsg_str, fits_strcasecmp, fits_strncasecmp,
 };

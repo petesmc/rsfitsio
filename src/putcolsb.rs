@@ -134,7 +134,7 @@ pub unsafe extern "C" fn ffppnsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffppnsb_safe(
+pub fn ffppnsb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     group: c_long,       /* I - group to write(1 = 1st group)           */
     firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
@@ -197,7 +197,7 @@ pub unsafe extern "C" fn ffp2dsb(
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
-pub(crate) fn ffp2dsb_safe(
+pub fn ffp2dsb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn ffp3dsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffp3dsb_safe(
+pub fn ffp3dsb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -556,7 +556,7 @@ pub unsafe extern "C" fn ffpgpsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpgpsb_safe(
+pub fn ffpgpsb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                      */
     group: c_long,       /* I - group to write(1 = 1st group)          */
     firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
@@ -995,7 +995,7 @@ pub unsafe extern "C" fn ffpcnsb(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
-pub(crate) fn ffpcnsb_safe(
+pub fn ffpcnsb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */

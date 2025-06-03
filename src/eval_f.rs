@@ -94,7 +94,7 @@ pub unsafe extern "C" fn fffrow(
 /*---------------------------------------------------------------------------*/
 /// Evaluate a boolean expression using the indicated rows, returning an
 /// array of flags indicating which rows evaluated to TRUE/FALSE
-pub(crate) fn fffrow_safe(
+pub fn fffrow_safe(
     fptr: &mut fitsfile,       /* I - Input FITS file                   */
     expr: &[c_char],           /* I - Boolean expression                */
     firstrow: c_long,          /* I - First row of table to eval        */
@@ -102,6 +102,106 @@ pub(crate) fn fffrow_safe(
     n_good_rows: &mut c_long,  /* O - Number of rows eval to True       */
     row_status: &mut [c_char], /* O - Array of boolean results          */
     status: &mut c_int,        /* O - Error status                      */
+) -> c_int {
+    todo!()
+}
+
+/*--------------------------------------------------------------------------*/
+/// Evaluate an expression on all rows of a table.  If the input and output
+/// files are not the same, copy the TRUE rows to the output file.  If the
+/// files are the same, delete the FALSE rows (preserve the TRUE rows).
+/// Can copy rows between extensions of the same file, *BUT* if output
+/// extension is before the input extension, the second extension *MUST* be
+/// opened using ffreopen, so that CFITSIO can handle changing file lengths
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffsrow(
+    infptr: *mut fitsfile,  /* I - Input FITS file                      */
+    outfptr: *mut fitsfile, /* I - Output FITS file                     */
+    expr: *const c_char,    /* I - Boolean expression                   */
+    status: *mut c_int,     /* O - Error status                         */
+) -> c_int {
+    unsafe {
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let outfptr = outfptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(expr);
+
+        ffsrow_safe(infptr, outfptr, expr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Evaluate an expression on all rows of a table.  If the input and output
+/// files are not the same, copy the TRUE rows to the output file.  If the
+/// files are the same, delete the FALSE rows (preserve the TRUE rows).
+/// Can copy rows between extensions of the same file, *BUT* if output
+/// extension is before the input extension, the second extension *MUST* be
+/// opened using ffreopen, so that CFITSIO can handle changing file lengths
+pub fn ffsrow_safe(
+    infptr: &mut fitsfile,  /* I - Input FITS file                      */
+    outfptr: &mut fitsfile, /* I - Output FITS file                     */
+    expr: &[c_char],        /* I - Boolean expression                   */
+    status: &mut c_int,     /* O - Error status                         */
+) -> c_int {
+    todo!()
+}
+
+/*---------------------------------------------------------------------------*/
+/// Calculate an expression for the indicated rows of a table, returning
+/// the results, cast as datatype (TSHORT, TDOUBLE, etc), in array.  If
+/// nulval==NULL, UNDEFs will be zeroed out.  For vector results, the number
+/// of elements returned may be less than nelements if nelements is not an
+/// even multiple of the result dimension.  Call fftexp to obtain the
+/// dimensions of the results.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffcrow(
+    fptr: *mut fitsfile,   /* I - Input FITS file                      */
+    datatype: c_int,       /* I - Datatype to return results as        */
+    expr: *const c_char,   /* I - Arithmetic expression                */
+    firstrow: c_long,      /* I - First row to evaluate                */
+    nelements: c_long,     /* I - Number of elements to return         */
+    nulval: *const c_void, /* I - Ptr to value to use as UNDEF         */
+    array: *mut c_void,    /* O - Array of results                     */
+    anynul: *mut c_int,    /* O - Were any UNDEFs encountered?         */
+    status: *mut c_int,    /* O - Error status                         */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let anynul = anynul.as_mut().expect(NULL_MSG);
+
+        let array = std::slice::from_raw_parts_mut(array as *mut u8, nelements as usize);
+
+        todo!(
+            "Need to handle nulval and the slice of array above is not correct due to data type size"
+        );
+
+        raw_to_slice!(expr);
+
+        ffcrow_safe(
+            fptr, datatype, expr, firstrow, nelements, nulval, array, anynul, status,
+        )
+    }
+}
+
+/*---------------------------------------------------------------------------*/
+/// Calculate an expression for the indicated rows of a table, returning
+/// the results, cast as datatype (TSHORT, TDOUBLE, etc), in array.  If
+/// nulval==NULL, UNDEFs will be zeroed out.  For vector results, the number
+/// of elements returned may be less than nelements if nelements is not an
+/// even multiple of the result dimension.  Call fftexp to obtain the
+/// dimensions of the results.
+pub fn ffcrow_safe(
+    fptr: &mut fitsfile,   /* I - Input FITS file                      */
+    datatype: c_int,       /* I - Datatype to return results as        */
+    expr: &[c_char],       /* I - Arithmetic expression                */
+    firstrow: c_long,      /* I - First row to evaluate                */
+    nelements: c_long,     /* I - Number of elements to return         */
+    nulval: *const c_void, /* I - Ptr to value to use as UNDEF         */
+    array: &mut [u8],      /* O - Array of results                     */
+    anynul: &mut c_int,    /* O - Were any UNDEFs encountered?         */
+    status: &mut c_int,    /* O - Error status                         */
 ) -> c_int {
     todo!()
 }
@@ -134,7 +234,7 @@ pub unsafe extern "C" fn ffcalc(
 /*--------------------------------------------------------------------------*/
 /// Evaluate an expression for all rows of a table.  Call ffcalc_rng with
 /// a row range of 1-MAX.              
-pub(crate) fn ffcalc_safe(
+pub fn ffcalc_safe(
     infptr: &mut fitsfile,  /* I - Input FITS file                      */
     expr: &[c_char],        /* I - Arithmetic expression                */
     outfptr: &mut fitsfile, /* I - Output fits file                     */
@@ -193,7 +293,7 @@ pub unsafe extern "C" fn ffcalc_rng(
 ///        constant, put result there, using parInfo as the new comment.    
 ///    (4) Else, create a new column with name parName and TFORM parInfo.   
 ///        If parInfo is NULL, use a default data type for the column.      
-pub(crate) fn ffcalc_rng_safe(
+pub fn ffcalc_rng_safe(
     infptr: &mut fitsfile,  /* I - Input FITS file                  */
     expr: &[c_char],        /* I - Arithmetic expression            */
     outfptr: &mut fitsfile, /* I - Output fits file                 */
@@ -203,6 +303,48 @@ pub(crate) fn ffcalc_rng_safe(
     start: &mut c_long,     /* I - Row range info                   */
     end: &mut c_long,       /* I - Row range info                   */
     status: &mut c_int,     /* O - Error status                     */
+) -> c_int {
+    todo!();
+}
+
+/*--------------------------------------------------------------------------*/
+/// Evaluate the given expression and return information on the result.
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fftexp(
+    fptr: *mut fitsfile,  /* I - Input FITS file                     */
+    expr: *const c_char,  /* I - Arithmetic expression               */
+    maxdim: c_int,        /* I - Max Dimension of naxes              */
+    datatype: *mut c_int, /* O - Data type of result                 */
+    nelem: *mut c_long,   /* O - Vector length of result             */
+    naxis: *mut c_int,    /* O - # of dimensions of result           */
+    naxes: *mut c_long,   /* O - Size of each dimension              */
+    status: *mut c_int,   /* O - Error status                        */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let datatype = datatype.as_mut().expect(NULL_MSG);
+        let nelem = nelem.as_mut().expect(NULL_MSG);
+        let naxis = naxis.as_mut().expect(NULL_MSG);
+        let naxes = std::slice::from_raw_parts_mut(naxes, maxdim as usize);
+
+        raw_to_slice!(expr);
+
+        fftexp_safe(fptr, expr, maxdim, datatype, nelem, naxis, naxes, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Evaluate the given expression and return information on the result.
+pub fn fftexp_safe(
+    fptr: &mut fitsfile,  /* I - Input FITS file                     */
+    expr: &[c_char],      /* I - Arithmetic expression               */
+    maxdim: c_int,        /* I - Max Dimension of naxes              */
+    datatype: &mut c_int, /* O - Data type of result                 */
+    nelem: &mut c_long,   /* O - Vector length of result             */
+    naxis: &mut c_int,    /* O - # of dimensions of result           */
+    naxes: &mut [c_long], /* O - Size of each dimension              */
+    status: &mut c_int,   /* O - Error status                        */
 ) -> c_int {
     todo!();
 }
@@ -248,6 +390,64 @@ fn fits_parser_workfn(
 }
 
 /*---------------------------------------------------------------------------*/
+/// Evaluate a boolean expression for each time in a compressed file,
+/// returning an array of flags indicating which times evaluated to TRUE/FALSE
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fffrwc(
+    fptr: *mut fitsfile,      /* I - Input FITS file                    */
+    expr: *const c_char,      /* I - Boolean expression                 */
+    timeCol: *const c_char,   /* I - Name of time column                */
+    parCol: *const c_char,    /* I - Name of parameter column           */
+    valCol: *const c_char,    /* I - Name of value column               */
+    ntimes: c_long,           /* I - Number of distinct times in file   */
+    times: *mut f64,          /* O - Array of times in file             */
+    time_status: *mut c_char, /* O - Array of boolean results           */
+    status: *mut c_int,       /* O - Error status                       */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        let times = std::slice::from_raw_parts_mut(times, ntimes as usize);
+        let time_status = std::slice::from_raw_parts_mut(time_status, ntimes as usize);
+
+        raw_to_slice!(expr);
+        raw_to_slice!(timeCol);
+        raw_to_slice!(parCol);
+        raw_to_slice!(valCol);
+
+        fffrwc_safe(
+            fptr,
+            expr,
+            timeCol,
+            parCol,
+            valCol,
+            ntimes,
+            times,
+            time_status,
+            status,
+        )
+    }
+}
+
+/*---------------------------------------------------------------------------*/
+/// Evaluate a boolean expression for each time in a compressed file,
+/// returning an array of flags indicating which times evaluated to TRUE/FALSE
+pub fn fffrwc_safe(
+    fptr: &mut fitsfile,        /* I - Input FITS file                    */
+    expr: &[c_char],            /* I - Boolean expression                 */
+    timeCol: &[c_char],         /* I - Name of time column                */
+    parCol: &[c_char],          /* I - Name of parameter column           */
+    valCol: &[c_char],          /* I - Name of value column               */
+    ntimes: c_long,             /* I - Number of distinct times in file   */
+    times: &mut [f64],          /* O - Array of times in file             */
+    time_status: &mut [c_char], /* O - Array of boolean results           */
+    status: &mut c_int,         /* O - Error status                       */
+) -> c_int {
+    todo!()
+}
+
+/*---------------------------------------------------------------------------*/
 /// Evaluate a boolean expression, returning the row number of the first
 /// row which evaluates to TRUE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -271,7 +471,7 @@ pub unsafe extern "C" fn ffffrw(
 /*---------------------------------------------------------------------------*/
 /// Evaluate a boolean expression, returning the row number of the first
 /// row which evaluates to TRUE
-pub(crate) fn ffffrw_safer(
+pub fn ffffrw_safer(
     fptr: &mut fitsfile, /* I - Input FITS file                   */
     expr: &[c_char],     /* I - Boolean expression                */
     rownum: &mut c_long, /* O - First row of table to eval to T   */

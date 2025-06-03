@@ -9,6 +9,7 @@ use bytemuck::cast_slice;
 
 use libc::{c_int, c_long, c_short, c_uchar, free, malloc, strcpy};
 
+use rsfitsio::aliases::c_api::fits_open_file;
 use rsfitsio::buffers::{ffflus, ffgtbb, ffptbb};
 use rsfitsio::c_types::{c_char, c_ulong};
 use rsfitsio::cfileio::{ffdelt, ffinit};
@@ -64,7 +65,6 @@ use rsfitsio::wcssub::ffgics;
 use rsfitsio::wcsutil::{ffwldp, ffxypx};
 use rsfitsio::wrappers::{strcat_safe, strncmp_safe, strncpy_safe};
 use rsfitsio::{
-    aliases::fits_open_file,
     cfileio::ffclos,
     fitscore::{ffcmsg, ffflmd, ffflnm, ffgerr, ffgmsg},
     fitsio::{READWRITE, fitsfile},
@@ -658,7 +658,7 @@ pub fn main() -> ExitCode {
 
             /* use the inskey array of pointers for the comments */
 
-            strcpy(comms[0], c"fxpkns comment&".as_ptr());
+            strcpy(comms[0], (c"fxpkns comment&".as_ptr()));
             if ffpkns(
                 fptr.as_mut_ptr(),
                 c"ky_pkns".as_ptr(),
@@ -672,7 +672,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkns status = {status}");
             }
 
-            strcpy(comms[0], c"fxpknl comment&".as_ptr());
+            strcpy(comms[0], (c"fxpknl comment&".as_ptr()));
             if ffpknl(
                 fptr.as_mut_ptr(),
                 c"ky_pknl".as_ptr(),
@@ -686,7 +686,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknl status = {status}");
             }
 
-            strcpy(comms[0], c"fxpknj comment&".as_ptr());
+            strcpy(comms[0], (c"fxpknj comment&".as_ptr()));
             if ffpknj(
                 fptr.as_mut_ptr(),
                 c"ky_pknj".as_ptr(),
@@ -700,7 +700,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknj status = {status}");
             }
 
-            strcpy(comms[0], c"fxpknf comment&".as_ptr());
+            strcpy(comms[0], (c"fxpknf comment&".as_ptr()));
             if ffpknf(
                 fptr.as_mut_ptr(),
                 c"ky_pknf".as_ptr(),
@@ -715,7 +715,7 @@ pub fn main() -> ExitCode {
                 println!("ffpknf status = {status}");
             }
 
-            strcpy(comms[0], c"fxpkne comment&".as_ptr());
+            strcpy(comms[0], (c"fxpkne comment&".as_ptr()));
             if ffpkne(
                 fptr.as_mut_ptr(),
                 c"ky_pkne".as_ptr(),
@@ -730,7 +730,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkne status = {status}");
             }
 
-            strcpy(comms[0], c"fxpkng comment&".as_ptr());
+            strcpy(comms[0], (c"fxpkng comment&".as_ptr()));
             if ffpkng(
                 fptr.as_mut_ptr(),
                 c"ky_pkng".as_ptr(),
@@ -745,7 +745,7 @@ pub fn main() -> ExitCode {
                 println!("ffpkng status = {status}");
             }
 
-            strcpy(comms[0], c"fxpknd comment&".as_ptr());
+            strcpy(comms[0], (c"fxpknd comment&".as_ptr()));
             if ffpknd(
                 fptr.as_mut_ptr(),
                 c"ky_pknd".as_ptr(),

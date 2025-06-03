@@ -44,7 +44,7 @@ pub unsafe extern "C" fn ffmbyt(
 /// may sometimes be made to a position beyond the current EOF.  The err_mode
 /// parameter determines whether such conditions should be returned as an error
 /// or simply ignored.
-pub(crate) fn ffmbyt_safe(
+pub fn ffmbyt_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                */
     bytepos: LONGLONG,   /* I - byte position in file to move to */
     err_mode: c_int,     /* I - 1=ignore error, 0 = return error */
@@ -735,7 +735,7 @@ pub unsafe extern "C" fn ffflus(
 /*--------------------------------------------------------------------------*/
 /// Flush all the data in the current FITS file to disk. This ensures that if
 /// the program subsequently dies, the disk FITS file will be closed correctly.
-pub(crate) unsafe fn ffflus_safer(
+pub unsafe fn ffflus_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
@@ -782,7 +782,7 @@ pub unsafe extern "C" fn ffflsh(
 
 /*--------------------------------------------------------------------------*/
 /// flush all dirty IO buffers associated with the file to disk
-pub(crate) fn ffflsh_safe(
+pub fn ffflsh_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     clearbuf: bool,      /* I - also clear buffer contents? */
     status: &mut c_int,  /* IO - error status               */
@@ -955,7 +955,7 @@ pub unsafe extern "C" fn ffgrsz(
 /// or the number of pixels in an image that should be read or written
 /// at one time for maximum efficiency. Accessing more data than this
 /// may cause excessive flushing and rereading of buffers to/from disk.
-pub(crate) fn ffgrsz_safe(
+pub fn ffgrsz_safe(
     fptr: &mut fitsfile, /* I - FITS file pionter                        */
     ndata: &mut c_long,  /* O - optimal amount of data to access         */
     status: &mut c_int,  /* IO - error status                            */
@@ -1017,7 +1017,7 @@ pub unsafe extern "C" fn ffgtbb(
 /// read a consecutive string of bytes from an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
-pub(crate) fn ffgtbb_safe(
+pub fn ffgtbb_safe(
     fptr: &mut fitsfile,    /* I - FITS file pointer                 */
     firstrow: LONGLONG,     /* I - starting row (1 = first row)      */
     firstchar: LONGLONG,    /* I - starting byte in row (1=first)    */
@@ -1382,7 +1382,7 @@ pub unsafe extern "C" fn ffptbb(
 /// write a consecutive string of bytes to an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
-pub(crate) fn ffptbb_safe(
+pub fn ffptbb_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                 */
     firstrow: LONGLONG,  /* I - starting row (1 = first row)      */
     firstchar: LONGLONG, /* I - starting byte in row (1=first)    */

@@ -154,7 +154,7 @@ pub unsafe extern "C" fn fits_delete_iraf_file(
 
 /*--------------------------------------------------------------------------*/
 /// Delete the iraf .imh header file and the associated .pix data file
-pub(crate) fn fits_delete_iraf_file_safe(
+pub fn fits_delete_iraf_file_safe(
     filename: &[c_char], /* name of input file      */
     status: &mut c_int,  /* IO - error status       */
 ) -> c_int {

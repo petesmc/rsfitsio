@@ -16,8 +16,8 @@ use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, rea
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::aliases::ffclos_safer;
 use crate::cfileio::MAX_PREFIX_LEN;
+use crate::cfileio::ffclos_safer;
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;

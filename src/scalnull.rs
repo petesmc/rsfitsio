@@ -46,7 +46,7 @@ pub unsafe extern "C" fn ffpthp(
 /// bytes relative to the beginning of the regular binary table data.
 /// This routine also writes the appropriate THEAP keyword to the
 /// FITS header.
-pub(crate) fn ffpthp_safe(
+pub fn ffpthp_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     theap: c_long,       /* I - starting addrss for the heap */
     status: &mut c_int,  /* IO - error status     */
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn ffpscl(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the BSCALE and BZERO
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
-pub(crate) fn ffpscl_safe(
+pub fn ffpscl_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer               */
     scale: f64,          /* I - scaling factor: value of BSCALE */
     zero: f64,           /* I - zero point: value of BZERO      */
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn ffpnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the BLANK  keyword value (or not defined if the keyword is not
 /// present).
-pub(crate) fn ffpnul_safe(
+pub fn ffpnul_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                */
     nulvalue: LONGLONG,  /* I - null pixel value: value of BLANK */
     status: &mut c_int,  /* IO - error status                    */
@@ -248,7 +248,7 @@ pub unsafe extern "C" fn fftscl(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the TSCALn and TZEROn
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
-pub(crate) fn fftscl_safe(
+pub fn fftscl_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                 */
     colnum: c_int,       /* I - column number to apply scaling to */
     scale: f64,          /* I - scaling factor: value of TSCALn   */
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn fftnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn  keyword value (or not defined if the keyword is not
 /// present).
-pub(crate) fn fftnul_safe(
+pub fn fftnul_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                  */
     colnum: c_int,       /* I - column number to apply nulvalue to */
     nulvalue: LONGLONG,  /* I - null pixel value: value of TNULLn  */
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn ffsnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn keyword value (or not defined if the keyword is not
 /// present).
-pub(crate) fn ffsnul_safe(
+pub fn ffsnul_safe(
     fptr: &mut fitsfile,  /* I - FITS file pointer                  */
     colnum: c_int,        /* I - column number to apply nulvalue to */
     nulstring: &[c_char], /* I - null pixel value: value of TNULLn  */

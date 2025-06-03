@@ -47,9 +47,9 @@ use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::BL;
-use crate::aliases::safer::fits_read_key_dbl;
-use crate::aliases::{ffclos_safer, ffurlt_safe};
+use crate::aliases::rust_api::fits_read_key_dbl;
 use crate::cfileio::{STREAM_DRIVER, ffinit_safer, fftrun, urltype2driver};
+use crate::cfileio::{ffclos_safer, ffurlt_safe};
 use crate::editcol::ffirow_safe;
 use crate::edithdu::ffcopy_safer;
 use crate::fitsio2::*;
@@ -920,7 +920,7 @@ pub unsafe extern "C" fn ffupch(string: *mut c_char) {
 
 /*--------------------------------------------------------------------------*/
 /// convert string to upper case, in place.
-pub(crate) fn ffupch_safe(string: &mut [c_char]) {
+pub fn ffupch_safe(string: &mut [c_char]) {
     let len = strlen_safe(string);
     for ii in 0..(len) {
         string[ii] = toupper(string[ii])
@@ -1269,7 +1269,7 @@ pub(crate) fn ffmkey(
 /*--------------------------------------------------------------------------*/
 /// Construct a keyword name string by appending the index number to the root.
 /// e.g., if root = "TTYPE" and value = 12 then keyname = "TTYPE12".
-pub(crate) fn ffkeyn_safe(
+pub fn ffkeyn_safe(
     keyroot: &[c_char],     /* I - root string for keyword name */
     value: c_int,           /* I - index number to be appended to root name */
     keyname: &mut [c_char], /* O - output root + index keyword name */
@@ -1405,7 +1405,7 @@ pub unsafe extern "C" fn ffpsvc(
 /// If the card contains a quoted string value, the returned value string
 /// includes the enclosing quote characters.  If comm = NULL, don't return
 /// the comment string.
-pub(crate) fn ffpsvc_safe(
+pub fn ffpsvc_safe(
     card: &[c_char],      /* I - FITS header card (nominally 80 bytes long) */
     value: &mut [c_char], /* O - value string parsed from the card */
     comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - comment string parsed from the card */
@@ -3094,7 +3094,7 @@ pub unsafe extern "C" fn ffasfm(
 /*--------------------------------------------------------------------------*/
 /// parse the ASCII table TFORM column format to determine the data
 /// type, the field width, and number of decimal places (if relevant)
-pub(crate) fn ffasfm_safe(
+pub fn ffasfm_safe(
     tform: &[c_char],             /* I - format code from the TFORMn keyword */
     dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
     twidth: Option<&mut c_long>,  /* O - width of the field, in chars */
@@ -3290,7 +3290,7 @@ pub unsafe extern "C" fn ffbnfm(
 /*--------------------------------------------------------------------------*/
 /// parse the binary table TFORM column format to determine the data
 /// type, repeat count, and the field width (if it is an ASCII (A) field)
-pub(crate) fn ffbnfm_safe(
+pub fn ffbnfm_safe(
     tform: &[c_char],                 /* I - format code from the TFORMn keyword */
     mut dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
     mut trepeat: Option<&mut c_long>, /* O - repeat count of the field  */
@@ -4457,7 +4457,7 @@ pub unsafe extern "C" fn ffeqty(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
-pub(crate) fn ffeqty_safe(
+pub fn ffeqty_safe(
     fptr: &mut fitsfile,          /* I - FITS file pointer                       */
     colnum: c_int,                /* I - column number                           */
     typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
@@ -5327,7 +5327,7 @@ pub unsafe extern "C" fn ffghof(
 /*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
-pub(crate) fn ffghof_safe(
+pub fn ffghof_safe(
     fptr: &mut fitsfile,           /* I - FITS file pointer                     */
     headstart: Option<&mut off_t>, /* O - byte offset to beginning of CHDU      */
     datastart: Option<&mut off_t>, /* O - byte offset to beginning of next HDU  */
@@ -5443,7 +5443,7 @@ pub unsafe extern "C" fn ffrhdu(
 /*--------------------------------------------------------------------------*/
 /// read the required keywords of the CHDU and initialize the corresponding
 /// structure elements that describe the format of the HDU
-pub(crate) unsafe fn ffrhdu_safer(
+pub unsafe fn ffrhdu_safer(
     fptr: &mut fitsfile,         /* I - FITS file pointer */
     hdutype: Option<&mut c_int>, /* O - type of HDU       */
     status: &mut c_int,          /* IO - error status     */
@@ -6415,7 +6415,7 @@ pub unsafe extern "C" fn ffgabc(
 /// calculate the starting byte offset of each column of an ASCII table
 /// and the total length of a row, in bytes.  The input space value determines
 /// how many blank spaces to leave between each column (1 is recommended).
-pub(crate) fn ffgabc_safe(
+pub fn ffgabc_safe(
     tfields: c_int,       /* I - number of columns in the table           */
     tform: &[&[c_char]],  /* I - value of TFORMn keyword for each column  */
     space: c_int,         /* I - number of spaces to leave between cols   */
@@ -7664,7 +7664,7 @@ pub unsafe extern "C" fn ffcmph(
 /*--------------------------------------------------------------------------*/
 /// compress the binary table heap by reordering the contents heap and
 /// recovering any unused space
-pub(crate) unsafe fn ffcmph_safer(
+pub unsafe fn ffcmph_safer(
     fptr: &mut fitsfile, /* I -FITS file pointer                         */
     status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
@@ -8088,7 +8088,7 @@ pub unsafe extern "C" fn ffgdess(
 
 /*--------------------------------------------------------------------------*/
 ///  get (read) a range of variable length vector descriptors from the table.
-pub(crate) fn ffgdess_safe(
+pub fn ffgdess_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     colnum: c_int,       /* I - column number (1 = 1st column of table)   */
     firstrow: LONGLONG,  /* I - first row  (1 = 1st row of table)         */
@@ -8312,7 +8312,7 @@ pub unsafe extern "C" fn ffpdes(
 
 /*--------------------------------------------------------------------------*/
 ///  put (write) the variable length vector descriptor to the table.
-pub(crate) fn ffpdes_safe(
+pub fn ffpdes_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                         */
     colnum: c_int,       /* I - column number (1 = 1st column of table)   */
     rownum: LONGLONG,    /* I - row number (1 = 1st row of table)         */
@@ -9109,7 +9109,7 @@ pub unsafe extern "C" fn ffcrhd(
 /*--------------------------------------------------------------------------*/
 /// Create Header Data unit:  Create, initialize, and move the i/o pointer
 /// to a new extension appended to the end of the FITS file.
-pub(crate) unsafe fn ffcrhd_safer(
+pub unsafe fn ffcrhd_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
@@ -9272,7 +9272,7 @@ pub unsafe extern "C" fn ffghdt(
 /// not necessarily the physical type, so in the case of a compressed image
 /// stored in a binary table, this will return the type as an Image, not a
 /// binary table.
-pub(crate) fn ffghdt_safe(
+pub fn ffghdt_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     exttype: &mut c_int, /* O - type of extension, 0, 1, or 2 */
     /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
@@ -9342,7 +9342,7 @@ pub unsafe extern "C" fn fits_is_compressed_image(
 
 /*--------------------------------------------------------------------------*/
 /// Returns TRUE if the CHDU is a compressed image, else returns zero.
-pub(crate) fn fits_is_compressed_image_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
+pub fn fits_is_compressed_image_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -9546,7 +9546,7 @@ pub unsafe extern "C" fn ffgiet(
 /*--------------------------------------------------------------------------*/
 /// Get the effective datatype of the image (= BITPIX keyword for normal image,
 /// or ZBITPIX for a compressed image)
-pub(crate) fn ffgiet_safe(
+pub fn ffgiet_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     imgtype: &mut c_int, /* O - image data type                         */
     status: &mut c_int,  /* IO - error status                           */
@@ -9910,7 +9910,7 @@ pub unsafe extern "C" fn ffmahd(
 /// Move to Absolute Header Data unit.  Move to the specified HDU
 /// and read the header to initialize the table structure.  Note that extnum
 /// is one based, so the primary array is extnum = 1.
-pub(crate) fn ffmahd_safe(
+pub fn ffmahd_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer             */
     hdunum: c_int,               /* I - number of the HDU to move to  */
     exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2 */

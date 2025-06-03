@@ -935,7 +935,7 @@ pub unsafe extern "C" fn ffgcvk(
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
-pub(crate) fn ffgcvk_safe(
+pub fn ffgcvk_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
     firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */

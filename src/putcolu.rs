@@ -108,7 +108,7 @@ pub unsafe extern "C" fn ffpprn(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpprn_safe(
+pub fn ffpprn_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     firstelem: LONGLONG, /* I - first vector element to write(1 = 1st) */
     nelem: LONGLONG,     /* I - number of values to write              */
@@ -177,7 +177,7 @@ pub unsafe extern "C" fn ffpclu(
 ///
 /// This routine support COMPLEX and DOUBLE COMPLEX binary table columns, and
 /// sets both the real and imaginary components of the element to a NaN.
-pub(crate) fn ffpclu_safe(
+pub fn ffpclu_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */

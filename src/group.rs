@@ -22,7 +22,7 @@ use bytemuck::cast_slice;
 use std::ffi::CStr;
 
 use crate::{
-    aliases::safer::{fits_read_key_lng, fits_read_keyword},
+    aliases::rust_api::{fits_read_key_lng, fits_read_keyword},
     bb, cs,
     fitscore::*,
     fitsio::*,
@@ -87,7 +87,7 @@ pub unsafe extern "C" fn ffgtcr(
 ///   GT_ID_ALL      3 ==> ID by ref. and position
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
-pub(crate) fn ffgtcr_safe(
+pub fn ffgtcr_safe(
     fptr: &mut fitsfile, /* FITS file pointer                         */
     grpname: &[c_char],  /* name of the grouping table                */
     grouptype: c_int,    /* code specifying the type of  */
@@ -137,7 +137,7 @@ pub unsafe extern "C" fn ffgtis(
 ///   GT_ID_ALL      3 ==> ID by ref. and position
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
-pub(crate) fn ffgtis_safe(
+pub fn ffgtis_safe(
     fptr: &mut fitsfile, /* FITS file pointer                         */
     grpname: &[c_char],  /* name of the grouping table                */
     grouptype: c_int,    /* code specifying the type of  */
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn ffgtch(
 ///   GT_ID_ALL      3 ==> ID by ref. and position
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
-pub(crate) fn ffgtch_safe(
+pub fn ffgtch_safe(
     gfptr: &mut fitsfile, /* FITS file pointer                         */
     grouptype: c_int,     /* code specifying the type of  */
     status: &mut c_int,   /* return status code                        */
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn ffgtrm(
 /// If the (deleted) members are members of another grouping table then those
 /// tables are also updated. The CHDU of the FITS file pointed to by gfptr must
 /// be positioned to the grouping table to be deleted.
-pub(crate) fn ffgtrm_safe(
+pub fn ffgtrm_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to group                   */
     rmopt: c_int,         /* code specifying if member
                           elements are to be deleted:
@@ -291,7 +291,7 @@ pub unsafe extern "C" fn ffgtcp(
 /// Note that the recursive version of this function, ffgtcpr(), is called
 /// to perform the group table copy. In the case of cpopt == OPT_GCP_GPT
 /// ffgtcpr() does not actually use recursion.
-pub(crate) fn ffgtcp_safe(
+pub fn ffgtcp_safe(
     infptr: &mut fitsfile,  /* input FITS file pointer                     */
     outfptr: &mut fitsfile, /* output FITS file pointer                    */
     cpopt: c_int,           /* code specifying copy options:
@@ -341,7 +341,7 @@ pub unsafe extern "C" fn ffgtmg(
 /// grouping table continues to exist after the merge. If the mgopt parameter
 /// is OPT_MRG_MOV then the source grouping table is deleted after the merge,
 /// and all member HDUs are updated accordingly.
-pub(crate) fn ffgtmg_safe(
+pub fn ffgtmg_safe(
     infptr: &mut fitsfile,  /* FITS file ptr to source grouping table      */
     outfptr: &mut fitsfile, /* FITS file ptr to target grouping table      */
     mgopt: c_int,           /* code specifying merge options:
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn ffgtcm(
 /// the grouping tables which are "compacted" are deleted. If the grouping
 /// table contains no members that are themselves grouping tables then this
 /// function performs a NOOP.
-pub(crate) fn ffgtcm_safe(
+pub fn ffgtcm_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
     cmopt: c_int,         /* code specifying compact options
                           OPT_CMT_MBR      (1) ==> compact only direct members (if groups)
@@ -423,7 +423,7 @@ pub unsafe extern "C" fn ffgtvf(
 /// firstfailed parameter returns the member ID of the first member HDU to fail
 /// verification if positive or the first group link to fail if negative;
 /// otherwise firstfailed contains a return value of 0.
-pub(crate) fn ffgtvf_safe(
+pub fn ffgtvf_safe(
     gfptr: &mut fitsfile,     /* FITS file pointer to group             */
     firstfailed: &mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
     status: &mut c_int,       /* return status code                     */
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn ffgtop(
 /// such cases, the grpid index value specified in the function call shall
 /// identify the (grpid)th GRPID value. In the above example, if grpid == 3,
 /// then the group specified by GRPID5 would be opened.
-pub(crate) fn ffgtop_safe(
+pub fn ffgtop_safe(
     mfptr: &mut fitsfile,      /* FITS file pointer to the member HDU          */
     grpid: c_int,              /* group ID (GRPIDn index) within member HDU    */
     gfptr: &mut *mut fitsfile, /* FITS file pointer to grouping table HDU      */
@@ -528,7 +528,7 @@ pub unsafe extern "C" fn ffgtam(
 ///
 /// Note that if the member HDU to be added to the grouping table is already
 /// a member of the group then it will not be added a sceond time.
-pub(crate) fn ffgtam_safe(
+pub fn ffgtam_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to grouping table HDU     */
     mfptr: &mut fitsfile, /* FITS file pointer to member HDU             */
     hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn ffgtnm(
 /// The fitsfile pointer gfptr must be positioned with the grouping table as the CHDU.
 /// The number of grouping table member HDUs is just the NAXIS2 value of the grouping
 /// table.
-pub(crate) fn ffgtnm_safe(
+pub fn ffgtnm_safe(
     gfptr: &mut fitsfile,  /* FITS file pointer to grouping table        */
     nmembers: &mut c_long, /* member count of the grouping table         */
     status: &mut c_int,    /* return status code                         */
@@ -629,7 +629,7 @@ pub unsafe extern "C" fn ffgmng(
 /// Each time this function is called, the indicies of the GRPIDn/GRPLCn
 /// keywords are checked to make sure they are continuous (ie no gaps) and
 /// are re-enumerated to eliminate gaps if gaps are found to be present.
-pub(crate) fn ffgmng_safe(
+pub fn ffgmng_safe(
     mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
     ngroups: *mut c_long, /* total number of groups linked to HDU       */
     status: &mut c_int,   /* return status code                         */
@@ -679,7 +679,7 @@ pub unsafe extern "C" fn ffgmop(
 /// to the CWD is given, and (3) a path relative to the grouping table file
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
-pub(crate) fn ffgmop_safe(
+pub fn ffgmop_safe(
     gfptr: *mut fitsfile,      /* FITS file pointer to grouping table          */
     member: c_long,            /* member ID (row num) within grouping table    */
     mfptr: *mut *mut fitsfile, /* FITS file pointer to member HDU              */
@@ -733,7 +733,7 @@ pub unsafe extern "C" fn ffgmcp(
 /// The copied member HDU also has its EXTVER value updated so that its
 /// combination of XTENSION, EXTNAME and EXVTER is unique within its new
 /// FITS file.
-pub(crate) fn ffgmcp_safe(
+pub fn ffgmcp_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to group                   */
     mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
     member: c_long,       /* member ID (row num) within grouping table    */
@@ -786,7 +786,7 @@ pub unsafe extern "C" fn ffgmtf(
 /// the tfopt parameter is OPT_MCP_MOV then the member is deleted from the
 /// source group after the transfer to the destination group. The member to be
 /// transfered is identified by its row number within the source grouping table.
-pub(crate) fn ffgmtf_safe(
+pub fn ffgmtf_safe(
     infptr: &mut fitsfile,  /* FITS file pointer to source grouping table */
     outfptr: &mut fitsfile, /* FITS file pointer to target grouping table */
     member: c_long,         /* member ID within source grouping table     */
@@ -831,7 +831,7 @@ pub unsafe extern "C" fn ffgmrm(
 /// grouping table (in which case GRPIDn and GRPLCn keywords in the member
 /// HDU's header shall be updated accordingly) or if the member HDU shall
 /// itself be removed from its FITS file.
-pub(crate) fn ffgmrm_safe(
+pub fn ffgmrm_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to group table             */
     member: c_long,       /* member ID (row num) in the group             */
     rmopt: c_int,         /* code specifying the delete option:

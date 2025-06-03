@@ -6,8 +6,8 @@ use std::{process::ExitCode, ptr};
 
 use bytemuck::cast_slice;
 
-use rsfitsio::aliases::fits_is_compressed_image;
 use rsfitsio::c_types::{FILE, c_char};
+use rsfitsio::fitscore::fits_is_compressed_image;
 use rsfitsio::{STDERR, cs};
 
 #[cfg(windows)]
@@ -18,7 +18,7 @@ use rsfitsio::fitsio::{
     SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TINT, TSHORT, TYP_CMPRS_KEY,
 };
 use rsfitsio::wrappers::{strchr_safe, strcpy_safe};
-use rsfitsio::{aliases::fits_open_file, fitsio::fitsfile};
+use rsfitsio::{aliases::rust_api::fits_open_file, fitsio::fitsfile};
 
 use rsfitsio::cfileio::ffclos as fits_close_file;
 use rsfitsio::cfileio::ffinit as fits_create_file;
@@ -144,7 +144,12 @@ pub fn main() -> ExitCode {
 
     unsafe {
         /* Open the input file and create output file */
-        fits_open_file(&mut infptr, infile.as_ptr(), READONLY, &mut status);
+        fits_open_file(
+            &mut infptr,
+            cast_slice(infile.to_bytes_with_nul()),
+            READONLY,
+            &mut status,
+        );
         fits_create_file(&mut outfptr, outfile.as_ptr(), &mut status);
 
         if status != 0 {

@@ -59,7 +59,7 @@ pub unsafe extern "C" fn ffcrim(
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
-pub(crate) unsafe fn ffcrim_safer(
+pub unsafe fn ffcrim_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn ffcrtb(
 
 /*--------------------------------------------------------------------------*/
 /// Create a table extension in a FITS file.
-pub(crate) unsafe fn ffcrtb_safer(
+pub unsafe fn ffcrtb_safer(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     tbltype: c_int,              /* I - type of table to create                  */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
@@ -300,6 +300,38 @@ pub fn ffphps_safe(
 }
 
 /*--------------------------------------------------------------------------*/
+/// Write STANDARD set of required primary header keywords
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffphpsll(
+    fptr: *mut fitsfile,    /* I - FITS file pointer                        */
+    bitpix: c_int,          /* I - number of bits per data value pixel      */
+    naxis: c_int,           /* I - number of axes in the data array         */
+    naxes: *const LONGLONG, /* I - length of each data axis                 */
+    status: *mut c_int,     /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let naxes = slice::from_raw_parts(naxes, naxis as usize);
+
+        ffphpsll_safe(fptr, bitpix, naxis, naxes, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write STANDARD set of required primary header keywords
+pub fn ffphpsll_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                        */
+    bitpix: c_int,       /* I - number of bits per data value pixel      */
+    naxis: c_int,        /* I - number of axes in the data array         */
+    naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    status: &mut c_int,  /* IO - error status                            */
+) -> c_int {
+    todo!()
+}
+
+/*--------------------------------------------------------------------------*/
 /// write required primary header keywords
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphpr(
@@ -331,7 +363,7 @@ pub unsafe extern "C" fn ffphpr(
 
 /*--------------------------------------------------------------------------*/
 /// write required primary header keywords
-pub(crate) fn ffphpr_safe(
+pub fn ffphpr_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     simple: c_int,       /* I - does file conform to FITS standard? 1/0  */
     bitpix: c_int,       /* I - number of bits per data value pixel      */
@@ -390,7 +422,7 @@ pub unsafe extern "C" fn ffphprll(
 
 /*--------------------------------------------------------------------------*/
 /// write required primary header keywords
-pub(crate) fn ffphprll_safe(
+pub fn ffphprll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     simple: c_int,       /* I - does file conform to FITS standard? 1/0  */
     bitpix: c_int,       /* I - number of bits per data value pixel      */
@@ -675,7 +707,7 @@ pub unsafe extern "C" fn ffphtb(
 
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the ASCII TaBle:
-pub(crate) fn ffphtb_safe(
+pub fn ffphtb_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     naxis1: LONGLONG,            /* I - width of row in the table                */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
@@ -951,7 +983,7 @@ pub unsafe extern "C" fn ffphbn(
 
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the Binary Table:
-pub(crate) fn ffphbn_safe(
+pub fn ffphbn_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
     tfields: c_int,              /* I - number of columns in the table           */
@@ -1321,6 +1353,47 @@ pub(crate) fn ffphbn_safe(
     *status
 }
 
+/*--------------------------------------------------------------------------*/
+/// Put required Header keywords into a conforming extension:
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffphext(
+    fptr: *mut fitsfile,      /* I - FITS file pointer                       */
+    xtensionx: *const c_char, /* I - value for the XTENSION keyword          */
+    bitpix: c_int,            /* I - value for the BIXPIX keyword            */
+    naxis: c_int,             /* I - value for the NAXIS keyword             */
+    naxes: *const c_long,     /* I - value for the NAXISn keywords           */
+    pcount: LONGLONG,         /* I - value for the PCOUNT keyword            */
+    gcount: LONGLONG,         /* I - value for the GCOUNT keyword            */
+    status: *mut c_int,       /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(xtensionx);
+        let naxes = slice::from_raw_parts(naxes, naxis as usize);
+
+        ffphext_safe(
+            fptr, xtensionx, bitpix, naxis, naxes, pcount, gcount, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Put required Header keywords into a conforming extension:
+pub unsafe extern "C" fn ffphext_safe(
+    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
+    xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
+    bitpix: c_int,        /* I - value for the BIXPIX keyword            */
+    naxis: c_int,         /* I - value for the NAXIS keyword             */
+    naxes: &[c_long],     /* I - value for the NAXISn keywords           */
+    pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
+    gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
+    status: &mut c_int,   /* IO - error status                           */
+) -> c_int {
+    todo!();
+}
+
 /*-------------------------------------------------------------------------*/
 /// write a keyword record (80 bytes long) to the end of the header
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -1347,7 +1420,7 @@ pub unsafe extern "C" fn ffprec(
 
 /*-------------------------------------------------------------------------*/
 /// write a keyword record (80 bytes long) to the end of the header
-pub(crate) fn ffprec_safe(
+pub fn ffprec_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer        */
     card: &[c_char],     /* I - string to be written     */
     status: &mut c_int,  /* IO - error status            */
@@ -2427,7 +2500,7 @@ pub unsafe extern "C" fn ffplsw(
 /// values which are continued over multiple keywords using the HEASARC
 /// long string keyword convention.  If the LONGSTRN keyword already exists
 /// then this routine simple returns without doing anything.
-pub(crate) fn ffplsw_safe(
+pub fn ffplsw_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer  */
     status: &mut c_int,  /* IO - error status       */
 ) -> c_int {
@@ -2609,7 +2682,7 @@ pub unsafe extern "C" fn ffpkyt(
 /// Write (put) a 'triple' precision keyword where the integer and
 /// fractional parts of the value are passed in separate parameters to
 /// increase the total amount of numerical precision.
-pub(crate) fn ffpkyt_safe(
+pub fn ffpkyt_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer        */
     keyname: &[c_char],      /* I - name of keyword to write */
     intval: c_long,          /* I - integer part of value    */
@@ -3551,7 +3624,7 @@ pub unsafe extern "C" fn ffpktp(
 
 /*-------------------------------------------------------------------------*/
 /// read keywords from template file and append to the FITS file
-pub(crate) fn ffpktp_safe(
+pub fn ffpktp_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer       */
     filename: &[c_char], /* I - name of template file   */
     status: &mut c_int,  /* IO - error status           */
@@ -3751,6 +3824,38 @@ pub unsafe extern "C" fn ffptdm(
     }
 }
 
+/*--------------------------------------------------------------------------*/
+/// Write the TDIMnnn keyword describing the dimensionality of a column
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffptdmll(
+    fptr: *mut fitsfile,    /* I - FITS file pointer                      */
+    colnum: c_int,          /* I - column number                            */
+    naxis: c_int,           /* I - number of axes in the data array         */
+    naxes: *const LONGLONG, /* I - length of each data axis               */
+    status: *mut c_int,     /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        let naxes = slice::from_raw_parts(naxes, naxis as usize);
+
+        ffptdmll_safe(fptr, colnum, naxis, naxes, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write the TDIMnnn keyword describing the dimensionality of a column
+pub fn ffptdmll_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                      */
+    colnum: c_int,       /* I - column number                            */
+    naxis: c_int,        /* I - number of axes in the data array         */
+    naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    status: &mut c_int,  /* IO - error status                            */
+) -> c_int {
+    todo!();
+}
+
 /*-----------------------------------------------------------------*/
 /// Returns the current date and time in format 'yyyy-mm-ddThh:mm:ss'.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -3772,7 +3877,7 @@ pub unsafe extern "C" fn ffgstm(
 
 /*-----------------------------------------------------------------*/
 /// Returns the current date and time in format 'yyyy-mm-ddThh:mm:ss'.
-pub(crate) fn ffgstm_safe(
+pub fn ffgstm_safe(
     timestr: &mut [c_char; 20], /* O  - returned system date and time string  */
     timeref: Option<&mut c_int>, /* O - GMT = 0, Local time = 1  */
     status: &mut c_int,         /* IO - error status      */
@@ -3794,6 +3899,201 @@ pub(crate) fn ffgstm_safe(
     strncpy_safe(timestr, cast_slice(dt_str.as_bytes_with_nul()), 20);
 
     *status
+}
+
+/*-----------------------------------------------------------------*/
+/// Construct a date character string
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffdt2s(
+    year: c_int,          /* I - year (0 - 9999)           */
+    month: c_int,         /* I - month (1 - 12)            */
+    day: c_int,           /* I - day (1 - 31)              */
+    datestr: *mut c_char, /* O - date string: "YYYY-MM-DD" */
+    status: *mut c_int,   /* IO - error status             */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let datestr = datestr.as_mut().expect(NULL_MSG);
+
+        let datestr: &mut [c_char; 11] = slice::from_raw_parts_mut(datestr, 11).try_into().unwrap();
+
+        ffdt2s_safe(year, month, day, datestr, status)
+    }
+}
+
+/*-----------------------------------------------------------------*/
+/// Construct a date character string
+pub fn ffdt2s_safe(
+    year: c_int,            /* I - year (0 - 9999)           */
+    month: c_int,           /* I - month (1 - 12)            */
+    day: c_int,             /* I - day (1 - 31)              */
+    datestr: &[c_char; 11], /* O - date string: "YYYY-MM-DD" */
+    status: *mut c_int,     /* IO - error status             */
+) -> c_int {
+    todo!()
+}
+
+/*-----------------------------------------------------------------*/
+/// Parse a date character string into year, month, and day values
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffs2dt(
+    datestr: *const c_char, /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
+    year: *mut c_int,       /* O - year (0 - 9999)                         */
+    month: *mut c_int,      /* O - month (1 - 12)                          */
+    day: *mut c_int,        /* O - day (1 - 31)                            */
+    status: *mut c_int,     /* IO - error status                           */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let year = year.as_mut().expect(NULL_MSG);
+        let month = month.as_mut().expect(NULL_MSG);
+        let day = day.as_mut().expect(NULL_MSG);
+        raw_to_slice!(datestr);
+
+        ffs2dt_safe(cast_slice(datestr), year, month, day, status)
+    }
+}
+
+/*-----------------------------------------------------------------*/
+/// Parse a date character string into year, month, and day values
+pub fn ffs2dt_safe(
+    datestr: &[c_char], /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
+    year: &mut c_int,   /* O - year (0 - 9999)                         */
+    month: &mut c_int,  /* O - month (1 - 12)                          */
+    day: &mut c_int,    /* O - day (1 - 31)                            */
+    status: &mut c_int, /* IO - error status                           */
+) -> c_int {
+    todo!();
+}
+
+/*-----------------------------------------------------------------*/
+/// Construct a date and time character string
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fftm2s(
+    year: c_int,          /* I - year (0 - 9999)           */
+    month: c_int,         /* I - month (1 - 12)            */
+    day: c_int,           /* I - day (1 - 31)              */
+    hour: c_int,          /* I - hour (0 - 23)             */
+    minute: c_int,        /* I - minute (0 - 59)           */
+    second: c_double,     /* I - second (0. - 60.9999999)  */
+    decimals: c_int,      /* I - number of decimal points to write      */
+    datestr: *mut c_char, /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
+    status: *mut c_int,   /* IO - error status             */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let datestr = datestr.as_mut().expect(NULL_MSG);
+
+        let datestr: &mut [c_char; 24] = slice::from_raw_parts_mut(datestr, 24).try_into().unwrap();
+
+        fftm2s_safe(
+            year, month, day, hour, minute, second, decimals, datestr, status,
+        )
+    }
+}
+
+/*-----------------------------------------------------------------*/
+/// Construct a date and time character string
+pub fn fftm2s_safe(
+    year: c_int,            /* I - year (0 - 9999)           */
+    month: c_int,           /* I - month (1 - 12)            */
+    day: c_int,             /* I - day (1 - 31)              */
+    hour: c_int,            /* I - hour (0 - 23)             */
+    minute: c_int,          /* I - minute (0 - 59)           */
+    second: c_double,       /* I - second (0. - 60.9999999)  */
+    decimals: c_int,        /* I - number of decimal points to write      */
+    datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
+    status: &mut c_int,     /* IO - error status             */
+) -> c_int {
+    todo!();
+}
+
+/*-----------------------------------------------------------------*/
+/// Parse a date character string into date and time values
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffs2tm(
+    datestr: *const c_char, /* I - date string: "YYYY-MM-DD"    */
+    /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
+    /*     or "dd/mm/yy"                */
+    year: *mut c_int,        /* O - year (0 - 9999)              */
+    month: *mut c_int,       /* O - month (1 - 12)               */
+    day: *mut c_int,         /* O - day (1 - 31)                 */
+    hour: *const c_int,      /* I - hour (0 - 23)                */
+    minute: *const c_int,    /* I - minute (0 - 59)              */
+    second: *const c_double, /* I - second (0. - 60.9999999)     */
+    status: *mut c_int,      /* IO - error status                */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let year = year.as_mut().expect(NULL_MSG);
+        let month = month.as_mut().expect(NULL_MSG);
+        let day = day.as_mut().expect(NULL_MSG);
+        let hour = hour.as_ref().expect(NULL_MSG);
+        let minute = minute.as_ref().expect(NULL_MSG);
+        let second = second.as_ref().expect(NULL_MSG);
+
+        raw_to_slice!(datestr);
+
+        ffs2tm_safe(
+            cast_slice(datestr),
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            status,
+        )
+    }
+}
+
+/*-----------------------------------------------------------------*/
+/// Parse a date character string into date and time values
+pub fn ffs2tm_safe(
+    datestr: &[c_char], /* I - date string: "YYYY-MM-DD"    */
+    /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
+    /*     or "dd/mm/yy"                */
+    year: &mut c_int,   /* O - year (0 - 9999)              */
+    month: &mut c_int,  /* O - month (1 - 12)               */
+    day: &mut c_int,    /* O - day (1 - 31)                 */
+    hour: &c_int,       /* I - hour (0 - 23)                */
+    minute: &c_int,     /* I - minute (0 - 59)              */
+    second: &c_double,  /* I - second (0. - 60.9999999)     */
+    status: &mut c_int, /* IO - error status                */
+) -> c_int {
+    todo!();
+}
+
+/*--------------------------------------------------------------------------*/
+/// his routine is included for backward compatibility with the Fortran FITSIO library.
+/// Get current System DaTe (GMT if available)
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgsdt(
+    day: *mut c_int,
+    month: *mut c_int,
+    year: *mut c_int,
+    status: *mut c_int,
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let day = day.as_mut().expect(NULL_MSG);
+        let month = month.as_mut().expect(NULL_MSG);
+        let year = year.as_mut().expect(NULL_MSG);
+
+        ffgsdt_safe(day, month, year, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// his routine is included for backward compatibility with the Fortran FITSIO library.
+/// Get current System DaTe (GMT if available)
+pub fn ffgsdt_safe(
+    day: &mut c_int,
+    month: &mut c_int,
+    year: &mut c_int,
+    status: &mut c_int,
+) -> c_int {
+    todo!();
 }
 
 /*--------------------------------------------------------------------------*/

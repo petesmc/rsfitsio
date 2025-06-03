@@ -63,7 +63,7 @@ pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     }
 }
 
-pub(crate) fn strcspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
+pub fn strcspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
     strcspn_inner(cs, ct, false)
 }
 
@@ -84,7 +84,7 @@ fn strcspn_inner(cs: &[c_char], ct: &[c_char], cmp: bool) -> usize {
     is
 }
 
-pub(crate) fn strspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
+pub fn strspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
     strcspn_inner(cs, ct, true)
 }
 
@@ -99,7 +99,7 @@ pub fn strcpy_safe(dst: &mut [c_char], src: &[c_char]) {
     }
 }
 
-pub(crate) fn strcmp_safe(cs: &[c_char], ct: &[c_char]) -> c_int {
+pub fn strcmp_safe(cs: &[c_char], ct: &[c_char]) -> c_int {
     strncmp_safe(cs, ct, cmp::max(cs.len(), ct.len()))
 }
 
@@ -156,7 +156,7 @@ pub(crate) fn strlen_safe_cstr(str: &CStr) -> usize {
     str.to_bytes().len()
 }
 
-pub(crate) fn strlen_safe(cs: &[c_char]) -> usize {
+pub fn strlen_safe(cs: &[c_char]) -> usize {
     let mut ii = 0;
     let len = cs.len();
     while ii < len {
@@ -220,7 +220,7 @@ pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F
     Ok((res, end))
 }
 
-pub(crate) fn strtod_safe(s: &[c_char], endp: &mut usize) -> f64 {
+pub fn strtod_safe(s: &[c_char], endp: &mut usize) -> f64 {
     strto_float_impl(s, endp)
 }
 
@@ -271,7 +271,7 @@ pub(crate) unsafe fn strstr(haystack: *const c_char, needle: *const c_char) -> *
     unsafe { inner_strstr(haystack, needle, !0) }
 }
 
-pub(crate) fn strstr_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
+pub fn strstr_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
     unsafe {
         let t = strstr(cs.as_ptr(), ct.as_ptr());
 
@@ -312,7 +312,7 @@ pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
     strncat_safe(s, ct, ct_len);
 }
 
-pub(crate) fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
+pub fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
     let s_len = strlen_safe(s);
     let ct_len = strlen_safe(ct);
 
@@ -350,16 +350,16 @@ pub(crate) fn isspace(c: c_char) -> bool {
     c == bb(b' ') || c == bb(b'\t') || c == bb(b'\n') || c == bb(b'\r') || c == 0x0b || c == 0x0c
 }
 
-pub(crate) fn atoi_safe(cs: &[c_char]) -> c_int {
+pub fn atoi_safe(cs: &[c_char]) -> c_int {
     unsafe { atoi(cs.as_ptr()) }
 }
 
-pub(crate) fn atof_safe(cs: &[c_char]) -> f64 {
+pub fn atof_safe(cs: &[c_char]) -> f64 {
     let mut dummy = 0;
     strtod_safe(cs, &mut dummy)
 }
 
-pub(crate) fn isdigit_safe(c: c_char) -> bool {
+pub fn isdigit_safe(c: c_char) -> bool {
     (b'0' as c_char) <= c && c <= (b'9' as c_char)
 }
 

@@ -7,7 +7,7 @@ use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_us
 use libc::{EOF, fread, fwrite, memcpy};
 
 use crate::{
-    aliases::{ffpmsg_slice, ffpmsg_str},
+    fitscore::{ffpmsg_slice, ffpmsg_str},
     fitsio::DATA_DECOMPRESSION_ERR,
     wrappers::strncat_safe,
 };

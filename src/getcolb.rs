@@ -9,7 +9,7 @@ use core::slice;
 use std::ffi::CStr;
 use std::{cmp, mem};
 
-use crate::c_types::{c_char, c_int, c_long, c_short};
+use crate::c_types::{c_char, c_int, c_long, c_short, c_void};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -941,7 +941,7 @@ pub unsafe extern "C" fn ffgcvb(
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
-pub(crate) fn ffgcvb_safe(
+pub fn ffgcvb_safe(
     fptr: &mut fitsfile,        /* I - FITS file pointer                       */
     colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
     firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
@@ -1556,7 +1556,28 @@ pub(crate) fn ffgclb(
 /// Read a stream of bytes from the current FITS HDU.  This primative routine is mainly
 /// for reading non-standard "conforming" extensions and should not be used
 /// for standard IMAGE, TABLE or BINTABLE extensions.
-pub(crate) fn ffgextn(
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgextn(
+    fptr: *mut fitsfile, /* I - FITS file pointer                        */
+    offset: LONGLONG,    /* I - byte offset from start of extension data */
+    nelem: LONGLONG,     /* I - number of elements to read               */
+    buffer: *mut c_void, /* I - stream of bytes to read                  */
+    status: *mut c_int,  /* IO - error status                            */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let buffer = slice::from_raw_parts_mut(buffer as *mut u8, nelem as usize);
+
+        ffgextn_safe(fptr, offset, nelem, buffer, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read a stream of bytes from the current FITS HDU.  This primative routine is mainly
+/// for reading non-standard "conforming" extensions and should not be used
+/// for standard IMAGE, TABLE or BINTABLE extensions.
+pub fn ffgextn_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     offset: LONGLONG,    /* I - byte offset from start of extension data */
     nelem: LONGLONG,     /* I - number of elements to read               */

@@ -133,7 +133,7 @@ pub unsafe extern "C" fn ffppnj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffppnj_safe(
+pub fn ffppnj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     group: c_long,       /* I - group to write(1 = 1st group)           */
     firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
@@ -196,7 +196,7 @@ pub unsafe extern "C" fn ffp2dj(
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
-pub(crate) fn ffp2dj_safe(
+pub fn ffp2dj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -253,7 +253,7 @@ pub unsafe extern "C" fn ffp3dj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffp3dj_safe(
+pub fn ffp3dj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -555,7 +555,7 @@ pub unsafe extern "C" fn ffpgpj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpgpj_safe(
+pub fn ffpgpj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                      */
     group: c_long,       /* I - group to write(1 = 1st group)          */
     firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
@@ -976,7 +976,7 @@ pub unsafe extern "C" fn ffpcnj(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
-pub(crate) fn ffpcnj_safe(
+pub fn ffpcnj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
@@ -1525,7 +1525,7 @@ pub unsafe extern "C" fn ffppnjj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffppnjj_safe(
+pub fn ffppnjj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     group: c_long,       /* I - group to write(1 = 1st group)           */
     firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
@@ -1586,7 +1586,7 @@ pub unsafe extern "C" fn ffp2djj(
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
-pub(crate) fn ffp2djj_safe(
+pub fn ffp2djj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -1643,7 +1643,7 @@ pub unsafe extern "C" fn ffp3djj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffp3djj_safe(
+pub fn ffp3djj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     group: c_long,       /* I - group to write(1 = 1st group)         */
     ncols: LONGLONG,     /* I - number of pixels in each row of array */
@@ -1940,7 +1940,7 @@ pub unsafe extern "C" fn ffpgpjj(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
-pub(crate) fn ffpgpjj_safe(
+pub fn ffpgpjj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                      */
     group: c_long,       /* I - group to write(1 = 1st group)          */
     firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
@@ -2361,7 +2361,7 @@ pub unsafe extern "C" fn ffpcnjj(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
-pub(crate) fn ffpcnjj_safe(
+pub fn ffpcnjj_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
     firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */

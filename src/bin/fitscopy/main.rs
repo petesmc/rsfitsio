@@ -3,6 +3,7 @@
 use std::ffi::CString;
 use std::process::ExitCode;
 
+use bytemuck::cast_slice;
 use rsfitsio::fitsio::READONLY;
 
 use rsfitsio::STDERR;
@@ -10,7 +11,7 @@ use rsfitsio::STDERR;
 #[cfg(windows)]
 use rsfitsio::__acrt_iob_func;
 
-use rsfitsio::{aliases::fits_open_file, fitsio::fitsfile};
+use rsfitsio::{aliases::rust_api::fits_open_file, fitsio::fitsfile};
 
 use rsfitsio::cfileio::ffclos as fits_close_file;
 use rsfitsio::cfileio::ffinit as fits_create_file;
@@ -65,7 +66,13 @@ pub fn main() -> ExitCode {
 
     unsafe {
         /* Open the input file */
-        if fits_open_file(&mut infptr, infile.as_ptr(), READONLY, &mut status) == 0 {
+        if fits_open_file(
+            &mut infptr,
+            cast_slice(infile.to_bytes_with_nul()),
+            READONLY,
+            &mut status,
+        ) == 0
+        {
             /* Create the output file */
             if fits_create_file(&mut outfptr, outfile.as_ptr(), &mut status) == 0 {
                 /* copy the previous, current, and following HDUs */

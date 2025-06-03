@@ -69,7 +69,7 @@ pub unsafe extern "C" fn ffrsim(
 
 /*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
-pub(crate) fn ffrsim_safe(
+pub fn ffrsim_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn ffrsimll(
 
 /*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
-pub(crate) fn ffrsimll_safe(
+pub fn ffrsimll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
@@ -516,7 +516,7 @@ pub unsafe extern "C" fn ffdrow(
 
 /*--------------------------------------------------------------------------*/
 /// delete NROWS rows from table starting with firstrow (1 = first row of table).
-pub(crate) fn ffdrow_safe(
+pub fn ffdrow_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     firstrow: LONGLONG,  /* I - first row to delete (1 = first)          */
     nrows: LONGLONG,     /* I - number of rows to delete                 */
@@ -657,7 +657,7 @@ pub unsafe extern "C" fn ffdrrg(
 /// The 'ranges' parameter typically looks like:
 /// '10-20, 30 - 40, 55' or '50-'
 /// and gives a list of rows or row ranges separated by commas.
-pub(crate) fn ffdrrg_safe(
+pub fn ffdrrg_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer to table               */
     ranges: &[c_char],   /* I - ranges of rows to delete (1 = first)     */
     status: &mut c_int,  /* IO - error status                            */
@@ -783,7 +783,7 @@ pub unsafe extern "C" fn ffdrws(
 
 /*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
-pub(crate) fn ffdrws_safe(
+pub fn ffdrws_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     rownum: &[c_long],   /* I - list of rows to delete (1 = first)       */
     nrows: c_long,       /* I - number of rows to delete                 */
@@ -943,7 +943,7 @@ pub unsafe extern "C" fn ffdrwsll(
 
 /*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
-pub(crate) fn ffdrwsll_safe(
+pub fn ffdrwsll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     rownum: &[LONGLONG], /* I - list of rows to delete (1 = first)       */
     nrows: LONGLONG,     /* I - number of rows to delete                 */
@@ -1130,7 +1130,7 @@ pub unsafe extern "C" fn ffrwrg(
 ///
 /// error is returned if min value of range is > max value of range or if the
 /// ranges are not monotonically increasing.
-pub(crate) fn ffrwrg_safe(
+pub fn ffrwrg_safe(
     rowlist: &[c_char],    /* I - list of rows and row ranges */
     maxrows: LONGLONG,     /* I - number of rows in the table */
     maxranges: c_int,      /* I - max number of ranges to be returned */
@@ -1326,7 +1326,7 @@ pub unsafe extern "C" fn ffrwrgll(
 //
 // error is returned if min value of range is > max value of range or if the
 // ranges are not monotonically increasing.
-pub(crate) fn ffrwrgll_safe(
+pub fn ffrwrgll_safe(
     rowlist: &[c_char],      /* I - list of rows and row ranges */
     maxrows: LONGLONG,       /* I - number of rows in the list */
     maxranges: c_int,        /* I - max number of ranges to be returned */
@@ -1496,7 +1496,7 @@ pub unsafe extern "C" fn fficol(
 /// Insert a new column into an existing table at position numcol.  If
 /// numcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
-pub(crate) fn fficol_safe(
+pub fn fficol_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     numcol: c_int,       /* I - position for new col. (1 = 1st)          */
     ttype: &[c_char],    /* I - name of column (TTYPE keyword)           */
@@ -1552,7 +1552,7 @@ pub unsafe extern "C" fn fficls(
 /// Insert 1 or more new columns into an existing table at position numcol.  If
 /// fstcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
-pub(crate) fn fficls_safe(
+pub fn fficls_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     fstcol: c_int,       /* I - position for first new col. (1 = 1st)    */
     ncols: c_int,        /* I - number of columns to insert              */
@@ -1913,7 +1913,7 @@ pub unsafe extern "C" fn ffmvec(
 /*--------------------------------------------------------------------------*/
 /// Modify the vector length of a column in a binary table, larger or smaller.
 /// E.g., change a column from TFORMn = '1E' to '20E'.
-pub(crate) fn ffmvec_safe(
+pub fn ffmvec_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     colnum: c_int,       /* I - position of col to be modified           */
     newveclen: LONGLONG, /* I - new vector length of column (TFORM)       */
@@ -2167,7 +2167,7 @@ pub unsafe extern "C" fn ffcpcl(
 
 /*--------------------------------------------------------------------------*/
 /// copy a column from infptr and insert it in the outfptr table.
-pub(crate) fn ffcpcl_safe(
+pub fn ffcpcl_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     incol: c_int,           /* I - number of input column   */
@@ -2755,7 +2755,7 @@ pub unsafe extern "C" fn ffccls(
 /// table.  Optimized for multiple-column case since it only expands the
 /// output file once using fits_insert_cols() instead of calling
 /// fits_insert_col() multiple times.
-pub(crate) fn ffccls_safe(
+pub fn ffccls_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     incol: c_int,           /* I - number of first input column   */
@@ -3042,7 +3042,7 @@ pub unsafe extern "C" fn ffcprw(
 
 /*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
-pub(crate) fn ffcprw_safe(
+pub fn ffcprw_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
@@ -3327,7 +3327,7 @@ pub unsafe extern "C" fn ffcpsr(
 
 /*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
-pub(crate) fn ffcpsr_safe(
+pub fn ffcpsr_safe(
     infptr: &mut fitsfile,         /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile,        /* I - FITS file pointer to output file */
     firstrow: LONGLONG,            /* I - number of first row to copy (1 based)  */
@@ -3640,7 +3640,7 @@ pub unsafe extern "C" fn ffcpky(
 
 /*--------------------------------------------------------------------------*/
 /// copy an indexed keyword from infptr to outfptr.
-pub(crate) fn ffcpky_safe(
+pub fn ffcpky_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     incol: c_int,           /* I - input index number   */
@@ -3689,7 +3689,7 @@ pub unsafe extern "C" fn ffdcol(
 
 /*--------------------------------------------------------------------------*/
 /// Delete a column from a table.
-pub(crate) fn ffdcol_safe(
+pub fn ffdcol_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     colnum: c_int,       /* I - column to delete (1 = 1st)               */
     status: &mut c_int,  /* IO - error status                            */
@@ -3874,7 +3874,7 @@ pub unsafe extern "C" fn ffcins(
 
 /*--------------------------------------------------------------------------*/
 /// Insert 'ninsert' bytes into each row of the table at position 'bytepos'.
-pub(crate) fn ffcins_safe(
+pub fn ffcins_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     naxis1: LONGLONG,    /* I - width of the table, in bytes             */
     naxis2: LONGLONG,    /* I - number of rows in the table              */
@@ -4054,7 +4054,7 @@ pub unsafe extern "C" fn ffcdel(
 
 /*--------------------------------------------------------------------------*/
 /// delete 'ndelete' bytes from each row of the table at position 'bytepos'.
-pub(crate) fn ffcdel_safe(
+pub fn ffcdel_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     naxis1: LONGLONG,    /* I - width of the table, in bytes             */
     naxis2: LONGLONG,    /* I - number of rows in the table              */
@@ -4188,7 +4188,7 @@ pub unsafe extern "C" fn ffkshf(
 /// if incre is negative, then the kewords with index = COLMIN
 /// will be deleted and the index of higher numbered keywords will
 /// be decremented.
-pub(crate) fn ffkshf_safe(
+pub fn ffkshf_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                        */
     colmin: c_int,       /* I - starting col. to be incremented; 1 = 1st */
     colmax: c_int,       /* I - last column to be incremented            */
@@ -4314,7 +4314,7 @@ pub unsafe extern "C" fn fffvcl(
 /// of all variable length columns in the table.  This ASSUMES calling function
 /// has passed in a colnums array large enough to hold these (colnums==NULL also
 /// allowed).
-pub(crate) fn fffvcl_safe(
+pub fn fffvcl_safe(
     fptr: &mut fitsfile,  /* I - FITS file pointer                       */
     nvarcols: &mut c_int, /* O - Number of variable length columns found */
     mut colnums: Option<&mut [c_int]>, /* O - 1-based variable column positions       */

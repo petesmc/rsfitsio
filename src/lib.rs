@@ -648,9 +648,9 @@ macro_rules! STDERR {
 mod tests {
     use std::{ffi::CString, slice};
 
-    use crate::{aliases::ffclos_safer, cs};
+    use crate::cs;
     use bytemuck::cast_slice;
-    use cfileio::ffinit_safer;
+    use cfileio::{ffclos_safer, ffinit_safer};
 
     use putkey::ffcrim_safer;
     use tempfile::Builder;
@@ -662,7 +662,7 @@ mod tests {
 
     use super::*;
 
-    use crate::aliases::safer::{fits_update_key, fits_write_img};
+    use crate::aliases::rust_api::{fits_update_key, fits_write_img};
 
     #[test]
     fn test_write_image() {

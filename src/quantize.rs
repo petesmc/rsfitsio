@@ -593,7 +593,7 @@ pub unsafe extern "C" fn fits_img_stats_short(
 
 /*--------------------------------------------------------------------------*/
 /// Compute statistics of the input short integer image.
-pub(crate) fn fits_img_stats_short_safe(
+pub fn fits_img_stats_short_safe(
     array: &[c_short], /*  2 dimensional array of image pixels */
     nx: c_long,        /* number of pixels in each row of the image */
     ny: c_long,        /* number of rows in the image */
@@ -752,7 +752,7 @@ pub unsafe extern "C" fn fits_img_stats_int(
 
 /*--------------------------------------------------------------------------*/
 /// Compute statistics of the input integer image.
-pub(crate) fn fits_img_stats_int_safe(
+pub fn fits_img_stats_int_safe(
     array: &[c_int], /*  2 dimensional array of image pixels */
     nx: c_long,      /* number of pixels in each row of the image */
     ny: c_long,      /* number of rows in the image */
@@ -909,7 +909,7 @@ pub unsafe extern "C" fn fits_img_stats_float(
 
 /*--------------------------------------------------------------------------*/
 /// Compute statistics of the input float image.
-pub(crate) fn fits_img_stats_float_safe(
+pub fn fits_img_stats_float_safe(
     array: &[f32], /*  2 dimensional array of image pixels */
     nx: c_long,    /* number of pixels in each row of the image */
     ny: c_long,    /* number of rows in the image */

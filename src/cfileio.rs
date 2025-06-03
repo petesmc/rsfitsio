@@ -18,8 +18,7 @@ use crate::helpers::boxed::box_try_new;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 
-use crate::aliases::safer::fits_read_key_str;
-use crate::aliases::{ffgisz_safe, ffpmsg_cstr};
+use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
     file_checkfile, file_close, file_compress_open, file_create, file_flush, file_getoptions,
     file_getversion, file_init, file_open, file_read, file_remove, file_seek, file_setoptions,
@@ -33,6 +32,7 @@ use crate::drvrmem::{
     mem_setoptions, mem_shutdown, mem_size, mem_truncate_unsafe, mem_write_unsafe, stdin_checkfile,
     stdin_open, stdout_close_unsafe,
 };
+use crate::fitscore::{ffgisz_safe, ffpmsg_cstr};
 
 #[cfg(feature = "shared_mem")]
 use crate::drvrsmem::{
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn ffopen(
 
 /*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
-pub(crate) unsafe fn ffopen_safer(
+pub unsafe fn ffopen_safer(
     fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     name: &[c_char],                  /* I - full name of file to open           */
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
@@ -3123,7 +3123,7 @@ pub unsafe extern "C" fn fits_copy_cell2image(
 /// extension will be created in that file.
 ///
 /// This routine was written by Craig Markwardt, GSFC
-pub(crate) fn fits_copy_cell2image_safe(
+pub fn fits_copy_cell2image_safe(
     fptr: &mut fitsfile,   /* I - point to input table */
     newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
     colname: &[c_char],    /* I - column name / number containing the image*/
@@ -5619,7 +5619,7 @@ pub unsafe extern "C" fn ffexts(
 /// if present.
 ///
 /// DANGER: Don't know size of extname, imagecolname, rowexpress
-pub(crate) unsafe fn ffexts_safer(
+pub unsafe fn ffexts_safer(
     extspec: &[c_char],
     extnum: &mut c_int,
     extname: *mut c_char,
@@ -5906,7 +5906,7 @@ pub unsafe extern "C" fn ffurlt(
 /*--------------------------------------------------------------------------*/
 /// return the prefix string associated with the driver in use by the
 /// fitsfile pointer fptr
-pub(crate) fn ffurlt_safe(fptr: &fitsfile, urlType: &mut [c_char], status: &mut c_int) -> c_int {
+pub fn ffurlt_safe(fptr: &fitsfile, urlType: &mut [c_char], status: &mut c_int) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
 
     strcpy_safe(urlType, &(d[fptr.Fptr.driver as usize]).prefix);
@@ -5940,7 +5940,7 @@ pub unsafe extern "C" fn ffimport_file(
 /// to hold 2 characters more than the length of the text... allows the
 /// calling routine to append (or prepend) a newline (or quotes?) without
 /// reallocating memory.
-pub(crate) unsafe fn ffimport_file_safer(
+pub unsafe fn ffimport_file_safer(
     filename: &[c_char],        /* Text file to read                   */
     contents: *mut *mut c_char, /* Pointer to pointer to hold file     */
     status: &mut c_int,         /* CFITSIO error code                  */
@@ -6260,7 +6260,7 @@ pub unsafe extern "C" fn ffdelt(
 
 /*--------------------------------------------------------------------------*/
 /// close and DELETE the FITS file.
-pub(crate) unsafe fn ffdelt_safer(
+pub unsafe fn ffdelt_safer(
     fptr: &mut Option<Box<fitsfile>>, /* I - FITS file pointer */
     status: &mut c_int,               /* IO - error status     */
 ) -> c_int {
@@ -6610,7 +6610,8 @@ pub(crate) fn ffvhtps(flag: c_int) {
 /*-------------------------------------------------------------------*/
 /// Display download status bar (to stderr), where applicable.
 /// This is NOT THREAD-SAFE
-pub(crate) fn ffshdwn(flag: c_int) {
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffshdwn(flag: c_int) {
     todo!();
 }
 
@@ -6632,7 +6633,7 @@ pub unsafe extern "C" fn ffstmo(sec: c_int, status: *mut c_int) -> c_int {
 /// Returns the length of the token, not including the delimiter char;
 ///
 /// This routine allocates the *token string;  the calling routine must free it
-pub(crate) fn fits_get_token2_safe(
+pub fn fits_get_token2_safe(
     ptr: &[c_char],
     ptr_index: &mut usize,
     delimiter: &[c_char],

@@ -9,8 +9,8 @@ use core::slice;
 use std::ffi::CStr;
 use std::{cmp, ptr};
 
-use crate::aliases::ALLOCATIONS;
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
+use crate::fitscore::ALLOCATIONS;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -160,7 +160,7 @@ pub unsafe extern "C" fn ffnchk(
 /// any, in the current header.  Null characters are illegal, but the other
 /// CFITSIO routines that read the header will not detect this error, because
 /// the null gets interpreted as a normal end of string character.
-pub(crate) fn ffnchk_safe(
+pub fn ffnchk_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                     */
     status: &mut c_int,  /* IO - error status                         */
 ) -> c_int {
@@ -1158,7 +1158,7 @@ pub unsafe extern "C" fn ffgkys(
 /// HEASARC convention for continuing long string values over multiple keywords.
 /// The ffgkls routine may be used to read long continued strings. The returned
 /// comment string may be up to 69 characters long (including null terminator).
-pub(crate) fn ffgkys_safe(
+pub fn ffgkys_safe(
     fptr: &mut fitsfile,                       /* I - FITS file pointer         */
     keyname: &[c_char],                        /* I - name of keyword to read   */
     value: &mut [c_char],                      /* O - keyword value             */
@@ -1244,7 +1244,7 @@ pub unsafe extern "C" fn ffgkcsl(
 /*--------------------------------------------------------------------------*/
 /// Get the length of the keyword value string and comment string.
 /// This routine explicitly supports the CONTINUE convention for long string values.
-pub(crate) fn ffgkcsl_safe(
+pub fn ffgkcsl_safe(
     fptr: &mut fitsfile,   /* I - FITS file pointer             */
     keyname: &[c_char],    /* I - name of keyword to read       */
     length: &mut c_int,    /* O - length of the string value    */
@@ -5521,7 +5521,7 @@ pub unsafe extern "C" fn ffh2st(
 /// Read header keywords into a long string of chars.  This routine allocates
 /// memory for the string, so the calling routine must eventually free the
 /// memory when it is not needed any more.
-pub(crate) fn ffh2st_safe(
+pub fn ffh2st_safe(
     fptr: &mut fitsfile,      /* I - FITS file pointer           */
     header: &mut *mut c_char, /* O - returned header string      */
     status: &mut c_int,       /* IO - error status               */
@@ -5618,7 +5618,7 @@ pub unsafe extern "C" fn ffhdr2str(
 /// the COMMENT, HISTORY, and <blank> keywords will be excluded from the output
 /// string of keywords.  Any other list of keywords to be excluded may be
 /// specified with the exclist parameter.
-pub(crate) fn ffhdr2str_safe(
+pub fn ffhdr2str_safe(
     fptr: &mut fitsfile,      /* I - FITS file pointer                    */
     exclude_comm: c_int,      /* I - if TRUE, exclude commentary keywords */
     exclist: &[&[c_char]],    /* I - list of excluded keyword names       */
