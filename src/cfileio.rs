@@ -4131,7 +4131,7 @@ pub unsafe extern "C" fn ffiurl(
 /// fits_parse_input_url
 /// parse the input URL into its basic components.
 /// This routine does not support the pixfilter or compspec components.
-pub(crate) fn ffiurl_safer(
+pub fn ffiurl_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
     infilex: *mut c_char,    /* root filename (may be complete path) */
