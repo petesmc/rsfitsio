@@ -15,12 +15,12 @@ use crate::aliases::rust_api::{
     fits_delete_record, fits_get_colnum, fits_get_hdrspace, fits_get_hdu_num, fits_get_hdu_type,
     fits_get_hduaddrll, fits_get_img_param, fits_get_num_cols, fits_get_num_rowsll,
     fits_insert_col, fits_make_keyn, fits_modify_key_lng, fits_modify_key_str, fits_modify_name,
-    fits_movabs_hdu, fits_movabs_key, fits_parse_value, fits_read_card, fits_read_col,
-    fits_read_col_byt, fits_read_colnull, fits_read_descript, fits_read_descriptll, fits_read_key,
-    fits_read_key_dbl, fits_read_key_flt, fits_read_key_lng, fits_read_key_log, fits_read_key_str,
-    fits_set_hdustruc, fits_set_tscale, fits_update_card, fits_update_key, fits_write_col,
-    fits_write_descript, fits_write_history, fits_write_img, fits_write_imgnull, fits_write_key,
-    fits_write_key_lng, fits_write_record, fits_write_subset,
+    fits_movabs_hdu, fits_parse_value, fits_read_card, fits_read_col, fits_read_col_byt,
+    fits_read_colnull, fits_read_descript, fits_read_descriptll, fits_read_key, fits_read_key_dbl,
+    fits_read_key_flt, fits_read_key_lng, fits_read_key_log, fits_read_key_str, fits_set_hdustruc,
+    fits_set_tscale, fits_update_card, fits_update_key, fits_write_col, fits_write_descript,
+    fits_write_history, fits_write_img, fits_write_imgnull, fits_write_key, fits_write_key_lng,
+    fits_write_record, fits_write_subset,
 };
 use crate::buffers::{ffgbyt, ffmbyt_safe, ffpbyt};
 use crate::c_types::{

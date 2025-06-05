@@ -1381,7 +1381,7 @@ pub unsafe extern "C" fn ffphext(
 
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into a conforming extension:
-pub unsafe extern "C" fn ffphext_safe(
+pub fn ffphext_safe(
     fptr: &mut fitsfile,  /* I - FITS file pointer                       */
     xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
     bitpix: c_int,        /* I - value for the BIXPIX keyword            */
