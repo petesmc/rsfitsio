@@ -13556,3 +13556,38 @@ fn fits_calc_tile_rows(
 
     *status
 }
+
+/*--------------------------------------------------------------------------*/
+/// Compress an image using the specified compression algorithm
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_compress_img(
+    infptr: *mut fitsfile,    /* I - FITS file pointer to input file */
+    outfptr: *mut fitsfile,   /* I - FITS file pointer to output file */
+    compress_type: c_int,     /* I - compression algorithm type */
+    tilesize: *mut c_long,    /* I - tile size array */
+    parm1: c_int,             /* I - compression parameter 1 */
+    parm2: c_int,             /* I - compression parameter 2 */
+    status: *mut c_int,       /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect("Null status pointer");
+        let infptr = infptr.as_mut().expect("Null input file pointer");
+        let outfptr = outfptr.as_mut().expect("Null output file pointer");
+        let tilesize = tilesize.as_mut();
+        
+        fits_compress_img_safer(infptr, outfptr, compress_type, tilesize, parm1, parm2, status)
+    }
+}
+
+/// Compress an image using the specified compression algorithm (safe version)
+pub fn fits_compress_img_safer(
+    infptr: &mut fitsfile,        /* I - FITS file pointer to input file */
+    outfptr: &mut fitsfile,       /* I - FITS file pointer to output file */
+    compress_type: c_int,         /* I - compression algorithm type */
+    tilesize: Option<&mut c_long>, /* I - tile size array */
+    parm1: c_int,                 /* I - compression parameter 1 */
+    parm2: c_int,                 /* I - compression parameter 2 */
+    status: &mut c_int,           /* IO - error status */
+) -> c_int {
+    todo!("fits_compress_img: Compress image with type {}, parm1 {}, parm2 {}", compress_type, parm1, parm2)
+}

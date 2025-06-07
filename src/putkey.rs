@@ -4525,3 +4525,68 @@ pub(crate) fn ffd2e(
 
     *status
 }
+
+/*--------------------------------------------------------------------------*/
+/// Verify that the specified date is valid
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffverifydate(
+    year: c_int,           /* I - year */
+    month: c_int,          /* I - month (1-12) */
+    day: c_int,            /* I - day (1-31) */
+    status: *mut c_int,    /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect("Null status pointer");
+        ffverifydate_safer(year, month, day, status)
+    }
+}
+
+/// Verify that the specified date is valid (safe version)
+pub fn ffverifydate_safer(
+    year: c_int,           /* I - year */
+    month: c_int,          /* I - month (1-12) */
+    day: c_int,            /* I - day (1-31) */
+    status: &mut c_int,    /* IO - error status */
+) -> c_int {
+    todo!("ffverifydate: Verify date {}/{}/{}", year, month, day)
+}
+
+/*--------------------------------------------------------------------------*/
+/// Put a sequence of numeric keywords with LONGLONG values  
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffpknjj(
+    fptr: *mut fitsfile,     /* I - FITS file pointer */
+    keyroot: *const c_char,  /* I - root name of keywords */
+    nstart: c_int,           /* I - starting index number */
+    nkey: c_int,             /* I - number of keywords to write */
+    value: *const LONGLONG,  /* I - array of keyword values */
+    comm: *const *const c_char, /* I - array of keyword comments */
+    status: *mut c_int,      /* IO - error status */
+) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect("Null status pointer");
+        let fptr = fptr.as_mut().expect("Null file pointer");
+        let keyroot = CStr::from_ptr(keyroot);
+        let value = slice::from_raw_parts(value, nkey as usize);
+        let comm = if comm.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts(comm, nkey as usize))
+        };
+        
+        ffpknjj_safer(fptr, keyroot, nstart, nkey, value, comm, status)
+    }
+}
+
+/// Put a sequence of numeric keywords with LONGLONG values (safe version)
+pub fn ffpknjj_safer(
+    fptr: &mut fitsfile,         /* I - FITS file pointer */
+    keyroot: &CStr,              /* I - root name of keywords */
+    nstart: c_int,               /* I - starting index number */
+    nkey: c_int,                 /* I - number of keywords to write */
+    value: &[LONGLONG],          /* I - array of keyword values */
+    comm: Option<&[*const c_char]>, /* I - array of keyword comments */
+    status: &mut c_int,          /* IO - error status */
+) -> c_int {
+    todo!("ffpknjj: Put {} LONGLONG keywords starting from {} with root {}", nkey, nstart, keyroot.to_string_lossy())
+}

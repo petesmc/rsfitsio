@@ -6713,3 +6713,39 @@ pub fn fits_get_token2_safe(
 
     slen as c_int
 }
+
+/*--------------------------------------------------------------------------*/
+/// Initialize HTTPS support for FITS file access
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_init_https() -> c_int {
+    fits_init_https_safer()
+}
+
+/// Initialize HTTPS support for FITS file access (safe version)
+pub fn fits_init_https_safer() -> c_int {
+    todo!("fits_init_https: Initialize HTTPS support for FITS file access")
+}
+
+/*--------------------------------------------------------------------------*/
+/// Cleanup HTTPS support for FITS file access  
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_cleanup_https() -> c_int {
+    fits_cleanup_https_safer()
+}
+
+/// Cleanup HTTPS support for FITS file access (safe version)
+pub fn fits_cleanup_https_safer() -> c_int {
+    todo!("fits_cleanup_https: Cleanup HTTPS support for FITS file access")
+}
+
+/*--------------------------------------------------------------------------*/
+/// Set verbose mode for HTTPS operations
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn fits_verbose_https(verbose: c_int) -> c_int {
+    fits_verbose_https_safer(verbose)
+}
+
+/// Set verbose mode for HTTPS operations (safe version)
+pub fn fits_verbose_https_safer(verbose: c_int) -> c_int {
+    todo!("fits_verbose_https: Set verbose mode for HTTPS operations with verbose={}", verbose)
+}

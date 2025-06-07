@@ -12,6 +12,13 @@ There are many safety issues to still deal with and we do not support all the ta
 
 Has not been tested on MacOS.
 
+## C API Compatibility
+
+This library exposes the complete cfitsio C API with one exception:
+
+- `CUnit2FITS()` - This function is not exposed as it is primarily used for Fortran wrapper support, which is not supported in this Rust implementation.
+
+All other 662 C API functions from cfitsio are available.
 
 [cfitsio Repo](https://github.com/HEASARC/cfitsio)
 
