@@ -26,6 +26,7 @@ crate-type = ["lib", "cdylib"]
 default = []
 bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
+net_services = []
 
 [dependencies]
 libz-rs-sys = { version = "0.5" }

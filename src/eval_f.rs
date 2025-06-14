@@ -585,15 +585,15 @@ pub unsafe extern "C" fn fits_pixel_filter(
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
         let filter = filter.as_mut().expect("Null filter pointer");
-        
+
         fits_pixel_filter_safer(filter, status)
     }
 }
 
 /// Apply pixel filtering operations (safe version)
 pub fn fits_pixel_filter_safer(
-    filter: &mut PixelFilter,  /* I - pixel filter structure */
-    status: &mut c_int,        /* IO - error status */
+    filter: &mut PixelFilter, /* I - pixel filter structure */
+    status: &mut c_int,       /* IO - error status */
 ) -> c_int {
     todo!("fits_pixel_filter: Apply pixel filtering operations")
 }

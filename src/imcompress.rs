@@ -535,7 +535,7 @@ pub fn fits_set_hcomp_scale_safe(
 }
 
 /*--------------------------------------------------------------------------*/
-/// This routine specifies the value of the hcompress scale parameter.
+/// This routine specifies the value of the hcompress smooth parameter.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_hcomp_smooth(
     fptr: *mut fitsfile, /* I - FITS file pointer   */
@@ -551,9 +551,19 @@ pub unsafe extern "C" fn fits_set_hcomp_smooth(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        (fptr.Fptr).request_hcomp_smooth = smooth;
-        *status
+        fits_set_hcomp_smooth_safe(fptr, smooth, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// This routine specifies the value of the hcompress smooth parameter.
+pub fn fits_set_hcomp_smooth_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    smooth: c_int,       /* hcompress smooth parameter value       */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    (fptr.Fptr).request_hcomp_smooth = smooth;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -640,23 +650,38 @@ pub unsafe extern "C" fn fits_get_compression_type(
         let status = status.as_mut().expect(NULL_MSG);
         let ctype = ctype.as_mut().expect(NULL_MSG);
 
-        *ctype = (fptr.Fptr).request_compress_type;
-
-        if *ctype != RICE_1
-            && *ctype != GZIP_1
-            && *ctype != GZIP_2
-            && *ctype != PLIO_1
-            && *ctype != HCOMPRESS_1
-            && *ctype != BZIP2_1
-            && *ctype != NOCOMPRESS
-            && *ctype != 0
-        {
-            ffpmsg_str("unknown compression algorithm (fits_get_compression_type)");
-            *status = DATA_COMPRESSION_ERR;
-        }
-
-        *status
+        fits_get_compression_type_safe(fptr, ctype, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// This routine returns the image compression algorithm that should be
+/// used when writing a FITS image.  The image is divided into tiles, and
+/// each tile is compressed and stored in a row of at variable length binary
+/// table column.
+pub fn fits_get_compression_type_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer     */
+    ctype: &mut c_int,   /* image compression type code;                        */
+    /* allowed values:                                     */
+    /* RICE_1, GZIP_1, GZIP_2, PLIO_1, HCOMPRESS_1, BZIP2_1 */
+    status: &mut c_int, /* IO - error status                                   */
+) -> c_int {
+    *ctype = (fptr.Fptr).request_compress_type;
+
+    if *ctype != RICE_1
+        && *ctype != GZIP_1
+        && *ctype != GZIP_2
+        && *ctype != PLIO_1
+        && *ctype != HCOMPRESS_1
+        && *ctype != BZIP2_1
+        && *ctype != NOCOMPRESS
+        && *ctype != 0
+    {
+        ffpmsg_str("unknown compression algorithm (fits_get_compression_type)");
+        *status = DATA_COMPRESSION_ERR;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1000,15 +1025,25 @@ pub unsafe extern "C" fn fits_get_noise_bits(
         let status = status.as_mut().expect(NULL_MSG);
         let noisebits = noisebits.as_mut().expect(NULL_MSG);
 
-        let qlevel: f64 = (fptr.Fptr).request_quantize_level as f64;
-
-        if qlevel > 0. && qlevel < 65537. {
-            *noisebits = (((qlevel.ln()) / (2.0_f64).ln()) + 0.5) as c_int;
-        } else {
-            *noisebits = 0;
-        }
-        *status
+        fits_get_noise_bits_safe(fptr, noisebits, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the noise_bits parameter value.
+pub fn fits_get_noise_bits_safe(
+    fptr: &mut fitsfile,   /* I - FITS file pointer   */
+    noisebits: &mut c_int, /* noise_bits parameter value       */
+    status: &mut c_int,    /* IO - error status                */
+) -> c_int {
+    let qlevel: f64 = (fptr.Fptr).request_quantize_level as f64;
+
+    if qlevel > 0. && qlevel < 65537. {
+        *noisebits = (((qlevel.ln()) / (2.0_f64).ln()) + 0.5) as c_int;
+    } else {
+        *noisebits = 0;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1027,14 +1062,27 @@ pub unsafe extern "C" fn fits_get_quantize_level(
         let status = status.as_mut().expect(NULL_MSG);
         let qlevel = qlevel.as_mut().expect(NULL_MSG);
 
-        if (fptr.Fptr).request_quantize_level == NO_QUANTIZE {
-            *qlevel = 0.0;
-        } else {
-            *qlevel = (fptr.Fptr).request_quantize_level;
-        }
-
-        *status
+        fits_get_quantize_level_safe(fptr, qlevel, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// This routine returns the value of the noice_bits parameter that
+/// should be used when compressing floating point images.  The image is
+/// divided into tiles, and each tile is compressed and stored in a row
+/// of at variable length binary table column.
+pub fn fits_get_quantize_level_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    qlevel: &mut f32,    /* quantize level parameter value       */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    if (fptr.Fptr).request_quantize_level == NO_QUANTIZE {
+        *qlevel = 0.0;
+    } else {
+        *qlevel = (fptr.Fptr).request_quantize_level;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1053,9 +1101,22 @@ pub unsafe extern "C" fn fits_get_dither_seed(
         let status = status.as_mut().expect(NULL_MSG);
         let offset = offset.as_mut().expect(NULL_MSG);
 
-        *offset = (fptr.Fptr).request_dither_seed;
-        *status
+        fits_get_dither_seed_safe(fptr, offset, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// This routine returns the value of the dithering offset parameter that
+/// is used when compressing floating point images.  The image is
+/// divided into tiles, and each tile is compressed and stored in a row
+/// of at variable length binary table column.
+pub fn fits_get_dither_seed_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    offset: &mut c_int,  /* dithering offset parameter value       */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    *offset = (fptr.Fptr).request_dither_seed;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1074,9 +1135,19 @@ pub unsafe extern "C" fn fits_get_hcomp_scale(
         let status = status.as_mut().expect(NULL_MSG);
         let scale = scale.as_mut().expect(NULL_MSG);
 
-        *scale = (fptr.Fptr).request_hcomp_scale;
-        *status
+        fits_get_hcomp_scale_safe(fptr, scale, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the Hcompress scale parameter value.
+pub fn fits_get_hcomp_scale_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    scale: &mut f32,     /* Hcompress scale parameter value       */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    *scale = (fptr.Fptr).request_hcomp_scale;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1091,9 +1162,19 @@ pub unsafe extern "C" fn fits_get_hcomp_smooth(
         let status = status.as_mut().expect(NULL_MSG);
         let smooth = smooth.as_mut().expect(NULL_MSG);
 
-        *smooth = (fptr.Fptr).request_hcomp_smooth;
-        *status
+        fits_get_hcomp_smooth_safe(fptr, smooth, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the Hcompress smooth parameter value.
+pub fn fits_get_hcomp_smooth_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    smooth: &mut c_int,  /* Hcompress smooth parameter value       */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    *smooth = (fptr.Fptr).request_hcomp_smooth;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1113,120 +1194,133 @@ pub unsafe extern "C" fn fits_img_compress(
                             */
 ) -> c_int {
     unsafe {
-        let mut bitpix: c_int = 0;
-        let mut naxis: c_int = 0;
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        /* get datatype and size of input image */
-        if ffgipr_safe(
-            infptr,
-            MAX_COMPRESS_DIM as c_int,
-            Some(&mut bitpix),
-            Some(&mut naxis),
-            Some(&mut naxes),
-            status,
-        ) > 0
-        {
-            return *status;
-        }
-
-        if naxis < 1 || naxis > MAX_COMPRESS_DIM as c_int {
-            ffpmsg_str("Image cannot be compressed: NAXIS out of range");
-            *status = BAD_NAXIS;
-            return *status;
-        }
-
-        /* create a new empty HDU in the output file now, before setting the */
-        /* compression preferences.  This HDU will become a binary table that */
-        /* contains the compressed image.  If necessary, create a dummy primary */
-        /* array, which much precede the binary table extension. */
-
-        ffcrhd_safer(outfptr, status); /* this does nothing if the output file is empty */
-
-        if (outfptr.Fptr).curhdu == 0 {
-            /* have to create dummy primary array */
-
-            ffcrim_safer(outfptr, 16, 0, &[], status);
-            ffcrhd_safer(outfptr, status);
-        } else {
-            /* unset any compress parameter preferences that may have been
-            set when closing the previous HDU in the output file */
-            fits_unset_compression_param_safe(outfptr, status);
-        }
-
-        /* set any compress parameter preferences as given in the input file */
-        fits_set_compression_pref_safe(infptr, outfptr, status);
-
-        /* special case: the quantization level is not given by a keyword in  */
-        /* the HDU header, so we have to explicitly copy the requested value */
-        /* to the actual value */
-        /* do this in imcomp_get_compressed_image_par, instead
-        if ( (outfptr.Fptr).request_quantize_level != 0.0)
-        (outfptr.Fptr).quantize_level =
-        (outfptr.Fptr).request_quantize_level;
-        */
-        /* if requested, treat integer images same as a float image. */
-        /* Then the pixels will be quantized (lossy algorithm) to achieve */
-        /* higher amounts of compression than with lossless algorithms */
-
-        if (outfptr.Fptr).request_lossy_int_compress != 0 && bitpix > 0 {
-            bitpix = FLOAT_IMG; /* compress integer images as if float */
-        }
-
-        /* initialize output table */
-        if imcomp_init_table(outfptr, bitpix, naxis, &naxes, false, status) > 0 {
-            return *status;
-        }
-
-        /* Copy the image header keywords to the table header. */
-        if imcomp_copy_img2comp(infptr, outfptr, status) > 0 {
-            return *status;
-        }
-
-        /* turn off any intensity scaling (defined by BSCALE and BZERO */
-        /* keywords) so that unscaled values will be read by CFITSIO */
-        /* (except if quantizing an int image, same as a float image) */
-        if (outfptr.Fptr).request_lossy_int_compress == 0 && bitpix > 0 {
-            ffpscl_safe(infptr, 1.0, 0.0, status);
-        }
-
-        /* force a rescan of the output file keywords, so that */
-        /* the compression parameters will be copied to the internal */
-        /* fitsfile structure used by CFITSIO */
-        ffrdef_safe(outfptr, status);
-
-        /* turn off any intensity scaling (defined by BSCALE and BZERO */
-        /* keywords) so that unscaled values will be written by CFITSIO */
-        /* (except if quantizing an int image, same as a float image) */
-        if (outfptr.Fptr).request_lossy_int_compress == 0 && bitpix > 0 {
-            ffpscl_safe(outfptr, 1.0, 0.0, status);
-        }
-
-        /* Read each image tile, compress, and write to a table row. */
-        imcomp_compress_image(infptr, outfptr, status);
-
-        /* force another rescan of the output file keywords, to */
-        /* update PCOUNT and TFORMn = '1PB(iii)' keyword values. */
-        ffrdef_safe(outfptr, status);
-
-        /* unset any previously set compress parameter preferences */
-        fits_unset_compression_request_safe(outfptr, status);
-
-        /*
-        fits_get_case(&c1, &c2, &c3);
-        printf("c1, c2, c3 = %d, %d, %d\n", c1, c2, c3);
-        */
-
-        *status
+        fits_img_compress_safe(infptr, outfptr, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Compress an image and write to output table.
+/// This routine initializes the output table, copies all the keywords,
+/// and loops through the input image, compressing the data and
+/// writing the compressed tiles to the output table.
+pub fn fits_img_compress_safe(
+    infptr: &mut fitsfile,  /* pointer to image to be compressed */
+    outfptr: &mut fitsfile, /* empty HDU for output compressed image */
+    status: &mut c_int,     /* IO - error status               */
+) -> c_int {
+    let mut bitpix: c_int = 0;
+    let mut naxis: c_int = 0;
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* get datatype and size of input image */
+    if ffgipr_safe(
+        infptr,
+        MAX_COMPRESS_DIM as c_int,
+        Some(&mut bitpix),
+        Some(&mut naxis),
+        Some(&mut naxes),
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    if naxis < 1 || naxis > MAX_COMPRESS_DIM as c_int {
+        ffpmsg_str("Image cannot be compressed: NAXIS out of range");
+        *status = BAD_NAXIS;
+        return *status;
+    }
+
+    /* create a new empty HDU in the output file now, before setting the */
+    /* compression preferences.  This HDU will become a binary table that */
+    /* contains the compressed image.  If necessary, create a dummy primary */
+    /* array, which much precede the binary table extension. */
+
+    unsafe { ffcrhd_safer(outfptr, status) }; /* this does nothing if the output file is empty */
+
+    if (outfptr.Fptr).curhdu == 0 {
+        /* have to create dummy primary array */
+
+        unsafe { ffcrim_safer(outfptr, 16, 0, &[], status) };
+        unsafe { ffcrhd_safer(outfptr, status) };
+    } else {
+        /* unset any compress parameter preferences that may have been
+        set when closing the previous HDU in the output file */
+        fits_unset_compression_param_safe(outfptr, status);
+    }
+
+    /* set any compress parameter preferences as given in the input file */
+    fits_set_compression_pref_safe(infptr, outfptr, status);
+
+    /* special case: the quantization level is not given by a keyword in  */
+    /* the HDU header, so we have to explicitly copy the requested value */
+    /* to the actual value */
+    /* do this in imcomp_get_compressed_image_par, instead
+    if ( (outfptr.Fptr).request_quantize_level != 0.0)
+    (outfptr.Fptr).quantize_level =
+    (outfptr.Fptr).request_quantize_level;
+    */
+    /* if requested, treat integer images same as a float image. */
+    /* Then the pixels will be quantized (lossy algorithm) to achieve */
+    /* higher amounts of compression than with lossless algorithms */
+
+    if (outfptr.Fptr).request_lossy_int_compress != 0 && bitpix > 0 {
+        bitpix = FLOAT_IMG; /* compress integer images as if float */
+    }
+
+    /* initialize output table */
+    if unsafe { imcomp_init_table(outfptr, bitpix, naxis, &naxes, false, status) } > 0 {
+        return *status;
+    }
+
+    /* Copy the image header keywords to the table header. */
+    if unsafe { imcomp_copy_img2comp(infptr, outfptr, status) } > 0 {
+        return *status;
+    }
+
+    /* turn off any intensity scaling (defined by BSCALE and BZERO */
+    /* keywords) so that unscaled values will be read by CFITSIO */
+    /* (except if quantizing an int image, same as a float image) */
+    if (outfptr.Fptr).request_lossy_int_compress == 0 && bitpix > 0 {
+        ffpscl_safe(infptr, 1.0, 0.0, status);
+    }
+
+    /* force a rescan of the output file keywords, so that */
+    /* the compression parameters will be copied to the internal */
+    /* fitsfile structure used by CFITSIO */
+    ffrdef_safe(outfptr, status);
+
+    /* turn off any intensity scaling (defined by BSCALE and BZERO */
+    /* keywords) so that unscaled values will be written by CFITSIO */
+    /* (except if quantizing an int image, same as a float image) */
+    if (outfptr.Fptr).request_lossy_int_compress == 0 && bitpix > 0 {
+        ffpscl_safe(outfptr, 1.0, 0.0, status);
+    }
+
+    /* Read each image tile, compress, and write to a table row. */
+    unsafe { imcomp_compress_image(infptr, outfptr, status) };
+
+    /* force another rescan of the output file keywords, to */
+    /* update PCOUNT and TFORMn = '1PB(iii)' keyword values. */
+    ffrdef_safe(outfptr, status);
+
+    /* unset any previously set compress parameter preferences */
+    fits_unset_compression_request_safe(outfptr, status);
+
+    /*
+    fits_get_case(&c1, &c2, &c3);
+    printf("c1, c2, c3 = %d, %d, %d\n", c1, c2, c3);
+    */
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -11839,70 +11933,82 @@ pub unsafe extern "C" fn fits_uncompress_table(
     status: *mut c_int,
 ) -> c_int {
     unsafe {
-        let mut colcode: [c_schar; 999] = [0; 999]; // column data type code character
-        let mut coltype: [c_schar; 999] = [0; 999]; // column data type numeric code value
-        let mut cm_buffer: Vec<c_char> = Vec::new(); // memory buffer for the transposed, Column-Major, chunk of the table
-        let mut rm_buffer: Vec<c_char> = Vec::new(); // memory buffer for the original, Row-Major, chunk of the table
-        let mut nrows: i64 = 0;
-        let mut rmajor_colwidth: [LONGLONG; 999] = [0; 999];
-        let mut rmajor_colstart: [LONGLONG; 1000] = [0; 1000];
-        let mut cmajor_colstart: [LONGLONG; 1000] = [0; 1000];
-        let mut cmajor_repeat: [LONGLONG; 999] = [0; 999];
-        let mut rmajor_repeat: [LONGLONG; 999] = [0; 999];
-        let mut cmajor_bytespan: [LONGLONG; 999] = [0; 999];
-        let mut kk: LONGLONG;
-        let mut headstart: LONGLONG = 0;
-        let mut datastart: LONGLONG = 0;
-        let mut dataend: LONGLONG = 0;
-        let mut rowsremain: LONGLONG;
-        let mut descript: *mut LONGLONG;
-        let qdescript: *mut LONGLONG = std::ptr::null_mut();
-        let mut rowstart: LONGLONG;
-        let mut cvlalen: LONGLONG;
-        let mut cvlastart: LONGLONG;
-        let mut vlalen: LONGLONG;
-        let mut vlastart: LONGLONG;
-        let mut repeat: c_long = 0;
-        let mut width: c_long = 0;
-        let mut vla_repeat: c_long = 0;
-        let mut vla_address: c_long = 0;
-        let mut rowspertile: c_long = 0;
-        let mut ntile: c_long;
-        let mut ncols: c_int = 0;
-        let mut hdutype: c_int = 0;
-        let mut inttype: c_int = 0;
-        let mut anynull: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut zctype: [c_int; 999] = [0; 999];
-        let mut addspace: c_int = 0;
-        let pdescript: usize = 0;
-        let mut cptr: *mut c_char;
-        let mut keyname: [c_char; 9] = [0; 9];
-        let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut pcount: c_long = 0;
-        let mut zheapptr: c_long = 0;
-        let mut naxis1: c_long = 0;
-        let mut naxis2: c_long = 0;
-        let mut ii: c_long;
-        let mut jj: c_long;
-        let mut ptr: Vec<c_char> = Vec::new();
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut zvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-
-        let mut uncompressed_vla: Vec<u8> = Vec::new();
-        let mut compressed_vla: Vec<u8> = Vec::new();
-
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut dlen: usize = 0;
-        let mut fullsize: usize;
-
-        let mut bytepos: usize;
-        let mut vlamemlen: usize;
-
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
+        fits_uncompress_table_safe(infptr, outfptr, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Uncompress the table that was compressed with fits_compress_table
+pub fn fits_uncompress_table_safe(
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
+) -> c_int {
+    let mut colcode: [c_schar; 999] = [0; 999]; // column data type code character
+    let mut coltype: [c_schar; 999] = [0; 999]; // column data type numeric code value
+    let mut cm_buffer: Vec<c_char> = Vec::new(); // memory buffer for the transposed, Column-Major, chunk of the table
+    let mut rm_buffer: Vec<c_char> = Vec::new(); // memory buffer for the original, Row-Major, chunk of the table
+    let mut nrows: i64 = 0;
+    let mut rmajor_colwidth: [LONGLONG; 999] = [0; 999];
+    let mut rmajor_colstart: [LONGLONG; 1000] = [0; 1000];
+    let mut cmajor_colstart: [LONGLONG; 1000] = [0; 1000];
+    let mut cmajor_repeat: [LONGLONG; 999] = [0; 999];
+    let mut rmajor_repeat: [LONGLONG; 999] = [0; 999];
+    let mut cmajor_bytespan: [LONGLONG; 999] = [0; 999];
+    let mut kk: LONGLONG;
+    let mut headstart: LONGLONG = 0;
+    let mut datastart: LONGLONG = 0;
+    let mut dataend: LONGLONG = 0;
+    let mut rowsremain: LONGLONG;
+    let mut descript: *mut LONGLONG;
+    let qdescript: *mut LONGLONG = std::ptr::null_mut();
+    let mut rowstart: LONGLONG;
+    let mut cvlalen: LONGLONG;
+    let mut cvlastart: LONGLONG;
+    let mut vlalen: LONGLONG;
+    let mut vlastart: LONGLONG;
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+    let mut vla_repeat: c_long = 0;
+    let mut vla_address: c_long = 0;
+    let mut rowspertile: c_long = 0;
+    let mut ntile: c_long;
+    let mut ncols: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut inttype: c_int = 0;
+    let mut anynull: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut zctype: [c_int; 999] = [0; 999];
+    let mut addspace: c_int = 0;
+    let pdescript: usize = 0;
+    let mut cptr: *mut c_char;
+    let mut keyname: [c_char; 9] = [0; 9];
+    let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut pcount: c_long = 0;
+    let mut zheapptr: c_long = 0;
+    let mut naxis1: c_long = 0;
+    let mut naxis2: c_long = 0;
+    let mut ii: c_long;
+    let mut jj: c_long;
+    let mut ptr: Vec<c_char> = Vec::new();
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut zvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    let mut uncompressed_vla: Vec<u8> = Vec::new();
+    let mut compressed_vla: Vec<u8> = Vec::new();
+
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut dlen: usize = 0;
+    let mut fullsize: usize;
+
+    let mut bytepos: usize;
+    let mut vlamemlen: usize;
+
+    unsafe {
         /* ==================================================================================
          */
         /* perform initial sanity checks */
@@ -12887,7 +12993,6 @@ pub unsafe extern "C" fn fits_uncompress_table(
         *status
     }
 }
-
 /*--------------------------------------------------------------------------*/
 /// shuffle the bytes in an array of 2-byte integers in the heap
 fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
@@ -13561,33 +13666,46 @@ fn fits_calc_tile_rows(
 /// Compress an image using the specified compression algorithm
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_compress_img(
-    infptr: *mut fitsfile,    /* I - FITS file pointer to input file */
-    outfptr: *mut fitsfile,   /* I - FITS file pointer to output file */
-    compress_type: c_int,     /* I - compression algorithm type */
-    tilesize: *mut c_long,    /* I - tile size array */
-    parm1: c_int,             /* I - compression parameter 1 */
-    parm2: c_int,             /* I - compression parameter 2 */
-    status: *mut c_int,       /* IO - error status */
+    infptr: *mut fitsfile,  /* I - FITS file pointer to input file */
+    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
+    compress_type: c_int,   /* I - compression algorithm type */
+    tilesize: *mut c_long,  /* I - tile size array */
+    parm1: c_int,           /* I - compression parameter 1 */
+    parm2: c_int,           /* I - compression parameter 2 */
+    status: *mut c_int,     /* IO - error status */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
         let infptr = infptr.as_mut().expect("Null input file pointer");
         let outfptr = outfptr.as_mut().expect("Null output file pointer");
         let tilesize = tilesize.as_mut();
-        
-        fits_compress_img_safer(infptr, outfptr, compress_type, tilesize, parm1, parm2, status)
+
+        fits_compress_img_safer(
+            infptr,
+            outfptr,
+            compress_type,
+            tilesize,
+            parm1,
+            parm2,
+            status,
+        )
     }
 }
 
 /// Compress an image using the specified compression algorithm (safe version)
 pub fn fits_compress_img_safer(
-    infptr: &mut fitsfile,        /* I - FITS file pointer to input file */
-    outfptr: &mut fitsfile,       /* I - FITS file pointer to output file */
-    compress_type: c_int,         /* I - compression algorithm type */
+    infptr: &mut fitsfile,         /* I - FITS file pointer to input file */
+    outfptr: &mut fitsfile,        /* I - FITS file pointer to output file */
+    compress_type: c_int,          /* I - compression algorithm type */
     tilesize: Option<&mut c_long>, /* I - tile size array */
-    parm1: c_int,                 /* I - compression parameter 1 */
-    parm2: c_int,                 /* I - compression parameter 2 */
-    status: &mut c_int,           /* IO - error status */
+    parm1: c_int,                  /* I - compression parameter 1 */
+    parm2: c_int,                  /* I - compression parameter 2 */
+    status: &mut c_int,            /* IO - error status */
 ) -> c_int {
-    todo!("fits_compress_img: Compress image with type {}, parm1 {}, parm2 {}", compress_type, parm1, parm2)
+    todo!(
+        "fits_compress_img: Compress image with type {}, parm1 {}, parm2 {}",
+        compress_type,
+        parm1,
+        parm2
+    )
 }

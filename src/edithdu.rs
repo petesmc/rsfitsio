@@ -568,32 +568,42 @@ pub unsafe extern "C" fn ffwrhdu(
     status: *mut c_int,    /* IO - error status     */
 ) -> c_int {
     unsafe {
-        let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
-        let mut hdustart: LONGLONG = 0;
-        let mut hduend: LONGLONG = 0;
-        let mut buffer: [c_char; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
-
-        if *status > 0 {
-            return *status;
-        }
-
-        ffghadll_safe(infptr, Some(&mut hdustart), None, Some(&mut hduend), status);
-
-        let nb = (hduend - hdustart) / BL!() as LONGLONG; /* number of blocks to copy */
-
-        if nb > 0 {
-            /* move to the start of the HDU */
-            ffmbyt_safe(infptr, hdustart, REPORT_EOF, status);
-
-            for ii in 0..(nb as usize) {
-                ffgbyt(infptr, BL!(), cast_slice_mut(&mut buffer), status); /* read input block */
-                fwrite(buffer.as_ptr() as *mut _, 1, BL!(), outstream); /* write to output stream */
-            }
-        }
-        *status
+        ffwrhdu_safe(infptr, outstream, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write the current HDU to the output stream.
+pub fn ffwrhdu_safe(
+    infptr: &mut fitsfile, /* I - FITS file pointer to input file  */
+    outstream: *mut FILE,  /* I - stream to write HDU to */
+    status: &mut c_int,    /* IO - error status     */
+) -> c_int {
+    let mut hdustart: LONGLONG = 0;
+    let mut hduend: LONGLONG = 0;
+    let mut buffer: [c_char; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    ffghadll_safe(infptr, Some(&mut hdustart), None, Some(&mut hduend), status);
+
+    let nb = (hduend - hdustart) / BL!() as LONGLONG; /* number of blocks to copy */
+
+    if nb > 0 {
+        /* move to the start of the HDU */
+        ffmbyt_safe(infptr, hdustart, REPORT_EOF, status);
+
+        for _ii in 0..(nb as usize) {
+            ffgbyt(infptr, BL!(), cast_slice_mut(&mut buffer), status); /* read input block */
+            unsafe { fwrite(buffer.as_ptr() as *mut _, 1, BL!(), outstream) }; /* write to output stream */
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -915,196 +925,226 @@ pub unsafe extern "C" fn ffitab(
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut nexthdu: c_int = 0;
-        let mut maxhdu: c_int = 0;
-        let ii: c_int = 0;
-        let mut nunit: c_int = 0;
-        let mut nhead: c_int = 0;
-        let ncols: c_int = 0;
-        let gotmem: c_int = 0;
-        let mut nblocks: c_long = 0;
-        let mut rowlen: c_long = 0;
-        let mut datasize: LONGLONG = 0;
-        let mut newstart: LONGLONG = 0;
-        let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        if *status > 0 {
-            return *status;
-        }
+        let status = status.as_mut().expect(NULL_MSG);
 
         nullable_slice_cstr!(extnmx);
 
         let tkeywords = TKeywords::new(tfields, ttype, tform, tunit);
         let (v_ttype, v_tform, v_tunit) = tkeywords.tkeywords_to_vecs();
 
-        extnm[0] = 0;
-        if let Some(extnmx) = extnmx {
-            strncat_safe(&mut extnm, extnmx, FLEN_VALUE - 1);
-        }
+        let tbcol_slice = if tbcol.is_null() {
+            None
+        } else {
+            Some(slice::from_raw_parts(tbcol, cmp::max(5, tfields as usize)))
+        };
 
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
+        ffitab_safe(
+            fptr,
+            naxis1,
+            naxis2,
+            tfields,
+            &v_ttype,
+            tbcol_slice,
+            &v_tform,
+            v_tunit.as_deref(),
+            extnmx,
+            status,
+        )
+    }
+}
 
-        maxhdu = fptr.Fptr.maxhdu;
+/*--------------------------------------------------------------------------*/
+/// Insert an ASCII table extension following the current HDU.
+pub fn ffitab_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
+    naxis1: LONGLONG,              /* I - width of row in the table                */
+    naxis2: LONGLONG,              /* I - number of rows in the table              */
+    tfields: c_int,                /* I - number of columns in the table           */
+    v_ttype: &[Option<&[c_char]>], /* I - name of each column                      */
+    tbcol: Option<&[c_long]>,      /* I - byte offset in row to each column        */
+    v_tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
+    v_tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
+    extnmx: Option<&[c_char]>,     /* I - value of EXTNAME keyword, if any         */
+    status: &mut c_int,            /* IO - error status                            */
+) -> c_int {
+    let mut nexthdu: c_int;
+    let mut maxhdu: c_int;
+    let mut nunit: c_int = 0;
+    let mut nhead: c_int;
+    let mut nblocks: c_long;
+    let mut rowlen: c_long;
+    let mut datasize: LONGLONG;
+    let mut newstart: LONGLONG;
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        /* if the current header is completely empty or, if we are at the end of the file, ...  */
-        if (fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize])
-            || (((fptr.Fptr.curhdu) == maxhdu)
-                && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
-        {
-            /* then simply append new image extension */
+    if *status > 0 {
+        return *status;
+    }
+
+    extnm[0] = 0;
+    if let Some(extnmx) = extnmx {
+        strncat_safe(&mut extnm, extnmx, FLEN_VALUE - 1);
+    }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    maxhdu = fptr.Fptr.maxhdu;
+
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    /* if the current header is completely empty or, if we are at the end of the file, ...  */
+    if (fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize])
+        || (((fptr.Fptr.curhdu) == maxhdu)
+            && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
+    {
+        /* then simply append new image extension */
+        unsafe {
             ffcrtb_safer(
                 fptr,
                 ASCII_TBL,
                 naxis2,
                 tfields,
-                &v_ttype,
-                &v_tform,
-                v_tunit.as_deref(),
+                v_ttype,
+                v_tform,
+                v_tunit,
                 Some(&extnm),
                 status,
-            );
-            return *status;
+            )
+        };
+        return *status;
+    }
+
+    if naxis1 < 0 {
+        *status = NEG_WIDTH;
+        return *status;
+    } else if naxis2 < 0 {
+        *status = NEG_ROWS;
+        return *status;
+    } else if tfields < 0 || tfields > 999 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "Illegal value for TFIELDS keyword: {}",
+            tfields,
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_TFIELDS;
+        return *status;
+    }
+
+    /* count number of optional TUNIT keywords to be written */
+    for ii in 0..(tfields as usize) {
+        if let Some(v_tunit) = v_tunit
+            && v_tunit[ii].is_some()
+        {
+            nunit += 1;
         }
+    }
 
-        if naxis1 < 0 {
-            *status = NEG_WIDTH;
-            return *status;
-        } else if naxis2 < 0 {
-            *status = NEG_ROWS;
-            return *status;
-        } else if tfields < 0 || tfields > 999 {
-            int_snprintf!(
-                &mut errmsg,
-                FLEN_ERRMSG,
-                "Illegal value for TFIELDS keyword: {}",
-                tfields,
-            );
-            ffpmsg_slice(&errmsg);
-            *status = BAD_TFIELDS;
-            return *status;
+    if extnm[0] != 0 {
+        nunit += 1; /* add one for the EXTNAME keyword */
+    }
+
+    rowlen = naxis1 as c_long;
+
+    /* spacing not defined? */
+    let mut gotmem = false;
+    let ncols = cmp::max(5, tfields as usize); /* arrays, so allocate at least 20 bytes */
+
+    let mut tbcol = match tbcol.is_none() || (naxis1 == 0 && tfields != 0) {
+        true => {
+            gotmem = true;
+            vec![0 as c_long; ncols]
         }
-
-        /* count number of optional TUNIT keywords to be written */
-        nunit = 0;
-
-        for ii in 0..(tfields as usize) {
-            if let Some(v_tunit) = v_tunit.as_deref()
-                && v_tunit[ii].is_some()
-            {
-                nunit += 1;
-            }
-        }
-
-        if extnm[0] != 0 {
-            nunit += 1; /* add one for the EXTNAME keyword */
-        }
-
-        rowlen = naxis1 as c_long;
-
-        /* spacing not defined? */
-
-        let mut gotmem = false;
-        let ncols = cmp::max(5, tfields as usize); /* arrays, so allocate at least 20 bytes */
-
-        let mut tbcol = match tbcol.is_null() || (naxis1 == 0 && tfields != 0) {
-            true => {
+        false => {
+            let x = tbcol.unwrap().to_vec();
+            if x[0] == 0 {
                 gotmem = true;
                 vec![0 as c_long; ncols]
+            } else {
+                x
             }
-            false => {
-                let x = slice::from_raw_parts(tbcol, ncols).to_vec();
-                if x[0] == 0 {
-                    gotmem = true;
-                    vec![0 as c_long; ncols]
-                } else {
-                    x
-                }
-            }
-        };
-
-        if gotmem {
-            /* calculate width of a row and starting position of each column. */
-            /* Each column will be separated by 1 blank space */
-            ffgabc_safe(tfields, &v_tform, 1, &mut rowlen, &mut tbcol, status);
         }
+    };
 
-        nhead = (9 + (3 * tfields) + nunit + 35) / 36; /* no. of header blocks */
-        datasize = (rowlen as LONGLONG) * naxis2; /* size of table in bytes */
-        nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
-
-        if fptr.Fptr.writemode == READWRITE {
-            /* must have write access */
-
-            /* close the CHDU */
-            ffrdef_safe(fptr, status); /* scan header to redefine structure */
-            ffpdfl(fptr, status); /* insure correct data file values */
-        } else {
-            *status = READONLY_FILE;
-            return *status;
-        }
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-
-        nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
-        newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
-
-        fptr.Fptr.hdutype = ASCII_TBL; /* so that correct fill value is used */
-
-        /* ffiblk also increments headstart for all following HDUs */
-        if ffiblk(fptr, nblocks, 1, status) > 0 {
-            /* insert the blocks */
-            return *status;
-        }
-
-        (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
-
-        let maxhdu = fptr.Fptr.maxhdu as usize;
-        let curhdu = fptr.Fptr.curhdu as usize;
-        let headstart = fptr.Fptr.get_headstart_as_mut_slice();
-        let mut ii = maxhdu;
-        while ii > curhdu {
-            headstart[ii + 1] = headstart[ii]; /* incre start addr */
-            ii -= 1;
-        }
-
-        headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
-
-        /* set default parameters for this new empty HDU */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        let hs_item = headstart[nexthdu as usize];
-
-        fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
-        fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
-        fptr.Fptr.nextkey = hs_item;
-        fptr.Fptr.headend = hs_item;
-        fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
-        fptr.Fptr.hdutype = ASCII_TBL; /* might need to be reset... */
-
-        /* write the required header keywords */
-
-        ffphtb_safe(
-            fptr,
-            rowlen as LONGLONG,
-            naxis2,
-            tfields,
-            &v_ttype,
-            Some(&tbcol),
-            &v_tform,
-            v_tunit.as_deref(),
-            Some(&extnm),
-            status,
-        );
-
-        /* redefine internal structure for this HDU */
-        ffrdef_safe(fptr, status);
-        *status
+    if gotmem {
+        /* calculate width of a row and starting position of each column. */
+        /* Each column will be separated by 1 blank space */
+        ffgabc_safe(tfields, v_tform, 1, &mut rowlen, &mut tbcol, status);
     }
+
+    nhead = (9 + (3 * tfields) + nunit + 35) / 36; /* no. of header blocks */
+    datasize = (rowlen as LONGLONG) * naxis2; /* size of table in bytes */
+    nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+
+    if fptr.Fptr.writemode == READWRITE {
+        /* must have write access */
+
+        /* close the CHDU */
+        ffrdef_safe(fptr, status); /* scan header to redefine structure */
+        ffpdfl(fptr, status); /* insure correct data file values */
+    } else {
+        *status = READONLY_FILE;
+        return *status;
+    }
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+
+    nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
+    newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
+
+    fptr.Fptr.hdutype = ASCII_TBL; /* so that correct fill value is used */
+
+    /* ffiblk also increments headstart for all following HDUs */
+    if ffiblk(fptr, nblocks, 1, status) > 0 {
+        /* insert the blocks */
+        return *status;
+    }
+
+    (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
+
+    let maxhdu = fptr.Fptr.maxhdu as usize;
+    let curhdu = fptr.Fptr.curhdu as usize;
+    let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+    let mut ii = maxhdu;
+    while ii > curhdu {
+        headstart[ii + 1] = headstart[ii]; /* incre start addr */
+        ii -= 1;
+    }
+
+    headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
+
+    /* set default parameters for this new empty HDU */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    let hs_item = headstart[nexthdu as usize];
+
+    fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
+    fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
+    fptr.Fptr.nextkey = hs_item;
+    fptr.Fptr.headend = hs_item;
+    fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
+    fptr.Fptr.hdutype = ASCII_TBL; /* might need to be reset... */
+
+    /* write the required header keywords */
+
+    ffphtb_safe(
+        fptr,
+        rowlen as LONGLONG,
+        naxis2,
+        tfields,
+        v_ttype,
+        Some(&tbcol),
+        v_tform,
+        v_tunit,
+        Some(&extnm),
+        status,
+    );
+
+    /* redefine internal structure for this HDU */
+    ffrdef_safe(fptr, status);
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1122,188 +1162,213 @@ pub unsafe extern "C" fn ffibin(
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut nexthdu: c_int = 0;
-        let mut maxhdu: c_int = 0;
-        let ii: c_int = 0;
-        let mut nunit: c_int = 0;
-        let mut nhead: c_int = 0;
-        let mut datacode: c_int = 0;
-        let mut naxis1: LONGLONG = 0;
-        let mut nblocks: c_long = 0;
-        let mut repeat: c_long = 0;
-        let mut width: c_long = 0;
-        let mut datasize: LONGLONG = 0;
-        let mut newstart: LONGLONG = 0;
-        let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         nullable_slice_cstr!(extnmx);
 
         let tkeywords = TKeywords::new(tfields, ttype, tform, tunit);
         let (v_ttype, v_tform, v_tunit) = tkeywords.tkeywords_to_vecs();
 
-        if *status > 0 {
-            return *status;
-        }
-
-        extnm[0] = 0;
-        if let Some(extnmx) = extnmx {
-            strncat_safe(&mut extnm, extnmx, FLEN_VALUE - 1);
-        }
-
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        maxhdu = fptr.Fptr.maxhdu;
-
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        /* if the current header is completely empty ...  */
-        if ( fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize] )
-        /* or, if we are at the end of the file, ... */
-    ||  ( ((fptr.Fptr.curhdu) == maxhdu ) &&
-       (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize ) )
-        {
-            /* then simply append new image extension */
-            ffcrtb_safer(
-                fptr,
-                BINARY_TBL,
-                naxis2,
-                tfields,
-                &v_ttype,
-                &v_tform,
-                v_tunit.as_deref(),
-                Some(&extnm),
-                status,
-            );
-            return *status;
-        }
-
-        if naxis2 < 0 {
-            *status = NEG_ROWS;
-            return *status;
-        } else if tfields < 0 || tfields > 999 {
-            int_snprintf!(
-                &mut errmsg,
-                FLEN_ERRMSG,
-                "Illegal value for TFIELDS keyword: {}",
-                tfields,
-            );
-            ffpmsg_slice(&errmsg);
-            *status = BAD_TFIELDS;
-            return *status;
-        }
-
-        /* count number of optional TUNIT keywords to be written */
-        nunit = 0;
-        for ii in 0..(tfields as usize) {
-            if let Some(v_tunit) = v_tunit.as_deref()
-                && v_tunit[ii].is_some()
-            {
-                nunit += 1;
-            }
-        }
-
-        if extnm[0] != 0 {
-            nunit += 1; /* add one for the EXTNAME keyword */
-        }
-
-        nhead = (9 + (2 * tfields) + nunit + 35) / 36; /* no. of header blocks */
-
-        /* calculate total width of the table */
-        naxis1 = 0;
-        for ii in 0..(tfields as usize) {
-            let tform_item = v_tform[ii];
-            ffbnfm_safe(
-                tform_item,
-                Some(&mut datacode),
-                Some(&mut repeat),
-                Some(&mut width),
-                status,
-            );
-
-            if datacode == TBIT {
-                naxis1 += (repeat as LONGLONG + 7) / 8;
-            } else if datacode == TSTRING {
-                naxis1 += repeat as LONGLONG;
-            } else {
-                naxis1 += (repeat * width) as LONGLONG;
-            }
-        }
-
-        datasize = ((naxis1 as LONGLONG) * naxis2) + pcount; /* size of table in bytes */
-        nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
-
-        if fptr.Fptr.writemode == READWRITE {
-            /* must have write access */
-
-            /* close the CHDU */
-            ffrdef_safe(fptr, status); /* scan header to redefine structure */
-            ffpdfl(fptr, status); /* insure correct data file values */
-        } else {
-            *status = READONLY_FILE;
-            return *status;
-        }
-
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-
-        nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
-        newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
-
-        fptr.Fptr.hdutype = BINARY_TBL; /* so that correct fill value is used */
-
-        /* ffiblk also increments headstart for all following HDUs */
-        if ffiblk(fptr, nblocks, 1, status) > 0 {
-            /* insert the blocks */
-            return *status;
-        }
-
-        (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
-
-        let maxhdu = fptr.Fptr.maxhdu as usize;
-        let curhdu = fptr.Fptr.curhdu as usize;
-        let headstart = fptr.Fptr.get_headstart_as_mut_slice();
-        let mut ii = maxhdu;
-        while ii > curhdu {
-            headstart[ii + 1] = headstart[ii]; /* incre start addr */
-            ii -= 1;
-        }
-
-        headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
-
-        /* set default parameters for this new empty HDU */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        let hs_item = headstart[nexthdu as usize];
-
-        fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
-        fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
-        fptr.Fptr.nextkey = hs_item;
-        fptr.Fptr.headend = hs_item;
-        fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
-        fptr.Fptr.hdutype = BINARY_TBL; /* might need to be reset... */
-
-        /* write the required header keywords. This will write PCOUNT = 0 */
-        /* so that the variable length data will be written at the right place */
-        ffphbn_safe(
+        ffibin_safe(
             fptr,
             naxis2,
             tfields,
             &v_ttype,
             &v_tform,
             v_tunit.as_deref(),
-            Some(&extnm),
+            extnmx,
             pcount,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a Binary table extension following the current HDU.
+pub fn ffibin_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
+    naxis2: LONGLONG,              /* I - number of rows in the table              */
+    tfields: c_int,                /* I - number of columns in the table           */
+    v_ttype: &[Option<&[c_char]>], /* I - name of each column                      */
+    v_tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
+    v_tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
+    extnmx: Option<&[c_char]>,     /* I - value of EXTNAME keyword, if any         */
+    pcount: LONGLONG,              /* I - size of special data area (heap)         */
+    status: &mut c_int,            /* IO - error status                            */
+) -> c_int {
+    let mut nexthdu: c_int;
+    let mut maxhdu: c_int;
+    let mut nunit: c_int = 0;
+    let mut nhead: c_int;
+    let mut datacode: c_int = 0;
+    let mut naxis1: LONGLONG = 0;
+    let mut nblocks: c_long;
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+    let mut datasize: LONGLONG;
+    let mut newstart: LONGLONG;
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    extnm[0] = 0;
+    if let Some(extnmx) = extnmx {
+        strncat_safe(&mut extnm, extnmx, FLEN_VALUE - 1);
+    }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    maxhdu = fptr.Fptr.maxhdu;
+
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    /* if the current header is completely empty ...  */
+    if ( fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize] )
+    /* or, if we are at the end of the file, ... */
+||  ( ((fptr.Fptr.curhdu) == maxhdu ) &&
+   (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize ) )
+    {
+        /* then simply append new image extension */
+        unsafe {
+            ffcrtb_safer(
+                fptr,
+                BINARY_TBL,
+                naxis2,
+                tfields,
+                v_ttype,
+                v_tform,
+                v_tunit,
+                Some(&extnm),
+                status,
+            )
+        };
+        return *status;
+    }
+
+    if naxis2 < 0 {
+        *status = NEG_ROWS;
+        return *status;
+    } else if tfields < 0 || tfields > 999 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "Illegal value for TFIELDS keyword: {}",
+            tfields,
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_TFIELDS;
+        return *status;
+    }
+
+    /* count number of optional TUNIT keywords to be written */
+    for ii in 0..(tfields as usize) {
+        if let Some(v_tunit) = v_tunit
+            && v_tunit[ii].is_some()
+        {
+            nunit += 1;
+        }
+    }
+
+    if extnm[0] != 0 {
+        nunit += 1; /* add one for the EXTNAME keyword */
+    }
+
+    nhead = (9 + (2 * tfields) + nunit + 35) / 36; /* no. of header blocks */
+
+    /* calculate total width of the table */
+    for ii in 0..(tfields as usize) {
+        let tform_item = v_tform[ii];
+        ffbnfm_safe(
+            tform_item,
+            Some(&mut datacode),
+            Some(&mut repeat),
+            Some(&mut width),
             status,
         );
 
-        /* redefine internal structure for this HDU (with PCOUNT = 0) */
-        ffrdef_safe(fptr, status);
-
-        *status
+        if datacode == TBIT {
+            naxis1 += (repeat as LONGLONG + 7) / 8;
+        } else if datacode == TSTRING {
+            naxis1 += repeat as LONGLONG;
+        } else {
+            naxis1 += (repeat * width) as LONGLONG;
+        }
     }
+
+    datasize = ((naxis1 as LONGLONG) * naxis2) + pcount; /* size of table in bytes */
+    nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+
+    if fptr.Fptr.writemode == READWRITE {
+        /* must have write access */
+
+        /* close the CHDU */
+        ffrdef_safe(fptr, status); /* scan header to redefine structure */
+        ffpdfl(fptr, status); /* insure correct data file values */
+    } else {
+        *status = READONLY_FILE;
+        return *status;
+    }
+
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+
+    nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
+    newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
+
+    fptr.Fptr.hdutype = BINARY_TBL; /* so that correct fill value is used */
+
+    /* ffiblk also increments headstart for all following HDUs */
+    if ffiblk(fptr, nblocks, 1, status) > 0 {
+        /* insert the blocks */
+        return *status;
+    }
+
+    (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
+
+    let maxhdu = fptr.Fptr.maxhdu as usize;
+    let curhdu = fptr.Fptr.curhdu as usize;
+    let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+    let mut ii = maxhdu;
+    while ii > curhdu {
+        headstart[ii + 1] = headstart[ii]; /* incre start addr */
+        ii -= 1;
+    }
+
+    headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
+
+    /* set default parameters for this new empty HDU */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    let hs_item = headstart[nexthdu as usize];
+
+    fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
+    fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
+    fptr.Fptr.nextkey = hs_item;
+    fptr.Fptr.headend = hs_item;
+    fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
+    fptr.Fptr.hdutype = BINARY_TBL; /* might need to be reset... */
+
+    /* write the required header keywords. This will write PCOUNT = 0 */
+    /* so that the variable length data will be written at the right place */
+    ffphbn_safe(
+        fptr,
+        naxis2,
+        tfields,
+        v_ttype,
+        v_tform,
+        v_tunit,
+        Some(&extnm),
+        pcount,
+        status,
+    );
+
+    /* redefine internal structure for this HDU (with PCOUNT = 0) */
+    ffrdef_safe(fptr, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

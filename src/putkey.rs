@@ -2893,11 +2893,8 @@ pub unsafe extern "C" fn ffpkns(
     status: *mut c_int,          /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -2909,63 +2906,83 @@ pub unsafe extern "C" fn ffpkns(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpkns_safe(fptr, keyroot, nstart, nkey, value, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes string keywords.
+/// The value strings will be truncated at 68 characters, and the HEASARC
+/// long string keyword convention is not supported by this routine.
+pub fn ffpkns_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                    */
+    keyroot: &[c_char],      /* I - root name of keywords to write       */
+    nstart: c_int,           /* I - starting index number                */
+    nkey: c_int,             /* I - number of keywords to write          */
+    value: &[*const c_char], /* I - array of pointers to keyword values  */
+    comm: &[*const c_char],  /* I - array of pointers to keyword comment */
+    status: &mut c_int,      /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        let value_item = unsafe { cast_slice(CStr::from_ptr(value[ii]).to_bytes_with_nul()) };
+
+        if repeat {
+            ffpkys_safe(fptr, &keyname, value_item, Some(&tcomment), status);
+        } else {
+            let c: Option<&[c_char]> = match comm[ii].is_null() {
+                true => None,
+                false => Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) }),
+            };
+
+            ffpkys_safe(fptr, &keyname, value_item, c, status);
+        }
+
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
 
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            let value_item = cast_slice(CStr::from_ptr(value[ii]).to_bytes_with_nul());
-
-            if repeat {
-                ffpkys_safe(fptr, &keyname, value_item, Some(&tcomment), status);
-            } else {
-                let c: Option<&[c_char]> = match comm[ii].is_null() {
-                    true => None,
-                    false => Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul())),
-                };
-
-                ffpkys_safe(fptr, &keyname, value_item, c, status);
-            }
-
-            if *status > 0 {
-                return *status;
-            }
-
-            ii += 1;
-            jj += 1;
-        }
-        *status
+        ii += 1;
+        jj += 1;
     }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2984,11 +3001,8 @@ pub unsafe extern "C" fn ffpknl(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3000,60 +3014,80 @@ pub unsafe extern "C" fn ffpknl(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpknl_safe(fptr, keyroot, nstart, nkey, value, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes logical keywords
+/// Values equal to zero will be written as a False FITS keyword value; any
+/// other non-zero value will result in a True FITS keyword.
+pub fn ffpknl_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[c_int],        /* I - array of keyword values              */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkyl_safe(fptr, &keyname, value[ii], Some(&tcomment), status);
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+            ffpkyl_safe(fptr, &keyname, value[ii], comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkyl_safe(fptr, &keyname, value[ii], Some(&tcomment), status);
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-                ffpkyl_safe(fptr, &keyname, value[ii], comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3070,11 +3104,8 @@ pub unsafe extern "C" fn ffpknj(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3086,66 +3117,84 @@ pub unsafe extern "C" fn ffpknj(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpknj_safe(fptr, keyroot, nstart, nkey, value, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+pub fn ffpknj_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[c_long],       /* I - array of keyword values              */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkyj_safe(
+                fptr,
+                &keyname,
+                value[ii] as LONGLONG,
+                Some(&tcomment),
+                status,
+            );
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+            ffpkyj_safe(fptr, &keyname, value[ii] as LONGLONG, comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkyj_safe(
-                    fptr,
-                    &keyname,
-                    value[ii] as LONGLONG,
-                    Some(&tcomment),
-                    status,
-                );
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-                ffpkyj_safe(fptr, &keyname, value[ii] as LONGLONG, comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3163,11 +3212,8 @@ pub unsafe extern "C" fn ffpknf(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3179,60 +3225,79 @@ pub unsafe extern "C" fn ffpknf(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpknf_safe(fptr, keyroot, nstart, nkey, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed float values.
+pub fn ffpknf_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[f32],          /* I - array of keyword values              */
+    decim: c_int,           /* I - number of decimals to display        */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkyf_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+            ffpkyf_safe(fptr, &keyname, value[ii], decim, comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkyf_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-                ffpkyf_safe(fptr, &keyname, value[ii], decim, comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3250,11 +3315,8 @@ pub unsafe extern "C" fn ffpkne(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3266,60 +3328,79 @@ pub unsafe extern "C" fn ffpkne(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpkne_safe(fptr, keyroot, nstart, nkey, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential float values.
+pub fn ffpkne_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[f32],          /* I - array of keyword values              */
+    decim: c_int,           /* I - number of decimals to display        */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkye_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+            ffpkye_safe(fptr, &keyname, value[ii], decim, comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkye_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-                ffpkye_safe(fptr, &keyname, value[ii], decim, comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3337,11 +3418,8 @@ pub unsafe extern "C" fn ffpkng(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3353,60 +3431,79 @@ pub unsafe extern "C" fn ffpkng(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpkng_safe(fptr, keyroot, nstart, nkey, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed double values.
+pub fn ffpkng_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[f64],          /* I - array of keyword values              */
+    decim: c_int,           /* I - number of decimals to display        */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkyg_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+            ffpkyg_safe(fptr, &keyname, value[ii], decim, comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkyg_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-                ffpkyg_safe(fptr, &keyname, value[ii], decim, comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3424,11 +3521,8 @@ pub unsafe extern "C" fn ffpknd(
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyroot);
 
@@ -3440,61 +3534,80 @@ pub unsafe extern "C" fn ffpknd(
 
         let value = slice::from_raw_parts(value, nkey as usize);
 
+        ffpknd_safe(fptr, keyroot, nstart, nkey, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential double values.
+pub fn ffpknd_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
+    keyroot: &[c_char],     /* I - root name of keywords to write       */
+    nstart: c_int,          /* I - starting index number                */
+    nkey: c_int,            /* I - number of keywords to write          */
+    value: &[f64],          /* I - array of keyword values              */
+    decim: c_int,           /* I - number of decimals to display        */
+    comm: &[*const c_char], /* I - array of pointers to keyword comment */
+    status: &mut c_int,     /* IO - error status                        */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    let mut repeat = false;
+
+    if !comm.is_empty() {
+        let comm_item = unsafe { cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul()) };
+
+        let mut len = strlen_safe(comm_item);
+
+        while len > 0 && comm_item[len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm_item[len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
+            repeat = true;
+        }
+    } else {
+        repeat = true;
+        tcomment[0] = 0;
+    }
+
+    let mut ii: usize = 0;
+    let mut jj = nstart;
+    while ii < nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+
+        if repeat {
+            ffpkyd_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
+        } else {
+            let comm_item = if comm[ii].is_null() {
+                None
+            } else {
+                Some(unsafe { cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()) })
+            };
+
+            ffpkyd_safe(fptr, &keyname, value[ii], decim, comm_item, status);
+        }
         if *status > 0 {
-            /* inherit input status value if > 0 */
             return *status;
         }
-
-        /* check if first comment string is to be repeated for all the keywords */
-        /* by looking to see if the last non-blank character is a '&' char      */
-
-        let mut repeat = false;
-
-        if !comm.is_empty() {
-            let comm_item = cast_slice(CStr::from_ptr(comm[0]).to_bytes_with_nul());
-
-            let mut len = strlen_safe(comm_item);
-
-            while len > 0 && comm_item[len - 1] == bb(b' ') {
-                len -= 1; /* ignore trailing blanks */
-            }
-
-            if len > 0 && comm_item[len - 1] == bb(b'&') {
-                len = cmp::min(len, FLEN_COMMENT);
-                tcomment[0] = 0;
-                strncat_safe(&mut tcomment, comm_item, len - 1); /* don't copy the final '&' char */
-                repeat = true;
-            }
-        } else {
-            repeat = true;
-            tcomment[0] = 0;
-        }
-
-        let mut ii: usize = 0;
-        let mut jj = nstart;
-        while ii < nkey as usize {
-            ffkeyn_safe(keyroot, jj, &mut keyname, status);
-
-            if repeat {
-                ffpkyd_safe(fptr, &keyname, value[ii], decim, Some(&tcomment), status);
-            } else {
-                let comm_item = if comm[ii].is_null() {
-                    None
-                } else {
-                    Some(cast_slice(CStr::from_ptr(comm[ii]).to_bytes_with_nul()))
-                };
-
-                ffpkyd_safe(fptr, &keyname, value[ii], decim, comm_item, status);
-            }
-            if *status > 0 {
-                return *status;
-            }
-            ii += 1;
-            jj += 1;
-        }
-
-        *status
+        ii += 1;
+        jj += 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4530,10 +4643,10 @@ pub(crate) fn ffd2e(
 /// Verify that the specified date is valid
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffverifydate(
-    year: c_int,           /* I - year */
-    month: c_int,          /* I - month (1-12) */
-    day: c_int,            /* I - day (1-31) */
-    status: *mut c_int,    /* IO - error status */
+    year: c_int,        /* I - year */
+    month: c_int,       /* I - month (1-12) */
+    day: c_int,         /* I - day (1-31) */
+    status: *mut c_int, /* IO - error status */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
@@ -4543,10 +4656,10 @@ pub unsafe extern "C" fn ffverifydate(
 
 /// Verify that the specified date is valid (safe version)
 pub fn ffverifydate_safer(
-    year: c_int,           /* I - year */
-    month: c_int,          /* I - month (1-12) */
-    day: c_int,            /* I - day (1-31) */
-    status: &mut c_int,    /* IO - error status */
+    year: c_int,        /* I - year */
+    month: c_int,       /* I - month (1-12) */
+    day: c_int,         /* I - day (1-31) */
+    status: &mut c_int, /* IO - error status */
 ) -> c_int {
     todo!("ffverifydate: Verify date {}/{}/{}", year, month, day)
 }
@@ -4555,13 +4668,13 @@ pub fn ffverifydate_safer(
 /// Put a sequence of numeric keywords with LONGLONG values  
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknjj(
-    fptr: *mut fitsfile,     /* I - FITS file pointer */
-    keyroot: *const c_char,  /* I - root name of keywords */
-    nstart: c_int,           /* I - starting index number */
-    nkey: c_int,             /* I - number of keywords to write */
-    value: *const LONGLONG,  /* I - array of keyword values */
+    fptr: *mut fitsfile,        /* I - FITS file pointer */
+    keyroot: *const c_char,     /* I - root name of keywords */
+    nstart: c_int,              /* I - starting index number */
+    nkey: c_int,                /* I - number of keywords to write */
+    value: *const LONGLONG,     /* I - array of keyword values */
     comm: *const *const c_char, /* I - array of keyword comments */
-    status: *mut c_int,      /* IO - error status */
+    status: *mut c_int,         /* IO - error status */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
@@ -4573,20 +4686,25 @@ pub unsafe extern "C" fn ffpknjj(
         } else {
             Some(slice::from_raw_parts(comm, nkey as usize))
         };
-        
+
         ffpknjj_safer(fptr, keyroot, nstart, nkey, value, comm, status)
     }
 }
 
 /// Put a sequence of numeric keywords with LONGLONG values (safe version)
 pub fn ffpknjj_safer(
-    fptr: &mut fitsfile,         /* I - FITS file pointer */
-    keyroot: &CStr,              /* I - root name of keywords */
-    nstart: c_int,               /* I - starting index number */
-    nkey: c_int,                 /* I - number of keywords to write */
-    value: &[LONGLONG],          /* I - array of keyword values */
+    fptr: &mut fitsfile,            /* I - FITS file pointer */
+    keyroot: &CStr,                 /* I - root name of keywords */
+    nstart: c_int,                  /* I - starting index number */
+    nkey: c_int,                    /* I - number of keywords to write */
+    value: &[LONGLONG],             /* I - array of keyword values */
     comm: Option<&[*const c_char]>, /* I - array of keyword comments */
-    status: &mut c_int,          /* IO - error status */
+    status: &mut c_int,             /* IO - error status */
 ) -> c_int {
-    todo!("ffpknjj: Put {} LONGLONG keywords starting from {} with root {}", nkey, nstart, keyroot.to_string_lossy())
+    todo!(
+        "ffpknjj: Put {} LONGLONG keywords starting from {} with root {}",
+        nkey,
+        nstart,
+        keyroot.to_string_lossy()
+    )
 }

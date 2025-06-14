@@ -133,10 +133,9 @@ pub unsafe extern "C" fn ffgcfs(
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let cdummy: [c_char; 2] = [0; 2];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let anynul = anynul.as_mut();
 
         let array = slice::from_raw_parts_mut(array, nelem as usize);
         let mut v_array = Vec::new();
@@ -144,26 +143,53 @@ pub unsafe extern "C" fn ffgcfs(
             let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
             v_array.push(array_item);
         }
-
-        let anynul = anynul.as_mut();
-
         let nularray = slice::from_raw_parts_mut(nularray, nelem as usize);
 
-        ffgcls(
+        ffgcfs_safe(
             fptr,
             colnum,
-            firstrow as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            NullCheckType::SetNullArray,
-            Some(&cdummy),
+            firstrow,
+            firstelem,
+            nelem,
             &mut v_array,
             nularray,
             anynul,
             status,
-        );
-        *status
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of string values from a column in the current FITS HDU.
+/// Nularray will be set = 1 if the corresponding array pixel is undefined,
+/// otherwise nularray will = 0.
+pub fn ffgcfs_safe(
+    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
+    colnum: c_int,                  /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,             /* I - first row to read (1 = 1st row)         */
+    firstelem: LONGLONG,            /* I - first vector element to read (1 = 1st)  */
+    nelem: LONGLONG,                /* I - number of strings to read               */
+    array: &mut Vec<&mut [c_char]>, /* O - array of values that are read           */
+    nularray: &mut [c_char],        /* O - array of flags = 1 if nultyp = 2        */
+    anynul: Option<&mut c_int>,     /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,             /* IO - error status                           */
+) -> c_int {
+    let cdummy: [c_char; 2] = [0; 2];
+
+    ffgcls(
+        fptr,
+        colnum,
+        firstrow,
+        firstelem,
+        nelem,
+        NullCheckType::SetNullArray,
+        Some(&cdummy),
+        array,
+        nularray,
+        anynul,
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

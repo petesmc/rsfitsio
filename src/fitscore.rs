@@ -87,134 +87,144 @@ pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffvers(version: *mut f32 /* IO - version number */) -> f32 {
     unsafe {
-        *version = (CFITSIO_MAJOR as f32)
-            + (0.01 * (CFITSIO_MINOR as f32))
-            + (0.0001 * (CFITSIO_MICRO as f32));
+        if version.is_null() {
+            return 0.0;
+        }
 
-        /*
-              *version = 4.6.2      Mar 2025 (autotools change only)
+        let version = version.as_mut().expect(NULL_MSG);
 
-           Previous releases:
-              *version = 4.6.1      Mar 2025 (autotools/cmake config changes only)
-              *version = 4.6.0      Mar 2025
-              *version = 4.5.0      Aug 2024
-              *version = 4.4.1      Jun 2024 (license change)
-              *version = 4.4.0      Feb 2024
-              *version = 4.3.1      Nov 2023 (patch)
-              *version = 4.3.0      Jul 2023
-              *version = 4.2.0      Nov 2022
-              *version = 4.1.0      Feb 2022
-              *version = 4.0.0      May 2021
-              *version = 3.49       Aug 2020
-              *version = 3.48       Apr 2020
-              *version = 3.47       May 2019
-              *version = 3.46       Oct 2018
-              *version = 3.45       May 2018
-              *version = 3.44       Apr 2018
-              *version = 3.43       Mar 2018
-              *version = 3.42       Mar 2017
-              *version = 3.41       Nov 2016
-              *version = 3.40       Oct 2016
-              *version = 3.39       Apr 2016
-              *version = 3.38       Feb 2016
-              *version = 3.37     3 Jun 2014
-              *version = 3.36     6 Dec 2013
-              *version = 3.35    23 May 2013
-              *version = 3.34    20 Mar 2013
-              *version = 3.33    14 Feb 2013
-              *version = 3.32       Oct 2012
-              *version = 3.31    18 Jul 2012
-              *version = 3.30    11 Apr 2012
-              *version = 3.29    22 Sep 2011
-              *version = 3.28    12 May 2011
-              *version = 3.27     3 Mar 2011
-              *version = 3.26    30 Dec 2010
-              *version = 3.25    9 June 2010
-              *version = 3.24    26 Jan 2010
-              *version = 3.23     7 Jan 2010
-              *version = 3.22    28 Oct 2009
-              *version = 3.21    24 Sep 2009
-              *version = 3.20    31 Aug 2009
-              *version = 3.18    12 May 2009 (beta version)
-              *version = 3.14    18 Mar 2009
-              *version = 3.13     5 Jan 2009
-              *version = 3.12     8 Oct 2008
-              *version = 3.11    19 Sep 2008
-              *version = 3.10    20 Aug 2008
-              *version = 3.09     3 Jun 2008
-              *version = 3.08    15 Apr 2007  (internal release)
-              *version = 3.07     5 Nov 2007  (internal release)
-              *version = 3.06    27 Aug 2007
-              *version = 3.05    12 Jul 2007  (internal release)
-              *version = 3.03    11 Dec 2006
-              *version = 3.02    18 Sep 2006
-              *version = 3.01       May 2006 included in FTOOLS 6.1 release
-              *version = 3.006   20 Feb 2006
-              *version = 3.005   20 Dec 2005 (beta, in heasoft swift release
-              *version = 3.004   16 Sep 2005 (beta, in heasoft swift release
-              *version = 3.003   28 Jul 2005 (beta, in heasoft swift release
-              *version = 3.002   15 Apr 2005 (beta)
-              *version = 3.001   15 Mar 2005 (beta) released with heasoft 6.0
-              *version = 3.000   1 Mar 2005 (internal release only)
-              *version = 2.51     2 Dec 2004
-              *version = 2.50    28 Jul 2004
-              *version = 2.49    11 Feb 2004
-              *version = 2.48    28 Jan 2004
-              *version = 2.470   18 Aug 2003
-              *version = 2.460   20 May 2003
-              *version = 2.450   30 Apr 2003  (internal release only)
-              *version = 2.440    8 Jan 2003
-              *version = 2.430;   4 Nov 2002
-              *version = 2.420;  19 Jul 2002
-              *version = 2.410;  22 Apr 2002 used in ftools v5.2
-              *version = 2.401;  28 Jan 2002
-              *version = 2.400;  18 Jan 2002
-              *version = 2.301;   7 Dec 2001
-              *version = 2.300;  23 Oct 2001
-              *version = 2.204;  26 Jul 2001
-              *version = 2.203;  19 Jul 2001 used in ftools v5.1
-              *version = 2.202;  22 May 2001
-              *version = 2.201;  15 Mar 2001
-              *version = 2.200;  26 Jan 2001
-              *version = 2.100;  26 Sep 2000
-              *version = 2.037;   6 Jul 2000
-              *version = 2.036;   1 Feb 2000
-              *version = 2.035;   7 Dec 1999 (internal release only)
-              *version = 2.034;  23 Nov 1999
-              *version = 2.033;  17 Sep 1999
-              *version = 2.032;  25 May 1999
-              *version = 2.031;  31 Mar 1999
-              *version = 2.030;  24 Feb 1999
-              *version = 2.029;  11 Feb 1999
-              *version = 2.028;  26 Jan 1999
-              *version = 2.027;  12 Jan 1999
-              *version = 2.026;  23 Dec 1998
-              *version = 2.025;   1 Dec 1998
-              *version = 2.024;   9 Nov 1998
-              *version = 2.023;   1 Nov 1998 first full release of V2.0
-              *version = 1.42;   30 Apr 1998
-              *version = 1.40;    6 Feb 1998
-              *version = 1.33;   16 Dec 1997 (internal release only)
-              *version = 1.32;   21 Nov 1997 (internal release only)
-              *version = 1.31;    4 Nov 1997 (internal release only)
-              *version = 1.30;   11 Sep 1997
-              *version = 1.27;    3 Sep 1997 (internal release only)
-              *version = 1.25;    2 Jul 1997
-              *version = 1.24;    2 May 1997
-              *version = 1.23;   24 Apr 1997
-              *version = 1.22;   18 Apr 1997
-              *version = 1.21;   26 Mar 1997
-              *version = 1.2;    29 Jan 1997
-              *version = 1.11;   04 Dec 1996
-              *version = 1.101;  13 Nov 1996
-              *version = 1.1;     6 Nov 1996
-              *version = 1.04;   17 Sep 1996
-              *version = 1.03;   20 Aug 1996
-              *version = 1.02;   15 Aug 1996
-              *version = 1.01;   12 Aug 1996
-        */
-        *version
+        unsafe { ffvers_safe(version) }
     }
+}
+
+pub fn ffvers_safe(version: &mut f32) -> f32 {
+    *version = (CFITSIO_MAJOR as f32)
+        + (0.01 * (CFITSIO_MINOR as f32))
+        + (0.0001 * (CFITSIO_MICRO as f32));
+
+    /*
+          *version = 4.6.2      Mar 2025 (autotools change only)
+
+       Previous releases:
+          *version = 4.6.1      Mar 2025 (autotools/cmake config changes only)
+          *version = 4.6.0      Mar 2025
+          *version = 4.5.0      Aug 2024
+          *version = 4.4.1      Jun 2024 (license change)
+          *version = 4.4.0      Feb 2024
+          *version = 4.3.1      Nov 2023 (patch)
+          *version = 4.3.0      Jul 2023
+          *version = 4.2.0      Nov 2022
+          *version = 4.1.0      Feb 2022
+          *version = 4.0.0      May 2021
+          *version = 3.49       Aug 2020
+          *version = 3.48       Apr 2020
+          *version = 3.47       May 2019
+          *version = 3.46       Oct 2018
+          *version = 3.45       May 2018
+          *version = 3.44       Apr 2018
+          *version = 3.43       Mar 2018
+          *version = 3.42       Mar 2017
+          *version = 3.41       Nov 2016
+          *version = 3.40       Oct 2016
+          *version = 3.39       Apr 2016
+          *version = 3.38       Feb 2016
+          *version = 3.37     3 Jun 2014
+          *version = 3.36     6 Dec 2013
+          *version = 3.35    23 May 2013
+          *version = 3.34    20 Mar 2013
+          *version = 3.33    14 Feb 2013
+          *version = 3.32       Oct 2012
+          *version = 3.31    18 Jul 2012
+          *version = 3.30    11 Apr 2012
+          *version = 3.29    22 Sep 2011
+          *version = 3.28    12 May 2011
+          *version = 3.27     3 Mar 2011
+          *version = 3.26    30 Dec 2010
+          *version = 3.25    9 June 2010
+          *version = 3.24    26 Jan 2010
+          *version = 3.23     7 Jan 2010
+          *version = 3.22    28 Oct 2009
+          *version = 3.21    24 Sep 2009
+          *version = 3.20    31 Aug 2009
+          *version = 3.18    12 May 2009 (beta version)
+          *version = 3.14    18 Mar 2009
+          *version = 3.13     5 Jan 2009
+          *version = 3.12     8 Oct 2008
+          *version = 3.11    19 Sep 2008
+          *version = 3.10    20 Aug 2008
+          *version = 3.09     3 Jun 2008
+          *version = 3.08    15 Apr 2007  (internal release)
+          *version = 3.07     5 Nov 2007  (internal release)
+          *version = 3.06    27 Aug 2007
+          *version = 3.05    12 Jul 2007  (internal release)
+          *version = 3.03    11 Dec 2006
+          *version = 3.02    18 Sep 2006
+          *version = 3.01       May 2006 included in FTOOLS 6.1 release
+          *version = 3.006   20 Feb 2006
+          *version = 3.005   20 Dec 2005 (beta, in heasoft swift release
+          *version = 3.004   16 Sep 2005 (beta, in heasoft swift release
+          *version = 3.003   28 Jul 2005 (beta, in heasoft swift release
+          *version = 3.002   15 Apr 2005 (beta)
+          *version = 3.001   15 Mar 2005 (beta) released with heasoft 6.0
+          *version = 3.000   1 Mar 2005 (internal release only)
+          *version = 2.51     2 Dec 2004
+          *version = 2.50    28 Jul 2004
+          *version = 2.49    11 Feb 2004
+          *version = 2.48    28 Jan 2004
+          *version = 2.470   18 Aug 2003
+          *version = 2.460   20 May 2003
+          *version = 2.450   30 Apr 2003  (internal release only)
+          *version = 2.440    8 Jan 2003
+          *version = 2.430;   4 Nov 2002
+          *version = 2.420;  19 Jul 2002
+          *version = 2.410;  22 Apr 2002 used in ftools v5.2
+          *version = 2.401;  28 Jan 2002
+          *version = 2.400;  18 Jan 2002
+          *version = 2.301;   7 Dec 2001
+          *version = 2.300;  23 Oct 2001
+          *version = 2.204;  26 Jul 2001
+          *version = 2.203;  19 Jul 2001 used in ftools v5.1
+          *version = 2.202;  22 May 2001
+          *version = 2.201;  15 Mar 2001
+          *version = 2.200;  26 Jan 2001
+          *version = 2.100;  26 Sep 2000
+          *version = 2.037;   6 Jul 2000
+          *version = 2.036;   1 Feb 2000
+          *version = 2.035;   7 Dec 1999 (internal release only)
+          *version = 2.034;  23 Nov 1999
+          *version = 2.033;  17 Sep 1999
+          *version = 2.032;  25 May 1999
+          *version = 2.031;  31 Mar 1999
+          *version = 2.030;  24 Feb 1999
+          *version = 2.029;  11 Feb 1999
+          *version = 2.028;  26 Jan 1999
+          *version = 2.027;  12 Jan 1999
+          *version = 2.026;  23 Dec 1998
+          *version = 2.025;   1 Dec 1998
+          *version = 2.024;   9 Nov 1998
+          *version = 2.023;   1 Nov 1998 first full release of V2.0
+          *version = 1.42;   30 Apr 1998
+          *version = 1.40;    6 Feb 1998
+          *version = 1.33;   16 Dec 1997 (internal release only)
+          *version = 1.32;   21 Nov 1997 (internal release only)
+          *version = 1.31;    4 Nov 1997 (internal release only)
+          *version = 1.30;   11 Sep 1997
+          *version = 1.27;    3 Sep 1997 (internal release only)
+          *version = 1.25;    2 Jul 1997
+          *version = 1.24;    2 May 1997
+          *version = 1.23;   24 Apr 1997
+          *version = 1.22;   18 Apr 1997
+          *version = 1.21;   26 Mar 1997
+          *version = 1.2;    29 Jan 1997
+          *version = 1.11;   04 Dec 1996
+          *version = 1.101;  13 Nov 1996
+          *version = 1.1;     6 Nov 1996
+          *version = 1.04;   17 Sep 1996
+          *version = 1.03;   20 Aug 1996
+          *version = 1.02;   15 Aug 1996
+          *version = 1.01;   12 Aug 1996
+    */
+    *version
 }
 
 /*--------------------------------------------------------------------------*/
@@ -227,13 +237,17 @@ pub unsafe extern "C" fn ffflnm(
 ) -> c_int {
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
         let status = status.as_mut().expect(NULL_MSG);
 
-        strcpy(filename, fptr.Fptr.filename);
-
-        *status
+        unsafe { ffflnm_safe(&mut *fptr, filename, &mut *status) }
     }
+}
+
+pub unsafe fn ffflnm_safe(fptr: &mut fitsfile, filename: *mut c_char, status: &mut c_int) -> c_int {
+    unsafe {
+        strcpy(filename, fptr.Fptr.filename);
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -248,10 +262,13 @@ pub unsafe extern "C" fn ffflmd(
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let status = status.as_mut().expect(NULL_MSG);
-
-        *filemode = fptr.Fptr.writemode;
-        *status
+        unsafe { ffflmd_safe(&mut *fptr, &mut *filemode, &mut *status) }
     }
+}
+
+pub fn ffflmd_safe(fptr: &mut fitsfile, filemode: &mut c_int, status: &mut c_int) -> c_int {
+    *filemode = fptr.Fptr.writemode;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3524,198 +3541,215 @@ pub unsafe extern "C" fn ffbnfmll(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut datacode: c_int = 0;
-        let mut variable: c_int = 0;
-        let mut iread: c_int = 0;
-        let mut width: c_long = 0;
-        let mut repeat: LONGLONG = 0;
-        let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut drepeat: f64 = 0.0;
-
         let status = status.as_mut().expect(NULL_MSG);
-        let mut dtcode = dtcode.as_mut();
-        let mut trepeat = trepeat.as_mut();
-        let mut twidth = twidth.as_mut();
+        let dtcode = dtcode.as_mut();
+        let trepeat = trepeat.as_mut();
+        let twidth = twidth.as_mut();
         raw_to_slice!(tform);
 
-        if *status > 0 {
-            return *status;
+        ffbnfmll_safe(tform, dtcode, trepeat, twidth, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// parse the binary table TFORM column format to determine the data
+/// type, repeat count, and the field width (if it is an ASCII (A) field)
+pub fn ffbnfmll_safe(
+    tform: &[c_char],                   /* I - format code from the TFORMn keyword */
+    mut dtcode: Option<&mut c_int>,     /* O - numerical datatype code */
+    mut trepeat: Option<&mut LONGLONG>, /* O - repeat count of the field  */
+    mut twidth: Option<&mut c_long>,    /* O - width of the field, in chars */
+    status: &mut c_int,                 /* IO - error status      */
+) -> c_int {
+    let mut datacode: c_int = 0;
+    let mut variable: c_int = 0;
+    let mut iread: c_int = 0;
+    let mut width: c_long = 0;
+    let mut repeat: LONGLONG = 0;
+    let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut drepeat: f64 = 0.0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if let Some(ref mut dtcode) = dtcode {
+        **dtcode = 0;
+    }
+
+    if let Some(ref mut trepeat) = trepeat {
+        **trepeat = 0;
+    }
+
+    if let Some(ref mut twidth) = twidth {
+        **twidth = 0;
+    }
+
+    let nchar = strlen_safe(tform);
+    let mut ii = 0;
+    while ii < nchar {
+        if tform[ii] != bb(b' ') {
+            /* find first non-space char */
+            break;
         }
+        ii += 1;
+    }
 
-        if let Some(ref mut dtcode) = dtcode {
-            **dtcode = 0;
-        }
+    if ii == nchar {
+        ffpmsg_str("Error: binary table TFORM code is blank (ffbnfmll).");
+        *status = BAD_TFORM;
+        return *status;
+    }
 
-        if let Some(ref mut trepeat) = trepeat {
-            **trepeat = 0;
-        }
+    if strlen_safe(&tform[ii..]) > FLEN_VALUE - 1 {
+        ffpmsg_str("Error: binary table TFORM code is too long (ffbnfmll).");
+        *status = BAD_TFORM;
+        return *status;
+    }
+    strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
+    ffupch_safe(&mut temp); /* make sure it is in upper case */
+    let mut fi: usize = 0; /* point to start of format string */
 
-        if let Some(ref mut twidth) = twidth {
-            **twidth = 0;
-        }
+    /*-----------------------------------------------*/
+    /*       get the repeat count                    */
+    /*-----------------------------------------------*/
 
-        let nchar = strlen_safe(tform);
-        let mut ii = 0;
-        while ii < nchar {
-            if tform[ii] != bb(b' ') {
-                /* find first non-space char */
-                break;
-            }
-            ii += 1;
-        }
+    let mut ii = 0;
+    while isdigit_safe(temp[fi + ii]) {
+        ii += 1; /* look for leading digits in the field */
+    }
 
-        if ii == nchar {
-            ffpmsg_str("Error: binary table TFORM code is blank (ffbnfmll).");
-            *status = BAD_TFORM;
-            return *status;
-        }
+    if ii == 0 {
+        repeat = 1; /* no explicit repeat count */
+    } else {
+        /* read repeat count */
 
-        if strlen_safe(&tform[ii..]) > FLEN_VALUE - 1 {
-            ffpmsg_str("Error: binary table TFORM code is too long (ffbnfmll).");
-            *status = BAD_TFORM;
-            return *status;
-        }
-        strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
-        ffupch_safe(&mut temp); /* make sure it is in upper case */
-        let mut fi: usize = 0; /* point to start of format string */
+        /* print as double, because the string-to-64-bit int conversion */
+        /* character is platform dependent (%lld, %ld, %I64d)           */
 
-        /*-----------------------------------------------*/
-        /*       get the repeat count                    */
-        /*-----------------------------------------------*/
-
-        let mut ii = 0;
-        while isdigit_safe(temp[fi + ii]) {
-            ii += 1; /* look for leading digits in the field */
-        }
-
-        if ii == 0 {
-            repeat = 1; /* no explicit repeat count */
-        } else {
-            /* read repeat count */
-
-            /* print as double, because the string-to-64-bit int conversion */
-            /* character is platform dependent (%lld, %ld, %I64d)           */
-
+        unsafe {
             sscanf(temp[fi..].as_ptr(), c"%lf".as_ptr(), &mut drepeat);
-            repeat = (drepeat + 0.1) as LONGLONG;
         }
-        /*-----------------------------------------------*/
-        /*             determine datatype code           */
-        /*-----------------------------------------------*/
+        repeat = (drepeat + 0.1) as LONGLONG;
+    }
+    /*-----------------------------------------------*/
+    /*             determine datatype code           */
+    /*-----------------------------------------------*/
 
-        fi += ii; /* skip over the repeat field */
+    fi += ii; /* skip over the repeat field */
 
-        if temp[fi] == bb(b'P') || temp[fi] == bb(b'Q') {
-            variable = 1; /* this is a variable length column */
-            /*        repeat = 1;  */
-            /* disregard any other repeat value */
-            fi += 1; /* move to the next data type code char */
-        } else {
-            variable = 0;
-        }
+    if temp[fi] == bb(b'P') || temp[fi] == bb(b'Q') {
+        variable = 1; /* this is a variable length column */
+        /*        repeat = 1;  */
+        /* disregard any other repeat value */
+        fi += 1; /* move to the next data type code char */
+    } else {
+        variable = 0;
+    }
 
-        if temp[fi] == bb(b'U')
-        /* internal code to signify unsigned integer */
-        {
-            datacode = TUSHORT;
-            width = 2;
-        } else if temp[fi] == bb(b'I') {
-            datacode = TSHORT;
-            width = 2;
-        } else if temp[fi] == bb(b'V')
-        /* internal code to signify unsigned integer */
-        {
-            datacode = TULONG;
-            width = 4;
-        } else if temp[fi] == bb(b'W')
-        /* internal code to signify unsigned long long integer */
-        {
-            datacode = TULONGLONG;
-            width = 8;
-        } else if temp[fi] == bb(b'J') {
-            datacode = TLONG;
-            width = 4;
-        } else if temp[fi] == bb(b'K') {
-            datacode = TLONGLONG;
-            width = 8;
-        } else if temp[fi] == bb(b'E') {
-            datacode = TFLOAT;
-            width = 4;
-        } else if temp[fi] == bb(b'D') {
-            datacode = TDOUBLE;
-            width = 8;
-        } else if temp[fi] == bb(b'A') {
-            datacode = TSTRING;
+    if temp[fi] == bb(b'U')
+    /* internal code to signify unsigned integer */
+    {
+        datacode = TUSHORT;
+        width = 2;
+    } else if temp[fi] == bb(b'I') {
+        datacode = TSHORT;
+        width = 2;
+    } else if temp[fi] == bb(b'V')
+    /* internal code to signify unsigned integer */
+    {
+        datacode = TULONG;
+        width = 4;
+    } else if temp[fi] == bb(b'W')
+    /* internal code to signify unsigned long long integer */
+    {
+        datacode = TULONGLONG;
+        width = 8;
+    } else if temp[fi] == bb(b'J') {
+        datacode = TLONG;
+        width = 4;
+    } else if temp[fi] == bb(b'K') {
+        datacode = TLONGLONG;
+        width = 8;
+    } else if temp[fi] == bb(b'E') {
+        datacode = TFLOAT;
+        width = 4;
+    } else if temp[fi] == bb(b'D') {
+        datacode = TDOUBLE;
+        width = 8;
+    } else if temp[fi] == bb(b'A') {
+        datacode = TSTRING;
 
-            /*
-              the following code is used to support the non-standard
-              datatype of the form rAw where r = total width of the field
-              and w = width of fixed-length substrings within the field.
-            */
-            iread = 0;
-            if temp[1 + fi] != 0 {
-                if temp[1 + fi] == bb(b'(') {
-                    /* skip parenthesis around */
-                    fi += 1; /* variable length column width */
-                }
+        /*
+          the following code is used to support the non-standard
+          datatype of the form rAw where r = total width of the field
+          and w = width of fixed-length substrings within the field.
+        */
+        iread = 0;
+        if temp[1 + fi] != 0 {
+            if temp[1 + fi] == bb(b'(') {
+                /* skip parenthesis around */
+                fi += 1; /* variable length column width */
+            }
 
+            unsafe {
                 iread = sscanf(temp[(1 + fi)..].as_ptr(), c"%ld".as_ptr(), &mut width);
             }
-
-            if iread != 1 || (variable == 0 && (width as LONGLONG > repeat)) {
-                width = repeat as c_long;
-            }
-        } else if temp[fi] == bb(b'L') {
-            datacode = TLOGICAL;
-            width = 1;
-        } else if temp[fi] == bb(b'X') {
-            datacode = TBIT;
-            width = 1;
-        } else if temp[fi] == bb(b'B') {
-            datacode = TBYTE;
-            width = 1;
-        } else if temp[fi] == bb(b'S')
-        /* internal code to signify signed byte */
-        {
-            datacode = TSBYTE;
-            width = 1;
-        } else if temp[fi] == bb(b'C') {
-            datacode = TCOMPLEX;
-            width = 8;
-        } else if temp[fi] == bb(b'M') {
-            datacode = TDBLCOMPLEX;
-            width = 16;
-        } else {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "Illegal binary table TFORMn datatype: '{}' ",
-                slice_to_str!(&tform),
-            );
-            ffpmsg_slice(&message);
-            *status = BAD_TFORM_DTYPE;
-            return *status;
         }
 
-        if variable != 0 {
-            datacode = -datacode; /* flag variable cols w/ neg type code */
+        if iread != 1 || (variable == 0 && (width as LONGLONG > repeat)) {
+            width = repeat as c_long;
         }
-
-        if let Some(dtcode) = dtcode {
-            *dtcode = datacode;
-        }
-
-        if let Some(trepeat) = trepeat {
-            *trepeat = repeat;
-        }
-
-        if let Some(twidth) = twidth {
-            *twidth = width;
-        }
-
-        *status
+    } else if temp[fi] == bb(b'L') {
+        datacode = TLOGICAL;
+        width = 1;
+    } else if temp[fi] == bb(b'X') {
+        datacode = TBIT;
+        width = 1;
+    } else if temp[fi] == bb(b'B') {
+        datacode = TBYTE;
+        width = 1;
+    } else if temp[fi] == bb(b'S')
+    /* internal code to signify signed byte */
+    {
+        datacode = TSBYTE;
+        width = 1;
+    } else if temp[fi] == bb(b'C') {
+        datacode = TCOMPLEX;
+        width = 8;
+    } else if temp[fi] == bb(b'M') {
+        datacode = TDBLCOMPLEX;
+        width = 16;
+    } else {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Illegal binary table TFORMn datatype: '{}' ",
+            slice_to_str!(&tform),
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_TFORM_DTYPE;
+        return *status;
     }
+
+    if variable != 0 {
+        datacode = -datacode; /* flag variable cols w/ neg type code */
+    }
+
+    if let Some(dtcode) = dtcode {
+        *dtcode = datacode;
+    }
+
+    if let Some(trepeat) = trepeat {
+        *trepeat = repeat;
+    }
+
+    if let Some(twidth) = twidth {
+        *twidth = width;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4855,7 +4889,7 @@ pub fn ffgnrwll_safe(
 }
 
 /*--------------------------------------------------------------------------*/
-/// get ASCII column keyword values
+/// get ASCII table column keyword values
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgacl(
     fptr: *mut fitsfile, /* I - FITS file pointer                      */
@@ -4871,16 +4905,38 @@ pub unsafe extern "C" fn ffgacl(
     status: *mut c_int,  /* IO - error status                          */
 ) -> c_int {
     unsafe {
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut tstatus = 0;
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         let tbcol = tbcol.as_mut();
         let tscal = tscal.as_mut();
         let tzero = tzero.as_mut();
+
+        ffgacl_safer(
+            fptr, colnum, ttype, tbcol, tunit, tform, tscal, tzero, tnull, tdisp, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// get ASCII table column keyword values
+pub unsafe fn ffgacl_safer(
+    fptr: &mut fitsfile,        /* I - FITS file pointer                      */
+    colnum: c_int,              /* I - column number                          */
+    ttype: *mut c_char,         /* O - TTYPEn keyword value                   */
+    tbcol: Option<&mut c_long>, /* O - TBCOLn keyword value                   */
+    tunit: *mut c_char,         /* O - TUNITn keyword value                   */
+    tform: *mut c_char,         /* O - TFORMn keyword value                   */
+    tscal: Option<&mut f64>,    /* O - TSCALn keyword value                   */
+    tzero: Option<&mut f64>,    /* O - TZEROn keyword value                   */
+    tnull: *mut c_char,         /* O - TNULLn keyword value                   */
+    tdisp: *mut c_char,         /* O - TDISPn keyword value                   */
+    status: &mut c_int,         /* IO - error status                          */
+) -> c_int {
+    unsafe {
+        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+        let mut tstatus = 0;
 
         if *status > 0 {
             return *status;
@@ -5376,51 +5432,67 @@ pub unsafe extern "C" fn ffghad(
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
     unsafe {
-        let mut shead: LONGLONG = 0;
-        let mut sdata: LONGLONG = 0;
-        let mut edata: LONGLONG = 0;
-
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
         let status = status.as_mut().expect(NULL_MSG);
+        let headstart = headstart.as_mut();
+        let datastart = datastart.as_mut();
+        let dataend = dataend.as_mut();
 
-        if *status > 0 {
-            return *status;
-        }
-
-        ffghadll_safe(
-            fptr,
-            Some(&mut shead),
-            Some(&mut sdata),
-            Some(&mut edata),
-            status,
-        );
-
-        if let Some(headstart) = headstart.as_mut() {
-            if shead > LONG_MAX as LONGLONG {
-                *status = NUM_OVERFLOW;
-            } else {
-                *headstart = shead as c_long;
-            };
-        }
-
-        if let Some(datastart) = datastart.as_mut() {
-            if sdata > LONG_MAX as LONGLONG {
-                *status = NUM_OVERFLOW;
-            } else {
-                *datastart = sdata as c_long;
-            };
-        }
-
-        if let Some(dataend) = dataend.as_mut() {
-            if edata > LONG_MAX as LONGLONG {
-                *status = NUM_OVERFLOW;
-            } else {
-                *dataend = edata as c_long;
-            };
-        }
-        *status
+        ffghad_safe(fptr, headstart, datastart, dataend, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Return the address (= byte offset) in the FITS file to the beginning of
+/// the current HDU, the beginning of the data unit, and the end of the data unit.
+pub fn ffghad_safe(
+    fptr: &mut fitsfile,            /* I - FITS file pointer                     */
+    headstart: Option<&mut c_long>, /* O - byte offset to beginning of CHDU      */
+    datastart: Option<&mut c_long>, /* O - byte offset to beginning of next HDU  */
+    dataend: Option<&mut c_long>,   /* O - byte offset to beginning of next HDU  */
+    status: &mut c_int,             /* IO - error status     */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut shead: LONGLONG = 0;
+    let mut sdata: LONGLONG = 0;
+    let mut edata: LONGLONG = 0;
+
+    ffghadll_safe(
+        fptr,
+        Some(&mut shead),
+        Some(&mut sdata),
+        Some(&mut edata),
+        status,
+    );
+
+    if let Some(headstart) = headstart {
+        if shead > LONG_MAX as LONGLONG {
+            *status = NUM_OVERFLOW;
+        } else {
+            *headstart = shead as c_long;
+        }
+    }
+
+    if let Some(datastart) = datastart {
+        if sdata > LONG_MAX as LONGLONG {
+            *status = NUM_OVERFLOW;
+        } else {
+            *datastart = sdata as c_long;
+        }
+    }
+
+    if let Some(dataend) = dataend {
+        if edata > LONG_MAX as LONGLONG {
+            *status = NUM_OVERFLOW;
+        } else {
+            *dataend = edata as c_long;
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -8202,13 +8274,36 @@ pub unsafe extern "C" fn ffgdessll(
     status: *mut c_int,      /* IO - error status                             */
 ) -> c_int {
     unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+
+        unsafe {
+            ffgdessll_safe(
+                &mut *fptr,
+                colnum,
+                firstrow,
+                nrows,
+                length,
+                heapaddr,
+                &mut *status,
+            )
+        }
+    }
+}
+
+pub unsafe fn ffgdessll_safe(
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    length: *mut LONGLONG,
+    heapaddr: *mut LONGLONG,
+    status: &mut c_int,
+) -> c_int {
+    unsafe {
         let mut ii: LONGLONG;
         let mut descript4: [INT32BIT; 2] = [0, 0];
         let mut descript8: [LONGLONG; 2] = [0, 0];
-
-        let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        let status = status.as_mut().expect(NULL_MSG);
 
         if *status > 0 {
             return *status;
@@ -8951,62 +9046,63 @@ pub(crate) fn ffpdfl(
 **********************************************************************/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
-    unsafe {
-        let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let blanks = [bb(b' '); 80]; /*  80 spaces  */
-
-        let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        let status = status.as_mut().expect(NULL_MSG);
-
-        if *status > 0 {
-            return *status;
-        }
-
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /*   calculate the number of blank keyword slots in the header  */
-
-        let endpos = fptr.Fptr.headend;
-        let nblank = ((fptr.Fptr.datastart - endpos) / 80) as c_long;
-
-        /*   move the i/o pointer to the end of the header keywords   */
-
-        ffmbyt_safe(fptr, endpos, TRUE as c_int, status);
-
-        /*   find the END card (there may be blank keywords perceeding it)   */
-
-        let mut gotend = false;
-        for i in 0..nblank {
-            ffgbyt(fptr, 80, cast_slice_mut(&mut rec), status);
-            if strncmp_safe(&rec, cs!(c"END     "), 8) == 0 {
-                if gotend {
-                    /*   There is a duplicate END record   */
-                    *status = BAD_HEADER_FILL;
-                    ffpmsg_str("Warning: Header fill area contains duplicate END card:");
-                }
-                gotend = true;
-                if strncmp_safe(&rec[8..], &blanks[8..], 72) != 0 {
-                    /*   END keyword has extra characters   */
-                    *status = END_JUNK;
-                    ffpmsg_str("Warning: END keyword contains extraneous non-blank characters:");
-                };
-            } else if gotend && strncmp_safe(&rec, &blanks, 80) != 0 {
-                /*   The fill area contains extraneous characters   */
-                *status = BAD_HEADER_FILL;
-                ffpmsg_str("Warning: Header fill area contains extraneous non-blank characters:");
-            };
-            if *status > 0 {
-                rec[FLEN_CARD - 1] = 0; /* make sure string is null terminated */
-                ffpmsg_slice(&rec);
-                return *status;
-            };
-        }
-        *status
+    if fptr.is_null() || status.is_null() {
+        return NULL_INPUT_PTR;
     }
+    unsafe { ffchfl_safe(&mut *fptr, &mut *status) }
+}
+
+pub fn ffchfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
+    let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let blanks = [bb(b' '); 80]; /*  80 spaces  */
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /*   calculate the number of blank keyword slots in the header  */
+
+    let endpos = fptr.Fptr.headend;
+    let nblank = ((fptr.Fptr.datastart - endpos) / 80) as c_long;
+
+    /*   move the i/o pointer to the end of the header keywords   */
+
+    ffmbyt_safe(fptr, endpos, TRUE as c_int, status);
+
+    /*   find the END card (there may be blank keywords perceeding it)   */
+
+    let mut gotend = false;
+    for _i in 0..nblank {
+        ffgbyt(fptr, 80, cast_slice_mut(&mut rec), status);
+        if strncmp_safe(&rec, cs!(c"END     "), 8) == 0 {
+            if gotend {
+                /*   There is a duplicate END record   */
+                *status = BAD_HEADER_FILL;
+                ffpmsg_str("Warning: Header fill area contains duplicate END card:");
+            }
+            gotend = true;
+            if strncmp_safe(&rec[8..], &blanks[8..], 72) != 0 {
+                /*   END keyword has extra characters   */
+                *status = END_JUNK;
+                ffpmsg_str("Warning: END keyword contains extraneous non-blank characters:");
+            };
+        } else if gotend && strncmp_safe(&rec, &blanks, 80) != 0 {
+            /*   The fill area contains extraneous characters   */
+            *status = BAD_HEADER_FILL;
+            ffpmsg_str("Warning: Header fill area contains extraneous non-blank characters:");
+        };
+        if *status > 0 {
+            rec[FLEN_CARD - 1] = 0; /* make sure string is null terminated */
+            ffpmsg_slice(&rec);
+            return *status;
+        };
+    }
+    *status
 }
 
 /**********************************************************************
@@ -9025,69 +9121,70 @@ pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     unsafe {
-        let mut chbuff: [c_char; BL!()] = [0; BL!()];
-
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
         let status = status.as_mut().expect(NULL_MSG);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /*   check if the data unit is null   */
-        if fptr.Fptr.heapstart == 0 {
-            return *status;
-        }
-
-        /* calculate starting position of the fill bytes, if any */
-        let filpos = fptr.Fptr.datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize;
-
-        /*   calculate the number of fill bytes   */
-        let nfill = ((filpos + (BL!() - 1)) / BL!() * BL!() - filpos) as c_long;
-        if nfill == 0 {
-            return *status;
-        }
-
-        /*   move to the beginning of the fill bytes   */
-        ffmbyt_safe(fptr, filpos, FALSE as c_int, status);
-
-        if ffgbyt(fptr, nfill as LONGLONG, cast_slice_mut(&mut chbuff), status) > 0 {
-            ffpmsg_str("Error reading data unit fill bytes (ffcdfl).");
-            return *status;
-        }
-
-        let chfill: c_char = if fptr.Fptr.hdutype == ASCII_TBL {
-            32 /* ASCII tables are filled with spaces */
-        } else {
-            0 /* all other extensions are filled with zeros */
-        };
-
-        /*   check for all zeros or blanks   */
-
-        for i in 0..(nfill as usize) {
-            if chbuff[i] != chfill {
-                *status = BAD_DATA_FILL;
-
-                if fptr.Fptr.hdutype == ASCII_TBL {
-                    ffpmsg_str(
-                        "Warning: remaining bytes following ASCII table data are not filled with blanks.",
-                    );
-                } else {
-                    ffpmsg_str(
-                        "Warning: remaining bytes following data are not filled with zeros.",
-                    );
-                }
-                return *status;
-            };
-        }
-        *status
+        unsafe { ffcdfl_safe(&mut *fptr, &mut *status) }
     }
+}
+
+pub fn ffcdfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
+    let mut chbuff: [c_char; BL!()] = [0; BL!()];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /*   check if the data unit is null   */
+    if fptr.Fptr.heapstart == 0 {
+        return *status;
+    }
+
+    /* calculate starting position of the fill bytes, if any */
+    let filpos = fptr.Fptr.datastart + fptr.Fptr.heapstart + fptr.Fptr.heapsize;
+
+    /*   calculate the number of fill bytes   */
+    let nfill = ((filpos + (BL!() - 1)) / BL!() * BL!() - filpos) as c_long;
+    if nfill == 0 {
+        return *status;
+    }
+
+    /*   move to the beginning of the fill bytes   */
+    ffmbyt_safe(fptr, filpos, FALSE as c_int, status);
+
+    if ffgbyt(fptr, nfill as LONGLONG, cast_slice_mut(&mut chbuff), status) > 0 {
+        ffpmsg_str("Error reading data unit fill bytes (ffcdfl).");
+        return *status;
+    }
+
+    let chfill: c_char = if fptr.Fptr.hdutype == ASCII_TBL {
+        32 /* ASCII tables are filled with spaces */
+    } else {
+        0 /* all other extensions are filled with zeros */
+    };
+
+    /*   check for all zeros or blanks   */
+
+    for i in 0..(nfill as usize) {
+        if chbuff[i] != chfill {
+            *status = BAD_DATA_FILL;
+
+            if fptr.Fptr.hdutype == ASCII_TBL {
+                ffpmsg_str(
+                    "Warning: remaining bytes following ASCII table data are not filled with blanks.",
+                );
+            } else {
+                ffpmsg_str("Warning: remaining bytes following data are not filled with zeros.");
+            }
+            return *status;
+        };
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9314,6 +9411,10 @@ pub fn ffghdt_safe(
 /// environoment.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_is_reentrant() -> c_int {
+    fits_is_reentrant_safe()
+}
+
+pub fn fits_is_reentrant_safe() -> c_int {
     /*
     #ifdef _REENTRANT
            return(1);
@@ -9439,26 +9540,38 @@ pub unsafe extern "C" fn ffgiprll(
             Some(slice::from_raw_parts_mut(naxes, maxaxis as usize))
         };
 
-        if *status > 0 {
-            return *status; /* get NAXISn values */
-        }
-
-        /* don't return the parameter if a null pointer was given */
-
-        if let Some(bitpix) = bitpix {
-            ffgidt_safe(infptr, bitpix, status); /* get BITPIX value */
-        }
-
-        if let Some(naxis) = naxis {
-            ffgidm_safe(infptr, naxis, status); /* get NAXIS value */
-        }
-
-        if let Some(naxes) = naxes {
-            ffgiszll_safe(infptr, maxaxis, naxes, status); /* get NAXISn values */
-        }
-
-        *status
+        ffgiprll_safe(infptr, maxaxis, bitpix, naxis, naxes, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+pub fn ffgiprll_safe(
+    infptr: &mut fitsfile,          /* I - FITS file pointer                   */
+    maxaxis: c_int,                 /* I - max number of axes to return          */
+    bitpix: Option<&mut c_int>,     /* O - image data type                       */
+    naxis: Option<&mut c_int>,      /* O - image dimension (NAXIS value)         */
+    naxes: Option<&mut [LONGLONG]>, /* O - size of image dimensions              */
+    status: &mut c_int,             /* IO - error status      */
+) -> c_int {
+    if *status > 0 {
+        return *status; /* get NAXISn values */
+    }
+
+    /* don't return the parameter if a null pointer was given */
+
+    if let Some(bitpix) = bitpix {
+        ffgidt_safe(infptr, bitpix, status); /* get BITPIX value */
+    }
+
+    if let Some(naxis) = naxis {
+        ffgidm_safe(infptr, naxis, status); /* get NAXIS value */
+    }
+
+    if let Some(naxes) = naxes {
+        ffgiszll_safe(infptr, maxaxis, naxes, status); /* get NAXISn values */
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -10227,29 +10340,40 @@ pub unsafe extern "C" fn ffthdu(
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nhdu = nhdu.as_mut().expect(NULL_MSG);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        let extnum = fptr.HDUposition + 1; /* save the current HDU number */
-        *nhdu = extnum - 1;
-
-        /* if the CHDU is empty or not completely defined, just return */
-        if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
-            return *status;
-        }
-
-        /* loop until EOF */
-        let mut tstatus = 0;
-        let mut ii = extnum;
-        while ffmahd_safe(fptr, ii, None, &mut tstatus) <= 0 {
-            *nhdu = ii;
-            ii += 1
-        }
-        ffmahd_safe(fptr, extnum, None, status); /* restore orig file position */
-        *status
+        ffthdu_safe(fptr, nhdu, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Count the total number of HDUs in the file.
+pub fn ffthdu_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    nhdu: &mut c_int,    /* O - number of HDUs in the file           */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    let extnum = fptr.HDUposition + 1; /* save the current HDU number */
+    *nhdu = extnum - 1;
+
+    /* if the CHDU is empty or not completely defined, just return */
+    if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        return *status;
+    }
+
+    /* loop until EOF */
+    let mut tstatus = 0;
+    let mut ii = extnum;
+    while ffmahd_safe(fptr, ii, None, &mut tstatus) <= 0 {
+        *nhdu = ii;
+        ii += 1
+    }
+    ffmahd_safe(fptr, extnum, None, status); /* restore orig file position */
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -11119,7 +11243,7 @@ pub fn ffdtyp_safe(
 /// for integer keyword value, so may not detect all invalid formats.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffinttyp(
-    cval: *mut c_char,    /* I - formatted string representation of the integer */
+    cval: *const c_char,  /* I - formatted string representation of the integer */
     dtype: *mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
     negative: *mut c_int, /* O - is cval negative? */
     status: *mut c_int,   /* IO - error status */
@@ -11129,7 +11253,17 @@ pub unsafe extern "C" fn ffinttyp(
         let dtype = dtype.as_mut().expect(NULL_MSG);
         let negative = negative.as_mut().expect(NULL_MSG);
         raw_to_slice!(cval);
+        ffinttyp_safer(cval, dtype, negative, status)
+    }
+}
 
+pub unsafe fn ffinttyp_safer(
+    cval: &[c_char],      /* I - formatted string representation of the integer */
+    dtype: &mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
+    negative: &mut c_int, /* O - is cval negative? */
+    status: &mut c_int,   /* IO - error status */
+) -> c_int {
+    unsafe {
         if *status > 0 {
             return *status; /* inherit input status value if > 0 */
         }

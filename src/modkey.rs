@@ -1873,26 +1873,37 @@ pub unsafe extern "C" fn ffikyu(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        strcpy_safe(&mut valstring, cs!(c" ")); /* create a dummy value string */
-        ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status);
-
-        *status
+        ffikyu_safer(fptr, keyname, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a null-valued keyword and comment into the FITS header.
+pub fn ffikyu_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    strcpy_safe(&mut valstring, cs!(c" ")); /* create a dummy value string */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1905,28 +1916,40 @@ pub unsafe extern "C" fn ffikys(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
         raw_to_slice!(value);
-        raw_to_slice!(comm);
+        nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        ffs2c(value, &mut valstring, status); /* put quotes around the string */
-
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status);
-
-        *status
+        ffikys_safer(fptr, keyname, value, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a string keyword into the FITS header at the current position.
+pub fn ffikys_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[c_char],        /* I - keyword value      */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    ffs2c(value, &mut valstring, status); /* put quotes around the string */
+
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1944,6 +1967,32 @@ pub unsafe extern "C" fn ffikls(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+        raw_to_slice!(value);
+        nullable_slice_cstr!(comm);
+
+        ffikls_safe(fptr, keyname, value, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a long string keyword.  This routine supports the
+/// HEASARC long string convention and can insert arbitrarily long string
+/// keyword values.  The value is continued over multiple keywords that
+/// have the name COMTINUE without an equal sign in column 9 of the card.
+/// This routine also supports simple string keywords which are less than
+/// 69 characters in length.
+pub fn ffikls_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer        */
+    keyname: &[c_char],      /* I - name of keyword to write */
+    value: &[c_char],        /* I - keyword value            */
+    comm: Option<&[c_char]>, /* I - keyword comment          */
+    status: &mut c_int,      /* IO - error status            */
+) -> c_int {
     todo!();
 }
 
@@ -1957,25 +2006,38 @@ pub unsafe extern "C" fn ffikyl(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
-        raw_to_slice!(comm);
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
+        nullable_slice_cstr!(comm);
 
-        ffl2c(value, &mut valstring, status); /* convert logical to 'T' or 'F' */
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status); /* write the keyword*/
-
-        *status
+        ffikyl_safer(fptr, keyname, value, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a logical keyword into the FITS header at the current position.
+pub fn ffikyl_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: c_int,            /* I - keyword value      */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    ffl2c(value, &mut valstring, status); /* convert logical to 'T' or 'F' */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2022,6 +2084,30 @@ pub fn ffikyj_safe(
 }
 
 /*--------------------------------------------------------------------------*/
+pub fn ffikyf_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: f32,              /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    ffr2f(value, decim, &mut valstring, status); /* convert to formatted string */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffikyf(
     fptr: *mut fitsfile,    /* I - FITS file pointer  */
@@ -2032,25 +2118,13 @@ pub unsafe extern "C" fn ffikyf(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
-        raw_to_slice!(comm);
+        nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        ffr2f(value, decim, &mut valstring, status); /* convert to formatted string */
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status); /* write the keyword*/
-
-        *status
+        ffikyf_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -2065,26 +2139,39 @@ pub unsafe extern "C" fn ffikye(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
-        raw_to_slice!(comm);
+        nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        ffr2e(value, decim, &mut valstring, status); /* convert to formatted string */
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status); /* write the keyword*/
-
-        *status
+        ffikye_safer(fptr, keyname, value, decim, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a float keyword into the FITS header at the current position.
+pub fn ffikye_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: f32,              /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    ffr2e(value, decim, &mut valstring, status); /* convert to formatted string */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2098,26 +2185,39 @@ pub unsafe extern "C" fn ffikyg(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
-        raw_to_slice!(comm);
+        nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        ffd2f(value, decim, &mut valstring, status); /* convert to formatted string */
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status); /* write the keyword*/
-
-        *status
+        ffikyg_safer(fptr, keyname, value, decim, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a double keyword into the FITS header at the current position.
+pub fn ffikyg_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: f64,              /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    ffd2f(value, decim, &mut valstring, status); /* convert to formatted string */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2131,26 +2231,39 @@ pub unsafe extern "C" fn ffikyd(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
-        raw_to_slice!(comm);
+        nullable_slice_cstr!(comm);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        ffd2e(value, decim, &mut valstring, status); /* convert to formatted string */
-        ffmkky_safe(keyname, &valstring, Some(comm), &mut card, status); /* construct the keyword*/
-        ffikey_safe(fptr, &card, status); /* write the keyword*/
-
-        *status
+        ffikyd_safer(fptr, keyname, value, decim, comm, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a double keyword into the FITS header at the current position.
+pub fn ffikyd_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: f64,              /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    ffd2e(value, decim, &mut valstring, status); /* convert to formatted string */
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2162,6 +2275,28 @@ pub unsafe extern "C" fn ffikfc(
     decim: c_int,           /* I - no of decimals     */
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let value = value.as_ref().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+        nullable_slice_cstr!(comm);
+
+        ffikfc_safer(fptr, keyname, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a complex float keyword into the FITS header at the current position.
+pub fn ffikfc_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -2176,6 +2311,28 @@ pub unsafe extern "C" fn ffikyc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    unsafe {
+        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let value = value.as_ref().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+        nullable_slice_cstr!(comm);
+
+        ffikyc_safer(fptr, keyname, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a complex float keyword into the FITS header at the current position.
+pub fn ffikyc_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
     todo!();
 }
 
@@ -2188,6 +2345,28 @@ pub unsafe extern "C" fn ffikfm(
     decim: c_int,           /* I - no of decimals     */
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
+) -> c_int {
+    unsafe {
+        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let value = value.as_ref().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+        nullable_slice_cstr!(comm);
+
+        ffikfm_safer(fptr, keyname, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a complex double keyword into the FITS header at the current position.
+pub fn ffikfm_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -2458,7 +2637,24 @@ pub unsafe extern "C" fn ffdstr(
     string: *const c_char, /* I - keyword name       */
     status: *mut c_int,    /* IO - error status      */
 ) -> c_int {
-    todo!();
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(string);
+
+        ffdstr_safe(fptr, string, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// delete a specified header keyword containing the input string
+pub fn ffdstr_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer  */
+    string: &[c_char],   /* I - keyword string     */
+    status: &mut c_int,  /* IO - error status      */
+) -> c_int {
+    todo!()
 }
 
 /*--------------------------------------------------------------------------*/

@@ -354,64 +354,88 @@ pub unsafe extern "C" fn ffgnxk(
     status: *mut c_int,            /* IO - error status                  */
 ) -> c_int {
     unsafe {
-        let mut casesn: c_int = 0;
-        let mut is_match: c_int = 0;
-        let mut exact: c_int = 0;
-        let mut namelen: c_int = 0;
-
-        let mut keybuf: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        let nexc = nexc as usize;
-        let ninc = ninc as usize;
-
-        let inclist = slice::from_raw_parts(inclist, ninc);
-        let exclist = slice::from_raw_parts(exclist, nexc);
+        let inclist = slice::from_raw_parts(inclist, ninc as usize);
+        let exclist = slice::from_raw_parts(exclist, nexc as usize);
         let card = slice::from_raw_parts_mut(card, FLEN_CARD);
 
-        card[0] = 0;
+        // Convert C string arrays to Rust string slices
+        let inclist_strs: Vec<&[c_char]> = inclist
+            .iter()
+            .map(|ptr| cast_slice(CStr::from_ptr(*ptr).to_bytes_with_nul()))
+            .collect();
+        let exclist_strs: Vec<&[c_char]> = exclist
+            .iter()
+            .map(|ptr| cast_slice(CStr::from_ptr(*ptr).to_bytes_with_nul()))
+            .collect();
 
-        if *status > 0 {
-            return *status;
-        }
+        ffgnxk_safe(fptr, &inclist_strs, ninc, &exclist_strs, nexc, card, status)
+    }
+}
 
-        casesn = FALSE as c_int;
+/*--------------------------------------------------------------------------*/
+/// Return the next keyword that matches one of the names in inclist
+/// but does not match any of the names in exclist.  The search
+/// goes from the current position to the end of the header, only.
+/// Wild card characters may be used in the name lists ('*', '?' and '#').
+pub fn ffgnxk_safe(
+    fptr: &mut fitsfile,   /* I - FITS file pointer              */
+    inclist: &[&[c_char]], /* I - list of included keyword names */
+    ninc: c_int,           /* I - number of names in inclist     */
+    exclist: &[&[c_char]], /* I - list of excluded keyword names */
+    nexc: c_int,           /* I - number of names in exclist     */
+    card: &mut [c_char],   /* O - first matching keyword         */
+    status: &mut c_int,    /* IO - error status                  */
+) -> c_int {
+    let mut casesn: c_int = 0;
+    let mut is_match: c_int = 0;
+    let mut exact: c_int = 0;
+    let mut namelen: c_int = 0;
 
-        /* get next card, and return with an error if hit end of header */
-        while ffgcrd_safe(fptr, cs!(c"*"), &mut keybuf, status) <= 0 {
-            ffgknm_safe(&keybuf, &mut keyname, &mut namelen, status); /* get the keyword name */
+    let mut keybuf: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
 
-            /* does keyword match any names in the include list? */
-            for ii in 0..ninc {
-                let inclist_ii = cast_slice(CStr::from_ptr(inclist[ii]).to_bytes_with_nul());
+    let nexc = nexc as usize;
+    let ninc = ninc as usize;
 
-                ffcmps_safe(inclist_ii, &keyname, casesn, &mut is_match, &mut exact);
-                if is_match != 0 {
-                    /* does keyword match any names in the exclusion list? */
-                    let mut jj = 0;
-                    while jj < nexc {
-                        let exclist_ii =
-                            cast_slice(CStr::from_ptr(exclist[jj]).to_bytes_with_nul());
-                        ffcmps_safe(exclist_ii, &keyname, casesn, &mut is_match, &mut exact);
-                        if is_match != 0 {
-                            break;
-                        }
-                        jj += 1;
+    card[0] = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    casesn = FALSE as c_int;
+
+    /* get next card, and return with an error if hit end of header */
+    while ffgcrd_safe(fptr, cs!(c"*"), &mut keybuf, status) <= 0 {
+        ffgknm_safe(&keybuf, &mut keyname, &mut namelen, status); /* get the keyword name */
+
+        /* does keyword match any names in the include list? */
+        for ii in 0..ninc {
+            let inclist_ii = inclist[ii];
+            ffcmps_safe(inclist_ii, &keyname, casesn, &mut is_match, &mut exact);
+            if is_match != 0 {
+                /* does keyword match any names in the exclusion list? */
+                let mut jj = 0;
+                while jj < nexc {
+                    ffcmps_safe(exclist[jj], &keyname, casesn, &mut is_match, &mut exact);
+                    if is_match != 0 {
+                        break;
                     }
+                    jj += 1;
+                }
 
-                    if jj >= nexc {
-                        /* not in exclusion list, so return this keyword */
-                        strcat_safe(card, &keybuf);
-                        return *status;
-                    }
+                if jj >= nexc {
+                    /* not in exclusion list, so return this keyword */
+                    strcat_safe(card, &keybuf);
+                    return *status;
                 }
             }
         }
-        *status
     }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -936,44 +960,58 @@ pub unsafe extern "C" fn ffgstr(
     status: *mut c_int,    /* IO - error status            */
 ) -> c_int {
     unsafe {
-        let mut nkeys: c_int = 0;
-        let mut nextkey: c_int = 0;
-        let mut ntodo: c_int = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let card = slice::from_raw_parts_mut(card, FLEN_CARD);
         raw_to_slice!(string);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        let stringlen = strlen_safe(string);
-        if stringlen > 80 {
-            *status = KEY_NO_EXIST; /* matching string is too long to exist */
-            return *status;
-        }
-
-        ffghps_safe(fptr, Some(&mut nkeys), Some(&mut nextkey), status); /* get no. keywords and position */
-        ntodo = nkeys - nextkey + 1; /* first, read from next keyword to end */
-
-        for jj in 0..2 {
-            for kk in 0..(ntodo as usize) {
-                ffgnky(fptr, card, status); /* get next keyword */
-                if strstr_safe(card, string).is_some() {
-                    return *status; /* found the matching string */
-                }
-            }
-
-            ffmaky_safe(fptr, 1, status); /* reset pointer to beginning of header */
-            ntodo = nextkey - 1; /* number of keyword to read */
-        }
-
-        *status = KEY_NO_EXIST; /* couldn't find the keyword */
-        *status
+        ffgstr_safe(fptr, string, card, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read (get) the next keyword record that contains the input character string,
+/// returning the entire keyword card up to 80 characters long.
+/// The returned card value is null terminated with any trailing blank
+/// characters removed.
+pub fn ffgstr_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer        */
+    string: &[c_char],   /* I - string to match  */
+    card: &mut [c_char], /* O - keyword card             */
+    status: &mut c_int,  /* IO - error status            */
+) -> c_int {
+    let mut nkeys: c_int = 0;
+    let mut nextkey: c_int = 0;
+    let mut ntodo: c_int = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let stringlen = strlen_safe(string);
+    if stringlen > 80 {
+        *status = KEY_NO_EXIST; /* matching string is too long to exist */
+        return *status;
+    }
+
+    ffghps_safe(fptr, Some(&mut nkeys), Some(&mut nextkey), status); /* get no. keywords and position */
+    ntodo = nkeys - nextkey + 1; /* first, read from next keyword to end */
+
+    for jj in 0..2 {
+        for kk in 0..(ntodo as usize) {
+            ffgnky(fptr, card, status); /* get next keyword */
+            if strstr_safe(card, string).is_some() {
+                return *status; /* found the matching string */
+            }
+        }
+
+        ffmaky_safe(fptr, 1, status); /* reset pointer to beginning of header */
+        ntodo = nextkey - 1; /* number of keyword to read */
+    }
+
+    *status = KEY_NO_EXIST; /* couldn't find the keyword */
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1083,15 +1121,27 @@ pub unsafe extern "C" fn ffgunt(
     status: *mut c_int,     /* IO - error status             */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let unit = slice::from_raw_parts_mut(unit, FLEN_COMMENT); //WARNING: See above
 
         raw_to_slice!(keyname);
+
+        ffgunt_safer(fptr, keyname, unit, status)
+    }
+}
+
+/// Safe wrapper for ffgunt that handles null pointer checks
+pub fn ffgunt_safer(
+    fptr: &mut fitsfile, /* I - FITS file pointer         */
+    keyname: &[c_char],  /* I - name of keyword to read   */
+    unit: &mut [c_char], /* O - keyword units             */
+    status: &mut c_int,  /* IO - error status             */
+) -> c_int {
+    unsafe {
+        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
         if *status > 0 {
             return *status;
@@ -1147,8 +1197,19 @@ pub unsafe extern "C" fn ffgkys(
 
         let value = slice::from_raw_parts_mut(value, 69);
 
-        ffgkys_safe(fptr, keyname, value, c, status)
+        ffgkys_safer(fptr, keyname, value, c, status)
     }
+}
+
+/// Safe wrapper for ffgkys that handles null pointer checks
+pub(crate) fn ffgkys_safer(
+    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
+    keyname: &[c_char],                        /* I - name of keyword to read   */
+    value: &mut [c_char],                      /* O - keyword value             */
+    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
+    status: &mut c_int,                        /* IO - error status             */
+) -> c_int {
+    unsafe { ffgkys_safe(fptr, keyname, value, comm, status) }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1189,8 +1250,6 @@ pub unsafe extern "C" fn ffgksl(
     status: *mut c_int,     /* IO - error status                 */
 ) -> c_int {
     unsafe {
-        let mut dummy = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let length = length.as_mut().expect(NULL_MSG);
@@ -1201,10 +1260,27 @@ pub unsafe extern "C" fn ffgksl(
             return *status;
         }
 
-        ffgkcsl_safe(fptr, keyname, length, &mut dummy, status);
-
-        *status
+        ffgksl_safe(fptr, keyname, length, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the length of the keyword value string.
+/// This routine explicitly supports the CONTINUE convention for long string values.
+pub fn ffgksl_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer             */
+    keyname: &[c_char],  /* I - name of keyword to read       */
+    length: &mut c_int,  /* O - length of the string value    */
+    status: &mut c_int,  /* IO - error status                 */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut dummy_comlength = 0;
+    ffgkcsl_safe(fptr, keyname, length, &mut dummy_comlength, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1289,6 +1365,35 @@ pub unsafe extern "C" fn ffgkls(
     status: *mut c_int,      /* IO - error status             */
 ) -> c_int {
     unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let value = value.as_mut().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+
+        let c: Option<&mut [c_char; FLEN_COMMENT]> = if comm.is_null() {
+            None
+        } else {
+            Some(
+                slice::from_raw_parts_mut(comm, FLEN_COMMENT)
+                    .try_into()
+                    .unwrap(),
+            )
+        };
+
+        ffgkls_safer(fptr, keyname, value, c, status)
+    }
+}
+
+/// Safe wrapper for ffgkls that handles null pointer checks
+pub fn ffgkls_safer(
+    fptr: &mut fitsfile,                           /* I - FITS file pointer         */
+    keyname: &[c_char],                            /* I - name of keyword to read       */
+    value: &mut *mut c_char,                       /* O - pointer to keyword value      */
+    mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
+    status: &mut c_int,                            /* IO - error status             */
+) -> c_int {
+    unsafe {
         let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
         let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1299,21 +1404,6 @@ pub unsafe extern "C" fn ffgkls(
         let mut commspace = 0;
         let mut len;
 
-        let status = status.as_mut().expect(NULL_MSG);
-        let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        raw_to_slice!(keyname);
-
-        let mut c: Option<&mut [c_char; FLEN_COMMENT]> = if comm.is_null() {
-            None
-        } else {
-            Some(
-                slice::from_raw_parts_mut(comm, FLEN_COMMENT)
-                    .try_into()
-                    .unwrap(),
-            )
-        };
-
         if *status > 0 {
             return *status;
         }
@@ -1321,8 +1411,8 @@ pub unsafe extern "C" fn ffgkls(
         *value = ptr::null_mut(); /* initialize a null pointer in case of error */
 
         card[0] = 0;
-        if let Some(comm) = c.as_deref_mut() {
-            comm[0] = 0;
+        if let Some(c) = comm.as_deref_mut() {
+            c[0] = 0;
         }
 
         ffgcrd_safe(fptr, keyname, &mut card, status);
@@ -1335,19 +1425,13 @@ pub unsafe extern "C" fn ffgkls(
             addCommDelim = true;
         }
 
-        ffpsvc_safe(&card, &mut valstring, c, status);
+        ffpsvc_safe(&card, &mut valstring, comm.as_deref_mut(), status);
 
         if *status > 0 {
             return *status;
         }
 
-        let mut c = if comm.is_null() {
-            None
-        } else {
-            Some(slice::from_raw_parts_mut(comm, 69))
-        };
-
-        if let Some(c) = c.as_deref_mut() {
+        if let Some(c) = comm.as_deref_mut() {
             /* remaining space in comment string */
             commspace = FLEN_COMMENT - 1 - strlen_safe(c);
         }
@@ -1391,7 +1475,7 @@ pub unsafe extern "C" fn ffgkls(
                             /* If in here, input 'comm' cannot be 0 */
                             /* concantenate comment strings (if any) */
 
-                            let c = c.as_deref_mut().unwrap();
+                            let c = comm.as_deref_mut().unwrap();
 
                             if strlen_safe(c) != 0 && addCommDelim {
                                 strcat_safe(c, cs!(c" "));
@@ -1459,22 +1543,13 @@ pub unsafe extern "C" fn ffgsky(
     status: *mut c_int, /* IO - error status                 */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-
-        let mut commspace = 0;
-        let mut addCommDelim = false;
-        let mut keynum = 0;
-        let mut len = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(keyname);
 
         // comm is an output, only know size is limited to 69 chars including null
-        let mut c: Option<&mut [c_char; FLEN_COMMENT]> = if comm.is_null() {
+        let c: Option<&mut [c_char; FLEN_COMMENT]> = if comm.is_null() {
             None
         } else {
             Some(
@@ -1484,120 +1559,168 @@ pub unsafe extern "C" fn ffgsky(
             )
         };
 
-        if *status > 0 {
-            return *status;
-        }
+        let value = slice::from_raw_parts_mut(value, maxchar as usize);
 
-        *value = 0;
-        if !valuelen.is_null() {
-            *valuelen = 0;
-        }
+        let valuelen = valuelen.as_mut();
 
-        card[0] = 0;
-        if let Some(comm) = c.as_deref_mut() {
-            comm[0] = 0;
-        }
+        ffgsky_safer(
+            fptr, keyname, firstchar, maxchar, value, valuelen, c, status,
+        )
+    }
+}
 
-        ffgcrd_safe(fptr, keyname, &mut card, status);
+/// Safe wrapper for ffgsky that handles null pointer checks
+pub(crate) fn ffgsky_safer(
+    fptr: &mut fitsfile, /* I - FITS file pointer             */
+    keyname: &[c_char],  /* I - name of keyword to read       */
+    firstchar: c_int,    /* I - first character of string to return */
+    maxchar: c_int,      /* I - maximum length of string to return */
+    /*    (string will be null terminated)  */
+    value: &mut [c_char],         /* O - pointer to keyword value      */
+    valuelen: Option<&mut c_int>, /* O - total length of the keyword value string */
+    /*     The returned 'value' string may only */
+    /*     contain a piece of the total string, depending */
+    /*     on the value of firstchar and maxchar */
+    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
+    status: &mut c_int,                        /* IO - error status                 */
+) -> c_int {
+    unsafe {
+        ffgsky_safe(
+            fptr, keyname, firstchar, maxchar, value, valuelen, comm, status,
+        )
+    }
+}
 
-        if *status > 0 {
-            return *status;
-        }
+/// Safe version of ffgsky that operates on safe Rust types
+pub fn ffgsky_safe(
+    fptr: &mut fitsfile,              /* I - FITS file pointer             */
+    keyname: &[c_char],               /* I - name of keyword to read       */
+    firstchar: c_int,                 /* I - first character of string to return */
+    maxchar: c_int,                   /* I - maximum length of string to return */
+    value: &mut [c_char],             /* O - pointer to keyword value      */
+    mut valuelen: Option<&mut c_int>, /* O - total length of the keyword value string */
+    mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
+    status: &mut c_int,               /* IO - error status                 */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        if strlen_safe(&card) < FLEN_CARD - 1 {
-            addCommDelim = true;
-        }
+    let mut commspace = 0;
+    let mut addCommDelim = false;
+    let mut keynum = 0;
+    let mut len = 0;
 
-        ffpsvc_safe(&card, &mut valstring, c.as_deref_mut(), status);
+    if *status > 0 {
+        return *status;
+    }
 
-        if *status > 0 {
-            return *status;
-        }
+    value[0] = 0;
+    if let Some(valuelen) = valuelen.as_deref_mut() {
+        *valuelen = 0;
+    }
 
-        if !comm.is_null() {
-            /* remaining space in comment string */
-            let c = slice::from_raw_parts(comm, FLEN_COMMENT);
-            commspace = FLEN_COMMENT - 1 - strlen_safe(c);
-        }
+    card[0] = 0;
+    if let Some(comm) = comm.as_deref_mut() {
+        comm[0] = 0;
+    }
 
-        let mut tempstring: Vec<c_char>;
+    ffgcrd_safe(fptr, keyname, &mut card, status);
 
-        if valstring[0] == 0 {
-            /* null value string? */
-            tempstring = vec![0; 1]; /* allocate and return a null string */
-        } else {
-            /* allocate space,  plus 1 for null */
-            tempstring = vec![0; strlen_safe(&valstring) + 1];
+    if *status > 0 {
+        return *status;
+    }
 
-            ffc2s(&valstring, tempstring.as_mut_slice(), status); /* convert string to value */
-            len = strlen_safe(&tempstring);
+    if strlen_safe(&card) < FLEN_CARD - 1 {
+        addCommDelim = true;
+    }
 
-            /* If last character is a & then value may be continued on next keyword */
-            let mut contin = true;
-            while contin && *status <= 0 {
-                if len != 0 && tempstring[len - 1] == bb(b'&') {
-                    /*  is last char an ampersand?  */
-                    valstring[0] = 0;
-                    nextcomm[0] = 0;
-                    ffgcnt(fptr, &mut valstring, Some(&mut nextcomm), status);
+    ffpsvc_safe(&card, &mut valstring, comm.as_deref_mut(), status);
 
-                    if valstring[0] != 0 || nextcomm[0] != 0 {
-                        /* If either valstring or nextcom is filled, this must be a CONTINUE line */
+    if *status > 0 {
+        return *status;
+    }
 
-                        tempstring[len - 1] = 0; /* erase the trailing & char */
+    if let Some(comm) = comm.as_deref() {
+        /* remaining space in comment string */
+        commspace = FLEN_COMMENT - 1 - strlen_safe(comm);
+    }
 
-                        if valstring[0] != 0 {
-                            len += strlen_safe(&valstring) - 1;
-                            tempstring.resize(len + 1, 0); /* increase size */
-                            strcat_safe(tempstring.as_mut_slice(), &valstring); /* append the continued chars */
-                        }
+    let mut tempstring: Vec<c_char>;
 
-                        if (commspace > 0) && (nextcomm[0] != 0) {
-                            /* If in here, input 'comm' cannot be 0 */
-                            /* concantenate comment strings (if any) */
+    if valstring[0] == 0 {
+        /* null value string? */
+        tempstring = vec![0; 1]; /* allocate and return a null string */
+    } else {
+        /* allocate space,  plus 1 for null */
+        tempstring = vec![0; strlen_safe(&valstring) + 1];
 
-                            let c = c.as_deref_mut().unwrap();
+        ffc2s(&valstring, tempstring.as_mut_slice(), status); /* convert string to value */
+        len = strlen_safe(&tempstring);
 
-                            if strlen_safe(c) != 0 && addCommDelim {
-                                strcat_safe(c, cs!(c" "));
-                                commspace -= 1;
-                            }
-                            strncat_safe(c, &nextcomm, commspace);
-                            commspace = FLEN_COMMENT - 1 - strlen_safe(c);
-                        }
-                        /* Determine if a space delimiter is needed for next
-                        comment concatenation (if any).  Assume it is if card length
-                        of the most recently read keyword is less than max.
-                        keynum is 1-based. */
-                        ffghps_safe(fptr, Some(&mut 0), Some(&mut keynum), status);
-                        ffgrec_safe(fptr, keynum - 1, Some(&mut card), status);
-                        addCommDelim = strlen_safe(&card) < FLEN_CARD - 1;
-                    } else {
-                        contin = false;
+        /* If last character is a & then value may be continued on next keyword */
+        let mut contin = true;
+        while contin && *status <= 0 {
+            if len != 0 && tempstring[len - 1] == bb(b'&') {
+                /*  is last char an ampersand?  */
+                valstring[0] = 0;
+                nextcomm[0] = 0;
+                ffgcnt(fptr, &mut valstring, Some(&mut nextcomm), status);
+
+                if valstring[0] != 0 || nextcomm[0] != 0 {
+                    /* If either valstring or nextcom is filled, this must be a CONTINUE line */
+
+                    tempstring[len - 1] = 0; /* erase the trailing & char */
+
+                    if valstring[0] != 0 {
+                        len += strlen_safe(&valstring) - 1;
+                        tempstring.resize(len + 1, 0); /* increase size */
+                        strcat_safe(tempstring.as_mut_slice(), &valstring); /* append the continued chars */
                     }
+
+                    if (commspace > 0) && (nextcomm[0] != 0) {
+                        /* If in here, input 'comm' cannot be None */
+                        /* concantenate comment strings (if any) */
+
+                        let c = comm.as_deref_mut().unwrap();
+
+                        if strlen_safe(c) != 0 && addCommDelim {
+                            strcat_safe(c, cs!(c" "));
+                            commspace -= 1;
+                        }
+                        strncat_safe(c, &nextcomm, commspace);
+                        commspace = FLEN_COMMENT - 1 - strlen_safe(c);
+                    }
+                    /* Determine if a space delimiter is needed for next
+                    comment concatenation (if any).  Assume it is if card length
+                    of the most recently read keyword is less than max.
+                    keynum is 1-based. */
+                    ffghps_safe(fptr, Some(&mut 0), Some(&mut keynum), status);
+                    ffgrec_safe(fptr, keynum - 1, Some(&mut card), status);
+                    addCommDelim = strlen_safe(&card) < FLEN_CARD - 1;
                 } else {
                     contin = false;
                 }
+            } else {
+                contin = false;
             }
         }
-
-        len = strlen_safe(&tempstring);
-        if firstchar <= len as c_int {
-            let value = slice::from_raw_parts_mut(value, maxchar as usize);
-
-            strncat_safe(
-                value,
-                &tempstring[(firstchar as usize - 1)..],
-                maxchar as usize,
-            );
-        }
-
-        if !valuelen.is_null() {
-            *valuelen = len as c_int; /* total length of the keyword value */
-        }
-
-        *status
     }
+
+    len = strlen_safe(&tempstring);
+    if firstchar <= len as c_int {
+        strncat_safe(
+            value,
+            &tempstring[(firstchar as usize - 1)..],
+            maxchar as usize,
+        );
+    }
+
+    if let Some(valuelen) = valuelen.as_deref_mut() {
+        *valuelen = len as c_int; /* total length of the keyword value */
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1636,6 +1759,30 @@ pub unsafe extern "C" fn ffgskyc(
             false => Some(slice::from_raw_parts_mut(value, 1 + maxchar as usize)),
         };
 
+        ffgskyc_safer(
+            fptr, keyname, firstchar, maxchar, maxcomchar, value, valuelen, comm, comlen, status,
+        )
+    }
+}
+
+/// Safe wrapper for ffgskyc that handles null pointer checks
+pub fn ffgskyc_safer(
+    fptr: &mut fitsfile, /* I - FITS file pointer             */
+    keyname: &[c_char],  /* I - name of keyword to read       */
+    firstchar: c_int,    /* I - first character of string to return */
+    maxchar: c_int,      /* I - maximum length of string to return */
+    /*    (string will be null terminated)  */
+    maxcomchar: c_int,            /* I - maximum length of comment to return */
+    value: Option<&mut [c_char]>, /* O - pointer to keyword value      */
+    valuelen: &mut c_int,         /* O - total length of the keyword value string */
+    /*     The returned 'value' string may only */
+    /*     contain a piece of the total string, depending */
+    /*     on the value of firstchar and maxchar */
+    comm: Option<&mut [c_char]>, /* O - keyword comment (may be NULL) */
+    comlen: &mut c_int,          /* O - total length of the comment string */
+    status: &mut c_int,          /* IO - error status                 */
+) -> c_int {
+    unsafe {
         if *status > 0 {
             return *status;
         }
@@ -1823,24 +1970,35 @@ pub unsafe extern "C" fn fffree(
     status: *mut c_int, /* IO - error status             */
 ) -> c_int {
     unsafe {
-        if *status > 0 {
-            return *status;
-        }
-
-        if !value.is_null() {
-            // HEAP DEALLOCATION
-
-            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-            let alloc = alloc_lock.remove(&(value as usize));
-            if let Some((l, c)) = alloc {
-                // HEAP DEALLOCATION
-                let _ = Vec::from_raw_parts(value, l, c);
-            } else {
-                let _ = Vec::from_raw_parts(value, 1, 1);
-            }
-        }
-        *status
+        let status = status.as_mut().expect(NULL_MSG);
+        fffree_safer(value, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Free memory allocated by FITS library functions.
+/// This function deallocates memory that was previously allocated by other
+/// FITS library functions and tracked in the global allocations map.
+pub unsafe fn fffree_safer(
+    value: *mut c_void, /* I - pointer to keyword value  */
+    status: &mut c_int, /* IO - error status             */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    if !value.is_null() {
+        // HEAP DEALLOCATION
+        let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+        let alloc = alloc_lock.remove(&(value as usize));
+        if let Some((l, c)) = alloc {
+            // HEAP DEALLOCATION
+            let _ = unsafe { Vec::from_raw_parts(value, l, c) };
+        } else {
+            let _ = unsafe { Vec::from_raw_parts(value, 1, 1) };
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2423,8 +2581,6 @@ pub unsafe extern "C" fn ffgkyt(
     status: *mut c_int,     /* IO - error status             */
 ) -> c_int {
     unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let ivalue = ivalue.as_mut().expect(NULL_MSG);
@@ -2443,11 +2599,27 @@ pub unsafe extern "C" fn ffgkyt(
             )
         };
 
+        ffgkyt_safer(fptr, keyname, ivalue, fraction, c, status)
+    }
+}
+
+/// Safe wrapper for ffgkyt that handles null pointer checks
+pub fn ffgkyt_safer(
+    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
+    keyname: &[c_char],                        /* I - name of keyword to read   */
+    ivalue: &mut c_long,                       /* O - integer part of keyword value     */
+    fraction: &mut f64,                        /* O - fractional part of keyword value  */
+    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
+    status: &mut c_int,                        /* IO - error status             */
+) -> c_int {
+    unsafe {
+        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
         if *status > 0 {
             return *status;
         }
 
-        ffgkey_safe(fptr, keyname, &mut valstring, c, status); /* read the keyword */
+        ffgkey_safe(fptr, keyname, &mut valstring, comm, status); /* read the keyword */
 
         /*  read the entire value string as a double, to get the integer part */
         ffc2d(&valstring, fraction, status);
@@ -2724,103 +2896,117 @@ pub unsafe extern "C" fn ffgknl(
     status: *mut c_int,     /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        //int nend, lenroot, ii, nkeys, mkeys, tstatus, undefinedval;
-        //long ival;
-        let mut nkeys: c_int = 0;
-        let mut mkeys: c_int = 0;
-        let mut ival: c_long = 0;
-
-        let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut keyindex: [c_char; 8] = [0; 8];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let nmax = nmax as usize;
-        let nstart = nstart as usize;
-
-        // *equalssign;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nfound = nfound.as_mut().expect(NULL_MSG);
+
         raw_to_slice!(keyname);
 
-        let value = slice::from_raw_parts_mut(value, nmax);
+        let value = slice::from_raw_parts_mut(value, nmax as usize);
 
-        if *status > 0 {
+        ffgknl_safe(fptr, keyname, nstart, nmax, value, nfound, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read (get) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NMAX -1) inclusive.  
+/// The returned value = 1 if the keyword is true, else = 0 if false.
+pub fn ffgknl_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    keyname: &[c_char],  /* I - root name of keywords to read        */
+    nstart: c_int,       /* I - starting index number                */
+    nmax: c_int,         /* I - maximum number of keywords to return */
+    value: &mut [c_int], /* O - array of keyword values              */
+    nfound: &mut c_int,  /* O - number of values that were returned  */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    let mut nkeys = 0;
+    let mut mkeys = 0;
+    let mut ival: c_long = 0;
+
+    let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyindex: [c_char; 8] = [0; 8];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let nmax = nmax as usize;
+    let nstart = nstart as usize;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    *nfound = 0;
+    let nend = nstart + nmax - 1;
+
+    keyroot[0] = 0;
+    strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
+
+    let lenroot = strlen_safe(&keyroot);
+
+    if lenroot == 0 {
+        /*  root must be at least 1 char long  */
+        return *status;
+    }
+
+    for ii in 0..(lenroot) {
+        /*  make sure upper case  */
+        keyroot[ii] = toupper(keyroot[ii]);
+    }
+
+    ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
+
+    ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
+
+    let mut undefinedval = false;
+    for ii in 3..=(nkeys as usize) {
+        if ffgnky(fptr, &mut card, status) > 0 {
+            /*  get next keyword  */
             return *status;
         }
 
-        *nfound = 0;
-        let nend = nstart + nmax - 1;
+        if strncmp_safe(&keyroot, &card, lenroot) == 0
+        /* see if keyword matches */
+        {
+            keyindex[0] = 0;
+            let equalssign = strchr_safe(&card, bb(b'='));
 
-        keyroot[0] = 0;
-        strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
-
-        let lenroot = strlen_safe(&keyroot);
-
-        if lenroot == 0 {
-            /*  root must be at least 1 char long  */
-            return *status;
-        }
-
-        for ii in 0..(lenroot) {
-            /*  make sure upper case  */
-            keyroot[ii] = toupper(keyroot[ii]);
-        }
-
-        ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
-
-        ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
-
-        let mut undefinedval = false;
-        for ii in 3..=(nkeys as usize) {
-            if ffgnky(fptr, &mut card, status) > 0 {
-                /*  get next keyword  */
+            if equalssign.is_none() {
+                continue; /* keyword has no value */
+            }
+            let equalssign = equalssign.unwrap();
+            if equalssign - lenroot > 7 {
+                *status = BAD_KEYCHAR;
                 return *status;
             }
+            strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
 
-            if strncmp_safe(&keyroot, &card, lenroot) == 0
-            /* see if keyword matches */
-            {
-                keyindex[0] = 0;
-                let equalssign = strchr_safe(&card, bb(b'='));
+            let mut tstatus = 0;
+            if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
+                /*  test suffix  */
+                let ival = ival as usize;
+                if ival <= nend && ival >= nstart {
+                    ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
+                    ffc2l(&svalue, &mut value[ival - nstart], status); /* convert*/
+                    if (ival - nstart + 1) as c_int > *nfound {
+                        *nfound = (ival - nstart + 1) as c_int; /*  max found */
+                    }
 
-                if equalssign.is_none() {
-                    continue; /* keyword has no value */
-                }
-                let equalssign = equalssign.unwrap();
-                if equalssign - lenroot > 7 {
-                    *status = BAD_KEYCHAR;
-                    return *status;
-                }
-                strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
-
-                let mut tstatus = 0;
-                if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
-                    /*  test suffix  */
-                    let ival = ival as usize;
-                    if ival <= nend && ival >= nstart {
-                        ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
-                        ffc2l(&svalue, &mut value[ival - nstart], status); /* convert*/
-                        if (ival - nstart + 1) as c_int > *nfound {
-                            *nfound = (ival - nstart + 1) as c_int; /*  max found */
-                        }
-
-                        if *status == VALUE_UNDEFINED {
-                            undefinedval = true;
-                            *status = 0; /* reset status to read remaining values */
-                        }
+                    if *status == VALUE_UNDEFINED {
+                        undefinedval = true;
+                        *status = 0; /* reset status to read remaining values */
                     }
                 }
             }
         }
-        if undefinedval && (*status <= 0) {
-            *status = VALUE_UNDEFINED; /* report at least 1 value undefined */
-        }
-
-        *status
     }
+    if undefinedval && (*status <= 0) {
+        *status = VALUE_UNDEFINED; /* report at least 1 value undefined */
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3092,101 +3278,115 @@ pub unsafe extern "C" fn ffgkne(
     status: *mut c_int,     /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut nkeys = 0;
-        let mut mkeys = 0;
-        let mut ival: c_long = 0;
-
-        let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut keyindex: [c_char; 8] = [0; 8];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let nmax = nmax as usize;
-        let nstart = nstart as usize;
-
-        // *equalssign;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nfound = nfound.as_mut().expect(NULL_MSG);
         raw_to_slice!(keyname);
 
-        let value = slice::from_raw_parts_mut(value, nmax);
+        let value = slice::from_raw_parts_mut(value, nmax as usize);
 
-        if *status > 0 {
+        ffgkne_safe(fptr, keyname, nstart, nmax, value, nfound, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read (get) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NMAX -1) inclusive.  
+pub fn ffgkne_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    keyname: &[c_char],  /* I - root name of keywords to read        */
+    nstart: c_int,       /* I - starting index number                */
+    nmax: c_int,         /* I - maximum number of keywords to return */
+    value: &mut [f32],   /* O - array of keyword values              */
+    nfound: &mut c_int,  /* O - number of values that were returned  */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    let mut nkeys = 0;
+    let mut mkeys = 0;
+    let mut ival: c_long = 0;
+
+    let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyindex: [c_char; 8] = [0; 8];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let nmax = nmax as usize;
+    let nstart = nstart as usize;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    *nfound = 0;
+    let nend = nstart + nmax - 1;
+
+    keyroot[0] = 0;
+    strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
+
+    let lenroot = strlen_safe(&keyroot);
+
+    if lenroot == 0 {
+        /*  root must be at least 1 char long  */
+        return *status;
+    }
+    for ii in 0..lenroot {
+        /*  make sure upper case  */
+        keyroot[ii] = toupper(keyroot[ii]);
+    }
+
+    ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
+    ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
+
+    let mut undefinedval = false;
+
+    for ii in 3..=(nkeys) {
+        if ffgnky(fptr, &mut card, status) > 0 {
+            /*  get next keyword  */
             return *status;
         }
 
-        *nfound = 0;
-        let nend = nstart + nmax - 1;
-
-        keyroot[0] = 0;
-        strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
-
-        let lenroot = strlen_safe(&keyroot);
-
-        if lenroot == 0 {
-            /*  root must be at least 1 char long  */
-            return *status;
-        }
-        for ii in 0..lenroot {
-            /*  make sure upper case  */
-            keyroot[ii] = toupper(keyroot[ii]);
-        }
-
-        ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
-        ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
-
-        let mut undefinedval = false;
-
-        for ii in 3..=(nkeys) {
-            if ffgnky(fptr, &mut card, status) > 0 {
-                /*  get next keyword  */
+        if strncmp_safe(&keyroot, &card, lenroot) == 0 {
+            /* see if keyword matches */
+            keyindex[0] = 0;
+            let equalssign = strchr_safe(&card, bb(b'='));
+            if equalssign.is_none() {
+                continue; /* keyword has no value */
+            }
+            let equalssign = equalssign.unwrap();
+            if equalssign - lenroot > 7 {
+                *status = BAD_KEYCHAR;
                 return *status;
             }
 
-            if strncmp_safe(&keyroot, &card, lenroot) == 0 {
-                /* see if keyword matches */
-                keyindex[0] = 0;
-                let equalssign = strchr_safe(&card, bb(b'='));
-                if equalssign.is_none() {
-                    continue; /* keyword has no value */
-                }
-                let equalssign = equalssign.unwrap();
-                if equalssign - lenroot > 7 {
-                    *status = BAD_KEYCHAR;
-                    return *status;
-                }
+            strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
 
-                strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
+            let mut tstatus = 0;
+            if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
+                /*  test suffix  */
+                let ival: usize = ival.try_into().unwrap();
+                if ival <= nend && ival >= nstart {
+                    ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
 
-                let mut tstatus = 0;
-                if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
-                    /*  test suffix  */
-                    let ival: usize = ival.try_into().unwrap();
-                    if ival <= nend && ival >= nstart {
-                        ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
+                    ffc2r(&svalue, &mut value[ival - nstart], status); /* convert */
 
-                        ffc2r(&svalue, &mut value[ival - nstart], status); /* convert */
+                    if (ival - nstart + 1) as c_int > *nfound {
+                        /*  max found */
+                        *nfound = (ival - nstart + 1) as c_int;
+                    }
 
-                        if (ival - nstart + 1) as c_int > *nfound {
-                            /*  max found */
-                            *nfound = (ival - nstart + 1) as c_int;
-                        }
-
-                        if *status == VALUE_UNDEFINED {
-                            undefinedval = true;
-                            *status = 0; /* reset status to read remaining values */
-                        };
+                    if *status == VALUE_UNDEFINED {
+                        undefinedval = true;
+                        *status = 0; /* reset status to read remaining values */
                     };
                 };
             };
-        }
-        if undefinedval && (*status <= 0) {
-            *status = VALUE_UNDEFINED;
-        }
-        *status
+        };
     }
+    if undefinedval && (*status <= 0) {
+        *status = VALUE_UNDEFINED;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3203,103 +3403,117 @@ pub unsafe extern "C" fn ffgknd(
     status: *mut c_int,     /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut nkeys = 0;
-        let mut mkeys = 0;
-        let mut ival: c_long = 0;
-
-        let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut keyindex: [c_char; 8] = [0; 8];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-
-        let nmax = nmax as usize;
-        let nstart = nstart as usize;
-
-        // *equalssign;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
+        let nfound = nfound.as_mut().expect(NULL_MSG);
         raw_to_slice!(keyname);
 
-        let value = slice::from_raw_parts_mut(value, nmax);
+        let value = slice::from_raw_parts_mut(value, nmax as usize);
 
-        if *status > 0 {
+        ffgknd_safe(fptr, keyname, nstart, nmax, value, nfound, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read (get) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NMAX -1) inclusive.  
+pub fn ffgknd_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                    */
+    keyname: &[c_char],  /* I - root name of keywords to read        */
+    nstart: c_int,       /* I - starting index number                */
+    nmax: c_int,         /* I - maximum number of keywords to return */
+    value: &mut [f64],   /* O - array of keyword values              */
+    nfound: &mut c_int,  /* O - number of values that were returned  */
+    status: &mut c_int,  /* IO - error status                        */
+) -> c_int {
+    let mut nkeys = 0;
+    let mut mkeys = 0;
+    let mut ival: c_long = 0;
+
+    let mut keyroot: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyindex: [c_char; 8] = [0; 8];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut svalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let nmax = nmax as usize;
+    let nstart = nstart as usize;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    *nfound = 0;
+    let nend = nstart + nmax - 1;
+
+    keyroot[0] = 0;
+    strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
+
+    let lenroot = strlen_safe(&keyroot);
+
+    if lenroot == 0 {
+        /*  root must be at least 1 char long  */
+        return *status;
+    }
+    for ii in 0..lenroot {
+        /*  make sure upper case  */
+        keyroot[ii] = toupper(keyroot[ii]);
+    }
+
+    ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
+    ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
+
+    let mut undefinedval = false;
+
+    for ii in 3..=(nkeys) {
+        if ffgnky(fptr, &mut card, status) > 0 {
+            /*  get next keyword  */
             return *status;
         }
 
-        *nfound = 0;
-        let nend = nstart + nmax - 1;
-
-        keyroot[0] = 0;
-        strncat_safe(&mut keyroot, keyname, FLEN_KEYWORD - 1);
-
-        let lenroot = strlen_safe(&keyroot);
-
-        if lenroot == 0 {
-            /*  root must be at least 1 char long  */
-            return *status;
-        }
-        for ii in 0..lenroot {
-            /*  make sure upper case  */
-            keyroot[ii] = toupper(keyroot[ii]);
-        }
-
-        ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
-        ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
-
-        let mut undefinedval = false;
-
-        for ii in 3..=(nkeys) {
-            if ffgnky(fptr, &mut card, status) > 0 {
-                /*  get next keyword  */
+        if strncmp_safe(&keyroot, &card, lenroot) == 0 {
+            /* see if keyword matches */
+            keyindex[0] = 0;
+            let equalssign = strchr_safe(&card, bb(b'='));
+            if equalssign.is_none() {
+                continue; /* keyword has no value */
+            }
+            let equalssign = equalssign.unwrap();
+            if equalssign - lenroot > 7 {
+                *status = BAD_KEYCHAR;
                 return *status;
             }
 
-            if strncmp_safe(&keyroot, &card, lenroot) == 0 {
-                /* see if keyword matches */
-                keyindex[0] = 0;
-                let equalssign = strchr_safe(&card, bb(b'='));
-                if equalssign.is_none() {
-                    continue; /* keyword has no value */
-                }
-                let equalssign = equalssign.unwrap();
-                if equalssign - lenroot > 7 {
-                    *status = BAD_KEYCHAR;
-                    return *status;
-                }
+            strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
 
-                strncat_safe(&mut keyindex, &card[lenroot..], equalssign - lenroot); /*  copy suffix  */
+            let mut tstatus = 0;
+            if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
+                /*  test suffix  */
+                let ival: usize = ival.try_into().unwrap();
+                if ival <= nend && ival >= nstart {
+                    /* is index within range? */
 
-                let mut tstatus = 0;
-                if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
-                    /*  test suffix  */
-                    let ival: usize = ival.try_into().unwrap();
-                    if ival <= nend && ival >= nstart {
-                        /* is index within range? */
+                    ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
 
-                        ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
+                    ffc2d(&svalue, &mut value[ival - nstart], status); /* convert */
 
-                        ffc2d(&svalue, &mut value[ival - nstart], status); /* convert */
+                    if (ival - nstart + 1) as c_int > *nfound {
+                        /*  max found */
+                        *nfound = (ival - nstart + 1) as c_int;
+                    }
 
-                        if (ival - nstart + 1) as c_int > *nfound {
-                            /*  max found */
-                            *nfound = (ival - nstart + 1) as c_int;
-                        }
-
-                        if *status == VALUE_UNDEFINED {
-                            undefinedval = true;
-                            *status = 0; /* reset status to read remaining values */
-                        };
+                    if *status == VALUE_UNDEFINED {
+                        undefinedval = true;
+                        *status = 0; /* reset status to read remaining values */
                     };
                 };
             };
-        }
-        if undefinedval && (*status <= 0) {
-            *status = VALUE_UNDEFINED;
-        }
-        *status
+        };
     }
+    if undefinedval && (*status <= 0) {
+        *status = VALUE_UNDEFINED;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3363,28 +3577,41 @@ pub unsafe extern "C" fn ffgtdmll(
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut tstatus = 0;
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let naxis = naxis.as_mut().expect(NULL_MSG);
 
         let naxes = slice::from_raw_parts_mut(naxes, maxdim as usize);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct keyword name */
-
-        ffgkys_safe(fptr, &keyname, &mut tdimstr, None, &mut tstatus); /* try reading keyword */
-
-        ffdtdmll_safe(fptr, &tdimstr, colnum, maxdim, naxis, naxes, status); /* decode it */
-
-        *status
+        ffgtdmll_safer(fptr, colnum, maxdim, naxis, naxes, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get the dimensionality of a column by reading the TDIMnnn keyword.
+pub fn ffgtdmll_safer(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
+    colnum: c_int,          /* I - number of the column to read             */
+    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
+    naxis: &mut c_int,      /* O - number of axes in the data array         */
+    naxes: &mut [LONGLONG], /* O - length of each data axis               */
+    status: &mut c_int,     /* IO - error status                            */
+) -> c_int {
+    let mut tstatus = 0;
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct keyword name */
+
+    ffgkys_safe(fptr, &keyname, &mut tdimstr, None, &mut tstatus); /* try reading keyword */
+
+    ffdtdmll_safe(fptr, &tdimstr, colnum, maxdim, naxis, naxes, status); /* decode it */
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3699,57 +3926,79 @@ pub unsafe extern "C" fn ffghpr(
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut idummy: c_int = 0;
-        let mut lldummy: LONGLONG = 0;
-        let mut ddummy1: f64 = 0.0;
-        let mut ddummy2: f64 = 0.0;
-        let mut tnaxes: [LONGLONG; 99] = [0; 99];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let simple = simple.as_mut().expect(NULL_MSG);
         let bitpix = bitpix.as_mut().expect(NULL_MSG);
-        let mut naxis = naxis.as_mut();
+        let naxis = naxis.as_mut();
         let pcount = pcount.as_mut().expect(NULL_MSG);
         let gcount = gcount.as_mut().expect(NULL_MSG);
         let extend = extend.as_mut().expect(NULL_MSG);
 
-        ffgphd(
-            fptr,
-            maxdim,
-            simple,
-            bitpix,
-            naxis.as_deref_mut(),
-            &mut tnaxes,
-            pcount,
-            gcount,
-            extend,
-            &mut ddummy1,
-            &mut ddummy2,
-            &mut lldummy,
-            &mut idummy,
-            status,
-        );
-
-        if let Some(naxis) = naxis
-            && !naxes.is_null()
-        {
-            let naxes = slice::from_raw_parts_mut(naxes, *naxis as usize);
-
-            let mut ii = 0;
-            while (ii < *naxis) && (ii < maxdim) {
-                naxes[ii as usize] = tnaxes[ii as usize] as c_long;
-                ii += 1;
-            }
-        } else if !naxes.is_null() {
-            let naxes = slice::from_raw_parts_mut(naxes, maxdim as usize);
-            for ii in 0..(maxdim as usize) {
-                naxes[ii] = tnaxes[ii] as c_long;
-            }
-        }
-
-        *status
+        ffghpr_safe(
+            fptr, maxdim, simple, bitpix, naxis, naxes, pcount, gcount, extend, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get keywords from the Header of the Primary array:
+/// Check that the keywords conform to the FITS standard and return the
+/// parameters which determine the size and structure of the primary array
+/// or IMAGE extension.
+pub unsafe fn ffghpr_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
+    maxdim: c_int,                 /* I - maximum no. of dimensions to read;       */
+    simple: &mut c_int,            /* O - does file conform to FITS standard? 1/0  */
+    bitpix: &mut c_int,            /* O - number of bits per data value pixel      */
+    mut naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
+    naxes: *mut c_long,            /* O - length of each data axis                 */
+    pcount: &mut c_long,           /* O - number of group parameters (usually 0)   */
+    gcount: &mut c_long,           /* O - number of random groups (usually 1 or 0) */
+    extend: &mut c_int,            /* O - may FITS file haave extensions?          */
+    status: &mut c_int,            /* IO - error status                            */
+) -> c_int {
+    let mut idummy: c_int = 0;
+    let mut lldummy: LONGLONG = 0;
+    let mut ddummy1: f64 = 0.0;
+    let mut ddummy2: f64 = 0.0;
+    let mut tnaxes: [LONGLONG; 99] = [0; 99];
+
+    ffgphd(
+        fptr,
+        maxdim,
+        simple,
+        bitpix,
+        naxis.as_deref_mut(),
+        &mut tnaxes,
+        pcount,
+        gcount,
+        extend,
+        &mut ddummy1,
+        &mut ddummy2,
+        &mut lldummy,
+        &mut idummy,
+        status,
+    );
+
+    if let Some(naxis_ref) = naxis
+        && !naxes.is_null()
+    {
+        let naxes = unsafe { slice::from_raw_parts_mut(naxes, *naxis_ref as usize) };
+
+        let mut ii = 0;
+        while (ii < *naxis_ref) && (ii < maxdim) {
+            naxes[ii as usize] = tnaxes[ii as usize] as c_long;
+            ii += 1;
+        }
+    } else if !naxes.is_null() {
+        let naxes = unsafe { slice::from_raw_parts_mut(naxes, maxdim as usize) };
+        for ii in 0..(maxdim as usize) {
+            naxes[ii] = tnaxes[ii] as c_long;
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3849,6 +4098,30 @@ pub unsafe extern "C" fn ffghtb(
     status: *mut c_int,      /* IO - error status                            */
 ) -> c_int {
     unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        ffghtb_safer(
+            fptr, maxfield, naxis1, naxis2, tfields, ttype, tbcol, tform, tunit, extnm, status,
+        )
+    }
+}
+
+/// Safe internal implementation of ffghtb
+pub unsafe fn ffghtb_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
+    maxfield: c_int,         /* I - maximum no. of columns to read;          */
+    naxis1: *mut c_long,     /* O - length of table row in bytes             */
+    naxis2: *mut c_long,     /* O - number of rows in the table              */
+    tfields: *mut c_int,     /* O - number of columns in the table           */
+    ttype: *mut *mut c_char, /* O - name of each column                      */
+    tbcol: *mut c_long,      /* O - byte offset in row to each column        */
+    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
+    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
+    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
+    status: &mut c_int,      /* IO - error status                            */
+) -> c_int {
+    unsafe {
         let mut maxf: c_int = 0;
         let mut nfound: c_int = 0;
         let mut tstatus: c_int = 0;
@@ -3861,9 +4134,6 @@ pub unsafe extern "C" fn ffghtb(
         let mut llnaxis1: LONGLONG = 0;
         let mut llnaxis2: LONGLONG = 0;
         let mut pcount: LONGLONG = 0;
-
-        let status = status.as_mut().expect(NULL_MSG);
-        let fptr = fptr.as_mut().expect(NULL_MSG);
 
         if *status > 0 {
             return *status;
@@ -4083,77 +4353,101 @@ pub unsafe extern "C" fn ffghtbll(
     status: *mut c_int,      /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut maxf: c_int = 0;
-        let mut nfound: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut fields: c_long = 0;
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut llnaxis1: LONGLONG = 0;
-        let mut llnaxis2: LONGLONG = 0;
-        let mut pcount: LONGLONG = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        if *status > 0 {
+        ffghtbll_safer(
+            fptr, maxfield, naxis1, naxis2, tfields, ttype, tbcol, tform, tunit, extnm, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get keywords from the Header of the ASCII TaBle:
+/// Check that the keywords conform to the FITS standard and return the
+/// parameters which describe the table.
+pub unsafe fn ffghtbll_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
+    maxfield: c_int,         /* I - maximum no. of columns to read;          */
+    naxis1: *mut LONGLONG,   /* O - length of table row in bytes             */
+    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
+    tfields: *mut c_int,     /* O - number of columns in the table           */
+    ttype: *mut *mut c_char, /* O - name of each column                      */
+    tbcol: *mut LONGLONG,    /* O - byte offset in row to each column        */
+    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
+    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
+    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
+    status: &mut c_int,      /* IO - error status                            */
+) -> c_int {
+    let mut maxf: c_int = 0;
+    let mut nfound: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut fields: c_long = 0;
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut llnaxis1: LONGLONG = 0;
+    let mut llnaxis2: LONGLONG = 0;
+    let mut pcount: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* read the first keyword of the extension */
+    ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
+
+    if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
+        if ffc2s(&value, &mut xtension, status) > 0 {
+            /* get the value string */
+            ffpmsg_str("Bad value string for XTENSION keyword:");
+            ffpmsg_slice(&value);
             return *status;
         }
 
-        /* read the first keyword of the extension */
-        ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
-
-        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
-            if ffc2s(&value, &mut xtension, status) > 0 {
-                /* get the value string */
-                ffpmsg_str("Bad value string for XTENSION keyword:");
-                ffpmsg_slice(&value);
-                return *status;
-            }
-
-            /* allow the quoted string value to begin in any column and */
-            /* allow any number of trailing blanks before the closing quote */
-            /* first char must be a quote */
-            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
-                int_snprintf!(
-                    &mut message,
-                    FLEN_ERRMSG,
-                    "This is not a TABLE extension: {}",
-                    slice_to_str!(&value),
-                );
-                ffpmsg_slice(&message);
-                *status = NOT_ATABLE;
-                return *status;
-            }
-        } else
-        /* error: 1st keyword of extension != XTENSION */
-        {
+        /* allow the quoted string value to begin in any column and */
+        /* allow any number of trailing blanks before the closing quote */
+        /* first char must be a quote */
+        if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,
-                "First keyword of the extension is not XTENSION: {}",
-                slice_to_str!(&name),
+                "This is not a TABLE extension: {}",
+                slice_to_str!(&value),
             );
             ffpmsg_slice(&message);
-            *status = NO_XTENSION;
+            *status = NOT_ATABLE;
             return *status;
         }
+    } else
+    /* error: 1st keyword of extension != XTENSION */
+    {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "First keyword of the extension is not XTENSION: {}",
+            slice_to_str!(&name),
+        );
+        ffpmsg_slice(&message);
+        *status = NO_XTENSION;
+        return *status;
+    }
 
-        if ffgttb(
-            fptr,
-            &mut llnaxis1,
-            &mut llnaxis2,
-            &mut pcount,
-            &mut fields,
-            status,
-        ) > 0
-        {
-            return *status;
-        }
+    if ffgttb(
+        fptr,
+        &mut llnaxis1,
+        &mut llnaxis2,
+        &mut pcount,
+        &mut fields,
+        status,
+    ) > 0
+    {
+        return *status;
+    }
 
+    unsafe {
         if let Some(naxis1) = naxis1.as_mut() {
             *naxis1 = llnaxis1;
         }
@@ -4161,30 +4455,34 @@ pub unsafe extern "C" fn ffghtbll(
         if let Some(naxis2) = naxis2.as_mut() {
             *naxis2 = llnaxis2;
         }
+    }
 
-        if pcount != 0 {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "PCOUNT = {:.0} is illegal in ASCII table; must = 0",
-                pcount as f64,
-            );
-            ffpmsg_slice(&message);
-            *status = BAD_PCOUNT;
-            return *status;
-        }
+    if pcount != 0 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "PCOUNT = {:.0} is illegal in ASCII table; must = 0",
+            pcount as f64,
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_PCOUNT;
+        return *status;
+    }
 
+    unsafe {
         if let Some(tfields) = tfields.as_mut() {
             *tfields = fields as c_int;
         }
+    }
 
-        if maxfield < 0 {
-            maxf = fields as c_int;
-        } else {
-            maxf = cmp::min(maxfield, fields as c_int);
-        }
+    if maxfield < 0 {
+        maxf = fields as c_int;
+    } else {
+        maxf = cmp::min(maxfield, fields as c_int);
+    }
 
-        if maxf > 0 {
+    if maxf > 0 {
+        unsafe {
             for ii in 0..(maxf as usize) {
                 /* initialize optional keyword values */
                 if !ttype.is_null() {
@@ -4242,11 +4540,13 @@ pub unsafe extern "C" fn ffghtbll(
                     status,
                 );
             }
+        }
 
-            if *status > 0 {
-                return *status;
-            }
+        if *status > 0 {
+            return *status;
+        }
 
+        unsafe {
             if !tbcol.is_null() {
                 let tbcol = slice::from_raw_parts_mut(tbcol, maxf as usize);
 
@@ -4288,7 +4588,9 @@ pub unsafe extern "C" fn ffghtbll(
                 }
             }
         }
+    }
 
+    unsafe {
         if !extnm.is_null() {
             let extnm = slice::from_raw_parts_mut(extnm, 69);
             extnm[0] = 0;
@@ -4300,9 +4602,9 @@ pub unsafe extern "C" fn ffghtbll(
                 *status = tstatus; /* keyword not required, so ignore error */
             }
         }
-
-        *status
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4323,81 +4625,104 @@ pub unsafe extern "C" fn ffghbn(
     status: *mut c_int,      /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut maxf: c_int = 0;
-        let mut nfound: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut fields: c_long = 0;
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut naxis1ll: LONGLONG = 0;
-        let mut naxis2ll: LONGLONG = 0;
-        let mut pcountll: LONGLONG = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        if *status > 0 {
+        ffghbn_safer(
+            fptr, maxfield, naxis2, tfields, ttype, tform, tunit, extnm, pcount, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Get keywords from the Header of the BiNary table:
+/// Check that the keywords conform to the FITS standard and return the
+/// parameters which describe the table.
+pub unsafe fn ffghbn_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
+    maxfield: c_int,         /* I - maximum no. of columns to read;          */
+    naxis2: *mut c_long,     /* O - number of rows in the table              */
+    tfields: *mut c_int,     /* O - number of columns in the table           */
+    ttype: *mut *mut c_char, /* O - name of each column                      */
+    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
+    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
+    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
+    pcount: *mut c_long,     /* O - value of PCOUNT keyword                  */
+    status: &mut c_int,      /* IO - error status                            */
+) -> c_int {
+    let mut maxf: c_int = 0;
+    let mut nfound: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut fields: c_long = 0;
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut naxis1ll: LONGLONG = 0;
+    let mut naxis2ll: LONGLONG = 0;
+    let mut pcountll: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* read the first keyword of the extension */
+    ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
+
+    if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
+        if ffc2s(&value, &mut xtension, status) > 0 {
+            /* get the value string */
+            ffpmsg_str("Bad value string for XTENSION keyword:");
+            ffpmsg_slice(&value);
             return *status;
         }
 
-        /* read the first keyword of the extension */
-        ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
-
-        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
-            if ffc2s(&value, &mut xtension, status) > 0 {
-                /* get the value string */
-                ffpmsg_str("Bad value string for XTENSION keyword:");
-                ffpmsg_slice(&value);
-                return *status;
-            }
-
-            /* allow the quoted string value to begin in any column and */
-            /* allow any number of trailing blanks before the closing quote */
-            /* first char must be a quote */
-            if (value[0] != bb(b'\''))
-                || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
-            {
-                int_snprintf!(
-                    &mut message,
-                    FLEN_ERRMSG,
-                    "This is not a BINTABLE extension: {}",
-                    slice_to_str!(&value),
-                );
-                ffpmsg_slice(&message);
-                *status = NOT_BTABLE;
-                return *status;
-            }
-        } else
-        /* error: 1st keyword of extension != XTENSION */
+        /* allow the quoted string value to begin in any column and */
+        /* allow any number of trailing blanks before the closing quote */
+        /* first char must be a quote */
+        if (value[0] != bb(b'\''))
+            || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
+                && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
+                && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
         {
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,
-                "First keyword of the extension is not XTENSION: {}",
-                slice_to_str!(&name),
+                "This is not a BINTABLE extension: {}",
+                slice_to_str!(&value),
             );
             ffpmsg_slice(&message);
-            *status = NO_XTENSION;
+            *status = NOT_BTABLE;
             return *status;
         }
+    } else
+    /* error: 1st keyword of extension != XTENSION */
+    {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "First keyword of the extension is not XTENSION: {}",
+            slice_to_str!(&name),
+        );
+        ffpmsg_slice(&message);
+        *status = NO_XTENSION;
+        return *status;
+    }
 
-        if ffgttb(
-            fptr,
-            &mut naxis1ll,
-            &mut naxis2ll,
-            &mut pcountll,
-            &mut fields,
-            status,
-        ) > 0
-        {
-            return *status;
-        }
+    if ffgttb(
+        fptr,
+        &mut naxis1ll,
+        &mut naxis2ll,
+        &mut pcountll,
+        &mut fields,
+        status,
+    ) > 0
+    {
+        return *status;
+    }
 
+    unsafe {
         if let Some(naxis2) = naxis2.as_mut() {
             *naxis2 = naxis2ll as c_long;
         }
@@ -4409,14 +4734,16 @@ pub unsafe extern "C" fn ffghbn(
         if let Some(tfields) = tfields.as_mut() {
             *tfields = fields as c_int;
         }
+    }
 
-        if maxfield < 0 {
-            maxf = fields as c_int;
-        } else {
-            maxf = cmp::min(maxfield, fields as c_int);
-        }
+    if maxfield < 0 {
+        maxf = fields as c_int;
+    } else {
+        maxf = cmp::min(maxfield, fields as c_int);
+    }
 
-        if maxf > 0 {
+    if maxf > 0 {
+        unsafe {
             for ii in 0..(maxf as usize) {
                 /* initialize optional keyword values */
                 if !ttype.is_null() {
@@ -4500,7 +4827,9 @@ pub unsafe extern "C" fn ffghbn(
                 }
             }
         }
+    }
 
+    unsafe {
         if !extnm.is_null() {
             let extnm = slice::from_raw_parts_mut(extnm, 69);
             extnm[0] = 0;
@@ -4512,9 +4841,9 @@ pub unsafe extern "C" fn ffghbn(
                 *status = tstatus; /* keyword not required, so ignore error */
             }
         }
-
-        *status
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4535,6 +4864,28 @@ pub unsafe extern "C" fn ffghbnll(
     status: *mut c_int,      /* IO - error status                            */
 ) -> c_int {
     unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+
+        ffghbnll_safer(
+            fptr, maxfield, naxis2, tfields, ttype, tform, tunit, extnm, pcount, status,
+        )
+    }
+}
+
+pub unsafe fn ffghbnll_safer(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
+    maxfield: c_int,         /* I - maximum no. of columns to read;          */
+    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
+    tfields: *mut c_int,     /* O - number of columns in the table           */
+    ttype: *mut *mut c_char, /* O - name of each column                      */
+    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
+    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
+    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
+    pcount: *mut LONGLONG,   /* O - value of PCOUNT keyword                  */
+    status: &mut c_int,      /* IO - error status                            */
+) -> c_int {
+    unsafe {
         let mut maxf: c_int = 0;
         let mut nfound: c_int = 0;
         let mut tstatus: c_int = 0;
@@ -4547,9 +4898,6 @@ pub unsafe extern "C" fn ffghbnll(
         let mut naxis1ll: LONGLONG = 0;
         let mut naxis2ll: LONGLONG = 0;
         let mut pcountll: LONGLONG = 0;
-
-        let status = status.as_mut().expect(NULL_MSG);
-        let fptr = fptr.as_mut().expect(NULL_MSG);
 
         if *status > 0 {
             return *status;
@@ -5748,8 +6096,6 @@ pub unsafe extern "C" fn ffcnvthdr2str(
     status: *mut c_int,            /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut tempfptr: fitsfile;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let nkeys = nkeys.as_mut().expect(NULL_MSG);
@@ -5763,42 +6109,58 @@ pub unsafe extern "C" fn ffcnvthdr2str(
             v_exclist.push(exclist_item);
         }
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if fits_is_compressed_image_safe(fptr, status) != 0 {
-            /* this is a tile compressed image, so need to make an uncompressed */
-            /* copy of the image header in memory before concatenating the keywords */
-            todo!();
-        /*
-        if (fits_create_file(&tempfptr, "mem://", status) > 0) {
-            return(*status);
-        }
-
-
-        if (fits_img_decompress_header(fptr, tempfptr, status) > 0) {
-         fits_delete_file(tempfptr, status);
-         return(*status);
-        }
-
-        ffhdr2str(tempfptr, exclude_comm, exclist, nexc, header, nkeys, status);
-        fits_close_file(tempfptr, status);
-        */
-        } else {
-            ffhdr2str_safe(fptr, exclude_comm, &v_exclist, nexc, header, nkeys, status);
-        }
-
-        *status
+        ffcnvthdr2str_safer(fptr, exclude_comm, &v_exclist, nexc, header, nkeys, status)
     }
+}
+
+/// Same as ffhdr2str, except that if the input HDU is a tile compressed image
+/// (stored in a binary table) then it will first convert that header back
+/// to that of a normal uncompressed FITS image before concatenating the header
+/// keyword records. (safe version)
+pub fn ffcnvthdr2str_safer(
+    fptr: &mut fitsfile,      /* I - FITS file pointer                    */
+    exclude_comm: c_int,      /* I - if TRUE, exclude commentary keywords */
+    exclist: &[&[c_char]],    /* I - list of excluded keyword names       */
+    nexc: c_int,              /* I - number of names in exclist           */
+    header: &mut *mut c_char, /* O - returned header string               */
+    nkeys: &mut c_int,        /* O - returned number of 80-char keywords  */
+    status: &mut c_int,       /* IO - error status                        */
+) -> c_int {
+    if *status > 0 {
+        return *status;
+    }
+
+    if fits_is_compressed_image_safe(fptr, status) != 0 {
+        /* this is a tile compressed image, so need to make an uncompressed */
+        /* copy of the image header in memory before concatenating the keywords */
+        todo!();
+    /*
+    if (fits_create_file(&tempfptr, "mem://", status) > 0) {
+        return(*status);
+    }
+
+
+    if (fits_img_decompress_header(fptr, tempfptr, status) > 0) {
+     fits_delete_file(tempfptr, status);
+     return(*status);
+    }
+
+    ffhdr2str(tempfptr, exclude_comm, exclist, nexc, header, nkeys, status);
+    fits_close_file(tempfptr, status);
+    */
+    } else {
+        ffhdr2str_safe(fptr, exclude_comm, exclist, nexc, header, nkeys, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
 /// Free a keyword long string that was allocated by CFITSIO
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fffkls(
-    value: *mut c_char,    /* I - pointer to string to free */
-    status: *mut c_int,    /* IO - error status */
+    value: *mut c_char, /* I - pointer to string to free */
+    status: *mut c_int, /* IO - error status */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
@@ -5808,8 +6170,8 @@ pub unsafe extern "C" fn fffkls(
 
 /// Free a keyword long string that was allocated by CFITSIO (safe version)
 pub fn fffkls_safer(
-    value: *mut c_char,    /* I - pointer to string to free */
-    status: &mut c_int,    /* IO - error status */
+    value: *mut c_char, /* I - pointer to string to free */
+    status: &mut c_int, /* IO - error status */
 ) -> c_int {
     todo!("fffkls: Free keyword long string at address {:p}", value)
 }

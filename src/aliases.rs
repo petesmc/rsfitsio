@@ -38,7 +38,17 @@ pub mod c_api {
         C: c_int,
         D: *mut c_int,
     ) -> c_int {
-        unsafe { crate::cfileio::ffopentest(CFITSIO_SONAME as c_int, A, B, C, D) }
+        unsafe {
+            use crate::fitsio::NULL_MSG;
+            use bytemuck::cast_slice;
+            use std::ffi::CStr;
+
+            let A = A.as_mut().expect(NULL_MSG);
+            let D = D.as_mut().expect(NULL_MSG);
+            let B = cast_slice(CStr::from_ptr(B).to_bytes_with_nul());
+
+            crate::cfileio::ffopentest_safe(CFITSIO_SONAME as c_int, A, B, C, D)
+        }
     }
 
     pub use crate::buffers::ffflsh as fits_flush_buffer;
@@ -651,18 +661,18 @@ pub mod c_api {
 pub mod rust_api {
     use super::*;
 
-    // pub use crate::cfileio::ffexist_safe as fits_file_exists;
-    // pub use crate::cfileio::ffifile_safe as fits_parse_input_filename;
+    pub use crate::cfileio::ffexist_safer as fits_file_exists;
+    pub use crate::cfileio::ffifile_safer as fits_parse_input_filename;
     pub use crate::cfileio::ffiurl_safer as fits_parse_input_url;
-    // pub use crate::cfileio::ffrtnm_safe as fits_parse_rootname;
+    pub use crate::cfileio::ffrtnm_safe as fits_parse_rootname;
 
-    //pub use crate::histo::ffbinr_safe as fits_parse_binrange;
-    pub use crate::histo::ffbins_safe as fits_parse_binspec;
-    //pub use crate::cfileio::ffextn_safe as fits_parse_extnum;
+    pub use crate::cfileio::ffextn_safer as fits_parse_extnum;
     pub use crate::cfileio::ffexts_safer as fits_parse_extspec;
-    //pub use crate::cfileio::ffomem_safe as fits_open_memfile;
+    pub use crate::cfileio::ffomem_safer as fits_open_memfile;
     pub use crate::editcol::ffrwrg_safe as fits_parse_range;
     pub use crate::editcol::ffrwrgll_safe as fits_parse_rangell;
+    pub use crate::histo::ffbinr_safer as fits_parse_binrange;
+    pub use crate::histo::ffbins_safe as fits_parse_binspec;
 
     /*
     use the following special macro to test that the fitsio.h include file
@@ -678,28 +688,29 @@ pub mod rust_api {
         crate::cfileio::ffopentest_safe(CFITSIO_SONAME as c_int, A, B, C, D)
     }
 
-    pub use crate::cfileio::ffclos_safer as fits_close_file;
-    pub use crate::cfileio::ffdelt_safer as fits_delete_file;
-    // pub use crate::cfileio::ffdkinit_safe as fits_create_diskfile;
-    // pub use crate::cfileio::ffdkopn_safe as fits_open_diskfile;
-    // pub use crate::cfileio::ffdopn_safe as fits_open_data;
-    // pub use crate::cfileio::ffeopn_safe as fits_open_extlist;
-    // pub use crate::fitscore::ffflmd_safe as fits_file_mode;
-    // pub use crate::fitscore::ffflnm_safe as fits_file_name;
     pub use crate::buffers::ffflsh_safe as fits_flush_buffer;
     pub use crate::buffers::ffflus_safer as fits_flush_file;
-    // pub use crate::cfileio::ffimem_safe as fits_create_memfile;
+    pub use crate::cfileio::ffclos_safer as fits_close_file;
+    pub use crate::cfileio::ffdelt_safer as fits_delete_file;
+    pub use crate::cfileio::ffdkinit_safer as fits_create_diskfile;
+    pub use crate::cfileio::ffdkopn_safer as fits_open_diskfile;
+    pub use crate::cfileio::ffdopn_safer as fits_open_data;
+    pub use crate::cfileio::ffeopn_safer as fits_open_extlist;
+    pub use crate::cfileio::ffimem_safer as fits_create_memfile;
     pub use crate::cfileio::ffinit_safer as fits_create_file;
-    // pub use crate::cfileio::ffiopn_safe as fits_open_image;
-    // pub use crate::cfileio::ffreopen_safe as fits_reopen_file;
-    // pub use crate::cfileio::fftopn_safe as fits_open_table;
-    // pub use crate::cfileio::fftplt_safe as fits_create_template;
+    pub use crate::cfileio::ffiopn_safer as fits_open_image;
+    pub use crate::cfileio::ffreopen_safer as fits_reopen_file;
+    pub use crate::cfileio::fftopn_safer as fits_open_table;
+    pub use crate::cfileio::fftplt_safer as fits_create_template;
     pub use crate::cfileio::ffurlt_safe as fits_url_type;
+    pub use crate::fitscore::ffflmd_safe as fits_file_mode;
+    pub use crate::fitscore::ffflnm_safe as fits_file_name;
 
+    pub use crate::buffers::ffgrsz_safe as fits_get_rowsize;
+    pub use crate::cfileio::ffrprt_safer as fits_report_error;
     pub use crate::fitscore::ffasfm_safe as fits_ascii_tform;
     pub use crate::fitscore::ffbnfm_safe as fits_binary_tform;
-    // pub use crate::fitscore::ffbnfmll_safe as fits_binary_tformll;
-    pub use crate::buffers::ffgrsz_safe as fits_get_rowsize;
+    pub use crate::fitscore::ffbnfmll_safe as fits_binary_tformll;
     pub use crate::fitscore::ffcmps_safe as fits_compare_str;
     pub use crate::fitscore::ffcmrk_safe as fits_clear_errmark;
     pub use crate::fitscore::ffcmsg_safe as fits_clear_errmsg;
@@ -709,21 +720,20 @@ pub mod rust_api {
     pub use crate::fitscore::ffgkcl_safe as fits_get_keyclass;
     pub use crate::fitscore::ffgmsg_safe as fits_read_errmsg;
     pub use crate::fitscore::ffgthd_safe as fits_parse_template;
-    pub use crate::getcols::ffgcdw_safe as fits_get_col_display_width;
-    pub use crate::getkey::ffgknm_safe as fits_get_keyname;
-    // pub use crate::fitscore::ffinttyp_safe as fits_get_inttype;
+    pub use crate::fitscore::ffinttyp_safer as fits_get_inttype;
     pub use crate::fitscore::ffkeyn_safe as fits_make_keyn;
     pub use crate::fitscore::ffmkky_safe as fits_make_key;
     pub use crate::fitscore::ffnkey_safe as fits_make_nkey;
     pub use crate::fitscore::ffpmrk_safe as fits_write_errmark;
     pub use crate::fitscore::ffpmsg_safer as fits_write_errmsg;
     pub use crate::fitscore::ffpsvc_safe as fits_parse_value;
-    pub use crate::getkey::ffnchk_safe as fits_null_check;
-    // pub use crate::cfileio::ffrprt_safe as fits_report_error;
     pub use crate::fitscore::fftkey_safe as fits_test_keyword;
     pub use crate::fitscore::fftrec_safe as fits_test_record;
     pub use crate::fitscore::ffupch_safe as fits_uppercase;
-    // pub use crate::fitscore::ffvers_safe as fits_get_version;
+    pub use crate::fitscore::ffvers_safe as fits_get_version;
+    pub use crate::getcols::ffgcdw_safe as fits_get_col_display_width;
+    pub use crate::getkey::ffgknm_safe as fits_get_keyname;
+    pub use crate::getkey::ffnchk_safe as fits_null_check;
 
     pub use crate::editcol::ffcpky_safe as fits_copy_key;
     pub use crate::putkey::ffdt2s_safe as fits_date2str;
@@ -742,13 +752,13 @@ pub mod rust_api {
     pub use crate::putkey::ffpkfc_safe as fits_write_key_fixcmp;
     pub use crate::putkey::ffpkfm_safe as fits_write_key_fixdblcmp;
     pub use crate::putkey::ffpkls_safe as fits_write_key_longstr;
-    // pub use crate::putkey::ffpknd_safe as fits_write_keys_dbl;
-    // pub use crate::putkey::ffpkne_safe as fits_write_keys_flt;
-    // pub use crate::putkey::ffpknf_safe as fits_write_keys_fixflt;
-    // pub use crate::putkey::ffpkng_safe as fits_write_keys_fixdbl;
-    // pub use crate::putkey::ffpknj_safe as fits_write_keys_lng;
-    // pub use crate::putkey::ffpknl_safe as fits_write_keys_log;
-    // pub use crate::putkey::ffpkns_safe as fits_write_keys_str;
+    pub use crate::putkey::ffpknd_safe as fits_write_keys_dbl;
+    pub use crate::putkey::ffpkne_safe as fits_write_keys_flt;
+    pub use crate::putkey::ffpknf_safe as fits_write_keys_fixflt;
+    pub use crate::putkey::ffpkng_safe as fits_write_keys_fixdbl;
+    pub use crate::putkey::ffpknj_safe as fits_write_keys_lng;
+    pub use crate::putkey::ffpknl_safe as fits_write_keys_log;
+    pub use crate::putkey::ffpkns_safe as fits_write_keys_str;
     pub use crate::putkey::ffpktp_safe as fits_write_key_template;
     pub use crate::putkey::ffpky_safe as fits_write_key;
     pub use crate::putkey::ffpkyc_safe as fits_write_key_cmp;
@@ -774,31 +784,31 @@ pub mod rust_api {
 
     pub use crate::getkey::ffghps_safe as fits_get_hdrpos;
     pub use crate::getkey::ffghsp_safe as fits_get_hdrspace;
-    // pub use crate::getkey::ffgnxk_safe as fits_find_nextkey;
+    pub use crate::getkey::ffgnxk_safe as fits_find_nextkey;
     pub use crate::getkey::ffmaky_safe as fits_movabs_key;
     pub use crate::getkey::ffmrky_safe as fits_movrel_key;
 
-    // pub use crate::getkey::ffcnvthdr2str_safe as fits_convert_hdr2str;
+    pub use crate::getkey::ffcnvthdr2str_safer as fits_convert_hdr2str;
     pub use crate::getkey::ffdtdm_safe as fits_decode_tdim;
     pub use crate::getkey::ffdtdmll_safe as fits_decode_tdimll;
-    // pub use crate::getkey::fffree_safe as fits_free_memory;
+    pub use crate::getkey::fffree_safer as fits_free_memory;
     pub use crate::getkey::ffgcrd_safe as fits_read_card;
-    // pub use crate::getkey::ffghbn_safe as fits_read_btblhdr;
-    // pub use crate::getkey::ffghbnll_safe as fits_read_btblhdrll;
-    // pub use crate::getkey::ffghpr_safe as fits_read_imghdr;
+    pub use crate::getkey::ffghbn_safer as fits_read_btblhdr;
+    pub use crate::getkey::ffghbnll_safer as fits_read_btblhdrll;
+    pub use crate::getkey::ffghpr_safe as fits_read_imghdr;
     pub use crate::getkey::ffghprll_safe as fits_read_imghdrll;
-    // pub use crate::getkey::ffghtb_safe as fits_read_atblhdr;
-    // pub use crate::getkey::ffghtbll_safe as fits_read_atblhdrll;
+    pub use crate::getkey::ffghtb_safer as fits_read_atblhdr;
+    pub use crate::getkey::ffghtbll_safer as fits_read_atblhdrll;
     pub use crate::getkey::ffgkcsl_safe as fits_get_key_com_strlen;
     pub use crate::getkey::ffgkey_safe as fits_read_keyword;
-    // pub use crate::getkey::ffgkls_safe as fits_read_key_longstr;
-    // pub use crate::getkey::ffgknd_safe as fits_read_keys_dbl;
-    // pub use crate::getkey::ffgkne_safe as fits_read_keys_flt;
+    pub use crate::getkey::ffgkls_safer as fits_read_key_longstr;
+    pub use crate::getkey::ffgknd_safe as fits_read_keys_dbl;
+    pub use crate::getkey::ffgkne_safe as fits_read_keys_flt;
     pub use crate::getkey::ffgknj_safe as fits_read_keys_lng;
     pub use crate::getkey::ffgknjj_safe as fits_read_keys_lnglng;
-    // pub use crate::getkey::ffgknl_safe as fits_read_keys_log;
+    pub use crate::getkey::ffgknl_safe as fits_read_keys_log;
     pub use crate::getkey::ffgkns_safe as fits_read_keys_str;
-    // pub use crate::getkey::ffgksl_safe as fits_get_key_strlen;
+    pub use crate::getkey::ffgksl_safe as fits_get_key_strlen;
     pub use crate::getkey::ffgky_safe as fits_read_key;
     pub use crate::getkey::ffgkyc_safe as fits_read_key_cmp;
     pub use crate::getkey::ffgkyd_safe as fits_read_key_dbl;
@@ -809,15 +819,15 @@ pub mod rust_api {
     pub use crate::getkey::ffgkym_safe as fits_read_key_dblcmp;
     pub use crate::getkey::ffgkyn_safe as fits_read_keyn;
     pub use crate::getkey::ffgkys_safe as fits_read_key_str;
-    // pub use crate::getkey::ffgkyt_safe as fits_read_key_triple;
+    pub use crate::getkey::ffgkyt_safer as fits_read_key_triple;
     pub use crate::getkey::ffgkyujj_safe as fits_read_key_ulnglng;
     pub use crate::getkey::ffgrec_safe as fits_read_record;
-    // pub use crate::getkey::ffgsky_safe as fits_read_string_key;
-    // pub use crate::getkey::ffgskyc_safe as fits_read_string_key_com;
-    // pub use crate::getkey::ffgstr_safe as fits_read_str;
+    pub use crate::getkey::ffgsky_safe as fits_read_string_key;
+    pub use crate::getkey::ffgskyc_safer as fits_read_string_key_com;
+    pub use crate::getkey::ffgstr_safe as fits_read_str;
     pub use crate::getkey::ffgtdm_safe as fits_read_tdim;
-    // pub use crate::getkey::ffgtdmll_safe as fits_read_tdimll;
-    // pub use crate::getkey::ffgunt_safe as fits_read_key_unit;
+    pub use crate::getkey::ffgtdmll_safer as fits_read_tdimll;
+    pub use crate::getkey::ffgunt_safer as fits_read_key_unit;
     pub use crate::getkey::ffhdr2str_safe as fits_hdr2str;
 
     pub use crate::modkey::ffucrd_safe as fits_update_card;
@@ -857,32 +867,32 @@ pub mod rust_api {
     pub use crate::modkey::ffmrec_safe as fits_modify_record;
 
     pub use crate::modkey::ffikey_safe as fits_insert_card;
-    // pub use crate::modkey::ffikfc_safe as fits_insert_key_fixcmp;
-    // pub use crate::modkey::ffikfm_safe as fits_insert_key_fixdblcmp;
-    // pub use crate::modkey::ffikls_safe as fits_insert_key_longstr;
-    // pub use crate::modkey::ffikyc_safe as fits_insert_key_cmp;
-    // pub use crate::modkey::ffikyd_safe as fits_insert_key_dbl;
-    // pub use crate::modkey::ffikye_safe as fits_insert_key_flt;
-    // pub use crate::modkey::ffikyf_safe as fits_insert_key_fixflt;
-    // pub use crate::modkey::ffikyg_safe as fits_insert_key_fixdbl;
+    pub use crate::modkey::ffikfc_safer as fits_insert_key_fixcmp;
+    pub use crate::modkey::ffikfm_safer as fits_insert_key_fixdblcmp;
+    pub use crate::modkey::ffikls_safe as fits_insert_key_longstr;
+    pub use crate::modkey::ffikyc_safer as fits_insert_key_cmp;
+    pub use crate::modkey::ffikyd_safer as fits_insert_key_dbl;
+    pub use crate::modkey::ffikye_safer as fits_insert_key_flt;
+    pub use crate::modkey::ffikyf_safe as fits_insert_key_fixflt;
+    pub use crate::modkey::ffikyg_safer as fits_insert_key_fixdbl;
     pub use crate::modkey::ffikyj_safe as fits_insert_key_lng;
-    // pub use crate::modkey::ffikyl_safe as fits_insert_key_log;
+    pub use crate::modkey::ffikyl_safer as fits_insert_key_log;
     // pub use crate::modkey::ffikym_safe as fits_insert_key_dblcmp;
-    // pub use crate::modkey::ffikys_safe as fits_insert_key_str;
-    // pub use crate::modkey::ffikyu_safe as fits_insert_key_null;
+    pub use crate::modkey::ffikys_safer as fits_insert_key_str;
+    pub use crate::modkey::ffikyu_safer as fits_insert_key_null;
     pub use crate::modkey::ffirec_safe as fits_insert_record;
 
-    pub use crate::modkey::ffdkey_safe as fits_delete_key;
-    pub use crate::modkey::ffdrec_safe as fits_delete_record;
-    // pub use crate::modkey::ffdstr_safe as fits_delete_str;
-    // pub use crate::fitscore::ffghad_safe as fits_get_hduaddr;
+    pub use crate::fitscore::ffghad_safe as fits_get_hduaddr;
     pub use crate::fitscore::ffghadll_safe as fits_get_hduaddrll;
     pub use crate::fitscore::ffghdn_safe as fits_get_hdu_num;
     pub use crate::fitscore::ffghdt_safe as fits_get_hdu_type;
     pub use crate::fitscore::ffghof_safe as fits_get_hduoff;
+    pub use crate::modkey::ffdkey_safe as fits_delete_key;
+    pub use crate::modkey::ffdrec_safe as fits_delete_record;
+    pub use crate::modkey::ffdstr_safe as fits_delete_str;
 
     pub use crate::fitscore::ffgipr_safe as fits_get_img_param;
-    // pub use crate::fitscore::ffgiprll_safe as fits_get_img_paramll;
+    pub use crate::fitscore::ffgiprll_safe as fits_get_img_paramll;
 
     pub use crate::fitscore::ffgidm_safe as fits_get_img_dim;
     pub use crate::fitscore::ffgidt_safe as fits_get_img_type;
@@ -890,20 +900,20 @@ pub mod rust_api {
     pub use crate::fitscore::ffgisz_safe as fits_get_img_size;
     pub use crate::fitscore::ffgiszll_safe as fits_get_img_sizell;
 
-    pub use crate::fitscore::ffcrhd_safer as fits_create_hdu;
-    pub use crate::putkey::ffcrim_safer as fits_create_img;
-    pub use crate::putkey::ffcrimll_safer as fits_create_imgll;
-    pub use crate::putkey::ffcrtb_safer as fits_create_tbl;
-    // pub use crate::edithdu::ffibin_safe as fits_insert_btbl;
-    pub use crate::edithdu::ffiimg_safer as fits_insert_img;
-    pub use crate::edithdu::ffiimgll_safer as fits_insert_imgll;
-    // pub use crate::edithdu::ffitab_safe as fits_insert_atbl;
     pub use crate::editcol::ffrsim_safe as fits_resize_img;
     pub use crate::editcol::ffrsimll_safe as fits_resize_imgll;
+    pub use crate::edithdu::ffibin_safe as fits_insert_btbl;
+    pub use crate::edithdu::ffiimg_safer as fits_insert_img;
+    pub use crate::edithdu::ffiimgll_safer as fits_insert_imgll;
+    pub use crate::edithdu::ffitab_safe as fits_insert_atbl;
+    pub use crate::fitscore::ffcrhd_safer as fits_create_hdu;
     pub use crate::fitscore::ffmahd_safe as fits_movabs_hdu;
     pub use crate::fitscore::ffmnhd_safe as fits_movnam_hdu;
     pub use crate::fitscore::ffmrhd_safe as fits_movrel_hdu;
-    // pub use crate::fitscore::ffthdu_safe as fits_get_num_hdus;
+    pub use crate::fitscore::ffthdu_safe as fits_get_num_hdus;
+    pub use crate::putkey::ffcrim_safer as fits_create_img;
+    pub use crate::putkey::ffcrimll_safer as fits_create_imgll;
+    pub use crate::putkey::ffcrtb_safer as fits_create_tbl;
 
     pub use crate::edithdu::ffcopy_safer as fits_copy_hdu;
     pub use crate::edithdu::ffcpdt_safe as fits_copy_data;
@@ -911,7 +921,7 @@ pub mod rust_api {
     pub use crate::edithdu::ffcphd_safer as fits_copy_header;
     pub use crate::edithdu::ffcpht_safer as fits_copy_hdutab;
     pub use crate::edithdu::ffdhdu_safer as fits_delete_hdu;
-    // pub use crate::edithdu::ffwrhdu_safe as fits_write_hdu;
+    pub use crate::edithdu::ffwrhdu_safe as fits_write_hdu;
 
     pub use crate::fitscore::ffhdef_safe as fits_set_hdrsize;
     pub use crate::fitscore::ffrdef_safe as fits_set_hdustruc;
@@ -932,7 +942,7 @@ pub mod rust_api {
 
     pub use crate::fitscore::ffeqty_safe as fits_get_eqcoltype;
     pub use crate::fitscore::ffeqtyll_safe as fits_get_eqcoltypell;
-    // pub use crate::fitscore::ffgacl_safe as fits_get_acolparms;
+    pub use crate::fitscore::ffgacl_safer as fits_get_acolparms;
     pub use crate::fitscore::ffgbcl_safe as fits_get_bcolparms;
     pub use crate::fitscore::ffgbclll_safe as fits_get_bcolparmsll;
     pub use crate::fitscore::ffgcnn_safe as fits_get_colname;
@@ -1043,7 +1053,7 @@ pub mod rust_api {
     // pub use crate::getcoluj::ffgsfujj_safe as fits_read_subsetnull_ulnglng;
     // pub use crate::getcoluk::ffgsfuk_safe as fits_read_subsetnull_uint;
 
-    // pub use crate::cfileio::fits_copy_image_section_safe as ffcpimg;
+    pub use crate::cfileio::fits_copy_image_section_safer as ffcpimg;
 
     pub use crate::getcol::ffgcf_safe as fits_read_colnull;
     pub use crate::getcol::ffgcv_safe as fits_read_col;
@@ -1085,11 +1095,11 @@ pub mod rust_api {
     pub use crate::getcoluj::ffgcfujj_safe as fits_read_colnull_ulnglng;
     // pub use crate::getcoluk::ffgcfuk_safe as fits_read_colnull_uint;
 
+    pub use crate::buffers::ffgtbb_safe as fits_read_tblbytes;
     pub use crate::fitscore::ffgdes_safe as fits_read_descript;
     pub use crate::fitscore::ffgdesll_safe as fits_read_descriptll;
     pub use crate::fitscore::ffgdess_safe as fits_read_descripts;
-    // pub use crate::fitscore::ffgdessll_safe as fits_read_descriptsll;
-    pub use crate::buffers::ffgtbb_safe as fits_read_tblbytes;
+    pub use crate::fitscore::ffgdessll_safe as fits_read_descriptsll;
 
     pub use crate::putcolb::ffpgpb_safe as fits_write_grppar_byt;
     pub use crate::putcold::ffpgpd_safe as fits_write_grppar_dbl;
@@ -1276,7 +1286,7 @@ pub mod rust_api {
     pub use crate::group::ffgmrm_safe as fits_remove_member;
     pub use crate::group::ffgmtf_safe as fits_transfer_member;
 
-    // pub use crate::cfileio::ffgtmo_safe as fits_get_timeout;
-    // pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
-    // pub use crate::cfileio::ffstmo_safe as fits_set_timeout;
+    pub use crate::cfileio::ffgtmo_safer as fits_get_timeout;
+    pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
+    pub use crate::cfileio::ffstmo_safer as fits_set_timeout;
 }

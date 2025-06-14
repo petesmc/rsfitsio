@@ -1517,4 +1517,3 @@ pub fn ffgtwcs_safe(
 
     *status
 }
-

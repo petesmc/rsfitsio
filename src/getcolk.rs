@@ -230,13 +230,35 @@ pub unsafe extern "C" fn ffg2dk(
 
         let array = slice::from_raw_parts_mut(array, (ncols * naxis1 * naxis2) as usize);
 
-        /* call the 3D reading routine, with the 3rd dimension = 1 */
-        ffg3dk_safe(
-            fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
-        );
-
-        *status
+        ffg2dk_safe(
+            fptr, group, nulval, ncols, naxis1, naxis2, array, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an entire 2-D array of values to the primary array. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of the
+/// FITS array is not the same as the array being read).  Any null
+/// values in the array will be set equal to the value of nulval, unless
+/// nulval = 0 in which case no null checking will be performed.
+pub fn ffg2dk_safe(
+    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
+    group: c_long,                  /* I - group to read (1 = 1st group)           */
+    nulval: c_int,                  /* set undefined pixels equal to this     */
+    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
+    array: &mut [c_int],            /* O - array to be filled and returned    */
+    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,             /* IO - error status                           */
+) -> c_int {
+    /* call the 3D reading routine, with the 3rd dimension = 1 */
+    ffg3dk_safe(
+        fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -867,32 +889,51 @@ pub unsafe extern "C" fn ffggpk(
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let cdummy = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
-        let mut anynul = 0;
-
         let array = slice::from_raw_parts_mut(array, nelem as usize);
 
-        let row = cmp::max(1, group);
-
-        ffgclk(
-            fptr,
-            1,
-            row as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            1,
-            NullCheckType::SetPixel,
-            0,
-            array,
-            &mut [cdummy],
-            Some(&mut anynul),
-            status,
-        );
-        *status
+        ffggpk_safe(fptr, group, firstelem, nelem, array, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+///Read an array of group parameters from the primary array. Data conversion
+///and scaling will be performed if necessary (e.g, if the datatype of
+///the FITS array is not the same as the array being read).
+///
+///The primary array is represented as a binary table:
+///each group of the primary array is a row in the table,
+///where the first column contains the group parameters
+///and the second column contains the image itself.
+pub fn ffggpk_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    group: c_long,       /* I - group to read (1 = 1st group)           */
+    firstelem: c_long,   /* I - first vector element to read (1 = 1st)  */
+    nelem: c_long,       /* I - number of values to read                */
+    array: &mut [c_int], /* O - array of values that are returned       */
+    status: &mut c_int,  /* IO - error status                           */
+) -> c_int {
+    let cdummy = 0;
+    let mut anynul = 0;
+
+    let row = cmp::max(1, group);
+
+    ffgclk(
+        fptr,
+        1,
+        row as LONGLONG,
+        firstelem as LONGLONG,
+        nelem as LONGLONG,
+        1,
+        NullCheckType::SetPixel,
+        0,
+        array,
+        &mut [cdummy],
+        Some(&mut anynul),
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -985,34 +1026,54 @@ pub unsafe extern "C" fn ffgcfk(
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let dummy: c_int = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        let array = slice::from_raw_parts_mut(array, nelem as usize);
-
         let anynul = anynul.as_mut();
 
+        let array = slice::from_raw_parts_mut(array, nelem as usize);
         let nularray = slice::from_raw_parts_mut(nularray, nelem as usize);
 
-        ffgclk(
-            fptr,
-            colnum,
-            firstrow as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            1,
-            NullCheckType::SetNullArray,
-            dummy,
-            array,
-            cast_slice_mut(nularray),
-            anynul,
-            status,
-        );
-
-        *status
+        ffgcfk_safe(
+            fptr, colnum, firstrow, firstelem, nelem, array, nularray, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of values from a column in the current FITS HDU. Automatic
+/// datatype conversion will be performed if the datatype of the column does not
+/// match the datatype of the array parameter. The output values will be scaled
+/// by the FITS TSCALn and TZEROn values if these values have been defined.
+/// Nularray will be set = 1 if the corresponding array pixel is undefined,
+/// otherwise nularray will = 0.
+pub fn ffgcfk_safe(
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
+    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
+    nelem: LONGLONG,            /* I - number of values to read                */
+    array: &mut [c_int],        /* O - array of values that are read       */
+    nularray: &mut [c_char],    /* O - array of flags: 1 if null pixel; else 0 */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
+) -> c_int {
+    let dummy: c_int = 0;
+
+    ffgclk(
+        fptr,
+        colnum,
+        firstrow,
+        firstelem,
+        nelem,
+        1,
+        NullCheckType::SetNullArray,
+        dummy,
+        array,
+        cast_slice_mut(nularray),
+        anynul,
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

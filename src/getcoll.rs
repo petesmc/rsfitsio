@@ -148,33 +148,48 @@ pub unsafe extern "C" fn ffgcfl(
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let nulval: c_char = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
-        let array = slice::from_raw_parts_mut(array, nelem as usize);
-
         let anynul = anynul.as_mut();
 
+        let array = slice::from_raw_parts_mut(array, nelem as usize);
         let nularray = slice::from_raw_parts_mut(nularray, nelem as usize);
 
-        ffgcll(
-            fptr,
-            colnum,
-            firstrow as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            NullCheckType::SetNullArray,
-            nulval,
-            array,
-            nularray,
-            anynul,
-            status,
-        );
-
-        *status
+        ffgcfl_safe(
+            fptr, colnum, firstrow, firstelem, nelem, array, nularray, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of logical values from a column in the current FITS HDU.
+pub fn ffgcfl_safe(
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
+    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
+    nelem: LONGLONG,            /* I - number of values to read                */
+    array: &mut [c_char],       /* O - array of values                         */
+    nularray: &mut [c_char],    /* O - array of flags = 1 if nultyp = 2        */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
+) -> c_int {
+    let nulval: c_char = 0;
+
+    ffgcll(
+        fptr,
+        colnum,
+        firstrow,
+        firstelem,
+        nelem,
+        NullCheckType::SetNullArray,
+        nulval,
+        array,
+        nularray,
+        anynul,
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

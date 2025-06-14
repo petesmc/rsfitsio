@@ -255,12 +255,35 @@ pub unsafe extern "C" fn ffg2duj(
 
         let array = slice::from_raw_parts_mut(array, (ncols * naxis2) as usize);
 
-        ffg3duj_safe(
-            fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
-        );
-
-        *status
+        ffg2duj_safe(
+            fptr, group, nulval, ncols, naxis1, naxis2, array, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an entire 2-D array of values to the primary array. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of the
+/// FITS array is not the same as the array being read).  Any null
+/// values in the array will be set equal to the value of nulval, unless
+/// nulval = 0 in which case no null checking will be performed.
+pub fn ffg2duj_safe(
+    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
+    group: c_long,                  /* I - group to read (1 = 1st group)           */
+    nulval: c_ulong,                /* set undefined pixels equal to this     */
+    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
+    array: &mut [c_ulong],          /* O - array to be filled and returned    */
+    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,             /* IO - error status                           */
+) -> c_int {
+    /* call the 3D reading routine, with the 3rd dimension = 1 */
+    ffg3duj_safe(
+        fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -898,33 +921,51 @@ pub unsafe extern "C" fn ffggpuj(
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let mut row = 0;
-        let cdummy: c_char = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let array = slice::from_raw_parts_mut(array, nelem as usize);
 
-        let anynul = &mut 0;
-
-        row = cmp::max(1, group);
-
-        ffgcluj(
-            fptr,
-            1,
-            row as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            1,
-            NullCheckType::SetPixel,
-            0,
-            array,
-            &mut [cdummy],
-            Some(anynul),
-            status,
-        );
-        *status
+        ffggpuj_safe(fptr, group, firstelem, nelem, array, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of group parameters from the primary array. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being read).
+///
+/// The primary array is represented as a binary table:
+/// each group of the primary array is a row in the table,
+/// where the first column contains the group parameters
+/// and the second column contains the image itself.
+pub fn ffggpuj_safe(
+    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
+    group: c_long,         /* I - group to read (1 = 1st group)           */
+    firstelem: c_long,     /* I - first vector element to read (1 = 1st)  */
+    nelem: c_long,         /* I - number of values to read                */
+    array: &mut [c_ulong], /* O - array of values that are returned       */
+    status: &mut c_int,    /* IO - error status                           */
+) -> c_int {
+    let cdummy: c_char = 0;
+    let mut anynul = 0;
+
+    let row = cmp::max(1, group);
+
+    ffgcluj(
+        fptr,
+        1,
+        row as LONGLONG,
+        firstelem as LONGLONG,
+        nelem as LONGLONG,
+        1,
+        NullCheckType::SetPixel,
+        0,
+        array,
+        &mut [cdummy],
+        Some(&mut anynul),
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2655,13 +2696,35 @@ pub unsafe extern "C" fn ffg2dujj(
 
         let array = slice::from_raw_parts_mut(array, (naxis1 * naxis2) as usize);
 
-        /* call the 3D reading routine, with the 3rd dimension = 1 */
-        ffg3dujj_safe(
-            fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
-        );
-
-        *status
+        ffg2dujj_safe(
+            fptr, group, nulval, ncols, naxis1, naxis2, array, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an entire 2-D array of values to the primary array. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of the
+/// FITS array is not the same as the array being read).  Any null
+/// values in the array will be set equal to the value of nulval, unless
+/// nulval = 0 in which case no null checking will be performed.
+pub fn ffg2dujj_safe(
+    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
+    group: c_long,                  /* I - group to read (1 = 1st group)           */
+    nulval: ULONGLONG,              /* set undefined pixels equal to this     */
+    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
+    array: &mut [ULONGLONG],        /* O - array to be filled and returned    */
+    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,             /* IO - error status                           */
+) -> c_int {
+    /* call the 3D reading routine, with the 3rd dimension = 1 */
+    ffg3dujj_safe(
+        fptr, group, nulval, ncols, naxis2, naxis1, naxis2, 1, array, anynul, status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3302,35 +3365,52 @@ pub unsafe extern "C" fn ffggpujj(
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let mut row = 0;
-        let mut idummy = 0;
-        let cdummy: c_char = 0;
-        let dummy: ULONGLONG = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let array = slice::from_raw_parts_mut(array, nelem as usize);
 
-        let anydummy = 0;
-
-        row = cmp::max(1, group);
-
-        ffgclujj(
-            fptr,
-            1,
-            row as LONGLONG,
-            firstelem as LONGLONG,
-            nelem as LONGLONG,
-            1,
-            NullCheckType::SetPixel,
-            dummy,
-            array,
-            &mut [cdummy],
-            Some(&mut idummy),
-            status,
-        );
-        *status
+        ffggpujj_safe(fptr, group, firstelem, nelem, array, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of group parameters from the primary array. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being read).
+///
+/// The primary array is represented as a binary table:
+/// each group of the primary array is a row in the table,
+/// where the first column contains the group parameters
+/// and the second column contains the image itself.
+pub fn ffggpujj_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    group: c_long,           /* I - group to read (1 = 1st group)           */
+    firstelem: c_long,       /* I - first vector element to read (1 = 1st)  */
+    nelem: c_long,           /* I - number of values to read                */
+    array: &mut [ULONGLONG], /* O - array of values that are returned       */
+    status: &mut c_int,      /* IO - error status                           */
+) -> c_int {
+    let mut idummy = 0;
+    let cdummy: c_char = 0;
+    let dummy: ULONGLONG = 0;
+
+    let row = cmp::max(1, group);
+
+    ffgclujj(
+        fptr,
+        1,
+        row as LONGLONG,
+        firstelem as LONGLONG,
+        nelem as LONGLONG,
+        1,
+        NullCheckType::SetPixel,
+        dummy,
+        array,
+        &mut [cdummy],
+        Some(&mut idummy),
+        status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

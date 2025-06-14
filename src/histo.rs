@@ -241,6 +241,30 @@ pub unsafe extern "C" fn ffbinr(
     binname: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
+    unsafe {
+        ffbinr_safer(
+            ptr, colname, minin, maxin, binsizein, minname, maxname, binname, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Parse the input binning range specification string, returning
+/// the column name, histogram min and max values, and bin size.
+///
+/// This is the non-extended version of the parser which disallows
+/// binning expressions.  Only column names are allowed.
+pub unsafe fn ffbinr_safer(
+    ptr: *mut *mut c_char,
+    colname: *mut c_char,
+    minin: *mut f64,
+    maxin: *mut f64,
+    binsizein: *mut f64,
+    minname: *mut c_char,
+    maxname: *mut c_char,
+    binname: *mut c_char,
+    status: *mut c_int,
+) -> c_int {
     ffbinre(
         ptr,
         colname,
