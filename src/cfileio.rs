@@ -207,7 +207,8 @@ pub fn ffomem_safer(
     }
 
     /* parse the input file specification */
-    ffiurl_safer(
+    unsafe {
+        ffiurl_safer(
         &name[url..],
         urltype.as_mut_ptr(),
         infile.as_mut_ptr(),
@@ -218,6 +219,7 @@ pub fn ffomem_safer(
         colspec.as_mut_ptr(),
         status,
     );
+}
 
     strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
 
@@ -4468,7 +4470,7 @@ pub unsafe extern "C" fn ffiurl(
 /// fits_parse_input_url
 /// parse the input URL into its basic components.
 /// This routine does not support the pixfilter or compspec components.
-pub fn ffiurl_safer(
+pub unsafe fn ffiurl_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
     infilex: *mut c_char,    /* root filename (may be complete path) */
@@ -4522,7 +4524,7 @@ pub unsafe extern "C" fn ffifile(
     }
 }
 
-pub fn ffifile_safer(
+pub unsafe fn ffifile_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
     infilex: *mut c_char,    /* root filename (may be complete path) */
@@ -4583,7 +4585,7 @@ pub unsafe extern "C" fn ffifile2(
 /// fits_parse_input_filename
 /// parse the input URL into its basic components.
 /// This routine is big and ugly and should be redesigned someday!
-pub fn ffifile2_safer(
+pub unsafe fn ffifile2_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
     infilex: *mut c_char,    /* root filename (may be complete path) */

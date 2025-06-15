@@ -12947,7 +12947,7 @@ pub fn fits_uncompress_table_safe(
                                         uncompress2mem_from_mem(
                                             cast_slice(&compressed_vla),
                                             cvlalen.try_into().unwrap(),
-                                            &mut (uncompressed_vla.as_mut_ptr() as *mut u8),
+                                            &mut uncompressed_vla.as_mut_ptr(),
                                             &mut vlamemlen,
                                             Some(realloc),
                                             Some(&mut filesize),
