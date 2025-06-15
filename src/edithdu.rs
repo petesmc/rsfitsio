@@ -571,13 +571,13 @@ pub unsafe extern "C" fn ffwrhdu(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffwrhdu_safe(infptr, outstream, status)
+        ffwrhdu_safer(infptr, outstream, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Write the current HDU to the output stream.
-pub fn ffwrhdu_safe(
+pub fn ffwrhdu_safer(
     infptr: &mut fitsfile, /* I - FITS file pointer to input file  */
     outstream: *mut FILE,  /* I - stream to write HDU to */
     status: &mut c_int,    /* IO - error status     */

@@ -7,6 +7,7 @@
 
 use core::slice;
 use std::ffi::CStr;
+use std::ptr;
 
 use crate::c_types::*;
 
@@ -68,7 +69,12 @@ pub unsafe extern "C" fn ffppx(
 
         let array = slice::from_raw_parts(array as *const u8, bytes);
 
-        ffppx_safer(fptr, datatype, firstpix, nelem, array, status)
+        let mut naxis: c_int = 0;
+        ffgidm_safe(fptr, &mut naxis, status);
+
+        let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
+
+        ffppx_safe(fptr, datatype, firstpix, nelem, array, status)
     }
 }
 
@@ -80,81 +86,77 @@ pub unsafe extern "C" fn ffppx(
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
-pub unsafe fn ffppx_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    datatype: c_int,         /* I - datatype of the value                   */
-    firstpix: *const c_long, /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,         /* I - number of values to write               */
-    array: &[u8],            /* I - array of values that are written        */
-    status: &mut c_int,      /* IO - error status                           */
+pub fn ffppx_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                       */
+    datatype: c_int,     /* I - datatype of the value                   */
+    firstpix: &[c_long], /* I - coord of  first pixel to write(1 based) */
+    nelem: LONGLONG,     /* I - number of values to write               */
+    array: &[u8],        /* I - array of values that are written        */
+    status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut naxis: c_int = 0;
-        let group: c_long = 1;
-        let mut firstelem: LONGLONG = 0;
-        let mut dimsize: LONGLONG = 1;
-        let mut naxes: [LONGLONG; 9] = [0; 9];
+    let mut naxis: c_int = 0;
+    let group: c_long = 1;
+    let mut firstelem: LONGLONG = 0;
+    let mut dimsize: LONGLONG = 1;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        /* get the size of the image */
-        ffgidm_safe(fptr, &mut naxis, status);
-        ffgiszll_safe(fptr, 9, &mut naxes, status);
-
-        let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
-
-        firstelem = 0;
-        for ii in 0..(naxis as usize) {
-            firstelem += (firstpix[ii] as LONGLONG - 1) * dimsize;
-            dimsize *= naxes[ii];
-        }
-        firstelem += 1;
-
-        if datatype == TBYTE {
-            let array = cast_slice(array);
-            ffpprb_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TSBYTE {
-            let array = cast_slice(array);
-            ffpprsb_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TUSHORT {
-            let array = cast_slice(array);
-            ffpprui_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TSHORT {
-            let array = cast_slice(array);
-            ffppri_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TUINT {
-            let array = cast_slice(array);
-            ffppruk_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TINT {
-            let array = cast_slice(array);
-            ffpprk_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TULONG {
-            let array = cast_slice(array);
-            ffppruj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TLONG {
-            let array = cast_slice(array);
-            ffpprj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TULONGLONG {
-            let array = cast_slice(array);
-            ffpprujj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TLONGLONG {
-            let array = cast_slice(array);
-            ffpprjj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TFLOAT {
-            let array = cast_slice(array);
-            ffppre_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TDOUBLE {
-            let array = cast_slice(array);
-            ffpprd_safe(fptr, group, firstelem, nelem, array, status);
-        } else {
-            *status = BAD_DATATYPE;
-        }
-
-        *status
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
     }
+
+    /* get the size of the image */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgiszll_safe(fptr, 9, &mut naxes, status);
+
+    firstelem = 0;
+    for ii in 0..(naxis as usize) {
+        firstelem += (firstpix[ii] as LONGLONG - 1) * dimsize;
+        dimsize *= naxes[ii];
+    }
+    firstelem += 1;
+
+    if datatype == TBYTE {
+        let array = cast_slice(array);
+        ffpprb_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TSBYTE {
+        let array = cast_slice(array);
+        ffpprsb_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TUSHORT {
+        let array = cast_slice(array);
+        ffpprui_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TSHORT {
+        let array = cast_slice(array);
+        ffppri_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TUINT {
+        let array = cast_slice(array);
+        ffppruk_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TINT {
+        let array = cast_slice(array);
+        ffpprk_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TULONG {
+        let array = cast_slice(array);
+        ffppruj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TLONG {
+        let array = cast_slice(array);
+        ffpprj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TULONGLONG {
+        let array = cast_slice(array);
+        ffpprujj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TLONGLONG {
+        let array = cast_slice(array);
+        ffpprjj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TFLOAT {
+        let array = cast_slice(array);
+        ffppre_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TDOUBLE {
+        let array = cast_slice(array);
+        ffpprd_safe(fptr, group, firstelem, nelem, array, status);
+    } else {
+        *status = BAD_DATATYPE;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -188,7 +190,11 @@ pub unsafe extern "C" fn ffppxll(
 
         let array = slice::from_raw_parts(array as *const u8, bytes);
 
-        ffppxll_safer(fptr, datatype, firstpix, nelem, array, status)
+        let mut naxis: c_int = 0;
+        ffgidm_safe(fptr, &mut naxis, status);
+        let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
+
+        ffppxll_safe(fptr, datatype, firstpix, nelem, array, status)
     }
 }
 
@@ -200,81 +206,77 @@ pub unsafe extern "C" fn ffppxll(
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
-pub unsafe fn ffppxll_safer(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: *const LONGLONG, /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: &[u8],              /* I - array of values that are written        */
-    status: &mut c_int,        /* IO - error status                           */
+pub fn ffppxll_safe(
+    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
+    datatype: c_int,       /* I - datatype of the value                   */
+    firstpix: &[LONGLONG], /* I - coord of  first pixel to write(1 based) */
+    nelem: LONGLONG,       /* I - number of values to write               */
+    array: &[u8],          /* I - array of values that are written        */
+    status: &mut c_int,    /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut naxis: c_int = 0;
-        let group: c_long = 1;
-        let mut firstelem: LONGLONG = 0;
-        let mut dimsize = 1;
-        let mut naxes: [LONGLONG; 9] = [0; 9];
+    let mut naxis: c_int = 0;
+    let group: c_long = 1;
+    let mut firstelem: LONGLONG = 0;
+    let mut dimsize = 1;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        /* get the size of the image */
-        ffgidm_safe(fptr, &mut naxis, status);
-        ffgiszll_safe(fptr, 9, &mut naxes, status);
-
-        let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
-
-        firstelem = 0;
-        for ii in 0..(naxis as usize) {
-            firstelem += (firstpix[ii] - 1) * dimsize;
-            dimsize *= naxes[ii];
-        }
-        firstelem += 1;
-
-        if datatype == TBYTE {
-            let array = cast_slice(array);
-            ffpprb_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TSBYTE {
-            let array = cast_slice(array);
-            ffpprsb_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TUSHORT {
-            let array = cast_slice(array);
-            ffpprui_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TSHORT {
-            let array = cast_slice(array);
-            ffppri_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TUINT {
-            let array = cast_slice(array);
-            ffppruk_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TINT {
-            let array = cast_slice(array);
-            ffpprk_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TULONG {
-            let array = cast_slice(array);
-            ffppruj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TLONG {
-            let array = cast_slice(array);
-            ffpprj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TULONGLONG {
-            let array = cast_slice(array);
-            ffpprujj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TLONGLONG {
-            let array = cast_slice(array);
-            ffpprjj_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TFLOAT {
-            let array = cast_slice(array);
-            ffppre_safe(fptr, group, firstelem, nelem, array, status);
-        } else if datatype == TDOUBLE {
-            let array = cast_slice(array);
-            ffpprd_safe(fptr, group, firstelem, nelem, array, status);
-        } else {
-            *status = BAD_DATATYPE;
-        }
-
-        *status
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
     }
+
+    /* get the size of the image */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgiszll_safe(fptr, 9, &mut naxes, status);
+
+    firstelem = 0;
+    for ii in 0..(naxis as usize) {
+        firstelem += (firstpix[ii] - 1) * dimsize;
+        dimsize *= naxes[ii];
+    }
+    firstelem += 1;
+
+    if datatype == TBYTE {
+        let array = cast_slice(array);
+        ffpprb_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TSBYTE {
+        let array = cast_slice(array);
+        ffpprsb_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TUSHORT {
+        let array = cast_slice(array);
+        ffpprui_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TSHORT {
+        let array = cast_slice(array);
+        ffppri_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TUINT {
+        let array = cast_slice(array);
+        ffppruk_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TINT {
+        let array = cast_slice(array);
+        ffpprk_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TULONG {
+        let array = cast_slice(array);
+        ffppruj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TLONG {
+        let array = cast_slice(array);
+        ffpprj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TULONGLONG {
+        let array = cast_slice(array);
+        ffpprujj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TLONGLONG {
+        let array = cast_slice(array);
+        ffpprjj_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TFLOAT {
+        let array = cast_slice(array);
+        ffppre_safe(fptr, group, firstelem, nelem, array, status);
+    } else if datatype == TDOUBLE {
+        let array = cast_slice(array);
+        ffpprd_safe(fptr, group, firstelem, nelem, array, status);
+    } else {
+        *status = BAD_DATATYPE;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -296,14 +298,6 @@ pub unsafe extern "C" fn ffppxn(
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let mut naxis = 0;
-
-        let group: c_long = 1;
-
-        let mut firstelem: LONGLONG = 0;
-        let mut dimsize: LONGLONG = 1;
-        let mut naxes: [LONGLONG; 9] = [0; 9];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
@@ -317,167 +311,202 @@ pub unsafe extern "C" fn ffppxn(
 
         let array = slice::from_raw_parts(array as *const u8, bytes);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        if nulval.is_null() {
-            /* null value not defined? */
-            ffppx_safer(fptr, datatype, firstpix, nelem, array, status);
-            return *status;
-        }
-
-        /* get the size of the image */
+        let mut naxis = 0;
         ffgidm_safe(fptr, &mut naxis, status);
-        ffgiszll_safe(fptr, 9, &mut naxes, status);
-
-        firstelem = 0;
         let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
 
-        for ii in 0..(naxis as usize) {
-            firstelem += (firstpix[ii] as LONGLONG - 1) * dimsize;
-            dimsize *= naxes[ii];
-        }
-        firstelem += 1;
+        let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
-        if datatype == TBYTE {
-            let array = cast_slice(array);
-            ffppnb_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const u8),
-                status,
-            );
-        } else if datatype == TSBYTE {
-            let array = cast_slice(array);
-            ffppnsb_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const i8),
-                status,
-            );
-        } else if datatype == TUSHORT {
-            let array = cast_slice(array);
-            ffppnui_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_ushort),
-                status,
-            );
-        } else if datatype == TSHORT {
-            let array = cast_slice(array);
-            ffppni_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_short),
-                status,
-            );
-        } else if datatype == TUINT {
-            let array = cast_slice(array);
-            ffppnuk_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_uint),
-                status,
-            );
-        } else if datatype == TINT {
-            let array = cast_slice(array);
-            ffppnk_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_int),
-                status,
-            );
-        } else if datatype == TULONG {
-            let array = cast_slice(array);
-            ffppnuj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_ulong),
-                status,
-            );
-        } else if datatype == TLONG {
-            let array = cast_slice(array);
-            ffppnj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_long),
-                status,
-            );
-        } else if datatype == TULONGLONG {
-            let array = cast_slice(array);
-            ffppnujj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const ULONGLONG),
-                status,
-            );
-        } else if datatype == TLONGLONG {
-            let array = cast_slice(array);
-            ffppnjj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const LONGLONG),
-                status,
-            );
-        } else if datatype == TFLOAT {
-            let array = cast_slice(array);
-            ffppne_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const f32),
-                status,
-            );
-        } else if datatype == TDOUBLE {
-            let array = cast_slice(array);
-            ffppnd_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const f64),
-                status,
-            );
-        } else {
-            *status = BAD_DATATYPE;
-        }
-        *status
+        ffppxn_safe(fptr, datatype, firstpix, nelem, array, nulval, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write an array of values to the primary array.  The datatype of the
+/// input array is defined by the 2nd argument. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being written).
+///
+/// This routine supports writing to large images with
+/// more than 2**31 pixels.
+pub fn ffppxn_safe(
+    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
+    datatype: c_int,           /* I - datatype of the value                   */
+    firstpix: &[c_long],       /* I - first vector element to write(1 = 1st)  */
+    nelem: LONGLONG,           /* I - number of values to write               */
+    array: &[u8],              /* I - array of values that are written        */
+    nulval: Option<NullValue>, /* I - pointer to the null value               */
+    status: &mut c_int,        /* IO - error status                           */
+) -> c_int {
+    let mut naxis = 0;
+
+    let group: c_long = 1;
+
+    let mut firstelem: LONGLONG = 0;
+    let mut dimsize: LONGLONG = 1;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if nulval.is_none() {
+        /* null value not defined? */
+        ffppx_safe(fptr, datatype, firstpix, nelem, array, status);
+        return *status;
+    }
+
+    let nulval = nulval.unwrap();
+
+    /* get the size of the image */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgiszll_safe(fptr, 9, &mut naxes, status);
+
+    firstelem = 0;
+
+    for ii in 0..(naxis as usize) {
+        firstelem += (firstpix[ii] as LONGLONG - 1) * dimsize;
+        dimsize *= naxes[ii];
+    }
+    firstelem += 1;
+
+    if datatype == TBYTE {
+        let array = cast_slice(array);
+        ffppnb_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as u8,
+            status,
+        );
+    } else if datatype == TSBYTE {
+        let array = cast_slice(array);
+        ffppnsb_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as i8,
+            status,
+        );
+    } else if datatype == TUSHORT {
+        let array = cast_slice(array);
+        ffppnui_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_ushort,
+            status,
+        );
+    } else if datatype == TSHORT {
+        let array = cast_slice(array);
+        ffppni_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_short,
+            status,
+        );
+    } else if datatype == TUINT {
+        let array = cast_slice(array);
+        ffppnuk_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_uint,
+            status,
+        );
+    } else if datatype == TINT {
+        let array = cast_slice(array);
+        ffppnk_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_int,
+            status,
+        );
+    } else if datatype == TULONG {
+        let array = cast_slice(array);
+        ffppnuj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_ulong,
+            status,
+        );
+    } else if datatype == TLONG {
+        let array = cast_slice(array);
+        ffppnj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_long,
+            status,
+        );
+    } else if datatype == TULONGLONG {
+        let array = cast_slice(array);
+        ffppnujj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as ULONGLONG,
+            status,
+        );
+    } else if datatype == TLONGLONG {
+        let array = cast_slice(array);
+        ffppnjj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as LONGLONG,
+            status,
+        );
+    } else if datatype == TFLOAT {
+        let array = cast_slice(array);
+        ffppne_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as f32,
+            status,
+        );
+    } else if datatype == TDOUBLE {
+        let array = cast_slice(array);
+        ffppnd_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64(),
+            status,
+        );
+    } else {
+        *status = BAD_DATATYPE;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -499,14 +528,6 @@ pub unsafe extern "C" fn ffppxnll(
     status: *mut c_int,        /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let mut naxis = 0;
-
-        let group: c_long = 1;
-
-        let mut firstelem: LONGLONG = 0;
-        let mut dimsize: LONGLONG = 1;
-        let mut naxes: [LONGLONG; 9] = [0; 9];
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
@@ -519,170 +540,204 @@ pub unsafe extern "C" fn ffppxnll(
         };
 
         let array = slice::from_raw_parts(array as *const u8, bytes);
-
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        if nulval.is_null() {
-            /* null value not defined? */
-            ffppxll_safer(fptr, datatype, firstpix, nelem, array, status);
-            return *status;
-        }
-
-        /* get the size of the image */
+        let mut naxis = 0;
         ffgidm_safe(fptr, &mut naxis, status);
-        ffgiszll_safe(fptr, 9, &mut naxes, status);
-
-        firstelem = 0;
         let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
 
-        for ii in 0..(naxis as usize) {
-            firstelem += (firstpix[ii] - 1) * dimsize;
-            dimsize *= naxes[ii];
-        }
-        firstelem += 1;
+        let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
-        if datatype == TBYTE {
-            let array = cast_slice(array);
-            ffppnb_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const u8),
-                status,
-            );
-        } else if datatype == TSBYTE {
-            let array = cast_slice(array);
-            ffppnsb_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const i8),
-                status,
-            );
-        } else if datatype == TUSHORT {
-            let array = cast_slice(array);
-            ffppnui_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_ushort),
-                status,
-            );
-        } else if datatype == TSHORT {
-            let array = cast_slice(array);
-            ffppni_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_short),
-                status,
-            );
-        } else if datatype == TUINT {
-            let array = cast_slice(array);
-            ffppnuk_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_uint),
-                status,
-            );
-        } else if datatype == TINT {
-            let array = cast_slice(array);
-            ffppnk_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_int),
-                status,
-            );
-        } else if datatype == TULONG {
-            let array = cast_slice(array);
-            ffppnuj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_ulong),
-                status,
-            );
-        } else if datatype == TLONG {
-            let array = cast_slice(array);
-            ffppnj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const c_long),
-                status,
-            );
-        } else if datatype == TULONGLONG {
-            let array = cast_slice(array);
-            ffppnujj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const ULONGLONG),
-                status,
-            );
-        } else if datatype == TLONGLONG {
-            let array = cast_slice(array);
-            ffppnjj_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const LONGLONG),
-                status,
-            );
-        } else if datatype == TFLOAT {
-            let array = cast_slice(array);
-            ffppne_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const f32),
-                status,
-            );
-        } else if datatype == TDOUBLE {
-            let array = cast_slice(array);
-
-            ffppnd_safe(
-                fptr,
-                group,
-                firstelem,
-                nelem,
-                array,
-                *(nulval as *const f64),
-                status,
-            );
-        } else {
-            *status = BAD_DATATYPE;
-        }
-
-        *status
+        ffppxnll_safe(fptr, datatype, firstpix, nelem, array, nulval, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write an array of values to the primary array.  The datatype of the
+/// input array is defined by the 2nd argument. Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being written).
+///
+/// This routine supports writing to large images with
+/// more than 2**31 pixels.
+pub fn ffppxnll_safe(
+    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
+    datatype: c_int,           /* I - datatype of the value                   */
+    firstpix: &[LONGLONG],     /* I - first vector element to write(1 = 1st)  */
+    nelem: LONGLONG,           /* I - number of values to write               */
+    array: &[u8],              /* I - array of values that are written        */
+    nulval: Option<NullValue>, /* I - pointer to the null value               */
+    status: &mut c_int,        /* IO - error status                           */
+) -> c_int {
+    let mut naxis = 0;
+
+    let group: c_long = 1;
+
+    let mut firstelem: LONGLONG = 0;
+    let mut dimsize: LONGLONG = 1;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if nulval.is_none() {
+        /* null value not defined? */
+        ffppxll_safe(fptr, datatype, firstpix, nelem, array, status);
+        return *status;
+    }
+
+    let nulval = nulval.unwrap();
+
+    /* get the size of the image */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgiszll_safe(fptr, 9, &mut naxes, status);
+
+    firstelem = 0;
+
+    for ii in 0..(naxis as usize) {
+        firstelem += (firstpix[ii] - 1) * dimsize;
+        dimsize *= naxes[ii];
+    }
+    firstelem += 1;
+
+    if datatype == TBYTE {
+        let array = cast_slice(array);
+        ffppnb_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as u8,
+            status,
+        );
+    } else if datatype == TSBYTE {
+        let array = cast_slice(array);
+        ffppnsb_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as i8,
+            status,
+        );
+    } else if datatype == TUSHORT {
+        let array = cast_slice(array);
+        ffppnui_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_ushort,
+            status,
+        );
+    } else if datatype == TSHORT {
+        let array = cast_slice(array);
+        ffppni_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_short,
+            status,
+        );
+    } else if datatype == TUINT {
+        let array = cast_slice(array);
+        ffppnuk_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_uint,
+            status,
+        );
+    } else if datatype == TINT {
+        let array = cast_slice(array);
+        ffppnk_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_int,
+            status,
+        );
+    } else if datatype == TULONG {
+        let array = cast_slice(array);
+        ffppnuj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_ulong,
+            status,
+        );
+    } else if datatype == TLONG {
+        let array = cast_slice(array);
+        ffppnj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as c_long,
+            status,
+        );
+    } else if datatype == TULONGLONG {
+        let array = cast_slice(array);
+        ffppnujj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as ULONGLONG,
+            status,
+        );
+    } else if datatype == TLONGLONG {
+        let array = cast_slice(array);
+        ffppnjj_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as LONGLONG,
+            status,
+        );
+    } else if datatype == TFLOAT {
+        let array = cast_slice(array);
+        ffppne_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64() as f32,
+            status,
+        );
+    } else if datatype == TDOUBLE {
+        let array = cast_slice(array);
+
+        ffppnd_safe(
+            fptr,
+            group,
+            firstelem,
+            nelem,
+            array,
+            nulval.get_value_as_f64(),
+            status,
+        );
+    } else {
+        *status = BAD_DATATYPE;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1810,6 +1865,40 @@ pub unsafe extern "C" fn ffpcln(
     nulval: *const *const c_void, /* I - array of pointers to values for undefined pixels */
     status: *mut c_int,           /* IO - error status                           */
 ) -> c_int {
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let datatype = slice::from_raw_parts(datatype, ncols as usize);
+        let colnum = slice::from_raw_parts(colnum, ncols as usize);
+        let array = slice::from_raw_parts(array, ncols as usize);
+        let nulval = slice::from_raw_parts(nulval, ncols as usize);
+
+        ffpcln_safe(
+            fptr, ncols, datatype, colnum, firstrow, nrows, array, nulval, status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write arrays of values to NCOLS table columns. This is an optimization
+/// to write all columns in one pass through the table.  The datatypes of the
+/// input arrays are defined by the 3rd argument.  Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being written).
+/// Undefined elements for column i that are equal to *(nulval[i]) are set to
+/// the defined null value, unless nulval[i]=0,
+/// in which case no checking for undefined values will be performed.
+pub fn ffpcln_safe(
+    fptr: &mut fitsfile,      /* I - FITS file pointer                       */
+    ncols: c_int,             /* I - number of columns to write              */
+    datatype: &[c_int],       /* I - datatypes of the values                 */
+    colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
+    firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
+    nrows: LONGLONG,          /* I - number of rows to write             */
+    array: &[*const c_void],  /* I - array of pointers to values to write    */
+    nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
+    status: &mut c_int,       /* IO - error status                           */
+) -> c_int {
     todo!();
 }
 
@@ -2252,5 +2341,45 @@ pub unsafe extern "C" fn ffiter(
     userPointer: *mut c_void,
     status: *mut c_int,
 ) -> c_int {
-    todo!()
+    unsafe {
+        let status = status.as_mut().expect(NULL_MSG);
+        let cols = slice::from_raw_parts_mut(cols, n_cols as usize);
+
+        ffiter_safe(
+            n_cols,
+            cols,
+            offset,
+            n_per_loop,
+            workfn,
+            userPointer,
+            status,
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Iterate through the specified columns or rows of data in a table
+/// or image, calling a user-supplied function for each group of rows.
+/// The columns are passed by reference as iteratorCol structs. This
+/// function provides a way to efficiently process large amounts of data
+/// in a table or image by reading and processing it in chunks rather
+/// than all at once.
+pub fn ffiter_safe(
+    n_cols: c_int,
+    cols: &mut [iteratorCol],
+    offset: c_long,
+    n_per_loop: c_long,
+    workfn: extern "C" fn(
+        total_n: c_long,
+        offset: c_long,
+        first_n: c_long,
+        n_values: c_long,
+        n_cols: c_int,
+        cols: *mut iteratorCol,
+        userPointer: *mut c_void,
+    ) -> c_int,
+    userPointer: *mut c_void,
+    status: &mut c_int,
+) -> c_int {
+    todo!();
 }

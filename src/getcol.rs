@@ -761,15 +761,15 @@ pub unsafe extern "C" fn ffgpxf(
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let mut tfirstpix: [LONGLONG; 99] = [0; 99];
-        let mut naxis = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let nullarray = slice::from_raw_parts_mut(nullarray, nelem as usize);
 
         let bytes = bytes_per_datatype(datatype).unwrap();
         let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let anynul = anynul.as_mut();
+
+        let mut naxis = 0;
 
         if *status > 0 || nelem == 0 {
             /* inherit input status value if > 0 */
@@ -781,23 +781,49 @@ pub unsafe extern "C" fn ffgpxf(
 
         let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
 
-        for i in 0..(naxis as usize) {
-            tfirstpix[i] = firstpix[i] as LONGLONG;
-        }
-
-        ffgpxfll_safe(
-            fptr,
-            datatype,
-            &tfirstpix,
-            nelem,
-            array,
-            nullarray,
-            anynul.as_mut(),
-            status,
-        );
-
-        *status
+        ffgpxf_safe(
+            fptr, datatype, firstpix, nelem, array, nullarray, anynul, status,
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of values from the primary array. The datatype of the
+/// input array is defined by the 2nd argument.  Data conversion
+/// and scaling will be performed if necessary (e.g, if the datatype of
+/// the FITS array is not the same as the array being read).
+/// The nullarray values will = 1 if the corresponding array value is null.
+/// ANYNUL is returned with a value of .true. if any pixels are undefined.
+pub fn ffgpxf_safe(
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    datatype: c_int,            /* I - datatype of the value                   */
+    firstpix: &[c_long],        /* I - coord of first pixel to read (1s based) */
+    nelem: LONGLONG,            /* I - number of values to read            */
+    array: &mut [u8],           /* O - array of values that are returned       */
+    nullarray: &mut [c_char],   /* O - returned array of null value flags      */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
+) -> c_int {
+    let mut tfirstpix: [LONGLONG; 99] = [0; 99];
+    let mut naxis = 0;
+
+    if *status > 0 || nelem == 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* get the size of the image */
+    ffgidm_safe(fptr, &mut naxis, status);
+
+    for i in 0..(naxis as usize) {
+        tfirstpix[i] = firstpix[i] as LONGLONG;
+    }
+
+    ffgpxfll_safe(
+        fptr, datatype, &tfirstpix, nelem, array, nullarray, anynul, status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

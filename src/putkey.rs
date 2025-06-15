@@ -3831,110 +3831,120 @@ pub unsafe extern "C" fn ffptdm(
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
     unsafe {
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut value: [c_char; 80] = [0; 80];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let ii: c_int = 0;
-        let mut totalpix: c_long = 1;
-        let mut repeat: c_long = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
-
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if colnum < 1 || colnum > 999 {
-            ffpmsg_str("column number is out of range 1 - 999 (ffptdm)");
-            *status = BAD_COL_NUM;
-            return *status;
-        }
-
-        if naxis < 1 {
-            ffpmsg_str("naxis is less than 1 (ffptdm)");
-            *status = BAD_DIMEN;
-            return *status;
-        }
-
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0
-        {
-            /* rescan header */
-            return *status;
-        }
-
-        if fptr.Fptr.hdutype != BINARY_TBL {
-            ffpmsg_str("Error: The TDIMn keyword is only allowed in BINTABLE extensions (ffptdm)");
-            *status = NOT_BTABLE;
-            return *status;
-        }
-
-        strcpy_safe(&mut tdimstr, cs!(c"(")); /* start constructing the TDIM value */
-
-        for ii in 0..(naxis as usize) {
-            if ii > 0 {
-                strcat_safe(&mut tdimstr, cs!(c",")); /* append the comma separator */
-            }
-
-            if naxes[ii] < 0 {
-                ffpmsg_str("one or more TDIM values are less than 0 (ffptdm)");
-                *status = BAD_TDIM;
-                return *status;
-            }
-
-            int_snprintf!(&mut value, 80, "{}", naxes[ii]);
-            /* This will either be followed by a ',' or ')'. */
-            if strlen_safe(&tdimstr) + strlen_safe(&value) + 1 > FLEN_VALUE - 1 {
-                ffpmsg_str("TDIM string too long (ffptdm)");
-                *status = BAD_TDIM;
-                return *status;
-            }
-            strcat_safe(&mut tdimstr, &value); /* append the axis size */
-
-            totalpix *= naxes[ii];
-        }
-
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
-        let c = slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize);
-        let ci = (colnum - 1) as usize; /* point to the specified column number */
-
-        if (c[ci].trepeat as c_long) != totalpix {
-            /* There is an apparent inconsistency between TDIMn and TFORMn. */
-            /* The colptr->trepeat value may be out of date, so re-read     */
-            /* the TFORMn keyword to be sure.                               */
-
-            ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status); /* construct TFORMn name  */
-            ffgkys_safe(fptr, &keyname, &mut value, None, status); /* read TFORMn keyword    */
-            ffbnfm_safe(&value, None, Some(&mut repeat), None, status); /* parse the repeat count */
-
-            if *status > 0 || repeat != totalpix {
-                int_snprintf!(
-                    &mut message,
-                    FLEN_ERRMSG,
-                    "column vector length, {}, does not equal TDIMn array size, {}",
-                    c[ci].trepeat as c_long,
-                    totalpix,
-                );
-                ffpmsg_slice(&message);
-                *status = BAD_TDIM;
-                return *status;
-            }
-        }
-
-        strcat_safe(&mut tdimstr, cs!(c")")); /* append the closing parenthesis */
-
-        strcpy_safe(&mut comm, cs!(c"size of the multidimensional array"));
-        ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct TDIMn name */
-        ffpkys_safe(fptr, &keyname, &tdimstr, Some(&comm), status); /* write the keyword */
-        *status
+        ffptdm_safe(fptr, colnum, naxis, naxes, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Write the TDIMnnn keyword describing the dimensionality of a column
+pub fn ffptdm_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer                        */
+    colnum: c_int,       /* I - column number                            */
+    naxis: c_int,        /* I - number of axes in the data array         */
+    naxes: &[c_long],    /* I - length of each data axis                 */
+    status: &mut c_int,  /* IO - error status                            */
+) -> c_int {
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut value: [c_char; 80] = [0; 80];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let ii: c_int = 0;
+    let mut totalpix: c_long = 1;
+    let mut repeat: c_long = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if colnum < 1 || colnum > 999 {
+        ffpmsg_str("column number is out of range 1 - 999 (ffptdm)");
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    if naxis < 1 {
+        ffpmsg_str("naxis is less than 1 (ffptdm)");
+        *status = BAD_DIMEN;
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype != BINARY_TBL {
+        ffpmsg_str("Error: The TDIMn keyword is only allowed in BINTABLE extensions (ffptdm)");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    strcpy_safe(&mut tdimstr, cs!(c"(")); /* start constructing the TDIM value */
+
+    for ii in 0..(naxis as usize) {
+        if ii > 0 {
+            strcat_safe(&mut tdimstr, cs!(c",")); /* append the comma separator */
+        }
+
+        if naxes[ii] < 0 {
+            ffpmsg_str("one or more TDIM values are less than 0 (ffptdm)");
+            *status = BAD_TDIM;
+            return *status;
+        }
+
+        int_snprintf!(&mut value, 80, "{}", naxes[ii]);
+        /* This will either be followed by a ',' or ')'. */
+        if strlen_safe(&mut tdimstr) + strlen_safe(&value) + 1 > FLEN_VALUE - 1 {
+            ffpmsg_str("TDIM string too long (ffptdm)");
+            *status = BAD_TDIM;
+            return *status;
+        }
+        strcat_safe(&mut tdimstr, &value); /* append the axis size */
+
+        totalpix *= naxes[ii];
+    }
+
+    let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+    let c = unsafe { slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize) };
+    let ci = (colnum - 1) as usize; /* point to the specified column number */
+
+    if (c[ci].trepeat as c_long) != totalpix {
+        /* There is an apparent inconsistency between TDIMn and TFORMn. */
+        /* The colptr->trepeat value may be out of date, so re-read     */
+        /* the TFORMn keyword to be sure.                               */
+
+        ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status); /* construct TFORMn name  */
+        ffgkys_safe(fptr, &keyname, &mut value, None, status); /* read TFORMn keyword    */
+        ffbnfm_safe(&value, None, Some(&mut repeat), None, status); /* parse the repeat count */
+
+        if *status > 0 || repeat != totalpix {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "column vector length, {}, does not equal TDIMn array size, {}",
+                c[ci].trepeat as c_long,
+                totalpix,
+            );
+            ffpmsg_slice(&message);
+            *status = BAD_TDIM;
+            return *status;
+        }
+    }
+
+    strcat_safe(&mut tdimstr, cs!(c")")); /* append the closing parenthesis */
+
+    strcpy_safe(&mut comm, cs!(c"size of the multidimensional array"));
+    ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct TDIMn name */
+    ffpkys_safe(fptr, &keyname, &tdimstr, Some(&comm), status); /* write the keyword */
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

@@ -2374,14 +2374,47 @@ pub fn ffikfm_safer(
 /*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffikym(
-    fptr: *const fitsfile,  /* I - FITS file pointer  */
+    fptr: *mut fitsfile,    /* I - FITS file pointer  */
     keyname: *const c_char, /* I - keyword name       */
     value: *const [f64; 2], /* I - keyword value      */
     decim: c_int,           /* I - no of decimals     */
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let value = value.as_ref().expect(NULL_MSG);
+
+        raw_to_slice!(keyname);
+        nullable_slice_cstr!(comm);
+
+        ffikym_safe(fptr, keyname, value, decim, comm, status)
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Insert a complex double keyword into the FITS header at the current position.
+pub fn ffikym_safe(
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
+) -> c_int {
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
     todo!();
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

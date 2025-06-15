@@ -736,6 +736,7 @@ pub mod rust_api {
     pub use crate::getkey::ffnchk_safe as fits_null_check;
 
     pub use crate::editcol::ffcpky_safe as fits_copy_key;
+    pub use crate::modkey::ffpunt_safe as fits_write_key_unit;
     pub use crate::putkey::ffdt2s_safe as fits_date2str;
     pub use crate::putkey::ffgsdt_safe as fits_get_system_date;
     pub use crate::putkey::ffgstm_safe as fits_get_system_time;
@@ -775,8 +776,7 @@ pub mod rust_api {
     pub use crate::putkey::ffpkyuj_safe as fits_write_key_ulng;
     pub use crate::putkey::ffplsw_safe as fits_write_key_longwarn;
     pub use crate::putkey::ffprec_safe as fits_write_record;
-    // pub use crate::putkey::ffptdm_safe as fits_write_tdim;
-    pub use crate::modkey::ffpunt_safe as fits_write_key_unit;
+    pub use crate::putkey::ffptdm_safe as fits_write_tdim;
     pub use crate::putkey::ffptdmll_safe as fits_write_tdimll;
     pub use crate::putkey::ffs2dt_safe as fits_str2date;
     pub use crate::putkey::ffs2tm_safe as fits_str2time;
@@ -877,7 +877,7 @@ pub mod rust_api {
     pub use crate::modkey::ffikyg_safer as fits_insert_key_fixdbl;
     pub use crate::modkey::ffikyj_safe as fits_insert_key_lng;
     pub use crate::modkey::ffikyl_safer as fits_insert_key_log;
-    // pub use crate::modkey::ffikym_safe as fits_insert_key_dblcmp;
+    pub use crate::modkey::ffikym_safe as fits_insert_key_dblcmp;
     pub use crate::modkey::ffikys_safer as fits_insert_key_str;
     pub use crate::modkey::ffikyu_safer as fits_insert_key_null;
     pub use crate::modkey::ffirec_safe as fits_insert_record;
@@ -921,7 +921,7 @@ pub mod rust_api {
     pub use crate::edithdu::ffcphd_safer as fits_copy_header;
     pub use crate::edithdu::ffcpht_safer as fits_copy_hdutab;
     pub use crate::edithdu::ffdhdu_safer as fits_delete_hdu;
-    pub use crate::edithdu::ffwrhdu_safe as fits_write_hdu;
+    pub use crate::edithdu::ffwrhdu_safer as fits_write_hdu;
 
     pub use crate::fitscore::ffhdef_safe as fits_set_hdrsize;
     pub use crate::fitscore::ffrdef_safe as fits_set_hdustruc;
@@ -953,23 +953,27 @@ pub mod rust_api {
     pub use crate::fitscore::ffgtcl_safe as fits_get_coltype;
     pub use crate::fitscore::ffgtclll_safe as fits_get_coltypell;
 
-    // pub use crate::putcol::ffiter_safe as fits_iterate_data;
+    pub use crate::putcol::ffiter_safe as fits_iterate_data;
 
-    // pub use crate::getcolb::ffggpb_safe as fits_read_grppar_byt;
-    // pub use crate::getcold::ffggpd_safe as fits_read_grppar_dbl;
-    // pub use crate::getcole::ffggpe_safe as fits_read_grppar_flt;
-    // pub use crate::getcoli::ffggpi_safe as fits_read_grppar_sht;
-    // pub use crate::getcolj::ffggpj_safe as fits_read_grppar_lng;
-    // pub use crate::getcolj::ffggpjj_safe as fits_read_grppar_lnglng;
-    // pub use crate::getcolk::ffggpk_safe as fits_read_grppar_int;
-    // pub use crate::getcolsb::ffggpsb_safe as fits_read_grppar_sbyt;
-    // pub use crate::getcolui::ffggpui_safe as fits_read_grppar_usht;
-    // pub use crate::getcoluj::ffggpuj_safe as fits_read_grppar_ulng;
-    // pub use crate::getcoluj::ffggpujj_safe as fits_read_grppar_ulnglng;
-    // pub use crate::getcoluk::ffggpuk_safe as fits_read_grppar_uint;
+    pub use crate::getcolb::ffggpb_safe as fits_read_grppar_byt;
+    pub use crate::getcold::ffggpd_safe as fits_read_grppar_dbl;
+    pub use crate::getcole::ffggpe_safe as fits_read_grppar_flt;
+    pub use crate::getcoli::ffggpi_safe as fits_read_grppar_sht;
+    pub use crate::getcolj::ffggpj_safe as fits_read_grppar_lng;
+    pub use crate::getcolj::ffggpjj_safe as fits_read_grppar_lnglng;
+    pub use crate::getcolk::ffggpk_safe as fits_read_grppar_int;
+    pub use crate::getcolsb::ffggpsb_safe as fits_read_grppar_sbyt;
+    pub use crate::getcolui::ffggpui_safe as fits_read_grppar_usht;
+    pub use crate::getcoluj::ffggpuj_safe as fits_read_grppar_ulng;
+    pub use crate::getcoluj::ffggpujj_safe as fits_read_grppar_ulnglng;
+    pub use crate::getcoluk::ffggpuk_safe as fits_read_grppar_uint;
 
     pub use crate::getcol::ffgpf_safe as fits_read_imgnull;
     pub use crate::getcol::ffgpv_safe as fits_read_img;
+    pub use crate::getcol::ffgpxf_safe as fits_read_pixnull;
+    pub use crate::getcol::ffgpxfll_safe as fits_read_pixnullll;
+    pub use crate::getcol::ffgpxv_safe as fits_read_pix;
+    pub use crate::getcol::ffgpxvll_safe as fits_read_pixll;
     pub use crate::getcolb::ffgpvb_safe as fits_read_img_byt;
     pub use crate::getcold::ffgpvd_safe as fits_read_img_dbl;
     pub use crate::getcole::ffgpve_safe as fits_read_img_flt;
@@ -982,10 +986,6 @@ pub mod rust_api {
     pub use crate::getcoluj::ffgpvuj_safe as fits_read_img_ulng;
     pub use crate::getcoluj::ffgpvujj_safe as fits_read_img_ulnglng;
     pub use crate::getcoluk::ffgpvuk_safe as fits_read_img_uint;
-    // pub use crate::getcol::ffgpxf_safe as fits_read_pixnull;
-    pub use crate::getcol::ffgpxfll_safe as fits_read_pixnullll;
-    pub use crate::getcol::ffgpxv_safe as fits_read_pix;
-    pub use crate::getcol::ffgpxvll_safe as fits_read_pixll;
 
     pub use crate::getcolb::ffgpfb_safe as fits_read_imgnull_byt;
     pub use crate::getcold::ffgpfd_safe as fits_read_imgnull_dbl;
@@ -1000,18 +1000,18 @@ pub mod rust_api {
     pub use crate::getcoluj::ffgpfujj_safe as fits_read_imgnull_ulnglng;
     pub use crate::getcoluk::ffgpfuk_safe as fits_read_imgnull_uint;
 
-    // pub use crate::getcolb::ffg2db_safe as fits_read_2d_byt;
-    // pub use crate::getcold::ffg2dd_safe as fits_read_2d_dbl;
-    // pub use crate::getcole::ffg2de_safe as fits_read_2d_flt;
-    // pub use crate::getcoli::ffg2di_safe as fits_read_2d_sht;
-    // pub use crate::getcolj::ffg2dj_safe as fits_read_2d_lng;
-    // pub use crate::getcolj::ffg2djj_safe as fits_read_2d_lnglng;
-    // pub use crate::getcolk::ffg2dk_safe as fits_read_2d_int;
-    // pub use crate::getcolsb::ffg2dsb_safe as fits_read_2d_sbyt;
-    // pub use crate::getcolui::ffg2dui_safe as fits_read_2d_usht;
-    // pub use crate::getcoluj::ffg2duj_safe as fits_read_2d_ulng;
-    // pub use crate::getcoluj::ffg2dujj_safe as fits_read_2d_ulnglng;
-    // pub use crate::getcoluk::ffg2duk_safe as fits_read_2d_uint;
+    pub use crate::getcolb::ffg2db_safe as fits_read_2d_byt;
+    pub use crate::getcold::ffg2dd_safe as fits_read_2d_dbl;
+    pub use crate::getcole::ffg2de_safe as fits_read_2d_flt;
+    pub use crate::getcoli::ffg2di_safe as fits_read_2d_sht;
+    pub use crate::getcolj::ffg2dj_safe as fits_read_2d_lng;
+    pub use crate::getcolj::ffg2djj_safe as fits_read_2d_lnglng;
+    pub use crate::getcolk::ffg2dk_safe as fits_read_2d_int;
+    pub use crate::getcolsb::ffg2dsb_safe as fits_read_2d_sbyt;
+    pub use crate::getcolui::ffg2dui_safe as fits_read_2d_usht;
+    pub use crate::getcoluj::ffg2duj_safe as fits_read_2d_ulng;
+    pub use crate::getcoluj::ffg2dujj_safe as fits_read_2d_ulnglng;
+    pub use crate::getcoluk::ffg2duk_safe as fits_read_2d_uint;
 
     pub use crate::getcolb::ffg3db_safe as fits_read_3d_byt;
     pub use crate::getcold::ffg3dd_safe as fits_read_3d_dbl;
@@ -1040,60 +1040,59 @@ pub mod rust_api {
     pub use crate::getcoluj::ffgsvujj_safe as fits_read_subset_ulnglng;
     pub use crate::getcoluk::ffgsvuk_safe as fits_read_subset_uint;
 
-    // pub use crate::getcolb::ffgsfb_safe as fits_read_subsetnull_byt;
-    // pub use crate::getcold::ffgsfd_safe as fits_read_subsetnull_dbl;
-    // pub use crate::getcole::ffgsfe_safe as fits_read_subsetnull_flt;
-    // pub use crate::getcoli::ffgsfi_safe as fits_read_subsetnull_sht;
-    // pub use crate::getcolj::ffgsfj_safe as fits_read_subsetnull_lng;
-    // pub use crate::getcolj::ffgsfjj_safe as fits_read_subsetnull_lnglng;
-    // pub use crate::getcolk::ffgsfk_safe as fits_read_subsetnull_int;
-    // pub use crate::getcolsb::ffgsfsb_safe as fits_read_subsetnull_sbyt;
-    // pub use crate::getcolui::ffgsfui_safe as fits_read_subsetnull_usht;
-    // pub use crate::getcoluj::ffgsfuj_safe as fits_read_subsetnull_ulng;
-    // pub use crate::getcoluj::ffgsfujj_safe as fits_read_subsetnull_ulnglng;
-    // pub use crate::getcoluk::ffgsfuk_safe as fits_read_subsetnull_uint;
+    pub use crate::getcolb::ffgsfb_safe as fits_read_subsetnull_byt;
+    pub use crate::getcold::ffgsfd_safe as fits_read_subsetnull_dbl;
+    pub use crate::getcole::ffgsfe_safe as fits_read_subsetnull_flt;
+    pub use crate::getcoli::ffgsfi_safe as fits_read_subsetnull_sht;
+    pub use crate::getcolj::ffgsfj_safe as fits_read_subsetnull_lng;
+    pub use crate::getcolj::ffgsfjj_safe as fits_read_subsetnull_lnglng;
+    pub use crate::getcolk::ffgsfk_safe as fits_read_subsetnull_int;
+    pub use crate::getcolsb::ffgsfsb_safe as fits_read_subsetnull_sbyt;
+    pub use crate::getcolui::ffgsfui_safe as fits_read_subsetnull_usht;
+    pub use crate::getcoluj::ffgsfuj_safe as fits_read_subsetnull_ulng;
+    pub use crate::getcoluj::ffgsfujj_safe as fits_read_subsetnull_ulnglng;
+    pub use crate::getcoluk::ffgsfuk_safe as fits_read_subsetnull_uint;
 
     pub use crate::cfileio::fits_copy_image_section_safer as ffcpimg;
 
     pub use crate::getcol::ffgcf_safe as fits_read_colnull;
     pub use crate::getcol::ffgcv_safe as fits_read_col;
+    pub use crate::getcol::ffgcvn_safer as fits_read_cols;
     pub use crate::getcolb::ffgcvb_safe as fits_read_col_byt;
     pub use crate::getcold::ffgcvd_safe as fits_read_col_dbl;
-    pub use crate::getcole::ffgcvc_safe as fits_read_col_cmp;
-    // pub use crate::getcole::ffgcve_safe as fits_read_col_flt;
-    // pub use crate::getcoli::ffgcvi_safe as fits_read_col_sht;
-    // pub use crate::getcolj::ffgcvj_safe as fits_read_col_lng;
-    pub use crate::getcol::ffgcvn_safer as fits_read_cols;
     pub use crate::getcold::ffgcvm_safe as fits_read_col_dblcmp;
+    pub use crate::getcole::ffgcvc_safe as fits_read_col_cmp;
+    pub use crate::getcole::ffgcve_safe as fits_read_col_flt;
+    pub use crate::getcoli::ffgcvi_safe as fits_read_col_sht;
+    pub use crate::getcolj::ffgcvj_safe as fits_read_col_lng;
     pub use crate::getcolj::ffgcvjj_safe as fits_read_col_lnglng;
     pub use crate::getcolk::ffgcvk_safe as fits_read_col_int;
     pub use crate::getcoll::ffgcvl_safe as fits_read_col_log;
-    pub use crate::getcols::ffgcvs_safe as fits_read_col_str;
-    // pub use crate::getcolsb::ffgcvsb_safe as fits_read_col_sbyt;
-    // pub use crate::getcolui::ffgcvui_safe as fits_read_col_usht;
-    // pub use crate::getcoluj::ffgcvuj_safe as fits_read_col_ulng;
-    pub use crate::getcoluj::ffgcvujj_safe as fits_read_col_ulnglng;
-    // pub use crate::getcoluk::ffgcvuk_safe as fits_read_col_uint;
     pub use crate::getcoll::ffgcx_safe as fits_read_col_bit;
     pub use crate::getcoll::ffgcxui_safe as fits_read_col_bit_usht;
     pub use crate::getcoll::ffgcxuk_safe as fits_read_col_bit_uint;
+    pub use crate::getcols::ffgcvs_safe as fits_read_col_str;
+    pub use crate::getcolsb::ffgcvsb_safe as fits_read_col_sbyt;
+    pub use crate::getcolui::ffgcvui_safe as fits_read_col_usht;
+    pub use crate::getcoluj::ffgcvuj_safe as fits_read_col_ulng;
+    pub use crate::getcoluj::ffgcvujj_safe as fits_read_col_ulnglng;
+    pub use crate::getcoluk::ffgcvuk_safe as fits_read_col_uint;
 
-    // pub use crate::getcolb::ffgcfb_safe as fits_read_colnull_byt;
+    pub use crate::getcolb::ffgcfb_safe as fits_read_colnull_byt;
+    pub use crate::getcold::ffgcfd_safe as fits_read_colnull_dbl;
     pub use crate::getcole::ffgcfc_safe as fits_read_colnull_cmp;
-    // pub use crate::getcold::ffgcfd_safe as fits_read_colnull_dbl;
-    // pub use crate::getcole::ffgcfe_safe as fits_read_colnull_flt;
-    // pub use crate::getcoli::ffgcfi_safe as fits_read_colnull_sht;
-    // pub use crate::getcolj::ffgcfj_safe as fits_read_colnull_lng;
+    pub use crate::getcole::ffgcfe_safe as fits_read_colnull_flt;
+    pub use crate::getcoli::ffgcfi_safe as fits_read_colnull_sht;
+    pub use crate::getcolj::ffgcfj_safe as fits_read_colnull_lng;
     pub use crate::getcolj::ffgcfjj_safe as fits_read_colnull_lnglng;
-    // pub use crate::getcolk::ffgcfk_safe as fits_read_colnull_int;
-    // pub use crate::getcoll::ffgcfl_safe as fits_read_colnull_log;
-    pub use crate::getcold::ffgcfm_safe as fits_read_colnull_dblcmp;
-    // pub use crate::getcols::ffgcfs_safe as fits_read_colnull_str;
-    // pub use crate::getcolsb::ffgcfsb_safe as fits_read_colnull_sbyt;
-    // pub use crate::getcolui::ffgcfui_safe as fits_read_colnull_usht;
-    // pub use crate::getcoluj::ffgcfuj_safe as fits_read_colnull_ulng;
+    pub use crate::getcolk::ffgcfk_safe as fits_read_colnull_int;
+    pub use crate::getcoll::ffgcfl_safe as fits_read_colnull_log;
+    pub use crate::getcols::ffgcfs_safe as fits_read_colnull_str;
+    pub use crate::getcolsb::ffgcfsb_safe as fits_read_colnull_sbyt;
+    pub use crate::getcolui::ffgcfui_safe as fits_read_colnull_usht;
+    pub use crate::getcoluj::ffgcfuj_safe as fits_read_colnull_ulng;
     pub use crate::getcoluj::ffgcfujj_safe as fits_read_colnull_ulnglng;
-    // pub use crate::getcoluk::ffgcfuk_safe as fits_read_colnull_uint;
+    pub use crate::getcoluk::ffgcfuk_safe as fits_read_colnull_uint;
 
     pub use crate::buffers::ffgtbb_safe as fits_read_tblbytes;
     pub use crate::fitscore::ffgdes_safe as fits_read_descript;
@@ -1115,8 +1114,10 @@ pub mod rust_api {
     pub use crate::putcoluk::ffpgpuk_safe as fits_write_grppar_uint;
 
     pub use crate::putcol::ffppr_safe as fits_write_img;
-    pub use crate::putcol::ffppx_safer as fits_write_pix;
-    pub use crate::putcol::ffppxll_safer as fits_write_pixll;
+    pub use crate::putcol::ffppx_safe as fits_write_pix;
+    pub use crate::putcol::ffppxll_safe as fits_write_pixll;
+    pub use crate::putcol::ffppxn_safe as fits_write_pixnull;
+    pub use crate::putcol::ffppxnll_safe as fits_write_pixnullll;
     pub use crate::putcolb::ffpprb_safe as fits_write_img_byt;
     pub use crate::putcold::ffpprd_safe as fits_write_img_dbl;
     pub use crate::putcole::ffppre_safe as fits_write_img_flt;
@@ -1129,8 +1130,6 @@ pub mod rust_api {
     pub use crate::putcoluj::ffppruj_safe as fits_write_img_ulng;
     pub use crate::putcoluj::ffpprujj_safe as fits_write_img_ulnglng;
     pub use crate::putcoluk::ffppruk_safe as fits_write_img_uint;
-    // pub use crate::putcol::ffppxn_safe as fits_write_pixnull;
-    // pub use crate::putcol::ffppxnll_safe as fits_write_pixnullll;
 
     pub use crate::putcol::ffppn_safe as fits_write_imgnull;
     pub use crate::putcolb::ffppnb_safe as fits_write_imgnull_byt;
@@ -1190,6 +1189,7 @@ pub mod rust_api {
     pub use crate::putcoluk::ffpssuk_safe as fits_write_subset_uint;
 
     pub use crate::putcol::ffpcl_safer as fits_write_col;
+    pub use crate::putcol::ffpcln_safe as fits_write_cols;
     pub use crate::putcolb::ffpclb_safe as fits_write_col_byt;
     pub use crate::putcold::ffpcld_safe as fits_write_col_dbl;
     pub use crate::putcold::ffpclm_safe as fits_write_col_dblcmp;
@@ -1200,7 +1200,6 @@ pub mod rust_api {
     pub use crate::putcolj::ffpcljj_safe as fits_write_col_lnglng;
     pub use crate::putcolk::ffpclk_safe as fits_write_col_int;
     pub use crate::putcoll::ffpcll_safe as fits_write_col_log;
-    // pub use crate::putcol::ffpcln_safe as fits_write_cols;
     pub use crate::putcoll::ffpclx_safe as fits_write_col_bit;
     pub use crate::putcols::ffpcls_safe as fits_write_col_str;
     pub use crate::putcolsb::ffpclsb_safe as fits_write_col_sbyt;

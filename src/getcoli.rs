@@ -665,37 +665,13 @@ pub unsafe extern "C" fn ffgsfi(
     status: *mut c_int,   /* IO - error status                             */
 ) -> c_int {
     unsafe {
-        let mut rstr: c_long = 0;
-        let mut rstp: c_long = 0;
-        let mut rinc: c_long = 0;
-        let mut str: [c_long; 9] = [0; 9];
-        let mut stp: [c_long; 9] = [0; 9];
-        let mut incr: [c_long; 9] = [0; 9];
-        let dir: [c_long; 9] = [0; 9];
-        let mut nelem: c_long = 0;
-        let mut nultyp = NullCheckType::None;
-        let mut ninc: c_long = 0;
-        let mut numcol: c_long = 0;
-        let mut felem: LONGLONG = 0;
-        let mut dsize: [LONGLONG; 10] = [0; 10];
-        let mut blcll: [LONGLONG; 9] = [0; 9];
-        let mut trcll: [LONGLONG; 9] = [0; 9];
-        let mut hdutype: c_int = 0;
-        let mut anyf: c_int = 0;
-        let ldummy: c_char = 0;
-        let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let nullcheck = NullCheckType::SetNullArray;
-        let nullval: c_short = 0;
-
-        let naxis = naxis as usize;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        let naxes = slice::from_raw_parts(naxes, naxis);
-        let blc = slice::from_raw_parts(blc, naxis);
-        let trc = slice::from_raw_parts(trc, naxis);
-        let inc = slice::from_raw_parts(inc, naxis);
+        let naxes = slice::from_raw_parts(naxes, naxis as usize);
+        let blc = slice::from_raw_parts(blc, naxis as usize);
+        let trc = slice::from_raw_parts(trc, naxis as usize);
+        let inc = slice::from_raw_parts(inc, naxis as usize);
 
         let total_nelem = calculate_subsection_length(blc, trc, inc);
 
@@ -704,155 +680,195 @@ pub unsafe extern "C" fn ffgsfi(
 
         let mut anynul = anynul.as_mut();
 
-        if naxis < 1 || naxis > 9 {
+        ffgsfi_safe(
+            fptr, colnum, naxis, naxes, blc, trc, inc, array, flagval, anynul, status,
+        )
+    }
+}
+
+pub fn ffgsfi_safe(
+    fptr: &mut fitsfile,    /* I - FITS file pointer                         */
+    colnum: c_int,          /* I - number of the column to read (1 = 1st)    */
+    naxis: c_int,           /* I - number of dimensions in the FITS array    */
+    naxes: &[c_long],       /* I - size of each dimension                    */
+    blc: &[c_long],         /* I - 'bottom left corner' of the subsection    */
+    trc: &[c_long],         /* I - 'top right corner' of the subsection      */
+    inc: &[c_long],         /* I - increment to be applied in each dimension */
+    array: &mut [c_short],  /* O - array to be filled and returned          */
+    flagval: &mut [c_char], /* O - set to 1 if corresponding value is null   */
+    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
+    status: &mut c_int,     /* IO - error status                             */
+) -> c_int {
+    let mut rstr: c_long = 0;
+    let mut rstp: c_long = 0;
+    let mut rinc: c_long = 0;
+    let mut str: [c_long; 9] = [0; 9];
+    let mut stp: [c_long; 9] = [0; 9];
+    let mut incr: [c_long; 9] = [0; 9];
+    let dir: [c_long; 9] = [0; 9];
+    let mut nelem: c_long = 0;
+    let mut nultyp = NullCheckType::None;
+    let mut ninc: c_long = 0;
+    let mut numcol: c_long = 0;
+    let mut felem: LONGLONG = 0;
+    let mut dsize: [LONGLONG; 10] = [0; 10];
+    let mut blcll: [LONGLONG; 9] = [0; 9];
+    let mut trcll: [LONGLONG; 9] = [0; 9];
+    let mut hdutype: c_int = 0;
+    let mut anyf: c_int = 0;
+    let ldummy: c_char = 0;
+    let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let nullcheck = NullCheckType::SetNullArray;
+    let nullval: c_short = 0;
+
+    let naxis = naxis as usize;
+
+    if naxis < 1 || naxis > 9 {
+        int_snprintf!(
+            &mut msg,
+            FLEN_ERRMSG,
+            "NAXIS = {} in call to ffgsvi is out of range",
+            naxis,
+        );
+        ffpmsg_slice(&msg);
+        *status = BAD_DIMEN;
+        return *status;
+    }
+
+    if fits_is_compressed_image_safe(fptr, status) > 0 {
+        /* this is a compressed image in a binary table */
+
+        for ii in 0..naxis {
+            blcll[ii] = blc[ii] as LONGLONG;
+            trcll[ii] = trc[ii] as LONGLONG;
+        }
+        todo!();
+        // fits_read_compressed_img(fptr, TSHORT, blcll, trcll, inc,     nullcheck, NULL, array, flagval, anynul, status);
+        return *status;
+    }
+
+    /*
+    if this is a primary array, then the input COLNUM parameter should
+    be interpreted as the row number, and we will alway read the image
+    data from column 2 (any group parameters are in column 1).
+    */
+    if ffghdt_safe(fptr, &mut hdutype, status) > 0 {
+        return *status;
+    }
+
+    if hdutype == IMAGE_HDU {
+        /* this is a primary array, or image extension */
+        if colnum == 0 {
+            rstr = 1;
+            rstp = 1;
+        } else {
+            rstr = colnum as c_long;
+            rstp = colnum as c_long;
+        }
+        rinc = 1;
+        numcol = 2;
+    } else {
+        /* this is a table, so the row info is in the (naxis+1) elements */
+        rstr = blc[naxis];
+        rstp = trc[naxis];
+        rinc = inc[naxis];
+        numcol = colnum as c_long;
+    }
+
+    nultyp = NullCheckType::SetNullArray;
+    if let Some(anynul) = anynul.as_deref_mut() {
+        *anynul = FALSE as c_int;
+    }
+
+    let mut i0 = 0;
+    for ii in 0..9 {
+        str[ii] = 1;
+        stp[ii] = 1;
+        incr[ii] = 1;
+        dsize[ii] = 1;
+    }
+
+    for ii in 0..naxis {
+        if trc[ii] < blc[ii] {
             int_snprintf!(
                 &mut msg,
                 FLEN_ERRMSG,
-                "NAXIS = {} in call to ffgsvi is out of range",
-                naxis,
+                "ffgsvi: illegal range specified for axis {}",
+                ii + 1,
             );
             ffpmsg_slice(&msg);
-            *status = BAD_DIMEN;
+            *status = BAD_PIX_NUM;
             return *status;
         }
 
-        if fits_is_compressed_image_safe(fptr, status) > 0 {
-            /* this is a compressed image in a binary table */
+        str[ii] = blc[ii];
+        stp[ii] = trc[ii];
+        incr[ii] = inc[ii];
+        dsize[ii + 1] = dsize[ii] * naxes[ii] as LONGLONG;
+    }
 
-            for ii in 0..naxis {
-                blcll[ii] = blc[ii] as LONGLONG;
-                trcll[ii] = trc[ii] as LONGLONG;
-            }
-            todo!();
-            // fits_read_compressed_img(fptr, TSHORT, blcll, trcll, inc,     nullcheck, NULL, array, flagval, anynul, status);
-            return *status;
-        }
+    if naxis == 1 && naxes[0] == 1 {
+        /* This is not a vector column, so read all the rows at once */
+        nelem = (rstp - rstr) / rinc + 1;
+        ninc = rinc;
+        rstp = rstr;
+    } else {
+        /* have to read each row individually, in all dimensions */
+        nelem = (stp[0] - str[0]) / inc[0] + 1;
+        ninc = incr[0];
+    }
 
-        /*
-        if this is a primary array, then the input COLNUM parameter should
-        be interpreted as the row number, and we will alway read the image
-        data from column 2 (any group parameters are in column 1).
-        */
-        if ffghdt_safe(fptr, &mut hdutype, status) > 0 {
-            return *status;
-        }
-
-        if hdutype == IMAGE_HDU {
-            /* this is a primary array, or image extension */
-            if colnum == 0 {
-                rstr = 1;
-                rstp = 1;
-            } else {
-                rstr = colnum as c_long;
-                rstp = colnum as c_long;
-            }
-            rinc = 1;
-            numcol = 2;
-        } else {
-            /* this is a table, so the row info is in the (naxis+1) elements */
-            rstr = blc[naxis];
-            rstp = trc[naxis];
-            rinc = inc[naxis];
-            numcol = colnum as c_long;
-        }
-
-        nultyp = NullCheckType::SetNullArray;
-        if let Some(anynul) = anynul.as_deref_mut() {
-            *anynul = FALSE as c_int;
-        }
-
-        let mut i0 = 0;
-        for ii in 0..9 {
-            str[ii] = 1;
-            stp[ii] = 1;
-            incr[ii] = 1;
-            dsize[ii] = 1;
-        }
-
-        for ii in 0..naxis {
-            if trc[ii] < blc[ii] {
-                int_snprintf!(
-                    &mut msg,
-                    FLEN_ERRMSG,
-                    "ffgsvi: illegal range specified for axis {}",
-                    ii + 1,
-                );
-                ffpmsg_slice(&msg);
-                *status = BAD_PIX_NUM;
-                return *status;
-            }
-
-            str[ii] = blc[ii];
-            stp[ii] = trc[ii];
-            incr[ii] = inc[ii];
-            dsize[ii + 1] = dsize[ii] * naxes[ii] as LONGLONG;
-        }
-
-        if naxis == 1 && naxes[0] == 1 {
-            /* This is not a vector column, so read all the rows at once */
-            nelem = (rstp - rstr) / rinc + 1;
-            ninc = rinc;
-            rstp = rstr;
-        } else {
-            /* have to read each row individually, in all dimensions */
-            nelem = (stp[0] - str[0]) / inc[0] + 1;
-            ninc = incr[0];
-        }
-
-        for row in (rstr..=rstp).step_by(rinc as usize) {
-            for i8 in ((str[8] * dir[8])..=(stp[8] * dir[8])).step_by(incr[8] as usize) {
-                for i7 in ((str[7] * dir[7])..=(stp[7] * dir[7])).step_by(incr[7] as usize) {
-                    for i6 in ((str[6] * dir[6])..=(stp[6] * dir[6])).step_by(incr[6] as usize) {
-                        for i5 in ((str[5] * dir[5])..=(stp[5] * dir[5])).step_by(incr[5] as usize)
+    for row in (rstr..=rstp).step_by(rinc as usize) {
+        for i8 in ((str[8] * dir[8])..=(stp[8] * dir[8])).step_by(incr[8] as usize) {
+            for i7 in ((str[7] * dir[7])..=(stp[7] * dir[7])).step_by(incr[7] as usize) {
+                for i6 in ((str[6] * dir[6])..=(stp[6] * dir[6])).step_by(incr[6] as usize) {
+                    for i5 in ((str[5] * dir[5])..=(stp[5] * dir[5])).step_by(incr[5] as usize) {
+                        for i4 in ((str[4] * dir[4])..=(stp[4] * dir[4])).step_by(incr[4] as usize)
                         {
-                            for i4 in
-                                ((str[4] * dir[4])..=(stp[4] * dir[4])).step_by(incr[4] as usize)
+                            for i3 in
+                                ((str[3] * dir[3])..=(stp[3] * dir[3])).step_by(incr[3] as usize)
                             {
-                                for i3 in ((str[3] * dir[3])..=(stp[3] * dir[3]))
-                                    .step_by(incr[3] as usize)
+                                for i2 in ((str[2] * dir[2])..=(stp[2] * dir[2]))
+                                    .step_by(incr[2] as usize)
                                 {
-                                    for i2 in ((str[2] * dir[2])..=(stp[2] * dir[2]))
-                                        .step_by(incr[2] as usize)
+                                    for i1 in ((str[1] * dir[1])..=(stp[1] * dir[1]))
+                                        .step_by(incr[1] as usize)
                                     {
-                                        for i1 in ((str[1] * dir[1])..=(stp[1] * dir[1]))
-                                            .step_by(incr[1] as usize)
+                                        felem = (str[0] as LONGLONG)
+                                            + (i1 as LONGLONG - 1) * dsize[1]
+                                            + (i2 as LONGLONG - 1) * dsize[2]
+                                            + (i3 as LONGLONG - 1) * dsize[3]
+                                            + (i4 as LONGLONG - 1) * dsize[4]
+                                            + (i5 as LONGLONG - 1) * dsize[5]
+                                            + (i6 as LONGLONG - 1) * dsize[6]
+                                            + (i7 as LONGLONG - 1) * dsize[7]
+                                            + (i8 as LONGLONG - 1) * dsize[8];
+
+                                        if ffgcli(
+                                            fptr,
+                                            numcol as c_int,
+                                            row as LONGLONG,
+                                            felem,
+                                            nelem as LONGLONG,
+                                            ninc,
+                                            nultyp,
+                                            nullval,
+                                            &mut array[i0..],
+                                            &mut flagval[i0..],
+                                            Some(&mut anyf),
+                                            status,
+                                        ) > 0
                                         {
-                                            felem = (str[0] as LONGLONG)
-                                                + (i1 as LONGLONG - 1) * dsize[1]
-                                                + (i2 as LONGLONG - 1) * dsize[2]
-                                                + (i3 as LONGLONG - 1) * dsize[3]
-                                                + (i4 as LONGLONG - 1) * dsize[4]
-                                                + (i5 as LONGLONG - 1) * dsize[5]
-                                                + (i6 as LONGLONG - 1) * dsize[6]
-                                                + (i7 as LONGLONG - 1) * dsize[7]
-                                                + (i8 as LONGLONG - 1) * dsize[8];
-
-                                            if ffgcli(
-                                                fptr,
-                                                numcol as c_int,
-                                                row as LONGLONG,
-                                                felem,
-                                                nelem as LONGLONG,
-                                                ninc,
-                                                nultyp,
-                                                nullval,
-                                                &mut array[i0..],
-                                                &mut flagval[i0..],
-                                                Some(&mut anyf),
-                                                status,
-                                            ) > 0
-                                            {
-                                                return *status;
-                                            }
-
-                                            if anyf > 0 {
-                                                if let Some(anynul) = anynul.as_deref_mut() {
-                                                    *anynul = TRUE as c_int;
-                                                }
-                                            }
-
-                                            i0 += nelem as usize;
+                                            return *status;
                                         }
+
+                                        if anyf > 0 {
+                                            if let Some(anynul) = anynul.as_deref_mut() {
+                                                *anynul = TRUE as c_int;
+                                            }
+                                        }
+
+                                        i0 += nelem as usize;
                                     }
                                 }
                             }
@@ -861,8 +877,8 @@ pub unsafe extern "C" fn ffgsfi(
                 }
             }
         }
-        *status
     }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
