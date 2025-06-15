@@ -1234,7 +1234,7 @@ pub unsafe extern "C" fn ffpcl(
 
         let array = slice::from_raw_parts(array as *const u8, bytes);
 
-        ffpcl_safer(
+        ffpcl_safe(
             fptr,
             datatype,
             colnum,
@@ -1252,7 +1252,7 @@ pub unsafe extern "C" fn ffpcl(
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
-pub unsafe fn ffpcl_safer(
+pub fn ffpcl_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     datatype: c_int,     /* I - datatype of the value                   */
     colnum: c_int,       /* I - number of column to write (1 = 1st col) */
@@ -1262,230 +1262,228 @@ pub unsafe fn ffpcl_safer(
     array: &[u8],        /* I - array of values that are written        */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        match datatype {
-            TBIT => {
-                let array = cast_slice(array);
-                ffpclx_safe(
-                    fptr,
-                    colnum,
-                    firstrow,
-                    firstelem as c_long,
-                    nelem as c_long,
-                    array,
-                    status,
-                );
-            }
-            TBYTE => {
-                let array = cast_slice(array);
-                ffpclb_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TSBYTE => {
-                let array = cast_slice(array);
-                ffpclsb_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TUSHORT => {
-                let array = cast_slice(array);
-                ffpclui_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TSHORT => {
-                let array = cast_slice(array);
-                ffpcli_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TUINT => {
-                let array = cast_slice(array);
-                ffpcluk_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TINT => {
-                let array = cast_slice(array);
-                ffpclk_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TULONG => {
-                let array = cast_slice(array);
-                ffpcluj_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TLONG => {
-                let array = cast_slice(array);
-                ffpclj_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TULONGLONG => {
-                let array = cast_slice(array);
-                ffpclujj_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TLONGLONG => {
-                let array = cast_slice(array);
-                ffpcljj_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TFLOAT => {
-                let array = cast_slice(array);
-                ffpcle_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TDOUBLE => {
-                let array = cast_slice(array);
-                ffpcld_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TCOMPLEX => {
-                let array = cast_slice(array);
-                ffpcle_safe(
-                    fptr,
-                    colnum,
-                    firstrow,
-                    (firstelem - 1) * 2 + 1,
-                    nelem * 2,
-                    array,
-                    status,
-                );
-            }
-            TDBLCOMPLEX => {
-                let array = cast_slice(array);
-                ffpcld_safe(
-                    fptr,
-                    colnum,
-                    firstrow,
-                    (firstelem - 1) * 2 + 1,
-                    nelem * 2,
-                    array,
-                    status,
-                );
-            }
-            TLOGICAL => {
-                let array = cast_slice(array);
-                ffpcll_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    array,
-                    status,
-                );
-            }
-            TSTRING => {
-                let array =
-                    slice::from_raw_parts(array.as_ptr() as *const *const c_char, nelem as usize);
-                let mut v_array = Vec::new();
-                for item in array {
-                    let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
-                    v_array.push(array_item);
-                }
-
-                ffpcls_safe(
-                    fptr,
-                    colnum,
-                    firstrow as LONGLONG,
-                    firstelem as LONGLONG,
-                    nelem as LONGLONG,
-                    &v_array,
-                    status,
-                );
-            }
-            _ => {
-                *status = BAD_DATATYPE;
-            }
-        }
-        *status
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
     }
+
+    match datatype {
+        TBIT => {
+            let array = cast_slice(array);
+            ffpclx_safe(
+                fptr,
+                colnum,
+                firstrow,
+                firstelem as c_long,
+                nelem as c_long,
+                array,
+                status,
+            );
+        }
+        TBYTE => {
+            let array = cast_slice(array);
+            ffpclb_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TSBYTE => {
+            let array = cast_slice(array);
+            ffpclsb_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TUSHORT => {
+            let array = cast_slice(array);
+            ffpclui_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TSHORT => {
+            let array = cast_slice(array);
+            ffpcli_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TUINT => {
+            let array = cast_slice(array);
+            ffpcluk_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TINT => {
+            let array = cast_slice(array);
+            ffpclk_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TULONG => {
+            let array = cast_slice(array);
+            ffpcluj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TLONG => {
+            let array = cast_slice(array);
+            ffpclj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TULONGLONG => {
+            let array = cast_slice(array);
+            ffpclujj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TLONGLONG => {
+            let array = cast_slice(array);
+            ffpcljj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TFLOAT => {
+            let array = cast_slice(array);
+            ffpcle_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TDOUBLE => {
+            let array = cast_slice(array);
+            ffpcld_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TCOMPLEX => {
+            let array = cast_slice(array);
+            ffpcle_safe(
+                fptr,
+                colnum,
+                firstrow,
+                (firstelem - 1) * 2 + 1,
+                nelem * 2,
+                array,
+                status,
+            );
+        }
+        TDBLCOMPLEX => {
+            let array = cast_slice(array);
+            ffpcld_safe(
+                fptr,
+                colnum,
+                firstrow,
+                (firstelem - 1) * 2 + 1,
+                nelem * 2,
+                array,
+                status,
+            );
+        }
+        TLOGICAL => {
+            let array = cast_slice(array);
+            ffpcll_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                array,
+                status,
+            );
+        }
+        TSTRING => unsafe {
+            let array =
+                slice::from_raw_parts(array.as_ptr() as *const *const c_char, nelem as usize);
+            let mut v_array = Vec::new();
+            for item in array {
+                let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
+                v_array.push(array_item);
+            }
+
+            ffpcls_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                nelem as LONGLONG,
+                &v_array,
+                status,
+            );
+        },
+        _ => {
+            *status = BAD_DATATYPE;
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1558,7 +1556,7 @@ pub unsafe fn ffpcn_safer(
 
         if nulval.is_none() {
             /* null value not defined? */
-            ffpcl_safer(
+            ffpcl_safe(
                 fptr,
                 datatype,
                 colnum,

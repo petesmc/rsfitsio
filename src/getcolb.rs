@@ -92,7 +92,7 @@ pub fn ffgpvb_safe(
         nullvalue = nulval; /* set local variable */
 
         todo!();
-        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem, nullcheck, &nullvalue, array, NULL, anynul, status);
+        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -180,7 +180,7 @@ pub fn ffgpfb_safe(
         /* this is a compressed image in a binary table */
 
         todo!();
-        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem,          nullcheck, NULL, array, nularray, anynul, status);
+        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem,          nullcheck, None, cast_slice_mut(array), nularray, anynul, status);
         return *status;
     }
 
@@ -338,7 +338,7 @@ pub fn ffg3db_safe(
         lpixel[2] = naxis3 as c_long;
         nullvalue = nulval; /* set local variable */
         todo!();
-        //fits_read_compressed_img(fptr, TBYTE, fpixel, lpixel, inc,            nullcheck, &nullvalue, array, NULL, anynul, status);
+        //fits_read_compressed_img(fptr, TBYTE, fpixel, lpixel, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -505,7 +505,7 @@ pub fn ffgsvb_safe(
 
         nullvalue = nulval; /* set local variable */
         todo!();
-        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,            nullcheck, &nullvalue, array, NULL, anynul, status);
+        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -708,7 +708,7 @@ pub fn ffgsfb_safe(
         }
 
         todo!();
-        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,     nullcheck, NULL, array, flagval, anynul, status);
+        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,     nullcheck, None, cast_slice_mut(array), flagval, anynul, status);
         return *status;
     }
 

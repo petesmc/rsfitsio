@@ -252,7 +252,7 @@ pub fn ffgpxvll_safe(
             //fits_read_compressed_img(fptr, datatype, firstpix, trc, inc, 1, nulval, array, None, anynul, status);
         } else {
             todo!();
-            // fits_read_compressed_pixels(fptr, datatype, firstelem,           nelem, nullcheck, nulval, array, NULL, anynul, status);
+            // fits_read_compressed_pixels(fptr, datatype, firstelem,           nelem, nullcheck, nulval, cast_slice_mut(array), None, anynul, status);
         }
 
         return *status;

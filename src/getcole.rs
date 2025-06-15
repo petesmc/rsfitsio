@@ -90,7 +90,7 @@ pub fn ffgpve_safe(
         nullvalue = nulval; /* set local variable */
 
         todo!();
-        //fits_read_compressed_pixels(fptr, TFLOAT, firstelem, nelem, nullcheck, &nullvalue, array, NULL, anynul, status);
+        //fits_read_compressed_pixels(fptr, TFLOAT, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -178,7 +178,7 @@ pub fn ffgpfe_safe(
         /* this is a compressed image in a binary table */
 
         todo!();
-        //fits_read_compressed_pixels(fptr, TFLOAT, firstelem, nelem,          nullcheck, NULL, array, nularray, anynul, status);
+        //fits_read_compressed_pixels(fptr, TFLOAT, firstelem, nelem,          nullcheck, None, cast_slice_mut(array), nularray, anynul, status);
         return *status;
     }
 
@@ -337,7 +337,7 @@ pub fn ffg3de_safe(
         lpixel[2] = naxis3 as c_long;
         nullvalue = nulval; /* set local variable */
         todo!();
-        //fits_read_compressed_img(fptr, TFLOAT, fpixel, lpixel, inc,            nullcheck, &nullvalue, array, NULL, anynul, status);
+        //fits_read_compressed_img(fptr, TFLOAT, fpixel, lpixel, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -506,7 +506,7 @@ pub fn ffgsve_safe(
 
         nullvalue = nulval; /* set local variable */
         todo!();
-        // fits_read_compressed_img(fptr, TFLOAT, blcll, trcll, inc,            nullcheck, &nullvalue, array, NULL, anynul, status);
+        // fits_read_compressed_img(fptr, TFLOAT, blcll, trcll, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
         return *status;
     }
 
@@ -750,7 +750,7 @@ pub fn ffgsfe_safe(
             trcll[ii] = trc[ii] as LONGLONG;
         }
         todo!();
-        // fits_read_compressed_img(fptr, TFLOAT, blcll, trcll, inc,     nullcheck, NULL, array, flagval, anynul, status);
+        // fits_read_compressed_img(fptr, TFLOAT, blcll, trcll, inc,     nullcheck, None, cast_slice_mut(array), flagval, anynul, status);
         return *status;
     }
 

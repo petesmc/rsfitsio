@@ -1189,7 +1189,7 @@ pub mod rust_api {
     pub use crate::putcoluj::ffpssujj_safe as fits_write_subset_ulnglng;
     pub use crate::putcoluk::ffpssuk_safe as fits_write_subset_uint;
 
-    pub use crate::putcol::ffpcl_safer as fits_write_col;
+    pub use crate::putcol::ffpcl_safe as fits_write_col;
     pub use crate::putcol::ffpcln_safe as fits_write_cols;
     pub use crate::putcolb::ffpclb_safe as fits_write_col_byt;
     pub use crate::putcold::ffpcld_safe as fits_write_col_dbl;

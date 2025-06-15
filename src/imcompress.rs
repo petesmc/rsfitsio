@@ -3202,7 +3202,7 @@ unsafe fn imcomp_compress_tile(
 }
 
 /*--------------------------------------------------------------------------*/
-unsafe fn imcomp_write_nocompress_tile(
+fn imcomp_write_nocompress_tile(
     outfptr: &mut fitsfile,
     row: c_long,
     datatype: c_int,
@@ -3212,58 +3212,56 @@ unsafe fn imcomp_write_nocompress_tile(
     nullflagval: &Option<NullValue>,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut coltype: [c_char; 4] = [0; 4];
+    let mut coltype: [c_char; 4] = [0; 4];
 
-        /* Write the uncompressed image tile pixels to the tile-compressed image file. */
-        /* This is a special case when using NOCOMPRESS for diagnostic purposes in fpack. */
-        /* Currently, this only supports a limited number of data types and */
-        /* does not fully support null-valued pixels in the image. */
+    /* Write the uncompressed image tile pixels to the tile-compressed image file. */
+    /* This is a special case when using NOCOMPRESS for diagnostic purposes in fpack. */
+    /* Currently, this only supports a limited number of data types and */
+    /* does not fully support null-valued pixels in the image. */
 
-        if (outfptr.Fptr).cn_uncompressed < 1 {
-            /* uncompressed data column doesn't exist, so append new column to table
-             */
-            if datatype == TSHORT {
-                strcpy_safe(&mut coltype, cs!(c"1PI"));
-            } else if datatype == TINT {
-                strcpy_safe(&mut coltype, cs!(c"1PJ"));
-            } else if datatype == TFLOAT {
-                strcpy_safe(&mut coltype, cs!(c"1QE"));
-            } else {
-                ffpmsg_cstr(
-                    c"NOCOMPRESSION option only supported for int*2, int*4, and float*4 images",
-                );
-                *status = DATA_COMPRESSION_ERR;
-                return *status;
-            }
-
-            fits_insert_col(outfptr, 999, cs!(c"UNCOMPRESSED_DATA"), &coltype, status);
-            /* create column */
+    if (outfptr.Fptr).cn_uncompressed < 1 {
+        /* uncompressed data column doesn't exist, so append new column to table
+         */
+        if datatype == TSHORT {
+            strcpy_safe(&mut coltype, cs!(c"1PI"));
+        } else if datatype == TINT {
+            strcpy_safe(&mut coltype, cs!(c"1PJ"));
+        } else if datatype == TFLOAT {
+            strcpy_safe(&mut coltype, cs!(c"1QE"));
+        } else {
+            ffpmsg_cstr(
+                c"NOCOMPRESSION option only supported for int*2, int*4, and float*4 images",
+            );
+            *status = DATA_COMPRESSION_ERR;
+            return *status;
         }
 
-        let mut cn = (outfptr.Fptr).cn_uncompressed;
-        fits_get_colnum(
-            outfptr,
-            CASEINSEN.try_into().unwrap(),
-            cs!(c"UNCOMPRESSED_DATA"),
-            &mut cn,
-            status,
-        ); /* save col. num. */
-
-        (outfptr.Fptr).cn_uncompressed = cn; /* save col. num. */
-
-        fits_write_col(
-            outfptr,
-            datatype,
-            (outfptr.Fptr).cn_uncompressed,
-            row,
-            1,
-            tilelen,
-            tiledata,
-            status,
-        ); /* write the tile data */
-        *status
+        fits_insert_col(outfptr, 999, cs!(c"UNCOMPRESSED_DATA"), &coltype, status);
+        /* create column */
     }
+
+    let mut cn = (outfptr.Fptr).cn_uncompressed;
+    fits_get_colnum(
+        outfptr,
+        CASEINSEN.try_into().unwrap(),
+        cs!(c"UNCOMPRESSED_DATA"),
+        &mut cn,
+        status,
+    ); /* save col. num. */
+
+    (outfptr.Fptr).cn_uncompressed = cn; /* save col. num. */
+
+    fits_write_col(
+        outfptr,
+        datatype,
+        (outfptr.Fptr).cn_uncompressed,
+        row,
+        1,
+        tilelen,
+        tiledata,
+        status,
+    ); /* write the tile data */
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4788,7 +4786,7 @@ fn imcomp_nullscaledoubles_inplace(
 
 /*---------------------------------------------------------------------------*/
 /// Write a section of a compressed image.
-pub(crate) unsafe fn fits_write_compressed_img(
+pub(crate) fn fits_write_compressed_img(
     fptr: &mut fitsfile,      /* I - FITS file pointer     */
     datatype: c_int,          /* I - datatype of the array to be written      */
     infpixel: &[c_long],      /* I - 'bottom left corner' of the subsection   */
@@ -4801,248 +4799,248 @@ pub(crate) unsafe fn fits_write_compressed_img(
     nullval: &Option<NullValue>, /* I - undefined pixel value                    */
     status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
-    unsafe {
-        let mut tiledim: [c_int; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut naxis: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut thistilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut ftile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut ltile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tfpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tlpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut rowdim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut offset: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut ntemp = 0;
-        let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tiledim: [c_int; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut naxis: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut thistilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut ftile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut ltile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tfpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tlpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut rowdim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut offset: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut ntemp = 0;
+    let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        let i5: c_long = 0;
-        let i4: c_long = 0;
-        let i3: c_long = 0;
-        let i2: c_long = 0;
-        let i1: c_long = 0;
-        let i0: c_long = 0;
-        let mut irow: c_long = 0;
-        let mut trowsize: c_long = 0;
-        let mut ntrows: c_long = 0;
+    let i5: c_long = 0;
+    let i4: c_long = 0;
+    let i3: c_long = 0;
+    let i2: c_long = 0;
+    let i1: c_long = 0;
+    let i0: c_long = 0;
+    let mut irow: c_long = 0;
+    let mut trowsize: c_long = 0;
+    let mut ntrows: c_long = 0;
 
-        let ii: c_int = 0;
-        let mut ndim: c_int = 0;
-        let mut pixlen: usize = 0;
-        let mut tilenul: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut buffpixsiz: usize = 0;
+    let ii: c_int = 0;
+    let mut ndim: c_int = 0;
+    let mut pixlen: usize = 0;
+    let mut tilenul: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut buffpixsiz: usize = 0;
 
-        let mut bnullarray: Vec<c_char> = Vec::new();
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut bnullarray: Vec<c_char> = Vec::new();
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        if fits_is_compressed_image_safe(fptr, status) == 0 {
-            ffpmsg_str("CHDU is not a compressed image (fits_write_compressed_img)");
-            *status = DATA_COMPRESSION_ERR;
-            return *status;
-        }
+    if fits_is_compressed_image_safe(fptr, status) == 0 {
+        ffpmsg_str("CHDU is not a compressed image (fits_write_compressed_img)");
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
+    }
 
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != (fptr.Fptr).curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-        /* rescan header if data structure is undefined */
-        else if (fptr.Fptr).datastart == DATA_UNDEFINED && ffrdef_safe(fptr, status) > 0 {
-            return *status;
-        }
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != (fptr.Fptr).curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+    /* rescan header if data structure is undefined */
+    else if (fptr.Fptr).datastart == DATA_UNDEFINED && ffrdef_safe(fptr, status) > 0 {
+        return *status;
+    }
 
-        /* ===================================================================== */
+    /* ===================================================================== */
 
-        if datatype == TSHORT || datatype == TUSHORT {
-            pixlen = mem::size_of::<c_short>();
-        } else if datatype == TINT || datatype == TUINT {
-            pixlen = mem::size_of::<c_int>();
-        } else if datatype == TBYTE || datatype == TSBYTE {
-            pixlen = 1;
-        } else if datatype == TLONG || datatype == TULONG {
-            pixlen = mem::size_of::<c_long>();
-        } else if datatype == TFLOAT {
-            pixlen = mem::size_of::<f32>();
-        } else if datatype == TDOUBLE {
-            pixlen = mem::size_of::<f64>();
-        } else {
-            ffpmsg_str("unsupported datatype for compressing image");
-            *status = BAD_DATATYPE;
-            return *status;
-        }
+    if datatype == TSHORT || datatype == TUSHORT {
+        pixlen = mem::size_of::<c_short>();
+    } else if datatype == TINT || datatype == TUINT {
+        pixlen = mem::size_of::<c_int>();
+    } else if datatype == TBYTE || datatype == TSBYTE {
+        pixlen = 1;
+    } else if datatype == TLONG || datatype == TULONG {
+        pixlen = mem::size_of::<c_long>();
+    } else if datatype == TFLOAT {
+        pixlen = mem::size_of::<f32>();
+    } else if datatype == TDOUBLE {
+        pixlen = mem::size_of::<f64>();
+    } else {
+        ffpmsg_str("unsupported datatype for compressing image");
+        *status = BAD_DATATYPE;
+        return *status;
+    }
 
-        /* ===================================================================== */
+    /* ===================================================================== */
 
-        /* allocate scratch space for processing one tile of the image */
-        buffpixsiz = pixlen; /* this is the minimum pixel size */
+    /* allocate scratch space for processing one tile of the image */
+    buffpixsiz = pixlen; /* this is the minimum pixel size */
 
-        if (fptr.Fptr).compress_type == HCOMPRESS_1 {
-            /* need 4 or 8 bytes per pixel */
-            if (fptr.Fptr).zbitpix == BYTE_IMG || (fptr.Fptr).zbitpix == SHORT_IMG {
-                buffpixsiz = cmp::max(buffpixsiz, 4);
-            } else {
-                buffpixsiz = 8;
-            }
-        } else if (fptr.Fptr).compress_type == PLIO_1 {
-            /* need 4 bytes per pixel */
+    if (fptr.Fptr).compress_type == HCOMPRESS_1 {
+        /* need 4 or 8 bytes per pixel */
+        if (fptr.Fptr).zbitpix == BYTE_IMG || (fptr.Fptr).zbitpix == SHORT_IMG {
             buffpixsiz = cmp::max(buffpixsiz, 4);
-        } else if (fptr.Fptr).compress_type == RICE_1
-            || (fptr.Fptr).compress_type == GZIP_1
-            || (fptr.Fptr).compress_type == GZIP_2
-            || (fptr.Fptr).compress_type == BZIP2_1
-        {
-            /* need 1, 2, or 4 bytes per pixel */
-            if (fptr.Fptr).zbitpix == BYTE_IMG {
-                buffpixsiz = cmp::max(buffpixsiz, 1);
-            } else if (fptr.Fptr).zbitpix == SHORT_IMG {
-                buffpixsiz = cmp::max(buffpixsiz, 2);
-            } else {
-                buffpixsiz = cmp::max(buffpixsiz, 4);
-            }
         } else {
-            ffpmsg_str("unsupported image compression algorithm");
-            *status = BAD_DATATYPE;
+            buffpixsiz = 8;
+        }
+    } else if (fptr.Fptr).compress_type == PLIO_1 {
+        /* need 4 bytes per pixel */
+        buffpixsiz = cmp::max(buffpixsiz, 4);
+    } else if (fptr.Fptr).compress_type == RICE_1
+        || (fptr.Fptr).compress_type == GZIP_1
+        || (fptr.Fptr).compress_type == GZIP_2
+        || (fptr.Fptr).compress_type == BZIP2_1
+    {
+        /* need 1, 2, or 4 bytes per pixel */
+        if (fptr.Fptr).zbitpix == BYTE_IMG {
+            buffpixsiz = cmp::max(buffpixsiz, 1);
+        } else if (fptr.Fptr).zbitpix == SHORT_IMG {
+            buffpixsiz = cmp::max(buffpixsiz, 2);
+        } else {
+            buffpixsiz = cmp::max(buffpixsiz, 4);
+        }
+    } else {
+        ffpmsg_str("unsupported image compression algorithm");
+        *status = BAD_DATATYPE;
+        return *status;
+    }
+
+    /* cast to double to force alignment on 8-byte addresses */
+    let buffersize = ((fptr.Fptr).maxtilelen as usize) * buffpixsiz;
+    let mut u8_buffer: Vec<u8> = Vec::new();
+    if u8_buffer.try_reserve_exact(buffersize).is_err() {
+        ffpmsg_str("Out of memory (fits_write_compress_img)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        u8_buffer.resize(buffersize, 0);
+    }
+
+    /* cast to double to force alignment on 8-byte addresses */
+    let buffer: &mut [f64] = cast_slice_mut(&mut u8_buffer);
+
+    /* ===================================================================== */
+
+    /* initialize all the arrays */
+    for ii in 0..MAX_COMPRESS_DIM {
+        naxis[ii] = 1;
+        tiledim[ii] = 1;
+        tilesize[ii] = 1;
+        ftile[ii] = 1;
+        ltile[ii] = 1;
+        rowdim[ii] = 1;
+    }
+
+    ndim = (fptr.Fptr).zndim;
+    ntemp = 1;
+    for ii in 0..(ndim as usize) {
+        fpixel[ii] = infpixel[ii];
+        lpixel[ii] = inlpixel[ii];
+
+        /* calc number of tiles in each dimension, and tile containing */
+        /* the first and last pixel we want to read in each dimension  */
+        naxis[ii] = (fptr.Fptr).znaxis[ii];
+        if fpixel[ii] < 1 {
+            *status = BAD_PIX_NUM;
             return *status;
         }
 
-        /* cast to double to force alignment on 8-byte addresses */
-        let buffersize = ((fptr.Fptr).maxtilelen as usize) * buffpixsiz;
-        let mut u8_buffer: Vec<u8> = Vec::new();
-        if u8_buffer.try_reserve_exact(buffersize).is_err() {
-            ffpmsg_str("Out of memory (fits_write_compress_img)");
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            u8_buffer.resize(buffersize, 0);
-        }
+        tilesize[ii] = (fptr.Fptr).tilesize[ii];
+        tiledim[ii] = ((naxis[ii] as c_long - 1) / tilesize[ii] + 1) as c_int;
+        ftile[ii] = (fpixel[ii] - 1) / tilesize[ii] + 1;
+        ltile[ii] = cmp::min((lpixel[ii] - 1) / tilesize[ii] + 1, tiledim[ii] as c_long);
+        rowdim[ii] = ntemp; /* total tiles in each dimension */
+        ntemp *= tiledim[ii] as c_long;
+    }
 
-        /* cast to double to force alignment on 8-byte addresses */
-        let buffer: &mut [f64] = cast_slice_mut(&mut u8_buffer);
+    /* support up to 6 dimensions for now */
+    /* tfpixel and tlpixel are the first and last image pixels */
+    /* along each dimension of the compression tile */
+    for i5 in ftile[5]..=(ltile[5]) {
+        tfpixel[5] = (i5 - 1) * tilesize[5] + 1;
+        tlpixel[5] = cmp::min(tfpixel[5] + tilesize[5] - 1, naxis[5]);
+        thistilesize[5] = tlpixel[5] - tfpixel[5] + 1;
+        offset[5] = (i5 - 1) * rowdim[5];
+        for i4 in ftile[4]..=(ltile[4]) {
+            tfpixel[4] = (i4 - 1) * tilesize[4] + 1;
+            tlpixel[4] = cmp::min(tfpixel[4] + tilesize[4] - 1, naxis[4]);
+            thistilesize[4] = thistilesize[5] * (tlpixel[4] - tfpixel[4] + 1);
+            offset[4] = (i4 - 1) * rowdim[4] + offset[5];
+            for i3 in ftile[3]..=(ltile[3]) {
+                tfpixel[3] = (i3 - 1) * tilesize[3] + 1;
+                tlpixel[3] = cmp::min(tfpixel[3] + tilesize[3] - 1, naxis[3]);
+                thistilesize[3] = thistilesize[4] * (tlpixel[3] - tfpixel[3] + 1);
+                offset[3] = (i3 - 1) * rowdim[3] + offset[4];
+                for i2 in ftile[2]..=(ltile[2]) {
+                    tfpixel[2] = (i2 - 1) * tilesize[2] + 1;
+                    tlpixel[2] = cmp::min(tfpixel[2] + tilesize[2] - 1, naxis[2]);
+                    thistilesize[2] = thistilesize[3] * (tlpixel[2] - tfpixel[2] + 1);
+                    offset[2] = (i2 - 1) * rowdim[2] + offset[3];
+                    for i1 in ftile[1]..=(ltile[1]) {
+                        tfpixel[1] = (i1 - 1) * tilesize[1] + 1;
+                        tlpixel[1] = cmp::min(tfpixel[1] + tilesize[1] - 1, naxis[1]);
+                        thistilesize[1] = thistilesize[2] * (tlpixel[1] - tfpixel[1] + 1);
+                        offset[1] = (i1 - 1) * rowdim[1] + offset[2];
+                        for i0 in ftile[0]..=(ltile[0]) {
+                            tfpixel[0] = (i0 - 1) * tilesize[0] + 1;
+                            tlpixel[0] = cmp::min(tfpixel[0] + tilesize[0] - 1, naxis[0]);
+                            thistilesize[0] = thistilesize[1] * (tlpixel[0] - tfpixel[0] + 1);
+                            /* calculate row of table containing this tile */
+                            irow = i0 + offset[1];
 
-        /* ===================================================================== */
+                            /* read and uncompress this row (tile) of the table */
+                            /* also do type conversion and undefined pixel substitution */
+                            /* at this point */
+                            imcomp_decompress_tile(
+                                fptr,
+                                irow as c_int,
+                                thistilesize[0] as c_int,
+                                datatype,
+                                nullcheck,
+                                nullval,
+                                cast_slice_mut(buffer),
+                                &mut bnullarray,
+                                Some(&mut tilenul),
+                                status,
+                            );
 
-        /* initialize all the arrays */
-        for ii in 0..MAX_COMPRESS_DIM {
-            naxis[ii] = 1;
-            tiledim[ii] = 1;
-            tilesize[ii] = 1;
-            ftile[ii] = 1;
-            ltile[ii] = 1;
-            rowdim[ii] = 1;
-        }
+                            if *status == NO_COMPRESSED_TILE {
+                                /* tile doesn't exist, so initialize to zero */
+                                buffer[..pixlen * thistilesize[0] as usize].fill(0.0);
 
-        ndim = (fptr.Fptr).zndim;
-        ntemp = 1;
-        for ii in 0..(ndim as usize) {
-            fpixel[ii] = infpixel[ii];
-            lpixel[ii] = inlpixel[ii];
+                                *status = 0;
+                            }
 
-            /* calc number of tiles in each dimension, and tile containing */
-            /* the first and last pixel we want to read in each dimension  */
-            naxis[ii] = (fptr.Fptr).znaxis[ii];
-            if fpixel[ii] < 1 {
-                *status = BAD_PIX_NUM;
-                return *status;
-            }
+                            /* copy the intersecting pixels to this tile from the input */
+                            imcomp_merge_overlap(
+                                cast_slice_mut(buffer),
+                                pixlen.try_into().unwrap(),
+                                ndim,
+                                &tfpixel,
+                                &tlpixel,
+                                &bnullarray,
+                                cast_slice(array),
+                                &fpixel,
+                                &lpixel,
+                                nullcheck,
+                                status,
+                            );
 
-            tilesize[ii] = (fptr.Fptr).tilesize[ii];
-            tiledim[ii] = ((naxis[ii] as c_long - 1) / tilesize[ii] + 1) as c_int;
-            ftile[ii] = (fpixel[ii] - 1) / tilesize[ii] + 1;
-            ltile[ii] = cmp::min((lpixel[ii] - 1) / tilesize[ii] + 1, tiledim[ii] as c_long);
-            rowdim[ii] = ntemp; /* total tiles in each dimension */
-            ntemp *= tiledim[ii] as c_long;
-        }
+                            /* Collapse sizes of higher dimension tiles into 2
+                            dimensional equivalents needed by the quantizing
+                            algorithms for floating point types */
+                            fits_calc_tile_rows(
+                                &tlpixel,
+                                &tfpixel,
+                                ndim,
+                                &mut trowsize,
+                                &mut ntrows,
+                                status,
+                            );
 
-        /* support up to 6 dimensions for now */
-        /* tfpixel and tlpixel are the first and last image pixels */
-        /* along each dimension of the compression tile */
-        for i5 in ftile[5]..=(ltile[5]) {
-            tfpixel[5] = (i5 - 1) * tilesize[5] + 1;
-            tlpixel[5] = cmp::min(tfpixel[5] + tilesize[5] - 1, naxis[5]);
-            thistilesize[5] = tlpixel[5] - tfpixel[5] + 1;
-            offset[5] = (i5 - 1) * rowdim[5];
-            for i4 in ftile[4]..=(ltile[4]) {
-                tfpixel[4] = (i4 - 1) * tilesize[4] + 1;
-                tlpixel[4] = cmp::min(tfpixel[4] + tilesize[4] - 1, naxis[4]);
-                thistilesize[4] = thistilesize[5] * (tlpixel[4] - tfpixel[4] + 1);
-                offset[4] = (i4 - 1) * rowdim[4] + offset[5];
-                for i3 in ftile[3]..=(ltile[3]) {
-                    tfpixel[3] = (i3 - 1) * tilesize[3] + 1;
-                    tlpixel[3] = cmp::min(tfpixel[3] + tilesize[3] - 1, naxis[3]);
-                    thistilesize[3] = thistilesize[4] * (tlpixel[3] - tfpixel[3] + 1);
-                    offset[3] = (i3 - 1) * rowdim[3] + offset[4];
-                    for i2 in ftile[2]..=(ltile[2]) {
-                        tfpixel[2] = (i2 - 1) * tilesize[2] + 1;
-                        tlpixel[2] = cmp::min(tfpixel[2] + tilesize[2] - 1, naxis[2]);
-                        thistilesize[2] = thistilesize[3] * (tlpixel[2] - tfpixel[2] + 1);
-                        offset[2] = (i2 - 1) * rowdim[2] + offset[3];
-                        for i1 in ftile[1]..=(ltile[1]) {
-                            tfpixel[1] = (i1 - 1) * tilesize[1] + 1;
-                            tlpixel[1] = cmp::min(tfpixel[1] + tilesize[1] - 1, naxis[1]);
-                            thistilesize[1] = thistilesize[2] * (tlpixel[1] - tfpixel[1] + 1);
-                            offset[1] = (i1 - 1) * rowdim[1] + offset[2];
-                            for i0 in ftile[0]..=(ltile[0]) {
-                                tfpixel[0] = (i0 - 1) * tilesize[0] + 1;
-                                tlpixel[0] = cmp::min(tfpixel[0] + tilesize[0] - 1, naxis[0]);
-                                thistilesize[0] = thistilesize[1] * (tlpixel[0] - tfpixel[0] + 1);
-                                /* calculate row of table containing this tile */
-                                irow = i0 + offset[1];
-
-                                /* read and uncompress this row (tile) of the table */
-                                /* also do type conversion and undefined pixel substitution */
-                                /* at this point */
-                                imcomp_decompress_tile(
-                                    fptr,
-                                    irow as c_int,
-                                    thistilesize[0] as c_int,
-                                    datatype,
-                                    nullcheck,
-                                    nullval,
-                                    cast_slice_mut(buffer),
-                                    &mut bnullarray,
-                                    Some(&mut tilenul),
-                                    status,
-                                );
-
-                                if *status == NO_COMPRESSED_TILE {
-                                    /* tile doesn't exist, so initialize to zero */
-                                    buffer[..pixlen * thistilesize[0] as usize].fill(0.0);
-
-                                    *status = 0;
-                                }
-
-                                /* copy the intersecting pixels to this tile from the input */
-                                imcomp_merge_overlap(
-                                    cast_slice_mut(buffer),
-                                    pixlen.try_into().unwrap(),
-                                    ndim,
-                                    &tfpixel,
-                                    &tlpixel,
-                                    &bnullarray,
-                                    cast_slice(array),
-                                    &fpixel,
-                                    &lpixel,
-                                    nullcheck,
-                                    status,
-                                );
-
-                                /* Collapse sizes of higher dimension tiles into 2
-                                dimensional equivalents needed by the quantizing
-                                algorithms for floating point types */
-                                fits_calc_tile_rows(
-                                    &tlpixel,
-                                    &tfpixel,
-                                    ndim,
-                                    &mut trowsize,
-                                    &mut ntrows,
-                                    status,
-                                );
-
-                                /* compress the tile again, and write it back to the FITS file */
+                            /* compress the tile again, and write it back to the FITS file */
+                            unsafe {
                                 imcomp_compress_tile(
                                     fptr,
                                     irow,
@@ -5061,39 +5059,39 @@ pub(crate) unsafe fn fits_write_compressed_img(
                 }
             }
         }
-
-        if (fptr.Fptr).zbitpix < 0 && nullcheck != NullCheckType::None {
-            /*
-            This is a floating point FITS image with possible null values.
-            It is too messy to test if any null values are actually written, so
-            just assume so.  We need to make sure that the
-            ZBLANK keyword is present in the compressed image header.  If it is
-            not there then we need to insert the keyword.
-            */
-            tstatus = 0;
-            ffgcrd_safe(fptr, cs!(c"ZBLANK"), &mut card, &mut tstatus);
-
-            if tstatus != 0 {
-                /* have to insert the ZBLANK keyword */
-                ffgcrd_safe(fptr, cs!(c"ZCMPTYPE"), &mut card, status);
-                ffikyj_safe(
-                    fptr,
-                    cs!(c"ZBLANK"),
-                    COMPRESS_NULL_VALUE as LONGLONG,
-                    Some(cs!(c"null value in the compressed integer array")),
-                    status,
-                );
-
-                /* set this value into the internal structure; it is used if */
-                /* the program reads back the values from the array */
-
-                (fptr.Fptr).zblank = COMPRESS_NULL_VALUE;
-                (fptr.Fptr).cn_zblank = -1; /* flag for a constant ZBLANK */
-            }
-        }
-
-        *status
     }
+
+    if (fptr.Fptr).zbitpix < 0 && nullcheck != NullCheckType::None {
+        /*
+        This is a floating point FITS image with possible null values.
+        It is too messy to test if any null values are actually written, so
+        just assume so.  We need to make sure that the
+        ZBLANK keyword is present in the compressed image header.  If it is
+        not there then we need to insert the keyword.
+        */
+        tstatus = 0;
+        ffgcrd_safe(fptr, cs!(c"ZBLANK"), &mut card, &mut tstatus);
+
+        if tstatus != 0 {
+            /* have to insert the ZBLANK keyword */
+            ffgcrd_safe(fptr, cs!(c"ZCMPTYPE"), &mut card, status);
+            ffikyj_safe(
+                fptr,
+                cs!(c"ZBLANK"),
+                COMPRESS_NULL_VALUE as LONGLONG,
+                Some(cs!(c"null value in the compressed integer array")),
+                status,
+            );
+
+            /* set this value into the internal structure; it is used if */
+            /* the program reads back the values from the array */
+
+            (fptr.Fptr).zblank = COMPRESS_NULL_VALUE;
+            (fptr.Fptr).cn_zblank = -1; /* flag for a constant ZBLANK */
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5105,7 +5103,7 @@ pub(crate) unsafe fn fits_write_compressed_img(
 ///
 /// The general strategy used here is to write the requested pixels in blocks
 /// that correspond to rectangular image sections.
-pub(crate) unsafe fn fits_write_compressed_pixels(
+pub(crate) fn fits_write_compressed_pixels(
     fptr: &mut fitsfile,      /* I - FITS file pointer   */
     datatype: c_int,          /* I - datatype of the array to be written      */
     fpixel: LONGLONG,         /* I - 'first pixel to write          */
@@ -5118,65 +5116,105 @@ pub(crate) unsafe fn fits_write_compressed_pixels(
     nullval: &Option<NullValue>, /* I - value used to represent undefined pixels*/
     status: &mut c_int,          /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut naxis: c_int = 0;
-        let ii: c_int = 0;
-        let mut bytesperpixel: c_int = 0;
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut nread: c_long = 0;
-        let mut tfirst: LONGLONG = 0;
-        let mut tlast: LONGLONG = 0;
-        let mut last0: LONGLONG = 0;
-        let mut last1: LONGLONG = 0;
-        let mut dimsize: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut nplane: c_long = 0;
-        let mut firstcoord: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lastcoord: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut arrayptr: &[u8];
+    let mut naxis: c_int = 0;
+    let ii: c_int = 0;
+    let mut bytesperpixel: c_int = 0;
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut nread: c_long = 0;
+    let mut tfirst: LONGLONG = 0;
+    let mut tlast: LONGLONG = 0;
+    let mut last0: LONGLONG = 0;
+    let mut last1: LONGLONG = 0;
+    let mut dimsize: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut nplane: c_long = 0;
+    let mut firstcoord: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lastcoord: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut arrayptr: &[u8];
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        arrayptr = cast_slice(array);
+    arrayptr = cast_slice(array);
 
-        /* get size of array pixels, in bytes */
-        bytesperpixel = ffpxsz(datatype) as c_int;
+    /* get size of array pixels, in bytes */
+    bytesperpixel = ffpxsz(datatype) as c_int;
 
-        for ii in 0..MAX_COMPRESS_DIM {
-            naxes[ii] = 1;
-            firstcoord[ii] = 0;
-            lastcoord[ii] = 0;
-        }
+    for ii in 0..MAX_COMPRESS_DIM {
+        naxes[ii] = 1;
+        firstcoord[ii] = 0;
+        lastcoord[ii] = 0;
+    }
 
-        /*  determine the dimensions of the image to be written */
-        ffgidm_safe(fptr, &mut naxis, status);
-        ffgisz_safe(fptr, MAX_COMPRESS_DIM as c_int, &mut naxes, status);
+    /*  determine the dimensions of the image to be written */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgisz_safe(fptr, MAX_COMPRESS_DIM as c_int, &mut naxes, status);
 
-        /* calc the cumulative number of pixels in each successive dimension */
-        dimsize[0] = 1;
-        for ii in 1..MAX_COMPRESS_DIM {
-            dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
-        }
+    /* calc the cumulative number of pixels in each successive dimension */
+    dimsize[0] = 1;
+    for ii in 1..MAX_COMPRESS_DIM {
+        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
+    }
 
-        /*  determine the coordinate of the first and last pixel in the image */
-        /*  Use zero based indexes here */
-        tfirst = fpixel - 1;
-        tlast = tfirst + npixel - 1;
-        for ii in (0..(naxis as usize)).rev() {
-            firstcoord[ii] = (tfirst / dimsize[ii]) as c_long;
-            lastcoord[ii] = (tlast / dimsize[ii]) as c_long;
-            tfirst -= firstcoord[ii] * dimsize[ii];
-            tlast -= lastcoord[ii] * dimsize[ii];
-        }
+    /*  determine the coordinate of the first and last pixel in the image */
+    /*  Use zero based indexes here */
+    tfirst = fpixel - 1;
+    tlast = tfirst + npixel - 1;
+    for ii in (0..(naxis as usize)).rev() {
+        firstcoord[ii] = (tfirst / dimsize[ii]) as c_long;
+        lastcoord[ii] = (tlast / dimsize[ii]) as c_long;
+        tfirst -= firstcoord[ii] * dimsize[ii];
+        tlast -= lastcoord[ii] * dimsize[ii];
+    }
 
-        /* to simplify things, treat 1-D, 2-D, and 3-D images as separate cases */
+    /* to simplify things, treat 1-D, 2-D, and 3-D images as separate cases */
 
-        if naxis == 1 {
-            /* Simple: just write the requested range of pixels */
+    if naxis == 1 {
+        /* Simple: just write the requested range of pixels */
 
-            firstcoord[0] += 1;
-            lastcoord[0] += 1;
+        firstcoord[0] += 1;
+        lastcoord[0] += 1;
+        fits_write_compressed_img(
+            fptr,
+            datatype,
+            &firstcoord,
+            &lastcoord,
+            nullcheck,
+            array,
+            nullval,
+            status,
+        );
+        return *status;
+    } else if naxis == 2 {
+        nplane = 0; /* write 1st (and only) plane of the image */
+        fits_write_compressed_img_plane(
+            fptr,
+            datatype,
+            bytesperpixel,
+            nplane,
+            &mut firstcoord,
+            &lastcoord,
+            &naxes,
+            nullcheck,
+            array,
+            nullval,
+            &mut nread,
+            status,
+        );
+    } else if naxis == 3 {
+        /* test for special case: writing an integral number of planes */
+        if firstcoord[0] == 0
+            && firstcoord[1] == 0
+            && lastcoord[0] == naxes[0] - 1
+            && lastcoord[1] == naxes[1] - 1
+        {
+            for ii in 0..MAX_COMPRESS_DIM {
+                /* convert from zero base to 1 base */
+                (firstcoord[ii]) += 1;
+                (lastcoord[ii]) += 1;
+            }
+
+            /* we can write the contiguous block of pixels in one go */
             fits_write_compressed_img(
                 fptr,
                 datatype,
@@ -5188,8 +5226,25 @@ pub(crate) unsafe fn fits_write_compressed_pixels(
                 status,
             );
             return *status;
-        } else if naxis == 2 {
-            nplane = 0; /* write 1st (and only) plane of the image */
+        }
+
+        /* save last coordinate in temporary variables */
+        last0 = lastcoord[0];
+        last1 = lastcoord[1];
+
+        if firstcoord[2] < lastcoord[2] {
+            /* we will write up to the last pixel in all but the last plane */
+            lastcoord[0] = naxes[0] - 1;
+            lastcoord[1] = naxes[1] - 1;
+        }
+
+        /* write one plane of the cube at a time, for simplicity */
+        for nplane in firstcoord[2]..=lastcoord[2] {
+            if nplane == lastcoord[2] {
+                lastcoord[0] = last0 as c_long;
+                lastcoord[1] = last1 as c_long;
+            }
+
             fits_write_compressed_img_plane(
                 fptr,
                 datatype,
@@ -5199,85 +5254,26 @@ pub(crate) unsafe fn fits_write_compressed_pixels(
                 &lastcoord,
                 &naxes,
                 nullcheck,
-                array,
+                arrayptr,
                 nullval,
                 &mut nread,
                 status,
             );
-        } else if naxis == 3 {
-            /* test for special case: writing an integral number of planes */
-            if firstcoord[0] == 0
-                && firstcoord[1] == 0
-                && lastcoord[0] == naxes[0] - 1
-                && lastcoord[1] == naxes[1] - 1
-            {
-                for ii in 0..MAX_COMPRESS_DIM {
-                    /* convert from zero base to 1 base */
-                    (firstcoord[ii]) += 1;
-                    (lastcoord[ii]) += 1;
-                }
 
-                /* we can write the contiguous block of pixels in one go */
-                fits_write_compressed_img(
-                    fptr,
-                    datatype,
-                    &firstcoord,
-                    &lastcoord,
-                    nullcheck,
-                    array,
-                    nullval,
-                    status,
-                );
-                return *status;
-            }
+            /* for all subsequent planes, we start with the first pixel */
+            firstcoord[0] = 0;
+            firstcoord[1] = 0;
 
-            /* save last coordinate in temporary variables */
-            last0 = lastcoord[0];
-            last1 = lastcoord[1];
-
-            if firstcoord[2] < lastcoord[2] {
-                /* we will write up to the last pixel in all but the last plane */
-                lastcoord[0] = naxes[0] - 1;
-                lastcoord[1] = naxes[1] - 1;
-            }
-
-            /* write one plane of the cube at a time, for simplicity */
-            for nplane in firstcoord[2]..=lastcoord[2] {
-                if nplane == lastcoord[2] {
-                    lastcoord[0] = last0 as c_long;
-                    lastcoord[1] = last1 as c_long;
-                }
-
-                fits_write_compressed_img_plane(
-                    fptr,
-                    datatype,
-                    bytesperpixel,
-                    nplane,
-                    &mut firstcoord,
-                    &lastcoord,
-                    &naxes,
-                    nullcheck,
-                    arrayptr,
-                    nullval,
-                    &mut nread,
-                    status,
-                );
-
-                /* for all subsequent planes, we start with the first pixel */
-                firstcoord[0] = 0;
-                firstcoord[1] = 0;
-
-                /* increment pointers to next elements to be written */
-                arrayptr = &arrayptr[(nread * bytesperpixel as LONGLONG) as usize..];
-            }
-        } else {
-            ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
-            *status = DATA_COMPRESSION_ERR;
-            return *status;
+            /* increment pointers to next elements to be written */
+            arrayptr = &arrayptr[(nread * bytesperpixel as LONGLONG) as usize..];
         }
-
-        *status
+    } else {
+        ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5285,7 +5281,7 @@ pub(crate) unsafe fn fits_write_compressed_pixels(
 /// followed by the middle complete rows, followed by the last
 /// partial row of the image.  If the first or last rows are complete,
 /// then write them at the same time as all the middle rows.
-unsafe fn fits_write_compressed_img_plane(
+fn fits_write_compressed_img_plane(
     fptr: &mut fitsfile,       /* I - FITS file    */
     datatype: c_int,           /* I - datatype of the array to be written    */
     bytesperpixel: c_int,      /* I - number of bytes per pixel in array */
@@ -5302,97 +5298,27 @@ unsafe fn fits_write_compressed_img_plane(
     nread: &mut c_long,          /* O - total number of pixels written          */
     status: &mut c_int,          /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        /* bottom left coord. and top right coord. */
-        let mut blc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut trc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    /* bottom left coord. and top right coord. */
+    let mut blc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut trc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        *nread = 0;
+    *nread = 0;
 
-        let mut arrayptr: usize = 0;
+    let mut arrayptr: usize = 0;
 
-        blc[2] = nplane + 1;
-        trc[2] = nplane + 1;
+    blc[2] = nplane + 1;
+    trc[2] = nplane + 1;
 
-        if firstcoord[0] != 0 {
-            /* have to read a partial first row */
-            blc[0] = firstcoord[0] + 1;
-            blc[1] = firstcoord[1] + 1;
-            trc[1] = blc[1];
-            if lastcoord[1] == firstcoord[1] {
-                trc[0] = lastcoord[0] + 1; /* 1st and last pixels in same row */
-            } else {
-                trc[0] = naxes[0]; /* read entire rest of the row */
-            }
-
-            fits_write_compressed_img(
-                fptr,
-                datatype,
-                &blc,
-                &trc,
-                nullcheck,
-                &array[arrayptr..],
-                nullval,
-                status,
-            );
-
-            *nread = *nread + trc[0] - blc[0] + 1;
-
-            if lastcoord[1] == firstcoord[1] {
-                return *status; /* finished */
-            }
-
-            /* set starting coord to beginning of next line */
-            firstcoord[0] = 0;
-            firstcoord[1] += 1;
-            arrayptr += ((trc[0] - blc[0] + 1) * bytesperpixel as LONGLONG) as usize;
-        }
-
-        /* write contiguous complete rows of the image, if any */
-        blc[0] = 1;
+    if firstcoord[0] != 0 {
+        /* have to read a partial first row */
+        blc[0] = firstcoord[0] + 1;
         blc[1] = firstcoord[1] + 1;
-        trc[0] = naxes[0];
-
-        if lastcoord[0] + 1 == naxes[0] {
-            /* can write the last complete row, too */
-            trc[1] = lastcoord[1] + 1;
+        trc[1] = blc[1];
+        if lastcoord[1] == firstcoord[1] {
+            trc[0] = lastcoord[0] + 1; /* 1st and last pixels in same row */
         } else {
-            /* last row is incomplete; have to read it separately */
-            trc[1] = lastcoord[1];
+            trc[0] = naxes[0]; /* read entire rest of the row */
         }
-
-        if trc[1] >= blc[1] {
-            /* must have at least one whole line to read */
-            fits_write_compressed_img(
-                fptr,
-                datatype,
-                &blc,
-                &trc,
-                nullcheck,
-                &array[arrayptr..],
-                nullval,
-                status,
-            );
-
-            *nread += (trc[1] - blc[1] + 1) * naxes[0];
-
-            if lastcoord[1] + 1 == trc[1] {
-                return *status; /* finished */
-            }
-
-            /* increment pointers for the last partial row */
-            arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] * bytesperpixel as LONGLONG) as usize;
-        }
-
-        if trc[1] == lastcoord[1] + 1 {
-            return *status; /* all done */
-        }
-
-        /* set starting and ending coord to last line */
-
-        trc[0] = lastcoord[0] + 1;
-        trc[1] = lastcoord[1] + 1;
-        blc[1] = trc[1];
 
         fits_write_compressed_img(
             fptr,
@@ -5407,8 +5333,76 @@ unsafe fn fits_write_compressed_img_plane(
 
         *nread = *nread + trc[0] - blc[0] + 1;
 
-        *status
+        if lastcoord[1] == firstcoord[1] {
+            return *status; /* finished */
+        }
+
+        /* set starting coord to beginning of next line */
+        firstcoord[0] = 0;
+        firstcoord[1] += 1;
+        arrayptr += ((trc[0] - blc[0] + 1) * bytesperpixel as LONGLONG) as usize;
     }
+
+    /* write contiguous complete rows of the image, if any */
+    blc[0] = 1;
+    blc[1] = firstcoord[1] + 1;
+    trc[0] = naxes[0];
+
+    if lastcoord[0] + 1 == naxes[0] {
+        /* can write the last complete row, too */
+        trc[1] = lastcoord[1] + 1;
+    } else {
+        /* last row is incomplete; have to read it separately */
+        trc[1] = lastcoord[1];
+    }
+
+    if trc[1] >= blc[1] {
+        /* must have at least one whole line to read */
+        fits_write_compressed_img(
+            fptr,
+            datatype,
+            &blc,
+            &trc,
+            nullcheck,
+            &array[arrayptr..],
+            nullval,
+            status,
+        );
+
+        *nread += (trc[1] - blc[1] + 1) * naxes[0];
+
+        if lastcoord[1] + 1 == trc[1] {
+            return *status; /* finished */
+        }
+
+        /* increment pointers for the last partial row */
+        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] * bytesperpixel as LONGLONG) as usize;
+    }
+
+    if trc[1] == lastcoord[1] + 1 {
+        return *status; /* all done */
+    }
+
+    /* set starting and ending coord to last line */
+
+    trc[0] = lastcoord[0] + 1;
+    trc[1] = lastcoord[1] + 1;
+    blc[1] = trc[1];
+
+    fits_write_compressed_img(
+        fptr,
+        datatype,
+        &blc,
+        &trc,
+        nullcheck,
+        &array[arrayptr..],
+        nullval,
+        status,
+    );
+
+    *nread = *nread + trc[0] - blc[0] + 1;
+
+    *status
 }
 
 /* ######################################################################## */

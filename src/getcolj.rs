@@ -2636,7 +2636,7 @@ pub fn ffgpvjj_safe(
         todo!();
         /*
         fits_read_compressed_pixels(
-            fptr, TLONGLONG, firstelem, nelem, nullcheck, &nullvalue, array, NULL, anynul, status,
+            fptr, TLONGLONG, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
         );
         */
         return *status;
@@ -2729,7 +2729,7 @@ pub fn ffgpfjj_safe(
         todo!();
         /*
         fits_read_compressed_pixels(
-            fptr, TLONGLONG, firstelem, nelem, nullcheck, NULL, array, nularray, anynul, status,
+            fptr, TLONGLONG, firstelem, nelem, nullcheck, None, cast_slice_mut(array), nularray, anynul, status,
         );
         */
         return *status;
@@ -2897,7 +2897,7 @@ pub fn ffg3djj_safe(
         todo!();
         /*
         fits_read_compressed_img(
-            fptr, TLONGLONG, fpixel, lpixel, inc, nullcheck, &nullvalue, array, NULL, anynul,
+            fptr, TLONGLONG, fpixel, lpixel, inc, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul,
             status,
         );
         */
@@ -3070,7 +3070,7 @@ pub fn ffgsvjj_safe(
         todo!();
         /*
         fits_read_compressed_img(
-            fptr, TLONGLONG, blcll, trcll, inc, nullcheck, &nullvalue, array, NULL, anynul, status,
+            fptr, TLONGLONG, blcll, trcll, inc, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
         );
          */
         return *status;
@@ -3316,7 +3316,7 @@ pub fn ffgsfjj_safe(
         todo!();
         /*
         fits_read_compressed_img(
-            fptr, TLONGLONG, blcll, trcll, inc, nullcheck, NULL, array, flagval, anynul, status,
+            fptr, TLONGLONG, blcll, trcll, inc, nullcheck, None, cast_slice_mut(array), flagval, anynul, status,
         );
         */
         return *status;

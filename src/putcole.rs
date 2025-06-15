@@ -9,7 +9,8 @@ use core::slice;
 use std::ffi::CStr;
 use std::{cmp, mem};
 
-use crate::c_types::*;
+use crate::imcompress::fits_write_compressed_img;
+use crate::{NullCheckType, c_types::*};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -301,8 +302,16 @@ pub fn ffp3de_safe(
         lpixel[1] = nrows as c_long;
         lpixel[2] = naxis3 as c_long;
 
-        todo!();
-        // fits_write_compressed_img(fptr, TFLOAT, fpixel, lpixel,        0,  array, NULL, status);
+        fits_write_compressed_img(
+            fptr,
+            TFLOAT,
+            &fpixel,
+            &lpixel,
+            NullCheckType::None,
+            cast_slice(array),
+            &None,
+            status,
+        );
 
         return *status;
     }
@@ -449,8 +458,16 @@ pub fn ffpsse_safe(
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
-        todo!();
-        //fits_write_compressed_img(fptr, TFLOAT, fpixel, lpixel,            0,  array, None, status);
+        fits_write_compressed_img(
+            fptr,
+            TFLOAT,
+            fpixel,
+            lpixel,
+            NullCheckType::None,
+            cast_slice(array),
+            &None,
+            status,
+        );
 
         return *status;
     }

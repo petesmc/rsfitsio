@@ -13,7 +13,6 @@ use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::bb;
 use crate::fitscore::{
     ffasfm_safe, ffgcprll, ffghdt_safe, ffpmsg_slice, ffpmsg_str, fits_is_compressed_image_safe,
 };
@@ -21,6 +20,7 @@ use crate::fitsio2::*;
 use crate::imcompress::fits_read_compressed_img;
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
+use crate::{NullValue, bb};
 use crate::{buffers::*, calculate_subsection_length};
 use crate::{int_snprintf, slice_to_str};
 
@@ -2617,7 +2617,7 @@ pub fn ffgpvujj_safe(
         todo!();
         /*
         fits_read_compressed_pixels(
-            fptr, TULONGLONG, firstelem, nelem, nullcheck, &nullvalue, array, NULL, anynul, status,
+            fptr, TULONGLONG, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
         );
         */
         return *status;
@@ -2710,7 +2710,7 @@ pub fn ffgpfujj_safe(
         todo!();
         /*
         fits_read_compressed_pixels(
-            fptr, TULONGLONG, firstelem, nelem, nullcheck, NULL, array, nularray, anynul, status,
+            fptr, TULONGLONG, firstelem, nelem, nullcheck, None, cast_slice_mut(array), nularray, anynul, status,
         );
         */
         return *status;
@@ -2874,13 +2874,20 @@ pub fn ffg3dujj_safe(
         lpixel[2] = naxis3 as LONGLONG;
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        /*
         fits_read_compressed_img(
-            fptr, TULONGLONG, fpixel, lpixel, inc, nullcheck, &nullvalue, array, NULL, anynul,
+            fptr,
+            TULONGLONG,
+            &fpixel,
+            &lpixel,
+            &inc,
+            nullcheck,
+            &Some(NullValue::ULONGLONG(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
             status,
         );
-        */
+
         return *status;
     }
 
@@ -3050,7 +3057,7 @@ pub fn ffgsvujj_safe(
         todo!();
         /*
         fits_read_compressed_img(
-            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, &nullvalue, array, NULL, anynul, status,
+            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
         );
          */
         return *status;
@@ -3298,7 +3305,7 @@ pub fn ffgsfujj_safe(
         todo!();
         /*
         fits_read_compressed_img(
-            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, NULL, array, flagval, anynul, status,
+            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, None, cast_slice_mut(array), flagval, anynul, status,
         );
         */
         return *status;
