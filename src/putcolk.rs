@@ -9,8 +9,8 @@ use core::slice;
 use std::ffi::CStr;
 use std::{cmp, mem};
 
-use crate::imcompress::fits_write_compressed_img;
-use crate::{NullCheckType, c_types::*};
+use crate::imcompress::{fits_write_compressed_img, fits_write_compressed_pixels};
+use crate::{NullCheckType, NullValue, c_types::*};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -77,8 +77,16 @@ pub fn ffpprk_safe(
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
-        todo!();
-        //fits_write_compressed_pixels(fptr, TUINT, firstelem, nelem,   0, array, &nullvalue, status);
+        fits_write_compressed_pixels(
+            fptr,
+            TINT,
+            firstelem,
+            nelem,
+            NullCheckType::None,
+            cast_slice(array),
+            &Some(NullValue::Int(nullvalue)),
+            status,
+        );
         return *status;
     }
 
@@ -153,8 +161,16 @@ pub fn ffppnk_safe(
         /* this is a compressed image in a binary table */
 
         nullvalue = nulval; /* set local variable */
-        todo!();
-        //fits_write_compressed_pixels(fptr, TUINT, firstelem, nelem,  1, array, &nullvalue, status);
+        fits_write_compressed_pixels(
+            fptr,
+            TINT,
+            firstelem,
+            nelem,
+            NullCheckType::SetPixel,
+            cast_slice(array),
+            &Some(NullValue::Int(nullvalue)),
+            status,
+        );
         return *status;
     }
 

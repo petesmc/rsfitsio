@@ -6449,7 +6449,7 @@ unsafe fn fits_read_write_compressed_img(
 ///
 /// The general strategy used here is to read the requested pixels in blocks
 /// that correspond to rectangular image sections.
-unsafe fn fits_read_compressed_pixels(
+pub(crate) fn fits_read_compressed_pixels(
     fptr: &mut fitsfile,      /* I - FITS file pointer    */
     datatype: c_int,          /* I - datatype of the array to be returned     */
     fpixel: LONGLONG,         /* I - 'first pixel to read          */
@@ -6459,72 +6459,119 @@ unsafe fn fits_read_compressed_pixels(
     /*     2: set nullarray=1 for undefined pixels */
     nullval: &Option<NullValue>, /* I - value for undefined pixels              */
     array: &mut [u8],            /* O - array of values that are returned       */
-    nullarray: &mut [c_char],    /* O - array of flags = 1 if nullcheck = 2     */
+    mut nullarray: Option<&mut [c_char]>, /* O - array of flags = 1 if nullcheck = 2     */
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,          /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut naxis: c_int = 0;
-        let ii: c_int = 0;
-        let mut bytesperpixel: usize = 0;
-        let mut planenul: c_int = 0;
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut nread: c_long = 0;
-        let mut nplane: c_long = 0;
-        let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tfirst: LONGLONG = 0;
-        let mut tlast: LONGLONG = 0;
-        let mut last0: LONGLONG = 0;
-        let mut last1: LONGLONG = 0;
-        let mut dimsize: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut firstcoord: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lastcoord: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut naxis: c_int = 0;
+    let ii: c_int = 0;
+    let mut bytesperpixel: usize = 0;
+    let mut planenul: c_int = 0;
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut nread: c_long = 0;
+    let mut nplane: c_long = 0;
+    let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tfirst: LONGLONG = 0;
+    let mut tlast: LONGLONG = 0;
+    let mut last0: LONGLONG = 0;
+    let mut last1: LONGLONG = 0;
+    let mut dimsize: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut firstcoord: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lastcoord: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        let mut arrayptr = 0; // array
-        let mut nullarrayptr = 0; //nullarray
+    let mut arrayptr = 0; // array
+    let mut nullarrayptr = 0; //nullarray
 
-        /* get size of array pixels, in bytes */
-        bytesperpixel = ffpxsz(datatype);
+    /* get size of array pixels, in bytes */
+    bytesperpixel = ffpxsz(datatype);
 
-        for ii in 0..MAX_COMPRESS_DIM {
-            naxes[ii] = 1;
-            firstcoord[ii] = 0;
-            lastcoord[ii] = 0;
-            inc[ii] = 1;
-        }
+    for ii in 0..MAX_COMPRESS_DIM {
+        naxes[ii] = 1;
+        firstcoord[ii] = 0;
+        lastcoord[ii] = 0;
+        inc[ii] = 1;
+    }
 
-        /*  determine the dimensions of the image to be read */
-        ffgidm_safe(fptr, &mut naxis, status);
-        ffgisz_safe(fptr, MAX_COMPRESS_DIM as c_int, &mut naxes, status);
+    /*  determine the dimensions of the image to be read */
+    ffgidm_safe(fptr, &mut naxis, status);
+    ffgisz_safe(fptr, MAX_COMPRESS_DIM as c_int, &mut naxes, status);
 
-        /* calc the cumulative number of pixels in each successive dimension */
-        dimsize[0] = 1;
-        for ii in 1..MAX_COMPRESS_DIM {
-            dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
-        }
+    /* calc the cumulative number of pixels in each successive dimension */
+    dimsize[0] = 1;
+    for ii in 1..MAX_COMPRESS_DIM {
+        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
+    }
 
-        /*  determine the coordinate of the first and last pixel in the image */
-        /*  Use zero based indexes here */
-        tfirst = fpixel - 1;
-        tlast = tfirst + npixel - 1;
-        for ii in (0..(naxis as usize)).rev() {
-            firstcoord[ii] = tfirst / dimsize[ii];
-            lastcoord[ii] = tlast / dimsize[ii];
-            tfirst -= firstcoord[ii] * dimsize[ii];
-            tlast -= lastcoord[ii] * dimsize[ii];
-        }
+    /*  determine the coordinate of the first and last pixel in the image */
+    /*  Use zero based indexes here */
+    tfirst = fpixel - 1;
+    tlast = tfirst + npixel - 1;
+    for ii in (0..(naxis as usize)).rev() {
+        firstcoord[ii] = tfirst / dimsize[ii];
+        lastcoord[ii] = tlast / dimsize[ii];
+        tfirst -= firstcoord[ii] * dimsize[ii];
+        tlast -= lastcoord[ii] * dimsize[ii];
+    }
 
-        /* to simplify things, treat 1-D, 2-D, and 3-D images as separate cases */
+    /* to simplify things, treat 1-D, 2-D, and 3-D images as separate cases */
 
-        if naxis == 1 {
-            /* Simple: just read the requested range of pixels */
+    if naxis == 1 {
+        /* Simple: just read the requested range of pixels */
 
-            firstcoord[0] += 1;
-            lastcoord[0] += 1;
+        firstcoord[0] += 1;
+        lastcoord[0] += 1;
+        fits_read_compressed_img(
+            fptr,
+            datatype,
+            &firstcoord,
+            &lastcoord,
+            &inc,
+            nullcheck,
+            nullval,
+            array,
+            nullarray.as_deref_mut(),
+            anynul,
+            status,
+        );
+        return *status;
+    } else if naxis == 2 {
+        nplane = 0; /* read 1st (and only) plane of the image */
+
+        fits_read_compressed_img_plane(
+            fptr,
+            datatype,
+            bytesperpixel as c_int,
+            nplane,
+            &mut firstcoord,
+            &lastcoord,
+            &inc,
+            &naxes,
+            nullcheck,
+            nullval,
+            array,
+            nullarray.as_deref_mut(),
+            anynul,
+            &mut nread,
+            status,
+        );
+    } else if naxis == 3 {
+        /* test for special case: reading an integral number of planes */
+        if firstcoord[0] == 0
+            && firstcoord[1] == 0
+            && lastcoord[0] == naxes[0] - 1
+            && lastcoord[1] == naxes[1] - 1
+        {
+            for ii in 0..MAX_COMPRESS_DIM {
+                /* convert from zero base to 1 base */
+                (firstcoord[ii]) += 1;
+                (lastcoord[ii]) += 1;
+            }
+
+            /* we can read the contiguous block of pixels in one go */
             fits_read_compressed_img(
                 fptr,
                 datatype,
@@ -6534,13 +6581,34 @@ unsafe fn fits_read_compressed_pixels(
                 nullcheck,
                 nullval,
                 array,
-                Some(nullarray),
+                nullarray,
                 anynul,
                 status,
             );
+
             return *status;
-        } else if naxis == 2 {
-            nplane = 0; /* read 1st (and only) plane of the image */
+        }
+
+        if let Some(anynul) = anynul.as_deref_mut() {
+            *anynul = 0;
+        } /* initialize */
+
+        /* save last coordinate in temporary variables */
+        last0 = lastcoord[0];
+        last1 = lastcoord[1];
+
+        if firstcoord[2] < lastcoord[2] {
+            /* we will read up to the last pixel in all but the last plane */
+            lastcoord[0] = naxes[0] - 1;
+            lastcoord[1] = naxes[1] - 1;
+        }
+
+        /* read one plane of the cube at a time, for simplicity */
+        for nplane in firstcoord[2]..=lastcoord[2] {
+            if nplane == lastcoord[2] {
+                lastcoord[0] = last0;
+                lastcoord[1] = last1;
+            }
 
             fits_read_compressed_img_plane(
                 fptr,
@@ -6553,106 +6621,40 @@ unsafe fn fits_read_compressed_pixels(
                 &naxes,
                 nullcheck,
                 nullval,
-                array,
-                Some(nullarray),
-                anynul,
+                &mut array[arrayptr..],
+                if let Some(n) = nullarray.as_deref_mut() {
+                    Some(&mut n[nullarrayptr..])
+                } else {
+                    None
+                },
+                Some(&mut planenul),
                 &mut nread,
                 status,
             );
-        } else if naxis == 3 {
-            /* test for special case: reading an integral number of planes */
-            if firstcoord[0] == 0
-                && firstcoord[1] == 0
-                && lastcoord[0] == naxes[0] - 1
-                && lastcoord[1] == naxes[1] - 1
+
+            if planenul != 0
+                && let Some(anynul) = anynul.as_deref_mut()
             {
-                for ii in 0..MAX_COMPRESS_DIM {
-                    /* convert from zero base to 1 base */
-                    (firstcoord[ii]) += 1;
-                    (lastcoord[ii]) += 1;
-                }
-
-                /* we can read the contiguous block of pixels in one go */
-                fits_read_compressed_img(
-                    fptr,
-                    datatype,
-                    &firstcoord,
-                    &lastcoord,
-                    &inc,
-                    nullcheck,
-                    nullval,
-                    array,
-                    Some(nullarray),
-                    anynul,
-                    status,
-                );
-
-                return *status;
+                *anynul = 1; /* there are null pixels */
             }
 
-            if let Some(anynul) = anynul.as_deref_mut() {
-                *anynul = 0;
-            } /* initialize */
+            /* for all subsequent planes, we start with the first pixel */
+            firstcoord[0] = 0;
+            firstcoord[1] = 0;
 
-            /* save last coordinate in temporary variables */
-            last0 = lastcoord[0];
-            last1 = lastcoord[1];
-
-            if firstcoord[2] < lastcoord[2] {
-                /* we will read up to the last pixel in all but the last plane */
-                lastcoord[0] = naxes[0] - 1;
-                lastcoord[1] = naxes[1] - 1;
+            /* increment pointers to next elements to be read */
+            arrayptr += nread as usize * bytesperpixel;
+            if nullarrayptr != 0 && (nullcheck == NullCheckType::SetNullArray) {
+                nullarrayptr += nread as usize;
             }
-
-            /* read one plane of the cube at a time, for simplicity */
-            for nplane in firstcoord[2]..=lastcoord[2] {
-                if nplane == lastcoord[2] {
-                    lastcoord[0] = last0;
-                    lastcoord[1] = last1;
-                }
-
-                fits_read_compressed_img_plane(
-                    fptr,
-                    datatype,
-                    bytesperpixel as c_int,
-                    nplane,
-                    &mut firstcoord,
-                    &lastcoord,
-                    &inc,
-                    &naxes,
-                    nullcheck,
-                    nullval,
-                    &mut array[arrayptr..],
-                    Some(&mut nullarray[nullarrayptr..]),
-                    Some(&mut planenul),
-                    &mut nread,
-                    status,
-                );
-
-                if planenul != 0
-                    && let Some(anynul) = anynul.as_deref_mut()
-                {
-                    *anynul = 1; /* there are null pixels */
-                }
-
-                /* for all subsequent planes, we start with the first pixel */
-                firstcoord[0] = 0;
-                firstcoord[1] = 0;
-
-                /* increment pointers to next elements to be read */
-                arrayptr += nread as usize * bytesperpixel;
-                if nullarrayptr != 0 && (nullcheck == NullCheckType::SetNullArray) {
-                    nullarrayptr += nread as usize;
-                }
-            }
-        } else {
-            ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
-            *status = DATA_DECOMPRESSION_ERR;
-            return *status;
         }
-
-        *status
+    } else {
+        ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
+        *status = DATA_DECOMPRESSION_ERR;
+        return *status;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -6660,7 +6662,7 @@ unsafe fn fits_read_compressed_pixels(
 /// followed by the middle complete rows, followed by the last
 /// partial row of the image.  If the first or last rows are complete,
 /// then read them at the same time as all the middle rows.
-unsafe fn fits_read_compressed_img_plane(
+fn fits_read_compressed_img_plane(
     fptr: &mut fitsfile,         /* I - FITS file   */
     datatype: c_int,             /* I - datatype of the array to be returned      */
     bytesperpixel: c_int,        /* I - number of bytes per pixel in array */

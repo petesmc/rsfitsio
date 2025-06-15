@@ -17,7 +17,7 @@ use crate::bb;
 use crate::fitscore::{
     ffasfm_safe, ffgcprll, ffghdt_safe, ffpmsg_slice, ffpmsg_str, fits_is_compressed_image_safe,
 };
-use crate::imcompress::fits_read_compressed_img;
+use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
 use crate::{NullValue, fitsio2::*};
@@ -2633,12 +2633,19 @@ pub fn ffgpvjj_safe(
         /* this is a compressed image in a binary table */
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        /*
         fits_read_compressed_pixels(
-            fptr, TLONGLONG, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
+            fptr,
+            TLONGLONG,
+            firstelem,
+            nelem,
+            nullcheck,
+            &Some(NullValue::LONGLONG(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
         );
-        */
+
         return *status;
     }
 
