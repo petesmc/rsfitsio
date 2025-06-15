@@ -6,9 +6,6 @@ use crate::fitsio::CFITSIO_SONAME;
 use crate::fitsio::fitsfile;
 
 pub(crate) use crate::cfileio::ffourl as fits_parse_output_url;
-// pub(crate) use 	ffihtps as fits_init_https;
-// pub(crate) use 	ffchtps as fits_cleanup_https;
-// pub(crate) use 	ffvhtps as fits_verbose_https;
 
 pub mod c_api {
     use super::*;
@@ -655,6 +652,10 @@ pub mod c_api {
     pub use crate::cfileio::ffgtmo as fits_get_timeout;
     pub use crate::cfileio::ffshdwn as fits_show_download_progress;
     pub use crate::cfileio::ffstmo as fits_set_timeout;
+
+    pub use crate::cfileio::ffchtps as fits_cleanup_https;
+    pub use crate::cfileio::ffihtps as fits_init_https;
+    pub use crate::cfileio::ffvhtps as fits_verbose_https;
 }
 
 #[deny(unsafe_code, unsafe_op_in_unsafe_fn, deprecated)]
@@ -1288,4 +1289,8 @@ pub mod rust_api {
     pub use crate::cfileio::ffgtmo_safer as fits_get_timeout;
     pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
     pub use crate::cfileio::ffstmo_safer as fits_set_timeout;
+
+    pub use crate::cfileio::ffchtps_safer as fits_cleanup_https;
+    pub use crate::cfileio::ffihtps_safer as fits_init_https;
+    pub use crate::cfileio::ffvhtps_safer as fits_verbose_https;
 }

@@ -9,9 +9,7 @@ use std::ffi::CStr;
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
 
-use errno::{Errno, errno, set_errno};
-
-use libc::{ERANGE, fclose, fgets, fopen, fprintf};
+use libc::{fclose, fgets, fopen, fprintf};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
@@ -209,17 +207,17 @@ pub fn ffomem_safer(
     /* parse the input file specification */
     unsafe {
         ffiurl_safer(
-        &name[url..],
-        urltype.as_mut_ptr(),
-        infile.as_mut_ptr(),
-        outfile.as_mut_ptr(),
-        extspec.as_mut_ptr(),
-        rowfilter.as_mut_ptr(),
-        binspec.as_mut_ptr(),
-        colspec.as_mut_ptr(),
-        status,
-    );
-}
+            &name[url..],
+            urltype.as_mut_ptr(),
+            infile.as_mut_ptr(),
+            outfile.as_mut_ptr(),
+            extspec.as_mut_ptr(),
+            rowfilter.as_mut_ptr(),
+            binspec.as_mut_ptr(),
+            colspec.as_mut_ptr(),
+            status,
+        );
+    }
 
     strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
 
@@ -4481,19 +4479,21 @@ pub unsafe fn ffiurl_safer(
     colspec: *mut c_char,    /* column or keyword modifier expression */
     status: &mut c_int,
 ) -> c_int {
-    ffifile2_safer(
-        url,
-        urltype,
-        infilex,
-        outfile,
-        extspec,
-        rowfilterx,
-        binspec,
-        colspec,
-        ptr::null_mut(),
-        ptr::null_mut(),
-        status,
-    )
+    unsafe {
+        ffifile2_safer(
+            url,
+            urltype,
+            infilex,
+            outfile,
+            extspec,
+            rowfilterx,
+            binspec,
+            colspec,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            status,
+        )
+    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4536,19 +4536,21 @@ pub unsafe fn ffifile_safer(
     pixfilter: *mut c_char,  /* pixel filter expression */
     status: &mut c_int,
 ) -> c_int {
-    ffifile2_safer(
-        url,
-        urltype,
-        infilex,
-        outfile,
-        extspec,
-        rowfilterx,
-        binspec,
-        colspec,
-        pixfilter,
-        ptr::null_mut(),
-        status,
-    )
+    unsafe {
+        ffifile2_safer(
+            url,
+            urltype,
+            infilex,
+            outfile,
+            extspec,
+            rowfilterx,
+            binspec,
+            colspec,
+            pixfilter,
+            ptr::null_mut(),
+            status,
+        )
+    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -6053,8 +6055,8 @@ pub unsafe fn ffexts_safer(
         if isdigit_safe(extspec[ptr1]) {
             notint = 0; /* looks like extname may actually be the ext. number */
 
-            set_errno(Errno(0)); /* reset this prior to calling strtol */
-
+            // Not required anymore since not using strtol from libc
+            // set_errno(Errno(0)); /* reset this prior to calling strtol */
             let (r, loc): (LONGLONG, usize) = strtol_safe(&extspec[ptr1..]).unwrap(); /* read the string as an integer */
 
             *extnum = r as c_int;
@@ -6066,10 +6068,14 @@ pub unsafe fn ffexts_safer(
             }
 
             /* check for read error, or junk following the integer */
-            if (extspec[loc] != 0 && extspec[loc] != bb(b';')) || (errno().0 == ERANGE) {
+            if extspec[loc] != 0 && extspec[loc] != bb(b';')
+            /* || (errno().0 == ERANGE) */
+            {
                 *extnum = 0;
                 notint = 1; /* no, extname was not a simple integer after all */
-                set_errno(Errno(0)); /* reset error condition flag if it was set */
+
+                // Not required anymore since not using strtol from libc
+                // set_errno(Errno(0)); /* reset error condition flag if it was set */
             }
 
             if *extnum < 0 || *extnum > 99999 {
@@ -7073,21 +7079,45 @@ pub fn pixel_filter_helper(
 /*-------------------------------------------------------------------*/
 /// Wrapper function for global initialization of curl library.
 /// This is NOT THREAD-SAFE
-pub(crate) fn ffihtps() {
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffihtps() {
+    unsafe { ffihtps_safer() }
+}
+
+/*-------------------------------------------------------------------*/
+/// Wrapper function for global initialization of curl library.
+/// This is NOT THREAD-SAFE
+pub unsafe fn ffihtps_safer() {
     todo!();
 }
 
 /*-------------------------------------------------------------------*/
 /// Wrapper function for global cleanup of curl library.
 /// This is NOT THREAD-SAFE
-pub(crate) fn ffchtps() {
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffchtps() {
+    unsafe { ffchtps_safer() }
+}
+
+/*-------------------------------------------------------------------*/
+/// Wrapper function for global cleanup of curl library.
+/// This is NOT THREAD-SAFE
+pub unsafe fn ffchtps_safer() {
     todo!();
 }
 
 /*-------------------------------------------------------------------*/
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
-pub(crate) fn ffvhtps(flag: c_int) {
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffvhtps(flag: c_int) {
+    unsafe { ffvhtps_safer(flag) }
+}
+
+/*-------------------------------------------------------------------*/
+/// Turn libcurl's verbose output on (1) or off (0).
+/// This is NOT THREAD-SAFE
+pub unsafe fn ffvhtps_safer(flag: c_int) {
     todo!();
 }
 
@@ -7236,9 +7266,10 @@ pub fn fits_get_token2_safe(
                 *isanumber = 0;
             }
 
-            if errno().0 == ERANGE {
-                *isanumber = 0;
-            }
+            // Not needed since we aren't using libc strtod
+            // if errno().0 == ERANGE {
+            //     *isanumber = 0;
+            // }
         }
 
         *token = Some(t);
