@@ -7,6 +7,7 @@ Cargo.lock
 checks.json
 /lib
 
+speedcc.fit
 testprog.fit
 /c/testprog.fit
 /c/speedcc.fit
