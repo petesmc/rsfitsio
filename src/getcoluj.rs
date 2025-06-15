@@ -268,15 +268,15 @@ pub unsafe extern "C" fn ffg2duj(
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
 pub fn ffg2duj_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    group: c_long,                  /* I - group to read (1 = 1st group)           */
-    nulval: c_ulong,                /* set undefined pixels equal to this     */
-    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
-    array: &mut [c_ulong],          /* O - array to be filled and returned    */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    group: c_long,              /* I - group to read (1 = 1st group)           */
+    nulval: c_ulong,            /* set undefined pixels equal to this     */
+    ncols: LONGLONG,            /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,           /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,           /* I - FITS image NAXIS2 value                 */
+    array: &mut [c_ulong],      /* O - array to be filled and returned    */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     /* call the 3D reading routine, with the 3rd dimension = 1 */
     ffg3duj_safe(
@@ -2773,15 +2773,15 @@ pub unsafe extern "C" fn ffg2dujj(
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
 pub fn ffg2dujj_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    group: c_long,                  /* I - group to read (1 = 1st group)           */
-    nulval: ULONGLONG,              /* set undefined pixels equal to this     */
-    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
-    array: &mut [ULONGLONG],        /* O - array to be filled and returned    */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    group: c_long,              /* I - group to read (1 = 1st group)           */
+    nulval: ULONGLONG,          /* set undefined pixels equal to this     */
+    ncols: LONGLONG,            /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,           /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,           /* I - FITS image NAXIS2 value                 */
+    array: &mut [ULONGLONG],    /* O - array to be filled and returned    */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     /* call the 3D reading routine, with the 3rd dimension = 1 */
     ffg3dujj_safe(
@@ -3227,7 +3227,7 @@ pub unsafe extern "C" fn ffgsfujj(
         let array = slice::from_raw_parts_mut(array, total_nelem);
         let flagval = slice::from_raw_parts_mut(flagval, total_nelem);
 
-        let mut anynul = anynul.as_mut();
+        let anynul = anynul.as_mut();
 
         ffgsfujj_safe(
             fptr, colnum, naxis, naxes, blc, trc, inc, array, flagval, anynul, status,

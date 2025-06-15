@@ -1716,7 +1716,7 @@ pub fn ffgsky_safe(
         );
     }
 
-    if let Some(valuelen) = valuelen.as_deref_mut() {
+    if let Some(valuelen) = valuelen {
         *valuelen = len as c_int; /* total length of the keyword value */
     }
 

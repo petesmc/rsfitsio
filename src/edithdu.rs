@@ -968,14 +968,10 @@ pub fn ffitab_safe(
     extnmx: Option<&[c_char]>,     /* I - value of EXTNAME keyword, if any         */
     status: &mut c_int,            /* IO - error status                            */
 ) -> c_int {
-    let mut nexthdu: c_int;
-    let mut maxhdu: c_int;
     let mut nunit: c_int = 0;
-    let mut nhead: c_int;
-    let mut nblocks: c_long;
+
     let mut rowlen: c_long;
-    let mut datasize: LONGLONG;
-    let mut newstart: LONGLONG;
+
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -992,7 +988,7 @@ pub fn ffitab_safe(
         ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
     }
 
-    maxhdu = fptr.Fptr.maxhdu;
+    let maxhdu: c_int = fptr.Fptr.maxhdu;
 
     let headstart = fptr.Fptr.get_headstart_as_slice();
     /* if the current header is completely empty or, if we are at the end of the file, ...  */
@@ -1076,9 +1072,9 @@ pub fn ffitab_safe(
         ffgabc_safe(tfields, v_tform, 1, &mut rowlen, &mut tbcol, status);
     }
 
-    nhead = (9 + (3 * tfields) + nunit + 35) / 36; /* no. of header blocks */
-    datasize = (rowlen as LONGLONG) * naxis2; /* size of table in bytes */
-    nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+    let nhead: c_int = (9 + (3 * tfields) + nunit + 35) / 36; /* no. of header blocks */
+    let datasize: LONGLONG = (rowlen as LONGLONG) * naxis2; /* size of table in bytes */
+    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
 
     if fptr.Fptr.writemode == READWRITE {
         /* must have write access */
@@ -1092,8 +1088,8 @@ pub fn ffitab_safe(
     }
     let headstart = fptr.Fptr.get_headstart_as_slice();
 
-    nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
-    newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
+    let nexthdu: c_int = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
+    let newstart: LONGLONG = headstart[nexthdu as usize]; /* save starting addr of HDU */
 
     fptr.Fptr.hdutype = ASCII_TBL; /* so that correct fill value is used */
 
@@ -1197,17 +1193,14 @@ pub fn ffibin_safe(
     pcount: LONGLONG,              /* I - size of special data area (heap)         */
     status: &mut c_int,            /* IO - error status                            */
 ) -> c_int {
-    let mut nexthdu: c_int;
-    let mut maxhdu: c_int;
     let mut nunit: c_int = 0;
-    let mut nhead: c_int;
+
     let mut datacode: c_int = 0;
     let mut naxis1: LONGLONG = 0;
-    let mut nblocks: c_long;
+
     let mut repeat: c_long = 0;
     let mut width: c_long = 0;
-    let mut datasize: LONGLONG;
-    let mut newstart: LONGLONG;
+
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -1224,7 +1217,7 @@ pub fn ffibin_safe(
         ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
     }
 
-    maxhdu = fptr.Fptr.maxhdu;
+    let maxhdu: c_int = fptr.Fptr.maxhdu;
 
     let headstart = fptr.Fptr.get_headstart_as_slice();
     /* if the current header is completely empty ...  */
@@ -1278,7 +1271,7 @@ pub fn ffibin_safe(
         nunit += 1; /* add one for the EXTNAME keyword */
     }
 
-    nhead = (9 + (2 * tfields) + nunit + 35) / 36; /* no. of header blocks */
+    let nhead: c_int = (9 + (2 * tfields) + nunit + 35) / 36; /* no. of header blocks */
 
     /* calculate total width of the table */
     for ii in 0..(tfields as usize) {
@@ -1300,8 +1293,8 @@ pub fn ffibin_safe(
         }
     }
 
-    datasize = ((naxis1 as LONGLONG) * naxis2) + pcount; /* size of table in bytes */
-    nblocks = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+    let datasize: LONGLONG = ((naxis1 as LONGLONG) * naxis2) + pcount; /* size of table in bytes */
+    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
 
     if fptr.Fptr.writemode == READWRITE {
         /* must have write access */
@@ -1316,8 +1309,8 @@ pub fn ffibin_safe(
 
     let headstart = fptr.Fptr.get_headstart_as_slice();
 
-    nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
-    newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
+    let nexthdu: c_int = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
+    let newstart: LONGLONG = headstart[nexthdu as usize]; /* save starting addr of HDU */
 
     fptr.Fptr.hdutype = BINARY_TBL; /* so that correct fill value is used */
 

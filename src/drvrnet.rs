@@ -10,13 +10,13 @@ pub(crate) unsafe fn fits_net_timeout(sec: c_int) -> c_int {
             net_timeout = sec as c_uint;
         }
 
-        return net_timeout as c_int;
+        net_timeout as c_int
     }
 }
 
 pub(crate) unsafe fn fits_dwnld_prog_bar(flag: c_int) {
     unsafe {
-        if (flag == 0) {
+        if flag == 0 {
             show_fits_download_progress = 0;
         } else {
             show_fits_download_progress = 1;

@@ -2403,9 +2403,9 @@ pub fn ffikym_safe(
     comm: Option<&[c_char]>, /* I - keyword comment    */
     status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
     if *status > 0 {
         /* inherit input status value if > 0 */

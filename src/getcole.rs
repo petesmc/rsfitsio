@@ -239,15 +239,15 @@ pub unsafe extern "C" fn ffg2de(
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
 pub fn ffg2de_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    group: c_long,                  /* I - group to read (1 = 1st group)           */
-    nulval: f32,                    /* set undefined pixels equal to this     */
-    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
-    array: &mut [f32],              /* O - array to be filled and returned    */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    group: c_long,              /* I - group to read (1 = 1st group)           */
+    nulval: f32,                /* set undefined pixels equal to this     */
+    ncols: LONGLONG,            /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,           /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,           /* I - FITS image NAXIS2 value                 */
+    array: &mut [f32],          /* O - array to be filled and returned    */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     /* call the 3D reading routine, with the 3rd dimension = 1 */
     ffg3de_safe(
@@ -682,7 +682,7 @@ pub unsafe extern "C" fn ffgsfe(
         let array = slice::from_raw_parts_mut(array, total_nelem);
         let flagval = slice::from_raw_parts_mut(flagval, total_nelem);
 
-        let mut anynul = anynul.as_mut();
+        let anynul = anynul.as_mut();
 
         ffgsfe_safe(
             fptr, colnum, naxis, naxes, blc, trc, inc, array, flagval, anynul, status,
@@ -983,7 +983,7 @@ pub unsafe extern "C" fn ffgcve(
 
         let anynul = anynul.as_mut();
 
-        let mut dummy_nularray = vec![0; nelem as usize];
+        let dummy_nularray = vec![0; nelem as usize];
 
         ffgcve_safe(
             fptr, colnum, firstrow, firstelem, nelem, nulval, array, anynul, status,

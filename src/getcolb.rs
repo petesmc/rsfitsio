@@ -240,15 +240,15 @@ pub unsafe extern "C" fn ffg2db(
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
 pub fn ffg2db_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    group: c_long,                  /* I - group to read (1 = 1st group)           */
-    nulval: u8,                     /* set undefined pixels equal to this     */
-    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
-    array: &mut [u8],               /* O - array to be filled and returned    */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
+    group: c_long,              /* I - group to read (1 = 1st group)           */
+    nulval: u8,                 /* set undefined pixels equal to this     */
+    ncols: LONGLONG,            /* I - number of pixels in each row of array   */
+    naxis1: LONGLONG,           /* I - FITS image NAXIS1 value                 */
+    naxis2: LONGLONG,           /* I - FITS image NAXIS2 value                 */
+    array: &mut [u8],           /* O - array to be filled and returned    */
+    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
+    status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     /* call the 3D reading routine, with the 3rd dimension = 1 */
     ffg3db_safe(
@@ -679,7 +679,7 @@ pub fn ffgsfb_safe(
     let mut blcll: [LONGLONG; 9] = [0; 9];
     let mut trcll: [LONGLONG; 9] = [0; 9];
     let mut hdutype: c_int = 0;
-    let mut anyf: c_int = 0;
+    let anyf: c_int = 0;
     let ldummy: c_char = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let nullcheck = NullCheckType::SetNullArray;
@@ -786,7 +786,7 @@ pub fn ffgsfb_safe(
     }
     nelem = 1;
     for ii in 0..naxis {
-        nelem = nelem * (((stp[ii] - str[ii]) / inc[ii]) + 1);
+        nelem *= ((stp[ii] - str[ii]) / inc[ii]) + 1;
     }
 
     i0 = 0;
@@ -799,8 +799,8 @@ pub fn ffgsfb_safe(
     let mut hh = str[0];
 
     for jj in 1..naxis {
-        felem = felem + ((str[jj] - 1) * dsize[jj]);
-        hh += ((str[jj] - 1) * dsize[jj]);
+        felem += (str[jj] - 1) * dsize[jj];
+        hh += (str[jj] - 1) * dsize[jj];
     }
 
     /* determine the number of pixels to process in each loop */
@@ -840,8 +840,8 @@ pub fn ffgsfb_safe(
     //     return *status;
     // }
 
-    let mut anynul_int = 0;
-    let mut nularray = vec![0u8; ninc as usize];
+    let anynul_int = 0;
+    let nularray = vec![0u8; ninc as usize];
 
     i0 = 0;
     while nelem > 0 && *status <= 0 {
@@ -892,7 +892,7 @@ pub fn ffgsfb_safe(
 
         /* increment the counters for the next loop */
         i0 += ninc;
-        let mut remain = nelem - i0;
+        let remain = nelem - i0;
 
         let nextelem = ninc;
         ninc = cmp::min(ninc, remain); /* don't exceed the maximum */
@@ -902,16 +902,16 @@ pub fn ffgsfb_safe(
             && (felem + nextelem - 1 - dsize[1]) / dsize[1] != (felem - 1 - dsize[1]) / dsize[1]
         {
             /* we have reached the boundary between successive planes */
-            felem += (dsize[1] - (felem - 1 - dsize[1]) % dsize[1]);
+            felem += dsize[1] - (felem - 1 - dsize[1]) % dsize[1];
 
             /* recalculate the indices of the next element to read */
             for kk in 1..naxis {
-                hh = hh / dsize[kk];
+                hh /= dsize[kk];
                 if hh == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1]) {
-                    str[kk] = str[kk] + 1;
+                    str[kk] += 1;
                     hh = 1;
                     for ll in kk + 1..naxis {
-                        hh = hh + ((str[ll] - 1) / naxes[ll - 1]);
+                        hh += (str[ll] - 1) / naxes[ll - 1];
                     }
                     if kk == naxis - 1 {
                         ninc = incr[0]; /* completed a row */

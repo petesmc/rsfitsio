@@ -7,7 +7,6 @@
 
 use core::slice;
 use std::ffi::CStr;
-use std::ptr;
 
 use crate::c_types::*;
 
