@@ -6842,7 +6842,7 @@ fn fits_read_compressed_img_plane(
 /*--------------------------------------------------------------------------*/
 /// This routine reads keywords from a BINTABLE extension containing a
 /// compressed image.
-unsafe fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_int) -> c_int {
+pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let ii: c_int = 0;

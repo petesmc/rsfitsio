@@ -57,7 +57,7 @@ use crate::getkey::{
     ffghsp_safe, ffgky_safe, ffgkyj_safe, ffgkyjj_safe, ffgkyl_safe, ffgkyn_safe, ffgkys_safe,
     ffgphd, ffgrec_safe, ffgttb, ffmaky_safe,
 };
-use crate::imcompress::TILE_STRUCTS;
+use crate::imcompress::{TILE_STRUCTS, imcomp_get_compressed_image_par};
 use crate::modkey::{ffdkey_safe, ffmkyj_safe, ffmrec_safe};
 use crate::putkey::ffprec_safe;
 use crate::relibc::header::stdio::sscanf;
@@ -6445,8 +6445,7 @@ pub(crate) unsafe fn ffbinit(
 
         if fptr.Fptr.compressimg == 1 {
             /*  Is this a compressed image */
-            todo!();
-            //imcomp_get_compressed_image_par(fptr, status);
+            imcomp_get_compressed_image_par(fptr, status);
         }
         *status
     }
