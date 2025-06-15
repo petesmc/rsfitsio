@@ -1128,40 +1128,38 @@ pub unsafe extern "C" fn ffgunt(
 
         raw_to_slice!(keyname);
 
-        ffgunt_safer(fptr, keyname, unit, status)
+        ffgunt_safe(fptr, keyname, unit, status)
     }
 }
 
 /// Safe wrapper for ffgunt that handles null pointer checks
-pub fn ffgunt_safer(
+pub fn ffgunt_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer         */
     keyname: &[c_char],  /* I - name of keyword to read   */
     unit: &mut [c_char], /* O - keyword units             */
     status: &mut c_int,  /* IO - error status             */
 ) -> c_int {
-    unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
-        if *status > 0 {
-            return *status;
-        }
-
-        ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut comm), status); /* read the keyword */
-
-        if comm[0] == bb(b'[') {
-            let loc = strchr_safe(&comm, bb(b']')); /*  find the closing bracket */
-            if let Some(loc) = loc {
-                comm[loc] = 0; /*  terminate the string */
-            }
-
-            strcpy_safe(unit, &comm[1..]); /*  copy the string */
-        } else {
-            unit[0] = 0;
-        }
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut comm), status); /* read the keyword */
+
+    if comm[0] == bb(b'[') {
+        let loc = strchr_safe(&comm, bb(b']')); /*  find the closing bracket */
+        if let Some(loc) = loc {
+            comm[loc] = 0; /*  terminate the string */
+        }
+
+        strcpy_safe(unit, &comm[1..]); /*  copy the string */
+    } else {
+        unit[0] = 0;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1197,19 +1195,8 @@ pub unsafe extern "C" fn ffgkys(
 
         let value = slice::from_raw_parts_mut(value, 69);
 
-        ffgkys_safer(fptr, keyname, value, c, status)
+        ffgkys_safe(fptr, keyname, value, c, status)
     }
-}
-
-/// Safe wrapper for ffgkys that handles null pointer checks
-pub(crate) fn ffgkys_safer(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut [c_char],                      /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
-) -> c_int {
-    unsafe { ffgkys_safe(fptr, keyname, value, comm, status) }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1381,132 +1368,130 @@ pub unsafe extern "C" fn ffgkls(
             )
         };
 
-        ffgkls_safer(fptr, keyname, value, c, status)
+        ffgkls_safe(fptr, keyname, value, c, status)
     }
 }
 
 /// Safe wrapper for ffgkls that handles null pointer checks
-pub fn ffgkls_safer(
+pub fn ffgkls_safe(
     fptr: &mut fitsfile,                           /* I - FITS file pointer         */
     keyname: &[c_char],                            /* I - name of keyword to read       */
     value: &mut *mut c_char,                       /* O - pointer to keyword value      */
     mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
     status: &mut c_int,                            /* IO - error status             */
 ) -> c_int {
-    unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        let mut addCommDelim = false;
-        let mut keynum = 0;
+    let mut addCommDelim = false;
+    let mut keynum = 0;
 
-        let mut commspace = 0;
-        let mut len;
+    let mut commspace = 0;
+    let mut len;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        *value = ptr::null_mut(); /* initialize a null pointer in case of error */
+    *value = ptr::null_mut(); /* initialize a null pointer in case of error */
 
-        card[0] = 0;
-        if let Some(c) = comm.as_deref_mut() {
-            c[0] = 0;
-        }
+    card[0] = 0;
+    if let Some(c) = comm.as_deref_mut() {
+        c[0] = 0;
+    }
 
-        ffgcrd_safe(fptr, keyname, &mut card, status);
+    ffgcrd_safe(fptr, keyname, &mut card, status);
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        if strlen_safe(&card) < FLEN_CARD - 1 {
-            addCommDelim = true;
-        }
+    if strlen_safe(&card) < FLEN_CARD - 1 {
+        addCommDelim = true;
+    }
 
-        ffpsvc_safe(&card, &mut valstring, comm.as_deref_mut(), status);
+    ffpsvc_safe(&card, &mut valstring, comm.as_deref_mut(), status);
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        if let Some(c) = comm.as_deref_mut() {
-            /* remaining space in comment string */
-            commspace = FLEN_COMMENT - 1 - strlen_safe(c);
-        }
+    if let Some(c) = comm.as_deref_mut() {
+        /* remaining space in comment string */
+        commspace = FLEN_COMMENT - 1 - strlen_safe(c);
+    }
 
-        if valstring[0] == 0 {
-            /* null value string? */
-            // HEAP ALLOCATION
+    if valstring[0] == 0 {
+        /* null value string? */
+        // HEAP ALLOCATION
 
-            /* allocate and return a null string */
-            let mut v: Vec<c_char> = vec![0; 1];
-            v[0] = 0;
-        } else {
-            /* allocate space,  plus 1 for null */
-            // HEAP ALLOCATION
-            let mut v: Vec<c_char> = vec![0; strlen_safe(&valstring) + 1];
+        /* allocate and return a null string */
+        let mut v: Vec<c_char> = vec![0; 1];
+        v[0] = 0;
+    } else {
+        /* allocate space,  plus 1 for null */
+        // HEAP ALLOCATION
+        let mut v: Vec<c_char> = vec![0; strlen_safe(&valstring) + 1];
 
-            ffc2s(&valstring, &mut v, status); /* convert string to value */
-            len = strlen_safe(&v);
+        ffc2s(&valstring, &mut v, status); /* convert string to value */
+        len = strlen_safe(&v);
 
-            /* If last character is a & then value may be continued on next keyword */
-            let mut contin = true;
-            while contin {
-                if len > 0 && v[len - 1] == bb(b'&') {
-                    /*  is last char an ampersand?  */
-                    valstring[0] = 0;
-                    nextcomm[0] = 0;
-                    ffgcnt(fptr, &mut valstring, Some(&mut nextcomm), status);
+        /* If last character is a & then value may be continued on next keyword */
+        let mut contin = true;
+        while contin {
+            if len > 0 && v[len - 1] == bb(b'&') {
+                /*  is last char an ampersand?  */
+                valstring[0] = 0;
+                nextcomm[0] = 0;
+                ffgcnt(fptr, &mut valstring, Some(&mut nextcomm), status);
 
-                    if valstring[0] != 0 || nextcomm[0] != 0 {
-                        /* If either valstring or nextcom is filled, this must be a CONTINUE line */
-                        v[len - 1] = 0; /* erase the trailing & char */
+                if valstring[0] != 0 || nextcomm[0] != 0 {
+                    /* If either valstring or nextcom is filled, this must be a CONTINUE line */
+                    v[len - 1] = 0; /* erase the trailing & char */
 
-                        if valstring[0] != 0 {
-                            len += strlen_safe(&valstring) - 1;
-                            // HEAP ALLOCATION
-                            v.resize(len + 1, 0); /* increase size */
-                            strcat_safe(&mut v, &valstring); /* append the continued chars */
-                        }
-
-                        if (commspace > 0) && (nextcomm[0] != 0) {
-                            /* If in here, input 'comm' cannot be 0 */
-                            /* concantenate comment strings (if any) */
-
-                            let c = comm.as_deref_mut().unwrap();
-
-                            if strlen_safe(c) != 0 && addCommDelim {
-                                strcat_safe(c, cs!(c" "));
-                                commspace -= 1;
-                            }
-
-                            strncat_safe(c, &nextcomm, commspace);
-                            commspace = FLEN_COMMENT - 1 - strlen_safe(c);
-                        }
-
-                        /* Determine if a space delimiter is needed for next
-                        comment concatenation (if any).  Assume it is if card length
-                        of the most recently read keyword is less than max.
-                        keynum is 1-based. */
-                        ffghps_safe(fptr, Some(&mut 0), Some(&mut keynum), status);
-                        ffgrec_safe(fptr, keynum - 1, Some(&mut card), status);
-                        addCommDelim = strlen_safe(&card) < FLEN_CARD - 1;
-                    } else {
-                        contin = false;
+                    if valstring[0] != 0 {
+                        len += strlen_safe(&valstring) - 1;
+                        // HEAP ALLOCATION
+                        v.resize(len + 1, 0); /* increase size */
+                        strcat_safe(&mut v, &valstring); /* append the continued chars */
                     }
+
+                    if (commspace > 0) && (nextcomm[0] != 0) {
+                        /* If in here, input 'comm' cannot be 0 */
+                        /* concantenate comment strings (if any) */
+
+                        let c = comm.as_deref_mut().unwrap();
+
+                        if strlen_safe(c) != 0 && addCommDelim {
+                            strcat_safe(c, cs!(c" "));
+                            commspace -= 1;
+                        }
+
+                        strncat_safe(c, &nextcomm, commspace);
+                        commspace = FLEN_COMMENT - 1 - strlen_safe(c);
+                    }
+
+                    /* Determine if a space delimiter is needed for next
+                    comment concatenation (if any).  Assume it is if card length
+                    of the most recently read keyword is less than max.
+                    keynum is 1-based. */
+                    ffghps_safe(fptr, Some(&mut 0), Some(&mut keynum), status);
+                    ffgrec_safe(fptr, keynum - 1, Some(&mut card), status);
+                    addCommDelim = strlen_safe(&card) < FLEN_CARD - 1;
                 } else {
                     contin = false;
                 }
+            } else {
+                contin = false;
             }
-
-            let (p, l, c) = vec_into_raw_parts(v);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            *value = p;
         }
-        *status
+
+        let (p, l, c) = vec_into_raw_parts(v);
+        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+        *value = p;
     }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1563,35 +1548,30 @@ pub unsafe extern "C" fn ffgsky(
 
         let valuelen = valuelen.as_mut();
 
-        ffgsky_safer(
+        ffgsky_safe(
             fptr, keyname, firstchar, maxchar, value, valuelen, c, status,
         )
     }
 }
 
-/// Safe wrapper for ffgsky that handles null pointer checks
-pub(crate) fn ffgsky_safer(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    keyname: &[c_char],  /* I - name of keyword to read       */
-    firstchar: c_int,    /* I - first character of string to return */
-    maxchar: c_int,      /* I - maximum length of string to return */
-    /*    (string will be null terminated)  */
-    value: &mut [c_char],         /* O - pointer to keyword value      */
-    valuelen: Option<&mut c_int>, /* O - total length of the keyword value string */
-    /*     The returned 'value' string may only */
-    /*     contain a piece of the total string, depending */
-    /*     on the value of firstchar and maxchar */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
-    status: &mut c_int,                        /* IO - error status                 */
-) -> c_int {
-    unsafe {
-        ffgsky_safe(
-            fptr, keyname, firstchar, maxchar, value, valuelen, comm, status,
-        )
-    }
-}
-
-/// Safe version of ffgsky that operates on safe Rust types
+/*--------------------------------------------------------------------------*/
+/// Read and return the value of the specified string-valued keyword.
+///
+/// This new routine was added in 2016 to provide a more convenient user
+/// interface than the older ffgkls routine.
+///
+/// Read a string keyword, returning up to 'naxchars' characters of the value
+/// starting with the 'firstchar' character.
+/// The input 'value' string must be allocated at least 1 char bigger to
+/// allow for the terminating null character.
+///
+/// This routine may be used to read continued string keywords that use
+/// the CONTINUE keyword convention, as well as normal string keywords
+/// that are contained within a single header record.
+///
+/// This routine differs from the ffkls routine in that it does not
+/// internally allocate memory for the returned value string, and consequently
+/// the calling routine does not need to call fffree to free the memory.
 pub fn ffgsky_safe(
     fptr: &mut fitsfile,              /* I - FITS file pointer             */
     keyname: &[c_char],               /* I - name of keyword to read       */
@@ -1759,14 +1739,14 @@ pub unsafe extern "C" fn ffgskyc(
             false => Some(slice::from_raw_parts_mut(value, 1 + maxchar as usize)),
         };
 
-        ffgskyc_safer(
+        ffgskyc_safe(
             fptr, keyname, firstchar, maxchar, maxcomchar, value, valuelen, comm, comlen, status,
         )
     }
 }
 
-/// Safe wrapper for ffgskyc that handles null pointer checks
-pub fn ffgskyc_safer(
+/*--------------------------------------------------------------------------*/
+pub fn ffgskyc_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     keyname: &[c_char],  /* I - name of keyword to read       */
     firstchar: c_int,    /* I - first character of string to return */
@@ -1782,17 +1762,15 @@ pub fn ffgskyc_safer(
     comlen: &mut c_int,          /* O - total length of the comment string */
     status: &mut c_int,          /* IO - error status                 */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
-
-        ffglkut(
-            fptr, keyname, firstchar, maxchar, maxcomchar, value, valuelen, comm, comlen, status,
-        );
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    ffglkut(
+        fptr, keyname, firstchar, maxchar, maxcomchar, value, valuelen, comm, comlen, status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2599,12 +2577,12 @@ pub unsafe extern "C" fn ffgkyt(
             )
         };
 
-        ffgkyt_safer(fptr, keyname, ivalue, fraction, c, status)
+        ffgkyt_safe(fptr, keyname, ivalue, fraction, c, status)
     }
 }
 
 /// Safe wrapper for ffgkyt that handles null pointer checks
-pub fn ffgkyt_safer(
+pub fn ffgkyt_safe(
     fptr: &mut fitsfile,                       /* I - FITS file pointer         */
     keyname: &[c_char],                        /* I - name of keyword to read   */
     ivalue: &mut c_long,                       /* O - integer part of keyword value     */
@@ -2612,36 +2590,34 @@ pub fn ffgkyt_safer(
     comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
     status: &mut c_int,                        /* IO - error status             */
 ) -> c_int {
-    unsafe {
-        let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
-        if *status > 0 {
-            return *status;
-        }
-
-        ffgkey_safe(fptr, keyname, &mut valstring, comm, status); /* read the keyword */
-
-        /*  read the entire value string as a double, to get the integer part */
-        ffc2d(&valstring, fraction, status);
-
-        *ivalue = *fraction as c_long;
-
-        *fraction -= *ivalue as f64;
-
-        /* see if we need to read the fractional part again with more precision */
-        /* look for decimal point, without an exponential E or D character */
-
-        let loc = strchr_safe(&valstring, bb(b'.'));
-        if let Some(loc) = loc {
-            if strchr_safe(&valstring, bb(b'E')).is_none()
-                && strchr_safe(&valstring, bb(b'D')).is_none()
-            {
-                ffc2d(&valstring[loc..], fraction, status);
-            }
-        }
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    ffgkey_safe(fptr, keyname, &mut valstring, comm, status); /* read the keyword */
+
+    /*  read the entire value string as a double, to get the integer part */
+    ffc2d(&valstring, fraction, status);
+
+    *ivalue = *fraction as c_long;
+
+    *fraction -= *ivalue as f64;
+
+    /* see if we need to read the fractional part again with more precision */
+    /* look for decimal point, without an exponential E or D character */
+
+    let loc = strchr_safe(&valstring, bb(b'.'));
+    if let Some(loc) = loc {
+        if strchr_safe(&valstring, bb(b'E')).is_none()
+            && strchr_safe(&valstring, bb(b'D')).is_none()
+        {
+            ffc2d(&valstring[loc..], fraction, status);
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

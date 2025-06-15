@@ -577,7 +577,7 @@ pub unsafe extern "C" fn ffwrhdu(
 
 /*--------------------------------------------------------------------------*/
 /// Write the current HDU to the output stream.
-pub fn ffwrhdu_safer(
+pub unsafe fn ffwrhdu_safer(
     infptr: &mut fitsfile, /* I - FITS file pointer to input file  */
     outstream: *mut FILE,  /* I - stream to write HDU to */
     status: &mut c_int,    /* IO - error status     */

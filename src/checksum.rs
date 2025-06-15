@@ -294,7 +294,7 @@ pub unsafe extern "C" fn ffpcks(
 /// Create or update the checksum keywords in the CHDU.  These keywords
 /// provide a checksum verification of the FITS HDU based on the ASCII
 /// coded 1's complement checksum algorithm developed by Rob Seaman at NOAO.
-pub unsafe extern "C" fn ffpcks_safe(
+pub fn ffpcks_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                  */
     status: &mut c_int,  /* IO - error status                      */
 ) -> c_int {

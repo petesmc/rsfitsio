@@ -391,9 +391,19 @@ pub unsafe extern "C" fn fits_set_quantize_dither(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_set_quantize_method_safe(fptr, dither, status);
-        *status
+        fits_set_quantize_dither_safe(fptr, dither, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// the name of this routine has changed.  This is kept here only for backwards
+/// compatibility for any software that may be calling the old routine.
+pub fn fits_set_quantize_dither_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    dither: c_int,       /* dither type      */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    fits_set_quantize_method_safe(fptr, dither, status)
 }
 
 /*--------------------------------------------------------------------------*/
@@ -461,9 +471,20 @@ pub unsafe extern "C" fn fits_set_dither_offset(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_set_dither_seed_safe(fptr, offset, status);
+        fits_set_dither_offset_safe(fptr, offset, status);
         *status
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// The name of this routine has changed.  This is kept just for
+/// backwards compatibility with any software that calls the old name
+pub fn fits_set_dither_offset_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    offset: c_int,       /* random dithering offset value (1 to 10000) */
+    status: &mut c_int,  /* IO - error status                */
+) -> c_int {
+    fits_set_dither_seed_safe(fptr, offset, status)
 }
 
 /*--------------------------------------------------------------------------*/
@@ -493,17 +514,41 @@ pub unsafe extern "C" fn fits_set_noise_bits(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        if noisebits < 1 || noisebits > 16 {
-            *status = DATA_COMPRESSION_ERR;
-            ffpmsg_str("illegal number of noise bits (fits_set_noise_bits)");
-            return *status;
-        }
-
-        let qlevel = (2 ^ noisebits) as f32;
-        fits_set_quantize_level_safe(fptr, qlevel, status);
-
-        *status
+        #[allow(deprecated)]
+        fits_set_noise_bits_safe(fptr, noisebits, status)
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// ********************************************************************
+/// ********************************************************************
+/// THIS ROUTINE IS PROVIDED ONLY FOR BACKWARDS COMPATIBILITY;
+/// ALL NEW SOFTWARE SHOULD CALL fits_set_quantize_level INSTEAD
+/// ********************************************************************
+/// ********************************************************************
+///
+/// This routine specifies the value of the noice_bits parameter that
+/// should be used when compressing floating point images.  The image is
+/// divided into tiles, and each tile is compressed and stored in a row
+/// of at variable length binary table column.
+///
+/// Feb 2008:  the "noisebits" parameter has been replaced with the more
+/// general "quantize level" parameter.
+#[deprecated]
+pub fn fits_set_noise_bits_safe(
+    fptr: &mut fitsfile, /* I - FITS file pointer   */
+    noisebits: c_int,    /* noise_bits parameter value       */
+    /* (default = 4)                    */
+    status: &mut c_int, /* IO - error status                */
+) -> c_int {
+    if noisebits < 1 || noisebits > 16 {
+        *status = DATA_COMPRESSION_ERR;
+        ffpmsg_str("illegal number of noise bits (fits_set_noise_bits)");
+        return *status;
+    }
+
+    let qlevel = (2 ^ noisebits) as f32;
+    fits_set_quantize_level_safe(fptr, qlevel, status)
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1277,7 +1322,7 @@ pub fn fits_img_compress_safe(
     }
 
     /* initialize output table */
-    if unsafe { imcomp_init_table(outfptr, bitpix, naxis, &naxes, false, status) } > 0 {
+    if imcomp_init_table(outfptr, bitpix, naxis, &naxes, false, status) > 0 {
         return *status;
     }
 

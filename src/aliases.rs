@@ -720,7 +720,7 @@ pub mod rust_api {
     pub use crate::fitscore::ffgkcl_safe as fits_get_keyclass;
     pub use crate::fitscore::ffgmsg_safe as fits_read_errmsg;
     pub use crate::fitscore::ffgthd_safe as fits_parse_template;
-    pub use crate::fitscore::ffinttyp_safer as fits_get_inttype;
+    pub use crate::fitscore::ffinttyp_safe as fits_get_inttype;
     pub use crate::fitscore::ffkeyn_safe as fits_make_keyn;
     pub use crate::fitscore::ffmkky_safe as fits_make_key;
     pub use crate::fitscore::ffnkey_safe as fits_make_nkey;
@@ -801,7 +801,7 @@ pub mod rust_api {
     pub use crate::getkey::ffghtbll_safer as fits_read_atblhdrll;
     pub use crate::getkey::ffgkcsl_safe as fits_get_key_com_strlen;
     pub use crate::getkey::ffgkey_safe as fits_read_keyword;
-    pub use crate::getkey::ffgkls_safer as fits_read_key_longstr;
+    pub use crate::getkey::ffgkls_safe as fits_read_key_longstr;
     pub use crate::getkey::ffgknd_safe as fits_read_keys_dbl;
     pub use crate::getkey::ffgkne_safe as fits_read_keys_flt;
     pub use crate::getkey::ffgknj_safe as fits_read_keys_lng;
@@ -819,15 +819,15 @@ pub mod rust_api {
     pub use crate::getkey::ffgkym_safe as fits_read_key_dblcmp;
     pub use crate::getkey::ffgkyn_safe as fits_read_keyn;
     pub use crate::getkey::ffgkys_safe as fits_read_key_str;
-    pub use crate::getkey::ffgkyt_safer as fits_read_key_triple;
+    pub use crate::getkey::ffgkyt_safe as fits_read_key_triple;
     pub use crate::getkey::ffgkyujj_safe as fits_read_key_ulnglng;
     pub use crate::getkey::ffgrec_safe as fits_read_record;
     pub use crate::getkey::ffgsky_safe as fits_read_string_key;
-    pub use crate::getkey::ffgskyc_safer as fits_read_string_key_com;
+    pub use crate::getkey::ffgskyc_safe as fits_read_string_key_com;
     pub use crate::getkey::ffgstr_safe as fits_read_str;
     pub use crate::getkey::ffgtdm_safe as fits_read_tdim;
     pub use crate::getkey::ffgtdmll_safer as fits_read_tdimll;
-    pub use crate::getkey::ffgunt_safer as fits_read_key_unit;
+    pub use crate::getkey::ffgunt_safe as fits_read_key_unit;
     pub use crate::getkey::ffhdr2str_safe as fits_hdr2str;
 
     pub use crate::modkey::ffucrd_safe as fits_update_card;

@@ -93,7 +93,7 @@ pub unsafe extern "C" fn ffvers(version: *mut f32 /* IO - version number */) -> 
 
         let version = version.as_mut().expect(NULL_MSG);
 
-        unsafe { ffvers_safe(version) }
+        ffvers_safe(version)
     }
 }
 
@@ -239,7 +239,7 @@ pub unsafe extern "C" fn ffflnm(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        unsafe { ffflnm_safe(&mut *fptr, filename, &mut *status) }
+        ffflnm_safe(&mut *fptr, filename, &mut *status)
     }
 }
 
@@ -262,7 +262,7 @@ pub unsafe extern "C" fn ffflmd(
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let status = status.as_mut().expect(NULL_MSG);
-        unsafe { ffflmd_safe(&mut *fptr, &mut *filemode, &mut *status) }
+        ffflmd_safe(&mut *fptr, &mut *filemode, &mut *status)
     }
 }
 
@@ -564,7 +564,7 @@ pub fn ffcmrk_safe() {
 /// GetMesg    4  pop and return oldest message, ignoring marks
 /// PutMesg    5  add a new message to the stack
 /// PutMark    6  add a marker to the stack
-pub(crate) fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
+pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
     // SAFETY: `errmsg` is a valid pointer to a mutable array of `c_char` with length `FLEN_ERRMSG
     unsafe {
         ffxmsg(
@@ -2135,7 +2135,7 @@ pub unsafe extern "C" fn fits_translate_keyword(
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn fits_translate_keyword_safer(
+pub fn fits_translate_keyword_safer(
     inrec: &mut [c_char],  /* I - input string */
     outrec: &mut [c_char], /* O - output converted string, or */
     /*     a null string if input does not  */
@@ -2464,7 +2464,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
 /// continues to the end of the header.
 ///
 /// This routine was written by Craig Markwardt, GSFC
-pub(crate) fn fits_translate_keywords_safer(
+pub fn fits_translate_keywords_safer(
     infptr: &mut fitsfile,   /* I - pointer to input HDU */
     outfptr: &mut fitsfile,  /* I - pointer to output HDU */
     firstkey: c_int,         /* I - first HDU record number to start with */
@@ -8277,17 +8277,15 @@ pub unsafe extern "C" fn ffgdessll(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        unsafe {
-            ffgdessll_safe(
-                &mut *fptr,
-                colnum,
-                firstrow,
-                nrows,
-                length,
-                heapaddr,
-                &mut *status,
-            )
-        }
+        ffgdessll_safe(
+            &mut *fptr,
+            colnum,
+            firstrow,
+            nrows,
+            length,
+            heapaddr,
+            &mut *status,
+        )
     }
 }
 
@@ -9124,7 +9122,7 @@ pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        unsafe { ffcdfl_safe(&mut *fptr, &mut *status) }
+        ffcdfl_safe(&mut *fptr, &mut *status)
     }
 }
 
@@ -11253,134 +11251,132 @@ pub unsafe extern "C" fn ffinttyp(
         let dtype = dtype.as_mut().expect(NULL_MSG);
         let negative = negative.as_mut().expect(NULL_MSG);
         raw_to_slice!(cval);
-        ffinttyp_safer(cval, dtype, negative, status)
+        ffinttyp_safe(cval, dtype, negative, status)
     }
 }
 
-pub unsafe fn ffinttyp_safer(
+pub fn ffinttyp_safe(
     cval: &[c_char],      /* I - formatted string representation of the integer */
     dtype: &mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
     negative: &mut c_int, /* O - is cval negative? */
     status: &mut c_int,   /* IO - error status */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status; /* inherit input status value if > 0 */
-        }
-
-        *dtype = 0;
-        *negative = 0;
-
-        let mut p = 0;
-        if cval[0] == bb(b'+') {
-            p += 1; /* ignore leading + sign */
-        } else if cval[0] == bb(b'-') {
-            p += 1;
-            *negative = 1; /* this is a negative number */
-        }
-
-        if cval[0] == bb(b'0') {
-            while cval[0] == bb(b'0') {
-                p += 1; /* skip leading zeros */
-            }
-
-            if cval[0] == 0 {
-                /* the value is a string of 1 or more zeros */
-                *dtype = TSBYTE;
-                return *status;
-            };
-        }
-
-        let len = strlen_safe(&cval[p..]);
-        for ii in 0..len {
-            if !isdigit_safe(cval[p + ii]) {
-                *status = BAD_INTKEY;
-                return *status;
-            };
-        }
-
-        /* check for unambiguous cases, based on length of the string */
-        if len == 0 {
-            *status = VALUE_UNDEFINED;
-        } else if len < 3 {
-            *dtype = TSBYTE;
-        } else if len == 4 {
-            *dtype = TSHORT;
-        } else if len > 5 && len < 10 {
-            *dtype = TINT;
-        } else if len > 10 && len < 19 {
-            *dtype = TLONGLONG;
-        } else if len > 20 {
-            *status = BAD_INTKEY;
-        } else if (*negative) == 0 {
-            if len == 3 {
-                if strcmp_safe(&cval[p..], cs!(c"127")) <= 0 {
-                    *dtype = TSBYTE;
-                } else if strcmp_safe(&cval[p..], cs!(c"255")) <= 0 {
-                    *dtype = TBYTE;
-                } else {
-                    *dtype = TSHORT;
-                };
-            } else if len == 5 {
-                if strcmp_safe(&cval[p..], cs!(c"32767")) <= 0 {
-                    *dtype = TSHORT;
-                } else if strcmp_safe(&cval[p..], cs!(c"65535")) <= 0 {
-                    *dtype = TUSHORT;
-                } else {
-                    *dtype = TINT;
-                };
-            } else if len == 10 {
-                if strcmp_safe(&cval[p..], cs!(c"2147483647")) <= 0 {
-                    *dtype = TINT;
-                } else if strcmp_safe(&cval[p..], cs!(c"4294967295")) <= 0 {
-                    *dtype = TUINT;
-                } else {
-                    *dtype = TLONGLONG;
-                };
-            } else if len == 19 {
-                if strcmp_safe(&cval[p..], cs!(c"9223372036854775807")) <= 0 {
-                    *dtype = TLONGLONG;
-                } else {
-                    *dtype = TULONGLONG;
-                };
-            } else if len == 20 {
-                if strcmp_safe(&cval[p..], cs!(c"18446744073709551615")) <= 0 {
-                    *dtype = TULONGLONG;
-                } else {
-                    *status = BAD_INTKEY;
-                };
-            };
-        } else {
-            /* negative integers */
-
-            if len == 3 {
-                if strcmp_safe(&cval[p..], cs!(c"128")) <= 0 {
-                    *dtype = TSBYTE;
-                } else {
-                    *dtype = TSHORT;
-                };
-            } else if len == 5 {
-                if strcmp_safe(&cval[p..], cs!(c"32768")) <= 0 {
-                    *dtype = TSHORT;
-                } else {
-                    *dtype = TINT;
-                };
-            } else if len == 10 {
-                if strcmp_safe(&cval[p..], cs!(c"2147483648")) <= 0 {
-                    *dtype = TINT;
-                } else {
-                    *dtype = TLONGLONG;
-                };
-            } else if len == 19 {
-                if strcmp_safe(&cval[p..], cs!(c"9223372036854775808")) <= 0 {
-                    *dtype = TLONGLONG;
-                } else {
-                    *status = BAD_INTKEY;
-                };
-            };
-        }
-        *status
+    if *status > 0 {
+        return *status; /* inherit input status value if > 0 */
     }
+
+    *dtype = 0;
+    *negative = 0;
+
+    let mut p = 0;
+    if cval[0] == bb(b'+') {
+        p += 1; /* ignore leading + sign */
+    } else if cval[0] == bb(b'-') {
+        p += 1;
+        *negative = 1; /* this is a negative number */
+    }
+
+    if cval[0] == bb(b'0') {
+        while cval[0] == bb(b'0') {
+            p += 1; /* skip leading zeros */
+        }
+
+        if cval[0] == 0 {
+            /* the value is a string of 1 or more zeros */
+            *dtype = TSBYTE;
+            return *status;
+        };
+    }
+
+    let len = strlen_safe(&cval[p..]);
+    for ii in 0..len {
+        if !isdigit_safe(cval[p + ii]) {
+            *status = BAD_INTKEY;
+            return *status;
+        };
+    }
+
+    /* check for unambiguous cases, based on length of the string */
+    if len == 0 {
+        *status = VALUE_UNDEFINED;
+    } else if len < 3 {
+        *dtype = TSBYTE;
+    } else if len == 4 {
+        *dtype = TSHORT;
+    } else if len > 5 && len < 10 {
+        *dtype = TINT;
+    } else if len > 10 && len < 19 {
+        *dtype = TLONGLONG;
+    } else if len > 20 {
+        *status = BAD_INTKEY;
+    } else if (*negative) == 0 {
+        if len == 3 {
+            if strcmp_safe(&cval[p..], cs!(c"127")) <= 0 {
+                *dtype = TSBYTE;
+            } else if strcmp_safe(&cval[p..], cs!(c"255")) <= 0 {
+                *dtype = TBYTE;
+            } else {
+                *dtype = TSHORT;
+            };
+        } else if len == 5 {
+            if strcmp_safe(&cval[p..], cs!(c"32767")) <= 0 {
+                *dtype = TSHORT;
+            } else if strcmp_safe(&cval[p..], cs!(c"65535")) <= 0 {
+                *dtype = TUSHORT;
+            } else {
+                *dtype = TINT;
+            };
+        } else if len == 10 {
+            if strcmp_safe(&cval[p..], cs!(c"2147483647")) <= 0 {
+                *dtype = TINT;
+            } else if strcmp_safe(&cval[p..], cs!(c"4294967295")) <= 0 {
+                *dtype = TUINT;
+            } else {
+                *dtype = TLONGLONG;
+            };
+        } else if len == 19 {
+            if strcmp_safe(&cval[p..], cs!(c"9223372036854775807")) <= 0 {
+                *dtype = TLONGLONG;
+            } else {
+                *dtype = TULONGLONG;
+            };
+        } else if len == 20 {
+            if strcmp_safe(&cval[p..], cs!(c"18446744073709551615")) <= 0 {
+                *dtype = TULONGLONG;
+            } else {
+                *status = BAD_INTKEY;
+            };
+        };
+    } else {
+        /* negative integers */
+
+        if len == 3 {
+            if strcmp_safe(&cval[p..], cs!(c"128")) <= 0 {
+                *dtype = TSBYTE;
+            } else {
+                *dtype = TSHORT;
+            };
+        } else if len == 5 {
+            if strcmp_safe(&cval[p..], cs!(c"32768")) <= 0 {
+                *dtype = TSHORT;
+            } else {
+                *dtype = TINT;
+            };
+        } else if len == 10 {
+            if strcmp_safe(&cval[p..], cs!(c"2147483648")) <= 0 {
+                *dtype = TINT;
+            } else {
+                *dtype = TLONGLONG;
+            };
+        } else if len == 19 {
+            if strcmp_safe(&cval[p..], cs!(c"9223372036854775808")) <= 0 {
+                *dtype = TLONGLONG;
+            } else {
+                *status = BAD_INTKEY;
+            };
+        };
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

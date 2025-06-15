@@ -660,3 +660,4 @@ fits_verbose_https
 ffshdwn
 ffgtmo
 ffstmo
+fits_delete_iraf_file

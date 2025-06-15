@@ -1510,7 +1510,7 @@ pub unsafe fn ffopen_safer(
                 /* will close the original image file and return a pointer      */
                 /* to the new file. */
 
-                if fits_select_image_section_safer(fptr, &outfile, &rowfilter, status) > 0 {
+                if fits_select_image_section_safe(fptr, &outfile, &rowfilter, status) > 0 {
                     ffpmsg_str("on-the-fly selection of image section failed (ffopen)");
                     ffpmsg_str(" while trying to use the following section filter:");
                     ffpmsg_slice(&rowfilter);
@@ -3305,7 +3305,7 @@ pub unsafe extern "C" fn fits_select_image_section(
         raw_to_slice!(outfile);
         raw_to_slice!(expr);
 
-        fits_select_image_section_safer(fptr, outfile, expr, status)
+        fits_select_image_section_safe(fptr, outfile, expr, status)
     }
 }
 
@@ -3313,7 +3313,7 @@ pub unsafe extern "C" fn fits_select_image_section(
 /// copies an image section from the input file to a new output file.
 /// Any HDUs preceding or following the image are also copied to the
 /// output file.
-pub(crate) fn fits_select_image_section_safer(
+pub fn fits_select_image_section_safe(
     fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new subimage */
     outfile: &[c_char], /* I - name for output file        */
@@ -3377,7 +3377,7 @@ pub unsafe extern "C" fn fits_get_section_range(
     }
 }
 
-pub(crate) fn fits_get_section_range_safer(
+pub fn fits_get_section_range_safer(
     ptr: &mut *mut c_char,
     secmin: &mut c_long,
     secmax: &mut c_long,
@@ -3900,7 +3900,7 @@ pub unsafe extern "C" fn fits_init_cfitsio() -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// Initialize anything that is required before using the CFITSIO routines
-pub(crate) fn fits_init_cfitsio_safer() -> c_int {
+pub fn fits_init_cfitsio_safer() -> c_int {
     pub union u_tag {
         pub ival: i16,
         pub cval: [c_char; 2],
@@ -4583,7 +4583,7 @@ pub unsafe extern "C" fn ffifile2(
 /// fits_parse_input_filename
 /// parse the input URL into its basic components.
 /// This routine is big and ugly and should be redesigned someday!
-pub(crate) fn ffifile2_safer(
+pub fn ffifile2_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
     infilex: *mut c_char,    /* root filename (may be complete path) */

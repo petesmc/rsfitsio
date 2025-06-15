@@ -109,28 +109,54 @@ pub unsafe extern "C" fn ffgcl(
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
     unsafe {
-        let nulval: c_char = 0;
-        let mut anynul: c_int = 0;
-
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let array = slice::from_raw_parts_mut(array, nelem as usize);
 
-        ffgcvl_safe(
+        #[allow(deprecated)]
+        ffgcl_safe(
             fptr,
             colnum,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
             nelem as LONGLONG,
-            nulval,
             array,
-            Some(&mut anynul),
             status,
-        );
-
-        *status
+        )
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// Read an array of logical values from a column in the current FITS HDU.
+///
+/// !!!! THIS ROUTINE IS DEPRECATED AND SHOULD NOT BE USED !!!!!!
+///           !!!! USE ffgcvl INSTEAD  !!!!!!
+/// No checking for null values will be performed.
+#[deprecated]
+pub fn ffgcl_safe(
+    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
+    colnum: c_int,        /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,   /* I - first row to read (1 = 1st row)         */
+    firstelem: LONGLONG,  /* I - first vector element to read (1 = 1st)  */
+    nelem: LONGLONG,      /* I - number of values to read                */
+    array: &mut [c_char], /* O - array of values                         */
+    status: &mut c_int,   /* IO - error status                           */
+) -> c_int {
+    let mut anynul: c_int = 0;
+    let nulval: c_char = 0;
+
+    ffgcvl_safe(
+        fptr,
+        colnum,
+        firstrow as LONGLONG,
+        firstelem as LONGLONG,
+        nelem as LONGLONG,
+        nulval,
+        array,
+        Some(&mut anynul),
+        status,
+    )
 }
 
 /*--------------------------------------------------------------------------*/
