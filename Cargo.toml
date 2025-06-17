@@ -1,6 +1,6 @@
 [package]
 name = "rsfitsio"
-version = "0.462.3"
+version = "0.462.4"
 edition = "2024"
 rust-version = "1.87"
 description = "Rust bindings for the CFITSIO library, providing access to FITS files."
