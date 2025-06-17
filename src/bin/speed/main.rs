@@ -193,7 +193,7 @@ fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_i
     let mut ii: c_long;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     /* initialize FITS image parameters */
@@ -245,7 +245,7 @@ fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> 
     let mut ii: c_long;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     /* initialize FITS image parameters */
@@ -302,7 +302,7 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     let mut nrows: c_long = 0;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     let extname = CString::new("Speed_Test").unwrap(); /* extension name */
@@ -378,7 +378,7 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     let mut nrows: c_long = 0;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     let extname = CString::new("Speed_Test").unwrap(); /* extension name */
@@ -453,7 +453,7 @@ fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> 
     let longnull: c_long = 0;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     /* move to the primary array */
@@ -505,7 +505,7 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     let lnull: c_long = 0;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     /* move to the table */
@@ -576,7 +576,7 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     let lnull: c_long = 0;
 
     let mut elapcpu: f32 = 0.0;
-    
+
     let mut elapse: f64 = 0.0;
 
     /* move to the table */

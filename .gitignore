@@ -9,6 +9,10 @@ checks.json
 
 speedcc.fit
 testprog.fit
+atestfil.fit
+btestfil.fit
+ctestfil.fit
+dtestfil.fit
 /c/testprog.fit
 /c/speedcc.fit
 /c/cookbook
