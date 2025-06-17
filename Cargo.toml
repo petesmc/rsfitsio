@@ -21,6 +21,13 @@ keywords = [
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[example]]
+name = "cookbook_c"
+test = true
+
+[[example]]
+name = "cookbook_rust"
+test = true
 
 [features]
 default = []
@@ -32,6 +39,7 @@ net_services = []
 libz-rs-sys = { version = "0.5.1" }
 libbz2-rs-sys = { version = "0.2", optional = true}
 libc="0.2"
+errno=">=0.3.12"
 bytemuck = "1.23.1"
 tempfile = "3.19"
 fastrand = "2.3"
