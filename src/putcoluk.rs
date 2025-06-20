@@ -1,4 +1,4 @@
-/*  This file, putcolk.c, contains routines that write data elements to    */
+/*  This file, putcolk.rs, contains routines that write data elements to    */
 /*  a FITS image or table, with 'c_uint' datatype.                   */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

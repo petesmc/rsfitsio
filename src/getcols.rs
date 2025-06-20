@@ -1,4 +1,4 @@
-/*  This file, getcols.c, contains routines that read data elements from   */
+/*  This file, getcols.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with a character string datatype.               */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

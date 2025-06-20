@@ -1,4 +1,4 @@
-/*  This file, getcolb.c, contains routines that read data elements from   */
+/*  This file, getcolb.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with unsigned char (unsigned byte) data type.   */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
@@ -10,10 +10,10 @@ use std::ffi::CStr;
 use std::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_void};
+use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::bb;
 use crate::fitscore::{
     ffasfm_safe, ffgcprll, ffghdt_safe, ffmahd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe,
     fits_is_compressed_image_safe,
@@ -22,6 +22,7 @@ use crate::fitsio2::*;
 use crate::getcoll::ffgcll;
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
+use crate::{NullValue, bb};
 use crate::{buffers::*, calculate_subsection_length};
 use crate::{int_snprintf, slice_to_str};
 
@@ -91,8 +92,18 @@ pub fn ffgpvb_safe(
         /* this is a compressed image in a binary table */
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+        fits_read_compressed_pixels(
+            fptr,
+            TBYTE,
+            firstelem,
+            nelem,
+            nullcheck,
+            &Some(crate::NullValue::UByte(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -179,8 +190,18 @@ pub fn ffgpfb_safe(
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
 
-        todo!();
-        //fits_read_compressed_pixels(fptr, TBYTE, firstelem, nelem,          nullcheck, None, cast_slice_mut(array), nularray, anynul, status);
+        fits_read_compressed_pixels(
+            fptr,
+            TBYTE,
+            firstelem,
+            nelem,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(nularray),
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -337,8 +358,20 @@ pub fn ffg3db_safe(
         lpixel[1] = nrows as c_long;
         lpixel[2] = naxis3 as c_long;
         nullvalue = nulval; /* set local variable */
-        todo!();
-        //fits_read_compressed_img(fptr, TBYTE, fpixel, lpixel, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+
+        fits_read_compressed_img(
+            fptr,
+            TBYTE,
+            &fpixel,
+            &lpixel,
+            &inc,
+            nullcheck,
+            &Some(NullValue::UByte(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -504,8 +537,20 @@ pub fn ffgsvb_safe(
         }
 
         nullvalue = nulval; /* set local variable */
-        todo!();
-        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+
+        fits_read_compressed_img(
+            fptr,
+            TBYTE,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &Some(NullValue::UByte(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -707,8 +752,19 @@ pub fn ffgsfb_safe(
             trcll[ii] = trc[ii] as LONGLONG;
         }
 
-        todo!();
-        // fits_read_compressed_img(fptr, TBYTE, blcll, trcll, inc,     nullcheck, None, cast_slice_mut(array), flagval, anynul, status);
+        fits_read_compressed_img(
+            fptr,
+            TBYTE,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(flagval),
+            anynul,
+            status,
+        );
         return *status;
     }
 

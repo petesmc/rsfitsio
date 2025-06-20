@@ -1,4 +1,4 @@
-/*  This file, getkey.c, contains routines that read keywords from         */
+/*  This file, getkey.rs, contains routines that read keywords from         */
 /*  a FITS header.                                                         */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
@@ -6089,6 +6089,7 @@ pub unsafe extern "C" fn ffcnvthdr2str(
     }
 }
 
+/*--------------------------------------------------------------------------*/
 /// Same as ffhdr2str, except that if the input HDU is a tile compressed image
 /// (stored in a binary table) then it will first convert that header back
 /// to that of a normal uncompressed FITS image before concatenating the header
@@ -6144,7 +6145,7 @@ pub unsafe extern "C" fn fffkls(
     }
 }
 
-/// Free a keyword long string that was allocated by CFITSIO (safe version)
+/// Free a keyword long string that was allocated by CFITSIO
 pub fn fffkls_safer(
     value: *mut c_char, /* I - pointer to string to free */
     status: &mut c_int, /* IO - error status */

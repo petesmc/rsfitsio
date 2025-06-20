@@ -1,4 +1,4 @@
-/*  This file, putcold.c, contains routines that write data elements to    */
+/*  This file, putcold.rs, contains routines that write data elements to    */
 /*  a FITS image or table, with double datatype.                           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

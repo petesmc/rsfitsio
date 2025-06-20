@@ -1,4 +1,4 @@
-/*  This file, checksum.c, contains the checksum-related routines in the   */
+/*  This file, checksum.rs, contains the checksum-related routines in the   */
 /*  FITSIO library.                                                        */
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

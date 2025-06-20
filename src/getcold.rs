@@ -1,4 +1,4 @@
-/*  This file, getcold.c, contains routines that read data elements from   */
+/*  This file, getcold.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with double datatype.                           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

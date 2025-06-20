@@ -1,4 +1,4 @@
-/*  This file, getcoluk.c, contains routines that read data elements from   */
+/*  This file, getcoluk.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with 'unsigned int' data type.                           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

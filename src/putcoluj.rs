@@ -1,4 +1,4 @@
-/*  This file, putcoluj.c, contains routines that write data elements to   */
+/*  This file, putcoluj.rs, contains routines that write data elements to   */
 /*  a FITS image or table, with unsigned long datatype.                    */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

@@ -1,4 +1,4 @@
-/*  This file, swapproc.c, contains general utility routines that are      */
+/*  This file, swapproc.rs, contains general utility routines that are      */
 /*  used by other FITSIO routines to swap bytes.                           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

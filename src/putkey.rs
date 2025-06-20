@@ -1,4 +1,4 @@
-/*  This file, putkey.c, contains routines that write keywords to          */
+/*  This file, putkey.rs, contains routines that write keywords to          */
 /*  a FITS header.                                                         */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

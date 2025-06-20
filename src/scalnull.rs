@@ -1,4 +1,4 @@
-/*  This file, scalnull.c, contains the FITSIO routines used to define     */
+/*  This file, scalnull.rs, contains the FITSIO routines used to define     */
 /*  the starting heap address, the value scaling and the null values.      */
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

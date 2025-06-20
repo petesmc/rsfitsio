@@ -1,4 +1,4 @@
-/*  This file, getcolsb.c, contains routines that read data elements from   */
+/*  This file, getcolsb.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with signed char (signed byte) data type.        */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

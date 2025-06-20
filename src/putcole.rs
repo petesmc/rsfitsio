@@ -1,4 +1,4 @@
-/*  This file, putcole.c, contains routines that write data elements to    */
+/*  This file, putcole.rs, contains routines that write data elements to    */
 /*  a FITS image or table, with float datatype.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

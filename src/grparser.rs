@@ -1,4 +1,4 @@
-/*  This file, grparser.c, contains the group parser template routines.      */
+/*  This file, grparser.rs, contains the group parser template routines.      */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

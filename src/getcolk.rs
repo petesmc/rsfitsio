@@ -1,4 +1,4 @@
-/*  This file, getcolk.c, contains routines that read data elements from   */
+/*  This file, getcolk.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with 'int' data type.                           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

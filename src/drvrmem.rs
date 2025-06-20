@@ -1,4 +1,4 @@
-/*  This file, drvrmem.c, contains driver routines for memory files.        */
+/*  This file, drvrmem.rs, contains driver routines for memory files.        */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

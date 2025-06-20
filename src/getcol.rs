@@ -1,4 +1,4 @@
-/*  This file, getcol.c, contains routines that read data elements from    */
+/*  This file, getcol.rs, contains routines that read data elements from    */
 /*  a FITS image or table.  There are generic datatype routines.           */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
@@ -9,6 +9,7 @@ use core::slice;
 use std::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
+use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -248,11 +249,33 @@ pub fn ffgpxvll_safe(
                 trc[1] -= naxes[1];
                 trc[2] += 1; /* increment to next plane of cube */
             }
-            todo!();
-            //fits_read_compressed_img(fptr, datatype, firstpix, trc, inc, 1, nulval, array, None, anynul, status);
+
+            fits_read_compressed_img(
+                fptr,
+                datatype,
+                firstpix,
+                &trc,
+                &inc,
+                NullCheckType::SetPixel,
+                &nulval,
+                array,
+                None,
+                anynul,
+                status,
+            );
         } else {
-            todo!();
-            // fits_read_compressed_pixels(fptr, datatype, firstelem,           nelem, nullcheck, nulval, cast_slice_mut(array), None, anynul, status);
+            fits_read_compressed_pixels(
+                fptr,
+                datatype,
+                firstelem,
+                nelem,
+                nullcheck,
+                &nulval,
+                cast_slice_mut(array),
+                None,
+                anynul,
+                status,
+            );
         }
 
         return *status;
@@ -923,8 +946,18 @@ pub fn ffgpxfll_safe(
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
-        todo!();
-        //fits_read_compressed_pixels(fptr, datatype, firstelem, nelem, nullcheck, None, array, nullarray, anynul, status);
+        fits_read_compressed_pixels(
+            fptr,
+            datatype,
+            firstelem,
+            nelem,
+            nullcheck,
+            &None,
+            array,
+            Some(nullarray),
+            anynul,
+            status,
+        );
         return *status;
     }
 

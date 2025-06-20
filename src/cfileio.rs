@@ -1,4 +1,4 @@
-/*  This file, cfileio.c, contains the low-level file access routines.     */
+/*  This file, cfileio.rs, contains the low-level file access routines.     */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

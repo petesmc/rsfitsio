@@ -1,4 +1,4 @@
-/*  This file, putcoli.c, contains routines that write data elements to    */
+/*  This file, putcoli.rs, contains routines that write data elements to    */
 /*  a FITS image or table, with short datatype.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

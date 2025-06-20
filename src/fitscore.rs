@@ -1,4 +1,4 @@
-/*  This file, fitscore.c, contains the core set of FITSIO routines.       */
+/*  This file, fitscore.rs, contains the core set of FITSIO routines.       */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

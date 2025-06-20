@@ -1,4 +1,4 @@
-/*  This file, getcolui.c, contains routines that read data elements from   */
+/*  This file, getcolui.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with unsigned short datatype.                    */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

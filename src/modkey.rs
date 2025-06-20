@@ -1,4 +1,4 @@
-/*  This file, modkey.c, contains routines that modify, insert, or update  */
+/*  This file, modkey.rs, contains routines that modify, insert, or update  */
 /*  keywords in a FITS header.                                             */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

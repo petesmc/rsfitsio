@@ -1,4 +1,4 @@
-/*  This file, drvrfile.c contains driver routines for disk files.         */
+/*  This file, drvrfile.rs contains driver routines for disk files.         */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

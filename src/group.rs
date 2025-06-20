@@ -1,4 +1,4 @@
-/*  This file, group.c, contains the grouping convention support routines.  */
+/*  This file, group.rs, contains the grouping convention support routines.  */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */

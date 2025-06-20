@@ -1,4 +1,4 @@
-/*  This file, getcolj.c, contains routines that read data elements from   */
+/*  This file, getcolj.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with long data type.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

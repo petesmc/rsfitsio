@@ -1,4 +1,4 @@
-/*  This file, getcoluj.c, contains routines that read data elements from   */
+/*  This file, getcoluj.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with unsigned long data type.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

@@ -1,4 +1,4 @@
-/*  This file, getcoli.c, contains routines that read data elements from   */
+/*  This file, getcoli.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with short datatype.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

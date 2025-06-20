@@ -1,4 +1,4 @@
-/*  This file, getcoll.c, contains routines that read data elements from   */
+/*  This file, getcoll.rs, contains routines that read data elements from   */
 /*  a FITS image or table, with logical datatype.                          */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

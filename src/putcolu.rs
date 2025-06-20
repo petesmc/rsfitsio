@@ -1,4 +1,4 @@
-/*  This file, putcolu.c, contains routines that write data elements to    */
+/*  This file, putcolu.rs, contains routines that write data elements to    */
 /*  a FITS image or table.  Writes null values.                            */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */

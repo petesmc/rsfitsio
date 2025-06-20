@@ -1,4 +1,4 @@
-/*  This file, editcol.c, contains the set of FITSIO routines that    */
+/*  This file, editcol.rs, contains the set of FITSIO routines that    */
 /*  insert or delete rows or columns in a table or resize an image    */
 
 /*  The FITSIO software was written by William Pence at the High Energy    */
