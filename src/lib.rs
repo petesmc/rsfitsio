@@ -584,10 +584,13 @@ const RB_MODE: *const c_char = c"rb".as_ptr().cast::<c_char>();
 #[cfg(not(target_os = "windows"))]
 unsafe extern "C" {
 
+    #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
     pub unsafe static mut stdin: *mut FILE;
 
+    #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
     pub unsafe static mut stdout: *mut FILE;
 
+    #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
     pub unsafe static mut stderr: *mut FILE;
 }
 
