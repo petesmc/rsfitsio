@@ -4877,7 +4877,7 @@ pub fn main() -> ExitCode {
             ffpssi(
                 fptr.as_mut_ptr(),
                 1,
-                naxis,
+                naxis as c_long,
                 naxes.as_ptr(),
                 fpixels.as_ptr(),
                 lpixels.as_ptr(),

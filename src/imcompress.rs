@@ -2462,7 +2462,7 @@ unsafe fn imcomp_compress_tile(
             let out_tilerow = (outfptr.Fptr).get_tilerow_as_slice();
             let out_tiledata = (outfptr.Fptr).get_tiledata_as_slice();
 
-            if out_tilerow[tilecol as usize] == row {
+            if out_tilerow[tilecol as usize] as c_long == row {
                 if !out_tiledata[tilecol as usize].is_null() {
                     // HEAP DEALLOCATION
                     let len_cap =
@@ -8108,9 +8108,9 @@ fn imcomp_decompress_tile(
 
                 if BYTESWAPPED {
                     if !tempdouble.is_empty() {
-                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen);
+                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen as c_long);
                     } else {
-                        ffswap8(cast_slice_mut(buffer), tilelen);
+                        ffswap8(cast_slice_mut(buffer), tilelen as c_long);
                     }
                 }
                 if datatype == TFLOAT {
