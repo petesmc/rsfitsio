@@ -8,9 +8,6 @@ use rsfitsio::fitsio::READONLY;
 
 use rsfitsio::STDERR;
 
-#[cfg(windows)]
-use rsfitsio::__acrt_iob_func;
-
 use rsfitsio::{aliases::rust_api::fits_open_file, fitsio::fitsfile};
 
 use rsfitsio::cfileio::ffclos as fits_close_file;

@@ -1947,7 +1947,7 @@ pub(crate) fn imcomp_init_table(
         ffpkyj_safe(
             outfptr,
             cs!(c"ZVAL2"),
-            (outfptr.Fptr).request_hcomp_smooth as   LONGLONG,
+            (outfptr.Fptr).request_hcomp_smooth as LONGLONG,
             Some(cs!(c"HCOMPRESS smooth option")),
             status,
         );
@@ -2848,7 +2848,11 @@ unsafe fn imcomp_compress_tile(
 
                     if intlength == 2 {
                         if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_2bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                            fits_shuffle_2bytes(
+                                cast_slice_mut(tiledata),
+                                tilelen as LONGLONG,
+                                status,
+                            );
                         }
 
                         let idata: &mut [c_int] = cast_slice_mut(tiledata);
@@ -2875,7 +2879,11 @@ unsafe fn imcomp_compress_tile(
                         );
                     } else {
                         if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                            fits_shuffle_4bytes(
+                                cast_slice_mut(tiledata),
+                                tilelen as LONGLONG,
+                                status,
+                            );
                         }
 
                         let idata: &mut [c_int] = cast_slice_mut(tiledata);
@@ -3054,7 +3062,15 @@ unsafe fn imcomp_compress_tile(
                     &bscale,
                     status,
                 );
-                ffpcld_safe(outfptr, (outfptr.Fptr).cn_zzero, row as LONGLONG, 1, 1, &bzero, status);
+                ffpcld_safe(
+                    outfptr,
+                    (outfptr.Fptr).cn_zzero,
+                    row as LONGLONG,
+                    1,
+                    1,
+                    &bzero,
+                    status,
+                );
             }
 
             /* finished with this buffer */
@@ -5376,7 +5392,7 @@ fn fits_write_compressed_img_plane(
         }
 
         /* increment pointers for the last partial row */
-        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0]  as c_long * bytesperpixel as c_long) as usize;
+        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as c_long * bytesperpixel as c_long) as usize;
     }
 
     if trc[1] == lastcoord[1] + 1 {
@@ -6599,8 +6615,8 @@ pub(crate) fn fits_read_compressed_pixels(
 
         if firstcoord[2] < lastcoord[2] {
             /* we will read up to the last pixel in all but the last plane */
-            lastcoord[0] = naxes[0]  as LONGLONG- 1;
-            lastcoord[1] = naxes[1]  as LONGLONG- 1;
+            lastcoord[0] = naxes[0] as LONGLONG - 1;
+            lastcoord[1] = naxes[1] as LONGLONG - 1;
         }
 
         /* read one plane of the cube at a time, for simplicity */
@@ -6753,7 +6769,7 @@ fn fits_read_compressed_img_plane(
     blc[1] = firstcoord[1] + 1;
     trc[0] = naxes[0] as LONGLONG;
 
-    if lastcoord[0] + 1 == naxes[0]  as LONGLONG{
+    if lastcoord[0] + 1 == naxes[0] as LONGLONG {
         /* can read the last complete row, too */
         trc[1] = lastcoord[1] + 1;
     } else {
@@ -6794,7 +6810,8 @@ fn fits_read_compressed_img_plane(
         }
 
         /* increment pointers for the last partial row */
-        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as usize * bytesperpixel as usize;
+        arrayptr +=
+            ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as usize * bytesperpixel as usize;
         if nullarray.is_some() && (nullcheck == NullCheckType::SetNullArray) {
             nullarrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as usize;
         }
@@ -8091,9 +8108,9 @@ fn imcomp_decompress_tile(
 
                 if BYTESWAPPED {
                     if !tempdouble.is_empty() {
-                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen.into());
+                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen);
                     } else {
-                        ffswap8(cast_slice_mut(buffer), tilelen.into());
+                        ffswap8(cast_slice_mut(buffer), tilelen);
                     }
                 }
                 if datatype == TFLOAT {
@@ -11147,7 +11164,13 @@ pub unsafe fn fits_compress_table_safer(
         strncpy_safe(&mut card, cs!(c"ZPCOUNT"), 7);
         fits_write_record(outfptr, &card, status);
 
-        fits_modify_key_lng(outfptr, cs!(c"NAXIS2"), nchunks.into(), Some(cs!(c"&")), status); /* 1 row per chunk */
+        fits_modify_key_lng(
+            outfptr,
+            cs!(c"NAXIS2"),
+            nchunks.into(),
+            Some(cs!(c"&")),
+            status,
+        ); /* 1 row per chunk */
         fits_modify_key_lng(
             outfptr,
             cs!(c"NAXIS1"),
@@ -11307,7 +11330,8 @@ pub unsafe fn fits_compress_table_safer(
                 /* the last chunk may have fewer rows */
                 rowspertile = lastrows;
                 for ii in 0..(ncols as usize) {
-                    cm_colstart[ii + 1] = cm_colstart[ii] + (rm_colwidth[ii] * rowspertile as LONGLONG);
+                    cm_colstart[ii + 1] =
+                        cm_colstart[ii] + (rm_colwidth[ii] * rowspertile as LONGLONG);
                     cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
                 }
             }
@@ -11932,7 +11956,7 @@ pub unsafe fn fits_compress_table_safer(
                 } /* end of not a virtual column */
             } /* end of loop over columns */
 
-            datastart += (rowspertile as LONGLONG * naxis1); /* increment to start of next chunk */
+            datastart += rowspertile as LONGLONG * naxis1; /* increment to start of next chunk */
             firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
 
             if print_report {
@@ -12816,7 +12840,8 @@ pub fn fits_uncompress_table_safe(
                             cast_slice(&cm_buffer[cmajor_colstart[ii] as usize..]);
                         let qdescript_idx = 0;
                         let descript: &[LONGLONG] = cast_slice(
-                            &cm_buffer[(cmajor_colstart[ii] + (rmajor_colwidth[ii] * rowspertile as LONGLONG))
+                            &cm_buffer[(cmajor_colstart[ii]
+                                + (rmajor_colwidth[ii] * rowspertile as LONGLONG))
                                 as usize..],
                         );
 

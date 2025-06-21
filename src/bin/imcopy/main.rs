@@ -10,9 +10,6 @@ use rsfitsio::c_types::{FILE, c_char};
 use rsfitsio::fitscore::fits_is_compressed_image;
 use rsfitsio::{STDERR, cs};
 
-#[cfg(windows)]
-use rsfitsio::__acrt_iob_func;
-
 use rsfitsio::fitsio::{
     BYTE_IMG, DOUBLE_IMG, END_OF_FILE, FLOAT_IMG, IMAGE_HDU, LONG_IMG, LONGLONG, READONLY,
     SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TINT, TSHORT, TYP_CMPRS_KEY,

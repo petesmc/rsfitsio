@@ -155,7 +155,7 @@ pub fn main() -> ExitCode {
     let mut pcount: c_long;
     let mut gcount: c_long;
     let mut npixels: c_long;
-    let mut nrows: c_long;
+    let mut nrows: LONGLONG;
     let mut rowlen: c_long;
     let mut firstpix: [c_long; 3] = [0; 3];
     let mut existkeys: c_int = 0;
@@ -494,7 +494,7 @@ pub fn main() -> ExitCode {
             if ffpkyj(
                 fptr.as_mut_ptr(),
                 c"key_pkyj".as_ptr(),
-                ojkey,
+                ojkey.into(),
                 c"fxpkyj comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -1073,7 +1073,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 99,
                 iinarray.as_mut_ptr(),
                 &mut anynull,
@@ -1089,7 +1089,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 99,
                 jinarray.as_mut_ptr(),
                 &mut anynull,
@@ -1105,7 +1105,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 99.,
                 einarray.as_mut_ptr(),
                 &mut anynull,
@@ -1232,7 +1232,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 iinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -1252,7 +1252,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 jinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -1272,7 +1272,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels,
+                npixels.into(),
                 einarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -2402,7 +2402,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers,
+                extvers.into(),
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -2802,7 +2802,7 @@ pub fn main() -> ExitCode {
 
             ffitab(
                 fptr.as_mut_ptr(),
-                rowlen,
+                rowlen.into(),
                 nrows,
                 tfields,
                 ttype.as_ptr() as *const *const c_char,
@@ -2825,7 +2825,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers,
+                extvers.into(),
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -2961,11 +2961,14 @@ pub fn main() -> ExitCode {
               #  read data from ASCII table  #
               ################################
             */
+
+            let mut tmp_nrows: c_long = 0;
+
             ffghtb(
                 fptr.as_mut_ptr(),
                 99,
                 &mut rowlen,
-                &mut nrows,
+                &mut tmp_nrows,
                 &mut tfields,
                 ttype.as_mut_ptr(),
                 tbcol.as_mut_ptr(),
@@ -2974,6 +2977,8 @@ pub fn main() -> ExitCode {
                 tblname.as_mut_ptr(),
                 &mut status,
             );
+
+            nrows = tmp_nrows.into();
 
             print!(
                 "\nASCII table: rowlen, nrows, tfields, extname: {} {} {} {}\n",
@@ -3529,7 +3534,7 @@ pub fn main() -> ExitCode {
             rowlen = 0;
             ffitab(
                 tmpfptr.as_mut_ptr(),
-                rowlen,
+                rowlen.into(),
                 nrows,
                 tfields,
                 ttype.as_ptr() as *const *const c_char,
@@ -3664,10 +3669,11 @@ pub fn main() -> ExitCode {
             );
             println!("header contains {existkeys} keywords with room for {morekeys} more");
 
+            let mut tmp_nrows: c_long = 0;
             ffghbn(
                 fptr.as_mut_ptr(),
                 99,
-                &mut nrows,
+                &mut tmp_nrows,
                 &mut tfields,
                 ttype.as_mut_ptr(),
                 tform.as_mut_ptr(),
@@ -3676,6 +3682,8 @@ pub fn main() -> ExitCode {
                 &mut pcount,
                 &mut status,
             );
+
+            nrows = tmp_nrows.into();
 
             print!(
                 "\nBinary table: nrows, tfields, extname, pcount: {} {} {} {}\n",
@@ -4624,7 +4632,7 @@ pub fn main() -> ExitCode {
                 tform.as_ptr() as *const *const c_char,
                 tunit.as_ptr() as *const *const c_char,
                 binname.as_ptr(),
-                pcount,
+                pcount.into(),
                 &mut status,
             );
             println!("ffibin status = {status}");
@@ -4634,7 +4642,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers,
+                extvers.into(),
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -4817,8 +4825,8 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 19,
-                naxes[0],
-                naxes[1],
+                naxes[0].into(),
+                naxes[1].into(),
                 imgarray.as_ptr() as *const c_short,
                 &mut status,
             );
@@ -4835,8 +4843,8 @@ pub fn main() -> ExitCode {
                 1,
                 0,
                 19,
-                naxes[0],
-                naxes[1],
+                naxes[0].into(),
+                naxes[1].into(),
                 imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
@@ -4869,7 +4877,7 @@ pub fn main() -> ExitCode {
             ffpssi(
                 fptr.as_mut_ptr(),
                 1,
-                naxis.into(),
+                naxis,
                 naxes.as_ptr(),
                 fpixels.as_ptr(),
                 lpixels.as_ptr(),
@@ -4883,8 +4891,8 @@ pub fn main() -> ExitCode {
                 1,
                 0,
                 19,
-                naxes[0],
-                naxes[1],
+                naxes[0].into(),
+                naxes[1].into(),
                 imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
@@ -5035,7 +5043,7 @@ pub fn main() -> ExitCode {
                 tform.as_ptr() as *const *const c_char,
                 tunit.as_ptr() as *const *const c_char,
                 binname.as_ptr(),
-                pcount,
+                pcount.into(),
                 &mut status,
             );
             println!("Variable length arrays: ffphbn status = {status}");
@@ -5044,7 +5052,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers,
+                extvers.into(),
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -5200,7 +5208,7 @@ pub fn main() -> ExitCode {
                     3,
                     ii,
                     1,
-                    ii,
+                    ii as c_long,
                     larray.as_ptr(),
                     &mut status,
                 ); /* write bits */
@@ -5819,7 +5827,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers,
+                extvers.into(),
                 c"extension version number".as_ptr(),
                 &mut status,
             );

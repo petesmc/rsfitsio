@@ -855,7 +855,7 @@ pub fn ffgsfb_safe(
     let mut hh = str[0] as LONGLONG;
 
     for jj in 1..naxis {
-        felem += (str[jj]  as LONGLONG- 1) * dsize[jj];
+        felem += (str[jj] as LONGLONG - 1) * dsize[jj];
         hh += (str[jj] as LONGLONG - 1) * dsize[jj];
     }
 
@@ -955,7 +955,8 @@ pub fn ffgsfb_safe(
 
         if incr[0] == 1
             && naxis > 1
-            && (felem + nextelem  as LONGLONG- 1 - dsize[1]) / dsize[1] != (felem - 1 - dsize[1]) / dsize[1]
+            && (felem + nextelem as LONGLONG - 1 - dsize[1]) / dsize[1]
+                != (felem - 1 - dsize[1]) / dsize[1]
         {
             /* we have reached the boundary between successive planes */
             felem += dsize[1] - (felem - 1 - dsize[1]) % dsize[1];
@@ -963,7 +964,10 @@ pub fn ffgsfb_safe(
             /* recalculate the indices of the next element to read */
             for kk in 1..naxis {
                 hh /= dsize[kk];
-                if hh == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1]) as LONGLONG {
+                if hh
+                    == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1])
+                        as LONGLONG
+                {
                     str[kk] += 1;
                     hh = 1;
                     for ll in kk + 1..naxis {
