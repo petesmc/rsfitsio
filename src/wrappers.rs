@@ -774,27 +774,27 @@ mod tests {
 
         let ru = unsafe { libc::strncmp(s1.as_ptr(), s2.as_ptr(), 5) };
         let rs = strncmp_safe(s1, s2, 5);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strncmp(s1.as_ptr(), s3.as_ptr(), 5) };
         let rs = strncmp_safe(s1, s3, 5);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strncmp(s3.as_ptr(), s1.as_ptr(), 5) };
         let rs = strncmp_safe(s3, s1, 5);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strncmp(s1.as_ptr(), s2.as_ptr(), 3) };
         let rs = strncmp_safe(s1, s2, 3);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strncmp(s1.as_ptr(), s3.as_ptr(), 3) };
         let rs = strncmp_safe(s1, s3, 3);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strncmp(s3.as_ptr(), s4.as_ptr(), 6) };
         let rs = strncmp_safe(s3, s4, 6);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
     }
 
     #[test]
@@ -838,7 +838,7 @@ mod tests {
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s3, s4);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
     }
 
     // Write test cases for strto_float_impl
