@@ -1474,8 +1474,14 @@ pub(crate) fn fits_get_cwd(
         /*
         MacOS case. Currently unknown !!!!
         */
-        todo!();
-        buff[0] = 0;
+        current_dir = std::env::current_dir();
+
+        if current_dir.is_err() {
+            cwd[0] = 0;
+            ffpmsg_str("Path and file name too long (fits_get_cwd)");
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
     } else {
         /*
         Good old getcwd() seems to work with all other platforms
