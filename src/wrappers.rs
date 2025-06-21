@@ -807,27 +807,23 @@ mod tests {
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s1, s2);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s3.as_ptr()) };
         let rs = strcmp_safe(s1, s3);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strcmp(s3.as_ptr(), s1.as_ptr()) };
         let rs = strcmp_safe(s3, s1);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s1, s2);
-        assert_eq!(ru, rs);
-
-        let ru = unsafe { libc::strcmp(s1.as_ptr(), s3.as_ptr()) };
-        let rs = strcmp_safe(s1, s3);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
 
         let ru = unsafe { libc::strcmp(s3.as_ptr(), s4.as_ptr()) };
         let rs = strcmp_safe(s3, s4);
-        assert_eq!(ru, rs);
+        assert_eq!(ru.signum(), rs.signum());
     }
 
     #[test]
