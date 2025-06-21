@@ -63,6 +63,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install Rustup
+      run: |
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable --profile minimal -y
+              source "$HOME/.cargo/env"
+              echo "::add-path::$HOME/.cargo/bin"
+
     - name: Temporarily modify the rust toolchain version
       run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
