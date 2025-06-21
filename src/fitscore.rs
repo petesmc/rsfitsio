@@ -8229,11 +8229,11 @@ pub fn ffgdess_safe(
         let mut heapaddr_i = 0;
         while (ii as LONGLONG) < nrows {
             /* read descriptors */
-            if ffgi8b(fptr, bytepos, 2, 8, &mut descript8, status) <= 0 {
+            if ffgi8b(fptr, bytepos, 2, 8, cast_slice_mut(&mut descript8), status) <= 0 {
                 if let Some(length) = length.as_deref_mut() {
                     #[allow(clippy::absurd_extreme_comparisons)]
                     // On some architectures, this is a valid comparison
-                    if descript8[0] > LONG_MAX {
+                    if descript8[0] > LONG_MAX.into() {
                         *status = NUM_OVERFLOW;
                     }
 
@@ -8243,7 +8243,7 @@ pub fn ffgdess_safe(
                 if let Some(heapaddr) = heapaddr.as_deref_mut() {
                     #[allow(clippy::absurd_extreme_comparisons)]
                     // On some architectures, this is a valid comparison
-                    if descript8[1] > LONG_MAX {
+                    if descript8[1] > LONG_MAX.into() {
                         *status = NUM_OVERFLOW;
                     }
 
@@ -8361,7 +8361,7 @@ pub unsafe fn ffgdessll_safe(
             while ii < nrows {
                 /* read descriptors */
                 /* cast to type (long *) even though it is actually (LONGLONG *) */
-                if ffgi8b(fptr, bytepos, 2, 8, &mut descript8, status) <= 0 {
+                if ffgi8b(fptr, bytepos, 2, 8, cast_slice_mut(&mut descript8), status) <= 0 {
                     if !length.is_null() {
                         let length = slice::from_raw_parts_mut(length, nrows as usize);
                         length[length_i] = descript8[0] as LONGLONG; /* 1st word is the length  */
