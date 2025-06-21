@@ -64,6 +64,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install Rustup
+      shell: powershell
       run: |
           Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe" -OutFile "rustup-init.exe"
           .\rustup-init.exe --profile minimal --default-toolchain stable -y
