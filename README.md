@@ -10,7 +10,6 @@ This is a line for line translation of cfitsio, attempting to keep it as compati
 
 There are many safety issues to still deal with and we do not support all the targets that the original C code does.
 
-Has not been tested on MacOS.
 
 ## C API Compatibility
 
