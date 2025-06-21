@@ -345,8 +345,8 @@ pub fn ffg3db_safe(
     let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let inc: [c_long; 3] = [1; 3];
-    let fpixel: [c_long; 3] = [1; 3];
-    let mut lpixel: [c_long; 3] = [0; 3];
+    let fpixel: [LONGLONG; 3] = [1; 3];
+    let mut lpixel: [LONGLONG; 3] = [0; 3];
     let mut nullvalue: u8 = 0;
 
     let mut dummy_nularray = vec![0; (ncols * naxis2 * naxis3) as usize];
@@ -354,9 +354,9 @@ pub fn ffg3db_safe(
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
 
-        lpixel[0] = ncols as c_long;
-        lpixel[1] = nrows as c_long;
-        lpixel[2] = naxis3 as c_long;
+        lpixel[0] = ncols;
+        lpixel[1] = nrows;
+        lpixel[2] = naxis3;
         nullvalue = nulval; /* set local variable */
 
         fits_read_compressed_img(
@@ -848,15 +848,15 @@ pub fn ffgsfb_safe(
     i0 = 0;
 
     if hdutype == IMAGE_HDU {
-        felem = str[0];
+        felem = str[0] as LONGLONG;
     } else {
-        felem = rstr + (str[0] - 1) * (rstp - rstr + 1) / rinc;
+        felem = (rstr + (str[0] - 1) * (rstp - rstr + 1) / rinc) as LONGLONG;
     }
-    let mut hh = str[0];
+    let mut hh = str[0] as LONGLONG;
 
     for jj in 1..naxis {
-        felem += (str[jj] - 1) * dsize[jj];
-        hh += (str[jj] - 1) * dsize[jj];
+        felem += (str[jj] as LONGLONG - 1) * dsize[jj];
+        hh += (str[jj] as LONGLONG - 1) * dsize[jj];
     }
 
     /* determine the number of pixels to process in each loop */
@@ -877,7 +877,7 @@ pub fn ffgsfb_safe(
     if hdutype == IMAGE_HDU {
         ffmbyt_safe(
             fptr,
-            (felem - 1) * mem::size_of::<c_char>() as c_long,
+            (felem - 1) * mem::size_of::<c_char>() as LONGLONG,
             REPORT_EOF,
             status,
         );
@@ -955,7 +955,8 @@ pub fn ffgsfb_safe(
 
         if incr[0] == 1
             && naxis > 1
-            && (felem + nextelem - 1 - dsize[1]) / dsize[1] != (felem - 1 - dsize[1]) / dsize[1]
+            && (felem + nextelem as LONGLONG - 1 - dsize[1]) / dsize[1]
+                != (felem - 1 - dsize[1]) / dsize[1]
         {
             /* we have reached the boundary between successive planes */
             felem += dsize[1] - (felem - 1 - dsize[1]) % dsize[1];
@@ -963,11 +964,14 @@ pub fn ffgsfb_safe(
             /* recalculate the indices of the next element to read */
             for kk in 1..naxis {
                 hh /= dsize[kk];
-                if hh == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1]) {
+                if hh
+                    == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1])
+                        as LONGLONG
+                {
                     str[kk] += 1;
                     hh = 1;
                     for ll in kk + 1..naxis {
-                        hh += (str[ll] - 1) / naxes[ll - 1];
+                        hh += ((str[ll] - 1) / naxes[ll - 1]) as LONGLONG;
                     }
                     if kk == naxis - 1 {
                         ninc = incr[0]; /* completed a row */
@@ -976,7 +980,7 @@ pub fn ffgsfb_safe(
                 }
             }
         } else {
-            felem += ninc;
+            felem += ninc as LONGLONG;
         }
 
         nelem = remain;

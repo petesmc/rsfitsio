@@ -10,8 +10,8 @@ use libc::{c_char, c_float, c_int, c_long, c_ushort, free, malloc};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::c_api::*;
 use rsfitsio::fitsio::{
-    ASCII_TBL, BINARY_TBL, CASEINSEN, END_OF_FILE, FLEN_CARD, FLEN_VALUE, READONLY, READWRITE,
-    TFLOAT, TLONG, TSTRING, TUSHORT, USHORT_IMG, fitsfile,
+    ASCII_TBL, BINARY_TBL, CASEINSEN, END_OF_FILE, FLEN_CARD, FLEN_VALUE, LONGLONG, READONLY,
+    READWRITE, TFLOAT, TLONG, TSTRING, TUSHORT, USHORT_IMG, fitsfile,
 };
 
 pub fn main() -> ExitCode {
@@ -106,8 +106,8 @@ fn writeimage() {
             fits_write_img(
                 fptr_box.as_mut(),
                 TUSHORT,
-                fpixel,
-                nelements,
+                fpixel.into(),
+                nelements.into(),
                 array.as_ptr() as *const _,
                 &mut status,
             )
@@ -151,11 +151,11 @@ fn writeimage() {
 fn writeascii() {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
-    let firstrow: c_long = 1;
-    let firstelem: c_long = 1;
+    let firstrow: LONGLONG = 1;
+    let firstelem: LONGLONG = 1;
 
     let tfields: c_int = 3; /* table will have 3 columns */
-    let nrows: c_long = 6; /* table will have 6 rows    */
+    let nrows: LONGLONG = 6; /* table will have 6 rows    */
 
     let filename = "atestfil.fit"; /* name for new FITS file */
     let extname = "PLANETS_ASCII"; /* extension name */
@@ -275,11 +275,11 @@ fn writebintable() {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
     let mut hdutype: c_int = 0;
-    let firstrow: c_long = 1;
-    let firstelem: c_long = 1;
+    let firstrow: LONGLONG = 1;
+    let firstelem: LONGLONG = 1;
 
     let tfields: c_int = 3; /* table will have 3 columns */
-    let nrows: c_long = 6; /* table will have 6 rows    */
+    let nrows: LONGLONG = 6; /* table will have 6 rows    */
 
     let filename = "atestfil.fit"; /* name for new FITS file */
     let extname = "PLANETS_Binary"; /* extension name */
@@ -495,9 +495,9 @@ fn selectrows() {
     let mut colnum: c_int = 0;
     let mut anynulls: c_int = 0;
     let mut naxes: [c_long; 2] = [0; 2];
-    let frow: c_long = 1;
-    let felem: c_long = 1;
-    let mut noutrows: c_long;
+    let frow: LONGLONG = 1;
+    let felem: LONGLONG = 1;
+    let mut noutrows: LONGLONG;
     let nullval: c_float = -99.0;
     let mut density: [c_float; 6] = [0.0; 6];
 
@@ -620,7 +620,7 @@ fn selectrows() {
                 colnum,
                 frow,
                 felem,
-                naxes[1],
+                naxes[1].into(),
                 &nullval as *const c_float as *const _,
                 density.as_mut_ptr() as *mut _,
                 &mut anynulls,
@@ -642,12 +642,19 @@ fn selectrows() {
             noutrows += 1;
             if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
                 unsafe {
-                    fits_read_tblbytes(infptr_box.as_mut(), irow, 1, naxes[0], buffer, &mut status);
+                    fits_read_tblbytes(
+                        infptr_box.as_mut(),
+                        irow.into(),
+                        1,
+                        naxes[0].into(),
+                        buffer,
+                        &mut status,
+                    );
                     fits_write_tblbytes(
                         outfptr_box.as_mut(),
                         noutrows,
                         1,
-                        naxes[0],
+                        naxes[0].into(),
                         buffer,
                         &mut status,
                     );
@@ -664,7 +671,7 @@ fn selectrows() {
                 outfptr_box.as_mut(),
                 TLONG,
                 naxis2_key.as_ptr(),
-                &noutrows as *const c_long as *const _,
+                &(noutrows as c_long) as *const c_long as *const _,
                 ptr::null(),
                 &mut status,
             )
@@ -764,9 +771,9 @@ fn readimage() {
     let mut nfound: c_int = 0;
     let mut anynull: c_int = 0;
     let mut naxes: [c_long; 2] = [0; 2];
-    let mut fpixel: c_long;
-    let mut nbuffer: c_long;
-    let mut npixels: c_long;
+    let mut fpixel: LONGLONG;
+    let mut nbuffer: LONGLONG;
+    let mut npixels: LONGLONG;
 
     const BUFFSIZE: usize = 1000;
     let mut datamin: c_float = 1.0e30;
@@ -800,13 +807,13 @@ fn readimage() {
         }
     }
 
-    npixels = naxes[0] * naxes[1]; /* number of pixels in the image */
+    npixels = (naxes[0] * naxes[1]) as LONGLONG; /* number of pixels in the image */
     fpixel = 1;
 
     while npixels > 0 {
         nbuffer = npixels;
-        if npixels > BUFFSIZE as c_long {
-            nbuffer = BUFFSIZE as c_long; /* read as many pixels as will fit in buffer */
+        if npixels > BUFFSIZE as LONGLONG {
+            nbuffer = BUFFSIZE as LONGLONG; /* read as many pixels as will fit in buffer */
         }
 
         /* Note that even though the FITS images contains unsigned integer */
@@ -863,9 +870,9 @@ fn readtable() {
     let mut hdutype: c_int = 0;
     let mut nfound: c_int = 0;
     let mut anynull: c_int = 0;
-    let frow: c_long = 1;
-    let felem: c_long = 1;
-    let nelem: c_long = 6;
+    let frow: LONGLONG = 1;
+    let felem: LONGLONG = 1;
+    let nelem: LONGLONG = 6;
     let longnull: c_long = 0;
     let mut dia: [c_long; 6] = [0; 6];
     let floatnull: c_float = 0.0;

@@ -1704,7 +1704,7 @@ pub(crate) fn imcomp_init_table(
         ffcrtb_safer(
             outfptr,
             BINARY_TBL,
-            nrows,
+            nrows as LONGLONG,
             ncols,
             &ttype_vec,
             &tform_vec,
@@ -1757,7 +1757,7 @@ pub(crate) fn imcomp_init_table(
             ffpkyj_safe(
                 outfptr,
                 &keyname,
-                naxes[ii],
+                naxes[ii] as LONGLONG,
                 Some(cs!(c"length of original image axis")),
                 status,
             );
@@ -1769,7 +1769,7 @@ pub(crate) fn imcomp_init_table(
         ffpkyj_safe(
             outfptr,
             &keyname,
-            actual_tilesize[ii],
+            actual_tilesize[ii] as LONGLONG,
             Some(cs!(c"size of tiles to be compressed")),
             status,
         );
@@ -1947,7 +1947,7 @@ pub(crate) fn imcomp_init_table(
         ffpkyj_safe(
             outfptr,
             cs!(c"ZVAL2"),
-            (outfptr.Fptr).request_hcomp_smooth as c_long,
+            (outfptr.Fptr).request_hcomp_smooth as LONGLONG,
             Some(cs!(c"HCOMPRESS smooth option")),
             status,
         );
@@ -2462,7 +2462,7 @@ unsafe fn imcomp_compress_tile(
             let out_tilerow = (outfptr.Fptr).get_tilerow_as_slice();
             let out_tiledata = (outfptr.Fptr).get_tiledata_as_slice();
 
-            if out_tilerow[tilecol as usize] as LONGLONG == row {
+            if out_tilerow[tilecol as usize] as c_long == row {
                 if !out_tiledata[tilecol as usize].is_null() {
                     // HEAP DEALLOCATION
                     let len_cap =
@@ -2748,7 +2748,7 @@ unsafe fn imcomp_compress_tile(
                 ffpclb_safe(
                     outfptr,
                     (outfptr.Fptr).cn_compressed,
-                    row,
+                    row as LONGLONG,
                     1,
                     nelem as LONGLONG,
                     cast_slice(&cbuf),
@@ -2801,7 +2801,7 @@ unsafe fn imcomp_compress_tile(
                     }
 
                     if (outfptr.Fptr).compress_type == GZIP_2 {
-                        fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen, status);
+                        fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
                     }
 
                     compress2mem_from_mem(
@@ -2821,7 +2821,7 @@ unsafe fn imcomp_compress_tile(
                         ffswap8(cast_slice_mut(tiledata), tilelen);
                     }
                     if (outfptr.Fptr).compress_type == GZIP_2 {
-                        fits_shuffle_8bytes(cast_slice_mut(tiledata), tilelen, status);
+                        fits_shuffle_8bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
                     }
 
                     compress2mem_from_mem(
@@ -2848,7 +2848,11 @@ unsafe fn imcomp_compress_tile(
 
                     if intlength == 2 {
                         if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_2bytes(cast_slice_mut(tiledata), tilelen, status);
+                            fits_shuffle_2bytes(
+                                cast_slice_mut(tiledata),
+                                tilelen as LONGLONG,
+                                status,
+                            );
                         }
 
                         let idata: &mut [c_int] = cast_slice_mut(tiledata);
@@ -2875,7 +2879,11 @@ unsafe fn imcomp_compress_tile(
                         );
                     } else {
                         if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen, status);
+                            fits_shuffle_4bytes(
+                                cast_slice_mut(tiledata),
+                                tilelen as LONGLONG,
+                                status,
+                            );
                         }
 
                         let idata: &mut [c_int] = cast_slice_mut(tiledata);
@@ -2936,7 +2944,7 @@ unsafe fn imcomp_compress_tile(
                 ffpclb_safe(
                     outfptr,
                     (outfptr.Fptr).cn_compressed,
-                    row,
+                    row as LONGLONG,
                     1,
                     bzlen as LONGLONG,
                     cast_slice_mut(&mut cbuf),
@@ -3034,9 +3042,9 @@ unsafe fn imcomp_compress_tile(
                 ffpclb_safe(
                     outfptr,
                     (outfptr.Fptr).cn_compressed,
-                    row,
+                    row as LONGLONG,
                     1,
-                    hcomp_len,
+                    hcomp_len as LONGLONG,
                     cast_slice(&cbuf),
                     status,
                 );
@@ -3048,13 +3056,21 @@ unsafe fn imcomp_compress_tile(
                 ffpcld_safe(
                     outfptr,
                     (outfptr.Fptr).cn_zscale,
-                    row,
+                    row as LONGLONG,
                     1,
                     1,
                     &bscale,
                     status,
                 );
-                ffpcld_safe(outfptr, (outfptr.Fptr).cn_zzero, row, 1, 1, &bzero, status);
+                ffpcld_safe(
+                    outfptr,
+                    (outfptr.Fptr).cn_zzero,
+                    row as LONGLONG,
+                    1,
+                    1,
+                    &bzero,
+                    status,
+                );
             }
 
             /* finished with this buffer */
@@ -3187,7 +3203,7 @@ unsafe fn imcomp_compress_tile(
             ffpclb_safe(
                 outfptr,
                 (outfptr.Fptr).cn_gzip_data,
-                row,
+                row as LONGLONG,
                 1,
                 gzip_nelem.try_into().unwrap(),
                 cast_slice(&cbuf),
@@ -3255,9 +3271,9 @@ fn imcomp_write_nocompress_tile(
         outfptr,
         datatype,
         (outfptr.Fptr).cn_uncompressed,
-        row,
+        row as LONGLONG,
         1,
-        tilelen,
+        tilelen as LONGLONG,
         tiledata,
         status,
     ); /* write the tile data */
@@ -5153,7 +5169,7 @@ pub(crate) fn fits_write_compressed_pixels(
     /* calc the cumulative number of pixels in each successive dimension */
     dimsize[0] = 1;
     for ii in 1..MAX_COMPRESS_DIM {
-        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
+        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1] as LONGLONG;
     }
 
     /*  determine the coordinate of the first and last pixel in the image */
@@ -5163,8 +5179,8 @@ pub(crate) fn fits_write_compressed_pixels(
     for ii in (0..(naxis as usize)).rev() {
         firstcoord[ii] = (tfirst / dimsize[ii]) as c_long;
         lastcoord[ii] = (tlast / dimsize[ii]) as c_long;
-        tfirst -= firstcoord[ii] * dimsize[ii];
-        tlast -= lastcoord[ii] * dimsize[ii];
+        tfirst -= firstcoord[ii] as LONGLONG * dimsize[ii];
+        tlast -= lastcoord[ii] as LONGLONG * dimsize[ii];
     }
 
     /* to simplify things, treat 1-D, 2-D, and 3-D images as separate cases */
@@ -5229,8 +5245,8 @@ pub(crate) fn fits_write_compressed_pixels(
         }
 
         /* save last coordinate in temporary variables */
-        last0 = lastcoord[0];
-        last1 = lastcoord[1];
+        last0 = lastcoord[0] as LONGLONG;
+        last1 = lastcoord[1] as LONGLONG;
 
         if firstcoord[2] < lastcoord[2] {
             /* we will write up to the last pixel in all but the last plane */
@@ -5265,7 +5281,7 @@ pub(crate) fn fits_write_compressed_pixels(
             firstcoord[1] = 0;
 
             /* increment pointers to next elements to be written */
-            arrayptr = &arrayptr[(nread * bytesperpixel as LONGLONG) as usize..];
+            arrayptr = &arrayptr[(nread * bytesperpixel as c_long) as usize..];
         }
     } else {
         ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
@@ -5340,7 +5356,7 @@ fn fits_write_compressed_img_plane(
         /* set starting coord to beginning of next line */
         firstcoord[0] = 0;
         firstcoord[1] += 1;
-        arrayptr += ((trc[0] - blc[0] + 1) * bytesperpixel as LONGLONG) as usize;
+        arrayptr += ((trc[0] - blc[0] + 1) * bytesperpixel as c_long) as usize;
     }
 
     /* write contiguous complete rows of the image, if any */
@@ -5376,7 +5392,7 @@ fn fits_write_compressed_img_plane(
         }
 
         /* increment pointers for the last partial row */
-        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] * bytesperpixel as LONGLONG) as usize;
+        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as c_long * bytesperpixel as c_long) as usize;
     }
 
     if trc[1] == lastcoord[1] + 1 {
@@ -5485,7 +5501,7 @@ pub unsafe fn fits_img_decompress_safer(
         for ii in 0..((infptr.Fptr).zndim as usize) {
             imgsize *= (infptr.Fptr).znaxis[ii];
             fpixel[ii] = 1; /* Set first and last pixel to */
-            lpixel[ii] = (infptr.Fptr).znaxis[ii]; /* include the entire image. */
+            lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
             inc[ii] = 1;
         }
 
@@ -5622,7 +5638,7 @@ unsafe fn fits_decompress_img_safer(
         for ii in 0..((infptr.Fptr).zndim as usize) {
             imgsize *= (infptr.Fptr).znaxis[ii] as usize;
             fpixel[ii] = 1; /* Set first and last pixel to */
-            lpixel[ii] = (infptr.Fptr).znaxis[ii]; /* include the entire image. */
+            lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
             inc[ii] = 1;
         }
         /* Calc equivalent number of double pixels same size as whole the image. */
@@ -6418,7 +6434,7 @@ unsafe fn fits_read_write_compressed_img(
                                     outfptr,
                                     datatype,
                                     firstelem,
-                                    thistilesize[0],
+                                    thistilesize[0] as LONGLONG,
                                     &buffer,
                                     nullval.clone(),
                                     status,
@@ -6429,7 +6445,7 @@ unsafe fn fits_read_write_compressed_img(
                                 );
                             }
 
-                            firstelem += thistilesize[0];
+                            firstelem += thistilesize[0] as LONGLONG;
                         }
                     }
                 }
@@ -6503,7 +6519,7 @@ pub(crate) fn fits_read_compressed_pixels(
     /* calc the cumulative number of pixels in each successive dimension */
     dimsize[0] = 1;
     for ii in 1..MAX_COMPRESS_DIM {
-        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1];
+        dimsize[ii] = dimsize[ii - 1] * naxes[ii - 1] as LONGLONG;
     }
 
     /*  determine the coordinate of the first and last pixel in the image */
@@ -6562,8 +6578,8 @@ pub(crate) fn fits_read_compressed_pixels(
         /* test for special case: reading an integral number of planes */
         if firstcoord[0] == 0
             && firstcoord[1] == 0
-            && lastcoord[0] == naxes[0] - 1
-            && lastcoord[1] == naxes[1] - 1
+            && lastcoord[0] == naxes[0] as LONGLONG - 1
+            && lastcoord[1] == naxes[1] as LONGLONG - 1
         {
             for ii in 0..MAX_COMPRESS_DIM {
                 /* convert from zero base to 1 base */
@@ -6599,8 +6615,8 @@ pub(crate) fn fits_read_compressed_pixels(
 
         if firstcoord[2] < lastcoord[2] {
             /* we will read up to the last pixel in all but the last plane */
-            lastcoord[0] = naxes[0] - 1;
-            lastcoord[1] = naxes[1] - 1;
+            lastcoord[0] = naxes[0] as LONGLONG - 1;
+            lastcoord[1] = naxes[1] as LONGLONG - 1;
         }
 
         /* read one plane of the cube at a time, for simplicity */
@@ -6614,7 +6630,7 @@ pub(crate) fn fits_read_compressed_pixels(
                 fptr,
                 datatype,
                 bytesperpixel as c_int,
-                nplane,
+                nplane as c_long,
                 &mut firstcoord,
                 &lastcoord,
                 &inc,
@@ -6695,8 +6711,8 @@ fn fits_read_compressed_img_plane(
     let mut arrayptr = 0; // array
     let mut nullarrayptr = 0; // nullarray
 
-    blc[2] = nplane + 1;
-    trc[2] = nplane + 1;
+    blc[2] = nplane as LONGLONG + 1;
+    trc[2] = nplane as LONGLONG + 1;
 
     if firstcoord[0] != 0 {
         /* have to read a partial first row */
@@ -6706,7 +6722,7 @@ fn fits_read_compressed_img_plane(
         if lastcoord[1] == firstcoord[1] {
             trc[0] = lastcoord[0] + 1; /* 1st and last pixels in same row */
         } else {
-            trc[0] = naxes[0]; /* read entire rest of the row */
+            trc[0] = naxes[0] as LONGLONG; /* read entire rest of the row */
         }
 
         fits_read_compressed_img(
@@ -6751,9 +6767,9 @@ fn fits_read_compressed_img_plane(
     /* read contiguous complete rows of the image, if any */
     blc[0] = 1;
     blc[1] = firstcoord[1] + 1;
-    trc[0] = naxes[0];
+    trc[0] = naxes[0] as LONGLONG;
 
-    if lastcoord[0] + 1 == naxes[0] {
+    if lastcoord[0] + 1 == naxes[0] as LONGLONG {
         /* can read the last complete row, too */
         trc[1] = lastcoord[1] + 1;
     } else {
@@ -6781,7 +6797,7 @@ fn fits_read_compressed_img_plane(
             status,
         );
 
-        *nread += ((trc[1] - blc[1] + 1) * naxes[0]) as c_long;
+        *nread += ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as c_long;
 
         if let Some(anynul) = anynul.as_deref_mut()
             && tnull != 0
@@ -6794,9 +6810,10 @@ fn fits_read_compressed_img_plane(
         }
 
         /* increment pointers for the last partial row */
-        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0]) as usize * bytesperpixel as usize;
+        arrayptr +=
+            ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as usize * bytesperpixel as usize;
         if nullarray.is_some() && (nullcheck == NullCheckType::SetNullArray) {
-            nullarrayptr += ((trc[1] - blc[1] + 1) * naxes[0]) as usize;
+            nullarrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as LONGLONG) as usize;
         }
     }
 
@@ -7044,7 +7061,7 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
     }
 
     /* check number of rows */
-    if expect_nrows != (infptr.Fptr).numrows {
+    if expect_nrows as LONGLONG != (infptr.Fptr).numrows {
         ffpmsg_str("number of table rows != the number of tiles in compressed image");
         *status = DATA_DECOMPRESSION_ERR;
         return *status;
@@ -8091,9 +8108,9 @@ fn imcomp_decompress_tile(
 
                 if BYTESWAPPED {
                     if !tempdouble.is_empty() {
-                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen.into());
+                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen as c_long);
                     } else {
-                        ffswap8(cast_slice_mut(buffer), tilelen.into());
+                        ffswap8(cast_slice_mut(buffer), tilelen as c_long);
                     }
                 }
                 if datatype == TFLOAT {
@@ -8338,7 +8355,7 @@ fn imcomp_decompress_tile(
             (infptr.Fptr).cn_compressed,
             nrow.into(),
             1,
-            nelemll as c_long,
+            nelemll as LONGLONG,
             Some(NullValue::Short(snull)),
             &mut cbuf,
             None,
@@ -8351,7 +8368,7 @@ fn imcomp_decompress_tile(
             (infptr.Fptr).cn_compressed,
             nrow.into(),
             1,
-            nelemll as c_long,
+            nelemll as LONGLONG,
             Some(NullValue::UByte(charnull)),
             &mut cbuf,
             None,
@@ -8462,7 +8479,7 @@ fn imcomp_decompress_tile(
             tiledatatype = TSHORT;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_2bytes(cast_slice_mut(idata), tilelen as c_long, status);
+                fits_unshuffle_2bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
             }
 
             if BYTESWAPPED {
@@ -8473,7 +8490,7 @@ fn imcomp_decompress_tile(
             tiledatatype = TINT;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_4bytes(cast_slice_mut(idata), tilelen as c_long, status);
+                fits_unshuffle_4bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
             }
 
             if BYTESWAPPED {
@@ -8484,7 +8501,7 @@ fn imcomp_decompress_tile(
             tiledatatype = TDOUBLE;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_8bytes(cast_slice_mut(idata), tilelen as c_long, status);
+                fits_unshuffle_8bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
             }
             if BYTESWAPPED {
                 ffswap8(cast_slice_mut(idata), tilelen as c_long);
@@ -9552,7 +9569,7 @@ fn imcomp_decompress_tile(
                 .get_mut(&(&raw const infptr.Fptr as usize))
                 .unwrap();
 
-            tilesize = pixlen as LONGLONG * tilelen as LONGLONG;
+            tilesize = pixlen as c_long * tilelen as c_long;
 
             /* check that tile size/type has not changed */
             if tilesize != tilestruct.tiledatasize[tilecol as usize]
@@ -11088,19 +11105,19 @@ pub unsafe fn fits_compress_table_safer(
             &mut tstatus,
         ) != 0
         {
-            rowspertile = (maxchunksize / naxis1) as c_long;
+            rowspertile = (maxchunksize as LONGLONG / naxis1) as c_long;
         }
 
         if rowspertile < 1 {
             rowspertile = 1;
         }
 
-        if rowspertile > nrows {
+        if rowspertile as LONGLONG > nrows {
             rowspertile = nrows as c_long;
         }
 
-        nchunks = ((nrows - 1) / rowspertile + 1) as c_long; /* total number of chunks */
-        lastrows = (nrows - ((nchunks - 1) * rowspertile)) as c_long; /* number of rows in last chunk */
+        nchunks = ((nrows - 1) / rowspertile as LONGLONG + 1) as c_long; /* total number of chunks */
+        lastrows = (nrows - ((nchunks as LONGLONG - 1) * rowspertile as LONGLONG)) as c_long; /* number of rows in last chunk */
 
         /* allocate space for the transposed, column-major chunk of the table */
         cm_buffer = Vec::new();
@@ -11147,7 +11164,13 @@ pub unsafe fn fits_compress_table_safer(
         strncpy_safe(&mut card, cs!(c"ZPCOUNT"), 7);
         fits_write_record(outfptr, &card, status);
 
-        fits_modify_key_lng(outfptr, cs!(c"NAXIS2"), nchunks, Some(cs!(c"&")), status); /* 1 row per chunk */
+        fits_modify_key_lng(
+            outfptr,
+            cs!(c"NAXIS2"),
+            nchunks.into(),
+            Some(cs!(c"&")),
+            status,
+        ); /* 1 row per chunk */
         fits_modify_key_lng(
             outfptr,
             cs!(c"NAXIS1"),
@@ -11220,13 +11243,13 @@ pub unsafe fn fits_compress_table_safer(
                 repeat = 1;
             }
 
-            rm_repeat[ii] = repeat;
-            rm_colwidth[ii] = repeat * width; /* column width (in bytes)in the input table */
+            rm_repeat[ii] = repeat as LONGLONG;
+            rm_colwidth[ii] = (repeat * width) as LONGLONG; /* column width (in bytes)in the input table */
 
             /* starting offset of each field in the OUTPUT transposed column-major table */
-            cm_colstart[ii + 1] = cm_colstart[ii] + rm_colwidth[ii] * rowspertile;
+            cm_colstart[ii + 1] = cm_colstart[ii] + rm_colwidth[ii] * rowspertile as LONGLONG;
             /* total number of elements in each column of the transposed column-major table */
-            cm_repeat[ii] = rm_repeat[ii] * rowspertile;
+            cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
 
             compalgor[ii] = default_algor; /* initialize the column compression
             algorithm to the default */
@@ -11307,8 +11330,9 @@ pub unsafe fn fits_compress_table_safer(
                 /* the last chunk may have fewer rows */
                 rowspertile = lastrows;
                 for ii in 0..(ncols as usize) {
-                    cm_colstart[ii + 1] = cm_colstart[ii] + (rm_colwidth[ii] * rowspertile);
-                    cm_repeat[ii] = rm_repeat[ii] * rowspertile;
+                    cm_colstart[ii + 1] =
+                        cm_colstart[ii] + (rm_colwidth[ii] * rowspertile as LONGLONG);
+                    cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
                 }
             }
 
@@ -11932,8 +11956,8 @@ pub unsafe fn fits_compress_table_safer(
                 } /* end of not a virtual column */
             } /* end of loop over columns */
 
-            datastart += rowspertile * naxis1; /* increment to start of next chunk */
-            firstrow += rowspertile; /* increment first row in next chunk */
+            datastart += rowspertile as LONGLONG * naxis1; /* increment to start of next chunk */
+            firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
 
             if print_report {
                 println!("\nChunk = {}", ll + 1);
@@ -12254,10 +12278,10 @@ pub fn fits_uncompress_table_safe(
                 this column */
             }
 
-            rmajor_repeat[ii] = repeat;
+            rmajor_repeat[ii] = repeat as LONGLONG;
 
             /* width (in bytes) of each field in the row-major table */
-            rmajor_colwidth[ii] = rmajor_repeat[ii] * width;
+            rmajor_colwidth[ii] = rmajor_repeat[ii] * width as LONGLONG;
 
             /* construct the ZCTYPn keyword name then read the keyword */
             fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
@@ -12324,7 +12348,7 @@ pub fn fits_uncompress_table_safe(
         /* ==================================================================================
          */
 
-        rowsremain = naxis2;
+        rowsremain = naxis2 as LONGLONG;
         rowstart = 1;
         ntile = 0;
 
@@ -12336,20 +12360,20 @@ pub fn fits_uncompress_table_safe(
             rmajor_colstart[0] = 0;
             cmajor_colstart[0] = 0;
             for ii in 0..(ncols as usize) {
-                cmajor_repeat[ii] = rmajor_repeat[ii] * rowspertile;
+                cmajor_repeat[ii] = rmajor_repeat[ii] * rowspertile as LONGLONG;
 
                 /* starting offset of each field in the column-major table */
                 if coltype[ii] > 0 {
                     /* normal fixed length column */
                     cmajor_colstart[ii + 1] =
-                        cmajor_colstart[ii] + rmajor_colwidth[ii] * rowspertile;
+                        cmajor_colstart[ii] + rmajor_colwidth[ii] * rowspertile as LONGLONG;
                 } else {
                     /* VLA column: reserve space for the 2nd set of Q pointers */
                     cmajor_colstart[ii + 1] =
-                        cmajor_colstart[ii] + (rmajor_colwidth[ii] + 16) * rowspertile;
+                        cmajor_colstart[ii] + (rmajor_colwidth[ii] + 16) * rowspertile as LONGLONG;
                 }
                 /* length of each sequence of bytes, after sorting them in signicant order */
-                cmajor_bytespan[ii] = rmajor_repeat[ii] * rowspertile;
+                cmajor_bytespan[ii] = rmajor_repeat[ii] * rowspertile as LONGLONG;
 
                 /* starting offset of each field in the  row-major table */
                 rmajor_colstart[ii + 1] = rmajor_colstart[ii] + rmajor_colwidth[ii];
@@ -12361,7 +12385,7 @@ pub fn fits_uncompress_table_safe(
                     fits_read_descript(
                         infptr,
                         (ii + 1) as c_int,
-                        ntile,
+                        ntile.into(),
                         Some(&mut vla_repeat),
                         Some(&mut vla_address),
                         status,
@@ -12380,9 +12404,9 @@ pub fn fits_uncompress_table_safe(
                     fits_read_col_byt(
                         infptr,
                         (ii + 1).try_into().unwrap(),
-                        ntile,
+                        ntile.into(),
                         1,
-                        vla_repeat,
+                        vla_repeat.into(),
                         0,
                         cast_slice_mut(&mut ptr),
                         Some(&mut anynull),
@@ -12798,7 +12822,7 @@ pub fn fits_uncompress_table_safe(
                         /* First, set pointer to the Q descriptors, and byte-swap them, if needed */
                         let descript: &mut [LONGLONG] = cast_slice_mut(
                             &mut cm_buffer[(cmajor_colstart[ii]
-                                + (rmajor_colwidth[ii] * rowspertile))
+                                + (rmajor_colwidth[ii] * rowspertile as LONGLONG))
                                 as usize..],
                         );
                         if BYTESWAPPED {
@@ -12816,7 +12840,8 @@ pub fn fits_uncompress_table_safe(
                             cast_slice(&cm_buffer[cmajor_colstart[ii] as usize..]);
                         let qdescript_idx = 0;
                         let descript: &[LONGLONG] = cast_slice(
-                            &cm_buffer[(cmajor_colstart[ii] + (rmajor_colwidth[ii] * rowspertile))
+                            &cm_buffer[(cmajor_colstart[ii]
+                                + (rmajor_colwidth[ii] * rowspertile as LONGLONG))
                                 as usize..],
                         );
 
@@ -13015,16 +13040,16 @@ pub fn fits_uncompress_table_safe(
             ffmbyt_safe(outfptr, datastart, 1, status);
             ffpbyt(
                 outfptr,
-                naxis1 * rowspertile,
+                (naxis1 * rowspertile).into(),
                 cast_slice(&rm_buffer),
                 status,
             );
 
             /* increment pointers for next tile */
-            rowstart += rowspertile;
-            rowsremain -= rowspertile;
-            datastart += naxis1 * rowspertile;
-            if rowspertile > rowsremain {
+            rowstart += rowspertile as LONGLONG;
+            rowsremain -= rowspertile as LONGLONG;
+            datastart += (naxis1 * rowspertile) as LONGLONG;
+            if rowspertile as LONGLONG > rowsremain {
                 rowspertile = rowsremain as c_long;
             }
         } /* end of while rows still remain */

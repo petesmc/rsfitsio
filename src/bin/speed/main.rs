@@ -14,7 +14,7 @@ use rsfitsio::aliases::c_api::{
     fits_read_errmsg, fits_read_img_lng, fits_write_col_lng, fits_write_img_lng,
     fits_write_img_sht,
 };
-use rsfitsio::fitsio::{ASCII_TBL, BINARY_TBL, FLEN_ERRMSG, FLEN_STATUS, fitsfile};
+use rsfitsio::fitsio::{ASCII_TBL, BINARY_TBL, FLEN_ERRMSG, FLEN_STATUS, LONGLONG, fitsfile};
 
 /* size of the image */
 const XSIZE: usize = 3000;
@@ -222,7 +222,14 @@ fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_i
     ii = 1;
     while ii <= nremain {
         unsafe {
-            fits_write_img_lng(fptr, 0, ii, SHTSIZE as c_long, sarray.as_ptr(), status);
+            fits_write_img_lng(
+                fptr,
+                0,
+                ii.into(),
+                SHTSIZE as LONGLONG,
+                sarray.as_ptr(),
+                status,
+            );
         }
         ii += SHTSIZE as c_long;
     }
@@ -270,13 +277,13 @@ fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> 
     print!("\nWrite {XSIZE}x{YSIZE} I*2 image, {SHTSIZE} pixels/loop:   ");
     marktime(status);
 
-    let nremain: c_long = (XSIZE * YSIZE) as c_long;
-    ii = 1;
+    let nremain: LONGLONG = (XSIZE * YSIZE) as LONGLONG;
+    let mut ii = 1;
     while ii <= nremain {
         unsafe {
-            fits_write_img_sht(fptr, 0, ii, SHTSIZE as c_long, ssarray.as_ptr(), status);
+            fits_write_img_sht(fptr, 0, ii, SHTSIZE as LONGLONG, ssarray.as_ptr(), status);
         }
-        ii += SHTSIZE as c_long;
+        ii += SHTSIZE as LONGLONG;
     }
 
     unsafe { fits_flush_file(fptr, status) }; /* flush all buffers to disk */
@@ -324,7 +331,7 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
         fits_create_tbl(
             fptr,
             BINARY_TBL,
-            BROWS as c_long,
+            BROWS as LONGLONG,
             tfields,
             ttype.as_ptr(),
             tform.as_ptr(),
@@ -348,8 +355,24 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     while nremain > 0 {
         ntodo = minvalue(nrows, nremain);
         unsafe {
-            fits_write_col_lng(fptr, 1, firstrow, firstelem, ntodo, sarray.as_ptr(), status);
-            fits_write_col_lng(fptr, 2, firstrow, firstelem, ntodo, sarray.as_ptr(), status);
+            fits_write_col_lng(
+                fptr,
+                1,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
+                sarray.as_ptr(),
+                status,
+            );
+            fits_write_col_lng(
+                fptr,
+                2,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
+                sarray.as_ptr(),
+                status,
+            );
         }
         firstrow += ntodo;
         nremain -= ntodo;
@@ -400,7 +423,7 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
         fits_create_tbl(
             fptr,
             ASCII_TBL,
-            AROWS as c_long,
+            AROWS as LONGLONG,
             tfields,
             ttype.as_ptr(),
             tform.as_ptr(),
@@ -424,8 +447,24 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     while nremain > 0 {
         ntodo = minvalue(nrows, nremain);
         unsafe {
-            fits_write_col_lng(fptr, 1, firstrow, firstelem, ntodo, sarray.as_ptr(), status);
-            fits_write_col_lng(fptr, 2, firstrow, firstelem, ntodo, sarray.as_ptr(), status);
+            fits_write_col_lng(
+                fptr,
+                1,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
+                sarray.as_ptr(),
+                status,
+            );
+            fits_write_col_lng(
+                fptr,
+                2,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
+                sarray.as_ptr(),
+                status,
+            );
         }
         firstrow += ntodo;
         nremain -= ntodo;
@@ -471,8 +510,8 @@ fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> 
             fits_read_img_lng(
                 fptr,
                 0,
-                ii,
-                SHTSIZE as c_long,
+                ii.into(),
+                SHTSIZE as LONGLONG,
                 longnull,
                 sarray.as_mut_ptr(),
                 &mut anynull,
@@ -529,9 +568,9 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
             fits_read_col_lng(
                 fptr,
                 1,
-                firstrow,
-                firstelem,
-                ntodo,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
                 lnull,
                 sarray.as_mut_ptr(),
                 &mut anynull,
@@ -540,9 +579,9 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
             fits_read_col_lng(
                 fptr,
                 2,
-                firstrow,
-                firstelem,
-                ntodo,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
                 lnull,
                 sarray.as_mut_ptr(),
                 &mut anynull,
@@ -600,9 +639,9 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
             fits_read_col_lng(
                 fptr,
                 1,
-                firstrow,
-                firstelem,
-                ntodo,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
                 lnull,
                 sarray.as_mut_ptr(),
                 &mut anynull,
@@ -611,9 +650,9 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
             fits_read_col_lng(
                 fptr,
                 2,
-                firstrow,
-                firstelem,
-                ntodo,
+                firstrow.into(),
+                firstelem.into(),
+                ntodo.into(),
                 lnull,
                 sarray.as_mut_ptr(),
                 &mut anynull,
