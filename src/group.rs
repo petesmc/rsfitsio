@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 use bytemuck::cast_slice;
+use libc::size_t;
 
 use std::ffi::CStr;
 
@@ -1330,57 +1331,64 @@ pub(crate) fn fits_path2url(
         only. All colons ":" become slashes "/", and if one or more colon is
         encountered then the path is specified as absolute.
         */
-        todo!();
-    /*
-    int i,j,k;
-    int firstColon;
-    int size;
+    
+        let mut i: usize = 0;
+        let mut j: usize = 0;
+        let mut k: isize = 0;
 
-    if(*status > 0) return(*status);
+        let mut firstColon: bool = true; // first colon encountered
+        let mut size: usize = 0;
 
-    for(i = 0, j = 0, firstColon = 1, size = strlen(inpath), buff[0] = 0;
-                                         i < size; j = strlen(buff))
-    {
-    switch(inpath[i])
-    {
+        if(*status > 0) {return(*status);}
 
-    case ':':
+        size = strlen_safe(inpath);
+        buff[0] = 0;
 
-    /*
-    colons imply path separators. If its the first colon encountered
-    then assume that its the disk designator and add a slash to the
-    beginning of the buff string
-    */
+        while i < size {
 
-    if(firstColon)
-    {
-    firstColon = 0;
+            match(inpath[i] as u8)
+            {
 
-    for(k = j; k >= 0; --k) buff[k+1] = buff[k];
-    buff[0] = '/';
-    }
+             b':'=>{
 
-    /* all colons become slashes */
+                /*
+                colons imply path separators. If its the first colon encountered
+                then assume that its the disk designator and add a slash to the
+                beginning of the buff string
+                */
 
-    strcat(buff,"/");
+                if(firstColon)
+                {
+                    firstColon = false;
 
-    ++i;
+                    for k in (0..=j).rev() {
+                        buff[k+1] = buff[k];
+                    }
+                    
+                    buff[0] = bb(b'/');
+                }
 
-    break;
+                /* all colons become slashes */
 
-    default:
+                strcat_safe(&mut buff,cs!(c"/"));
 
-    /* copy the character from inpath to buff as is */
+                i+=1;
 
-    buff[j]   = inpath[i];
-    buff[j+1] = 0;
+            },
+            _=>{
 
-    ++i;
+                /* copy the character from inpath to buff as is */
 
-    break;
-    }
-    }
-    */
+                buff[j]   = inpath[i];
+                buff[j+1] = 0;
+
+                i+=1;
+
+            }
+            }
+            j = strlen_safe(&buff);
+        }
+        
     } else {
         /*
         Default Unix case.
