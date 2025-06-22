@@ -1331,7 +1331,7 @@ pub(crate) fn fits_path2url(
         only. All colons ":" become slashes "/", and if one or more colon is
         encountered then the path is specified as absolute.
         */
-    
+
         let mut i: usize = 0;
         let mut j: usize = 0;
         let mut k: isize = 0;
@@ -1339,56 +1339,49 @@ pub(crate) fn fits_path2url(
         let mut firstColon: bool = true; // first colon encountered
         let mut size: usize = 0;
 
-        if(*status > 0) {return(*status);}
+        if (*status > 0) {
+            return (*status);
+        }
 
         size = strlen_safe(inpath);
         buff[0] = 0;
 
         while i < size {
+            match (inpath[i] as u8) {
+                b':' => {
+                    /*
+                    colons imply path separators. If its the first colon encountered
+                    then assume that its the disk designator and add a slash to the
+                    beginning of the buff string
+                    */
 
-            match(inpath[i] as u8)
-            {
+                    if (firstColon) {
+                        firstColon = false;
 
-             b':'=>{
+                        for k in (0..=j).rev() {
+                            buff[k + 1] = buff[k];
+                        }
 
-                /*
-                colons imply path separators. If its the first colon encountered
-                then assume that its the disk designator and add a slash to the
-                beginning of the buff string
-                */
-
-                if(firstColon)
-                {
-                    firstColon = false;
-
-                    for k in (0..=j).rev() {
-                        buff[k+1] = buff[k];
+                        buff[0] = bb(b'/');
                     }
-                    
-                    buff[0] = bb(b'/');
+
+                    /* all colons become slashes */
+
+                    strcat_safe(&mut buff, cs!(c"/"));
+
+                    i += 1;
                 }
+                _ => {
+                    /* copy the character from inpath to buff as is */
 
-                /* all colons become slashes */
+                    buff[j] = inpath[i];
+                    buff[j + 1] = 0;
 
-                strcat_safe(&mut buff,cs!(c"/"));
-
-                i+=1;
-
-            },
-            _=>{
-
-                /* copy the character from inpath to buff as is */
-
-                buff[j]   = inpath[i];
-                buff[j+1] = 0;
-
-                i+=1;
-
-            }
+                    i += 1;
+                }
             }
             j = strlen_safe(&buff);
         }
-        
     } else {
         /*
         Default Unix case.
