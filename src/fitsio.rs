@@ -1065,28 +1065,27 @@ pub struct fitsfile {
 #[repr(C)]
 pub struct iteratorCol {
     /// pointer to the HDU containing the column
-    pub fptr: *mut fitsfile, 
+    pub fptr: *mut fitsfile,
     /// column number in the table (use name if < 1)
-    pub colnum: c_int, 
+    pub colnum: c_int,
     /// name (= TTYPEn value) of the column (optional)
-    pub colname: [c_char; 70], 
-    /// output datatype (converted if necessary 
-    pub datatype: c_int, 
+    pub colname: [c_char; 70],
+    /// output datatype (converted if necessary
+    pub datatype: c_int,
     /// output elements that may be useful for the work function: = InputCol, InputOutputCol, or OutputCol
-    pub iotype: c_int, 
+    pub iotype: c_int,
     /// pointer to the array (and the null value)
-    pub array: *mut c_void, 
+    pub array: *mut c_void,
     /// binary table vector repeat value
-    pub repeat: c_long, 
+    pub repeat: c_long,
     /// legal minimum data value
-    pub tlmin: c_long, 
+    pub tlmin: c_long,
     /// legal maximum data value
-    pub tlmax: c_long, 
+    pub tlmax: c_long,
     /// physical unit string
-    pub tunit: [c_char; 70], 
+    pub tunit: [c_char; 70],
     /// suggested display format
-    pub tdisp: [c_char; 70], 
-
+    pub tdisp: [c_char; 70],
 }
 
 pub const InputCol: c_int = 0; /* flag for input only iterator column       */

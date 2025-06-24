@@ -42,7 +42,7 @@ pub fn main() -> ExitCode {
     }
 
     /* apply the rate function to each row of the table */
-    println!("Calling iterator function...{}", status);
+    println!("Calling iterator function...{status}");
 
     unsafe {
         fits_iterate_data(
@@ -108,7 +108,7 @@ extern "C" fn zero_image(
             *COUNTS.offset(ii as isize) = 1;
         }
 
-        println!("firstrows, nrows = {} {}", firstrow, nrows);
+        println!("firstrows, nrows = {firstrow} {nrows}");
     }
 
     0 /* return successful status */

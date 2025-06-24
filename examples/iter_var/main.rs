@@ -65,7 +65,7 @@ pub fn main() -> ExitCode {
     }
 
     /* apply the rate function to each row of the table */
-    println!("Calling iterator function...{}", status);
+    println!("Calling iterator function...{status}");
 
     unsafe {
         fits_iterate_data(
@@ -136,7 +136,7 @@ extern "C" fn flux_rate(
             } else {
                 0
             };
-            println!("repeat = {}, {}", repeat, first_element);
+            println!("repeat = {repeat}, {first_element}");
         }
     }
 

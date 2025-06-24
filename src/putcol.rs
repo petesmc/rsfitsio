@@ -3046,7 +3046,7 @@ pub fn ffiter_safe(
                             ffgdes_safe(
                                 cols[jj].fptr.as_mut().unwrap(),
                                 cols[jj].colnum,
-                                frow + ii,
+                                (frow + ii) as LONGLONG,
                                 Some(&mut rowrept),
                                 None,
                                 status,
@@ -3490,8 +3490,8 @@ pub fn ffiter_safe(
                             if ffgpv_safe(
                                 cols[jj].fptr.as_mut().unwrap(),
                                 cols[jj].datatype,
-                                felement,
-                                cols[jj].repeat * ntodo,
+                                felement as LONGLONG,
+                                (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
                                     defaultnull as *const c_void,
@@ -3525,7 +3525,7 @@ pub fn ffiter_safe(
                                 ffgdes_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].colnum,
-                                    frow,
+                                    frow as LONGLONG,
                                     Some(&mut cols[jj].repeat),
                                     None,
                                     status,
@@ -3536,9 +3536,9 @@ pub fn ffiter_safe(
                                 cols[jj].fptr.as_mut().unwrap(),
                                 cols[jj].datatype,
                                 cols[jj].colnum,
-                                frow,
-                                felement,
-                                cols[jj].repeat * ntodo,
+                                frow as LONGLONG,
+                                felement as LONGLONG,
+                                (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
                                     defaultnull as *const c_void,
@@ -3651,8 +3651,8 @@ pub fn ffiter_safe(
                                 if ffppn_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].datatype,
-                                    felement,
-                                    cols[jj].repeat * ntodo,
+                                    felement as LONGLONG,
+                                    (cols[jj].repeat * ntodo) as LONGLONG,
                                     slice::from_raw_parts(
                                         dataptr as *const u8,
                                         bytes_per_datatype(cols[jj].datatype).unwrap()
@@ -3686,7 +3686,7 @@ pub fn ffiter_safe(
                                     ffgdes_safe(
                                         cols[jj].fptr.as_mut().unwrap(),
                                         cols[jj].colnum,
-                                        frow,
+                                        frow as LONGLONG,
                                         Some(&mut cols[jj].repeat),
                                         None,
                                         status,
@@ -3697,9 +3697,9 @@ pub fn ffiter_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].datatype,
                                     cols[jj].colnum,
-                                    frow,
-                                    felement,
-                                    cols[jj].repeat * ntodo,
+                                    frow as LONGLONG,
+                                    felement as LONGLONG,
+                                    (cols[jj].repeat * ntodo) as LONGLONG,
                                     slice::from_raw_parts(
                                         dataptr as *const u8,
                                         bytes_per_datatype(cols[jj].datatype).unwrap()
@@ -3721,8 +3721,8 @@ pub fn ffiter_safe(
                                 if ffppr_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].datatype,
-                                    felement,
-                                    cols[jj].repeat * ntodo,
+                                    felement as LONGLONG,
+                                    (cols[jj].repeat * ntodo) as LONGLONG,
                                     slice::from_raw_parts(
                                         dataptr as *const u8,
                                         bytes_per_datatype(cols[jj].datatype).unwrap()
@@ -3752,7 +3752,7 @@ pub fn ffiter_safe(
                                     ffgdes_safe(
                                         cols[jj].fptr.as_mut().unwrap(),
                                         cols[jj].colnum,
-                                        frow,
+                                        frow as LONGLONG,
                                         Some(&mut cols[jj].repeat),
                                         None,
                                         status,
@@ -3763,9 +3763,9 @@ pub fn ffiter_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].datatype,
                                     cols[jj].colnum,
-                                    frow,
-                                    felement,
-                                    cols[jj].repeat * ntodo,
+                                    frow as LONGLONG,
+                                    felement as LONGLONG,
+                                    (cols[jj].repeat * ntodo) as LONGLONG,
                                     slice::from_raw_parts_mut(
                                         dataptr as *mut u8,
                                         bytes_per_datatype(cols[jj].datatype).unwrap()
