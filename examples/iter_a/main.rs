@@ -1,7 +1,6 @@
 #![allow(deprecated)]
 
 use core::slice;
-use std::ffi::CStr;
 use std::ffi::CString;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -11,9 +10,10 @@ use std::ptr;
 use libc::{c_float, c_int, c_long};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::c_api::*;
+use rsfitsio::fitsio::InputCol;
+use rsfitsio::fitsio::OutputCol;
 use rsfitsio::fitsio::{
-    BINARY_TBL, DOUBLENULLVALUE, INPUT_COL, OUTPUT_COL, READWRITE, TFLOAT, TLONG, fitsfile,
-    iteratorCol,
+    BINARY_TBL, DOUBLENULLVALUE, READWRITE, TFLOAT, TLONG, fitsfile, iteratorCol,
 };
 use rsfitsio::putcol::{fits_iter_get_array, fits_iter_get_datatype, fits_iter_set_by_name};
 
@@ -37,16 +37,13 @@ pub fn main() -> ExitCode {
     let filename = d.to_str().unwrap(); /* name of rate FITS file */
 
     /* open file */
-    if unsafe {
+    unsafe {
         fits_open_file(
             &mut fptr,
             CString::new(filename).unwrap().as_ptr(),
             READWRITE,
             &mut status,
-        )
-    } != 0
-    {
-        printerror(status);
+        );
     }
 
     /* move to the desired binary table extension */
@@ -78,21 +75,21 @@ pub fn main() -> ExitCode {
                 fptr_box.as_mut(),
                 counts_name.as_ptr(),
                 TLONG,
-                INPUT_COL as c_int,
+                InputCol as c_int,
             );
             fits_iter_set_by_name(
                 &mut cols[1],
                 fptr_box.as_mut(),
                 time_name.as_ptr(),
                 TFLOAT,
-                INPUT_COL as c_int,
+                InputCol as c_int,
             );
             fits_iter_set_by_name(
                 &mut cols[2],
                 fptr_box.as_mut(),
                 rate_name.as_ptr(),
                 TFLOAT,
-                OUTPUT_COL as c_int,
+                OutputCol as c_int,
             );
         }
     }
@@ -114,8 +111,8 @@ pub fn main() -> ExitCode {
 
     /* all done */
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
+        unsafe {
+            fits_close_file(Some(fptr_box), &mut status);
         }
     }
 

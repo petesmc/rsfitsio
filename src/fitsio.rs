@@ -1088,6 +1088,11 @@ pub struct iteratorCol {
     pub tdisp: [c_char; 70], /* suggested display format */
 }
 
+pub const InputCol: c_int = 0; /* flag for input only iterator column       */
+pub const InputOutputCol: c_int = 1; /* flag for input and output iterator column */
+pub const OutputCol: c_int = 2; /* flag for output only iterator column      */
+pub const TemporaryCol: c_int = 3; /* flag for temporary iterator column INTERNAL */
+
 /*=============================================================================
 *
 *       The following wtbarr typedef is used in the fits_read_wcstab() routine,

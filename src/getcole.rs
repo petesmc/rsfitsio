@@ -1394,7 +1394,7 @@ pub(crate) fn ffgcle(
 
     incre *= elemincre; /* multiply incre to just get every nth pixel */
 
-    if tcode == TSTRING && hdutype == ASCII_TBL {
+    if tcode == TSTRING {
         /* setup for ASCII tables */
 
         /* get the number of implied decimal places if no explicit decmal point */
@@ -1495,12 +1495,12 @@ pub(crate) fn ffgcle(
                         readptr,
                         ntodo,
                         incre,
-                        cast_slice_mut(&mut buffer),
+                        cast_slice_mut(&mut array[next..]),
                         status,
                     );
 
-                    fffr4r4(
-                        cast_slice(&buffer),
+                    fffr4r4_inplace(
+                        cast_slice_mut(&mut array[next..]),
                         ntodo,
                         scale,
                         zero,
@@ -1508,7 +1508,6 @@ pub(crate) fn ffgcle(
                         nulval,
                         &mut nularray[next..],
                         anynul.as_deref_mut(),
-                        &mut array[next..],
                         status,
                     );
                 } else {

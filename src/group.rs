@@ -18,7 +18,6 @@ use std::collections::VecDeque;
 
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 use bytemuck::cast_slice;
-use libc::size_t;
 
 use std::ffi::CStr;
 
@@ -1334,20 +1333,20 @@ pub(crate) fn fits_path2url(
 
         let mut i: usize = 0;
         let mut j: usize = 0;
-        let mut k: isize = 0;
+        let k: isize = 0;
 
         let mut firstColon: bool = true; // first colon encountered
         let mut size: usize = 0;
 
-        if (*status > 0) {
-            return (*status);
+        if *status > 0 {
+            return *status;
         }
 
         size = strlen_safe(inpath);
         buff[0] = 0;
 
         while i < size {
-            match (inpath[i] as u8) {
+            match inpath[i] as u8 {
                 b':' => {
                     /*
                     colons imply path separators. If its the first colon encountered
@@ -1355,7 +1354,7 @@ pub(crate) fn fits_path2url(
                     beginning of the buff string
                     */
 
-                    if (firstColon) {
+                    if firstColon {
                         firstColon = false;
 
                         for k in (0..=j).rev() {

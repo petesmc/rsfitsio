@@ -1,6 +1,5 @@
 #![allow(deprecated)]
 
-use std::ffi::CString;
 use std::process::ExitCode;
 use std::process::exit;
 use std::ptr;
