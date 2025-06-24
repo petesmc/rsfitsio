@@ -1060,32 +1060,33 @@ pub struct fitsfile {
     pub Fptr: Box<FITSfile>,
 }
 
+/// structure for the iterator function column information
+/// elements required as input to fits_iterate_data:
 #[repr(C)]
 pub struct iteratorCol {
-    /* structure for the iterator function column information */
-    /* elements required as input to fits_iterate_data: */
-    pub fptr: *mut fitsfile,
-    /* pointer to the HDU containing the column */
-    pub colnum: c_int,
-    /* column number in the table (use name if < 1) */
-    pub colname: [c_char; 70],
-    /* name (= TTYPEn value) of the column (optional) */
-    pub datatype: c_int,
-    /* output datatype (converted if necessary  */
-    pub iotype: c_int,
-    /* = InputCol, InputOutputCol, or OutputCol */
-    /* output elements that may be useful for the work function: */
-    pub array: *mut c_void,
-    /* pointer to the array (and the null value) */
-    pub repeat: c_long,
-    /* binary table vector repeat value */
-    pub tlmin: c_long,
-    /* legal minimum data value */
-    pub tlmax: c_long,
-    /* legal maximum data value */
-    pub tunit: [c_char; 70],
-    /* physical unit string */
-    pub tdisp: [c_char; 70], /* suggested display format */
+    /// pointer to the HDU containing the column
+    pub fptr: *mut fitsfile, 
+    /// column number in the table (use name if < 1)
+    pub colnum: c_int, 
+    /// name (= TTYPEn value) of the column (optional)
+    pub colname: [c_char; 70], 
+    /// output datatype (converted if necessary 
+    pub datatype: c_int, 
+    /// output elements that may be useful for the work function: = InputCol, InputOutputCol, or OutputCol
+    pub iotype: c_int, 
+    /// pointer to the array (and the null value)
+    pub array: *mut c_void, 
+    /// binary table vector repeat value
+    pub repeat: c_long, 
+    /// legal minimum data value
+    pub tlmin: c_long, 
+    /// legal maximum data value
+    pub tlmax: c_long, 
+    /// physical unit string
+    pub tunit: [c_char; 70], 
+    /// suggested display format
+    pub tdisp: [c_char; 70], 
+
 }
 
 pub const InputCol: c_int = 0; /* flag for input only iterator column       */
