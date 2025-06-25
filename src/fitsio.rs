@@ -1060,33 +1060,38 @@ pub struct fitsfile {
     pub Fptr: Box<FITSfile>,
 }
 
+/// structure for the iterator function column information
+/// elements required as input to fits_iterate_data:
 #[repr(C)]
 pub struct iteratorCol {
-    /* structure for the iterator function column information */
-    /* elements required as input to fits_iterate_data: */
+    /// pointer to the HDU containing the column
     pub fptr: *mut fitsfile,
-    /* pointer to the HDU containing the column */
+    /// column number in the table (use name if < 1)
     pub colnum: c_int,
-    /* column number in the table (use name if < 1) */
+    /// name (= TTYPEn value) of the column (optional)
     pub colname: [c_char; 70],
-    /* name (= TTYPEn value) of the column (optional) */
+    /// output datatype (converted if necessary
     pub datatype: c_int,
-    /* output datatype (converted if necessary  */
+    /// output elements that may be useful for the work function: = InputCol, InputOutputCol, or OutputCol
     pub iotype: c_int,
-    /* = InputCol, InputOutputCol, or OutputCol */
-    /* output elements that may be useful for the work function: */
+    /// pointer to the array (and the null value)
     pub array: *mut c_void,
-    /* pointer to the array (and the null value) */
+    /// binary table vector repeat value
     pub repeat: c_long,
-    /* binary table vector repeat value */
+    /// legal minimum data value
     pub tlmin: c_long,
-    /* legal minimum data value */
+    /// legal maximum data value
     pub tlmax: c_long,
-    /* legal maximum data value */
+    /// physical unit string
     pub tunit: [c_char; 70],
-    /* physical unit string */
-    pub tdisp: [c_char; 70], /* suggested display format */
+    /// suggested display format
+    pub tdisp: [c_char; 70],
 }
+
+pub const InputCol: c_int = 0; /* flag for input only iterator column       */
+pub const InputOutputCol: c_int = 1; /* flag for input and output iterator column */
+pub const OutputCol: c_int = 2; /* flag for output only iterator column      */
+pub const TemporaryCol: c_int = 3; /* flag for temporary iterator column INTERNAL */
 
 /*=============================================================================
 *
