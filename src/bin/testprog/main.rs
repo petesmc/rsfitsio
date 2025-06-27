@@ -494,7 +494,7 @@ pub fn main() -> ExitCode {
             if ffpkyj(
                 fptr.as_mut_ptr(),
                 c"key_pkyj".as_ptr(),
-                ojkey.into(),
+                ojkey as LONGLONG,
                 c"fxpkyj comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -1073,7 +1073,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 99,
                 iinarray.as_mut_ptr(),
                 &mut anynull,
@@ -1089,7 +1089,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 99,
                 jinarray.as_mut_ptr(),
                 &mut anynull,
@@ -1105,7 +1105,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 99.,
                 einarray.as_mut_ptr(),
                 &mut anynull,
@@ -1232,7 +1232,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 iinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -1252,7 +1252,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 jinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -1272,7 +1272,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 1,
-                npixels.into(),
+                npixels as LONGLONG,
                 einarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
                 &mut anynull,
@@ -2402,7 +2402,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers.into(),
+                extvers as LONGLONG,
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -2802,7 +2802,7 @@ pub fn main() -> ExitCode {
 
             ffitab(
                 fptr.as_mut_ptr(),
-                rowlen.into(),
+                rowlen as LONGLONG,
                 nrows,
                 tfields,
                 ttype.as_ptr() as *const *const c_char,
@@ -2825,7 +2825,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers.into(),
+                extvers as LONGLONG,
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -2978,7 +2978,7 @@ pub fn main() -> ExitCode {
                 &mut status,
             );
 
-            nrows = tmp_nrows.into();
+            nrows = tmp_nrows as LONGLONG;
 
             print!(
                 "\nASCII table: rowlen, nrows, tfields, extname: {} {} {} {}\n",
@@ -3534,7 +3534,7 @@ pub fn main() -> ExitCode {
             rowlen = 0;
             ffitab(
                 tmpfptr.as_mut_ptr(),
-                rowlen.into(),
+                rowlen as LONGLONG,
                 nrows,
                 tfields,
                 ttype.as_ptr() as *const *const c_char,
@@ -3683,7 +3683,7 @@ pub fn main() -> ExitCode {
                 &mut status,
             );
 
-            nrows = tmp_nrows.into();
+            nrows = tmp_nrows as LONGLONG;
 
             print!(
                 "\nBinary table: nrows, tfields, extname, pcount: {} {} {} {}\n",
@@ -4632,7 +4632,7 @@ pub fn main() -> ExitCode {
                 tform.as_ptr() as *const *const c_char,
                 tunit.as_ptr() as *const *const c_char,
                 binname.as_ptr(),
-                pcount.into(),
+                pcount as LONGLONG,
                 &mut status,
             );
             println!("ffibin status = {status}");
@@ -4642,7 +4642,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers.into(),
+                extvers as LONGLONG,
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -4825,8 +4825,8 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 1,
                 19,
-                naxes[0].into(),
-                naxes[1].into(),
+                naxes[0] as LONGLONG,
+                naxes[1] as LONGLONG,
                 imgarray.as_ptr() as *const c_short,
                 &mut status,
             );
@@ -4843,8 +4843,8 @@ pub fn main() -> ExitCode {
                 1,
                 0,
                 19,
-                naxes[0].into(),
-                naxes[1].into(),
+                naxes[0] as LONGLONG,
+                naxes[1] as LONGLONG,
                 imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
@@ -4891,8 +4891,8 @@ pub fn main() -> ExitCode {
                 1,
                 0,
                 19,
-                naxes[0].into(),
-                naxes[1].into(),
+                naxes[0] as LONGLONG,
+                naxes[1] as LONGLONG,
                 imgarray.as_mut_ptr() as *mut c_short,
                 &mut anynull,
                 &mut status,
@@ -5043,7 +5043,7 @@ pub fn main() -> ExitCode {
                 tform.as_ptr() as *const *const c_char,
                 tunit.as_ptr() as *const *const c_char,
                 binname.as_ptr(),
-                pcount.into(),
+                pcount as LONGLONG,
                 &mut status,
             );
             println!("Variable length arrays: ffphbn status = {status}");
@@ -5052,7 +5052,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers.into(),
+                extvers as LONGLONG,
                 c"extension version number".as_ptr(),
                 &mut status,
             );
@@ -5827,7 +5827,7 @@ pub fn main() -> ExitCode {
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"EXTVER".as_ptr(),
-                extvers.into(),
+                extvers as LONGLONG,
                 c"extension version number".as_ptr(),
                 &mut status,
             );

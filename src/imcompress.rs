@@ -11167,7 +11167,7 @@ pub unsafe fn fits_compress_table_safer(
         fits_modify_key_lng(
             outfptr,
             cs!(c"NAXIS2"),
-            nchunks.into(),
+            nchunks as LONGLONG,
             Some(cs!(c"&")),
             status,
         ); /* 1 row per chunk */
@@ -12385,7 +12385,7 @@ pub fn fits_uncompress_table_safe(
                     fits_read_descript(
                         infptr,
                         (ii + 1) as c_int,
-                        ntile.into(),
+                        ntile as LONGLONG,
                         Some(&mut vla_repeat),
                         Some(&mut vla_address),
                         status,
@@ -12404,9 +12404,9 @@ pub fn fits_uncompress_table_safe(
                     fits_read_col_byt(
                         infptr,
                         (ii + 1).try_into().unwrap(),
-                        ntile.into(),
+                        ntile as LONGLONG,
                         1,
-                        vla_repeat.into(),
+                        vla_repeat as LONGLONG,
                         0,
                         cast_slice_mut(&mut ptr),
                         Some(&mut anynull),
@@ -13040,7 +13040,7 @@ pub fn fits_uncompress_table_safe(
             ffmbyt_safe(outfptr, datastart, 1, status);
             ffpbyt(
                 outfptr,
-                (naxis1 * rowspertile).into(),
+                (naxis1 * rowspertile) as LONGLONG,
                 cast_slice(&rm_buffer),
                 status,
             );

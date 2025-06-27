@@ -8233,7 +8233,7 @@ pub fn ffgdess_safe(
                 if let Some(length) = length.as_deref_mut() {
                     #[allow(clippy::absurd_extreme_comparisons)]
                     // On some architectures, this is a valid comparison
-                    if descript8[0] > LONG_MAX.into() {
+                    if descript8[0] > LONG_MAX as LONGLONG {
                         *status = NUM_OVERFLOW;
                     }
 
@@ -8243,7 +8243,7 @@ pub fn ffgdess_safe(
                 if let Some(heapaddr) = heapaddr.as_deref_mut() {
                     #[allow(clippy::absurd_extreme_comparisons)]
                     // On some architectures, this is a valid comparison
-                    if descript8[1] > LONG_MAX.into() {
+                    if descript8[1] > LONG_MAX as LONGLONG {
                         *status = NUM_OVERFLOW;
                     }
 

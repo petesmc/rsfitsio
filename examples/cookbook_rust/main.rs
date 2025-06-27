@@ -661,18 +661,18 @@ fn selectrows() {
             if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
                 fits_read_tblbytes(
                     infptr_box,
-                    irow.into(),
+                    irow as LONGLONG,
                     1,
-                    naxes[0].into(),
+                    naxes[0] as LONGLONG,
                     &mut buffer,
                     &mut status,
                 );
 
                 fits_write_tblbytes(
                     outfptr_box,
-                    noutrows.into(),
+                    noutrows as LONGLONG,
                     1,
-                    naxes[0].into(),
+                    naxes[0] as LONGLONG,
                     &buffer,
                     &mut status,
                 );
