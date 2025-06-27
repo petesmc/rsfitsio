@@ -106,8 +106,8 @@ fn writeimage() {
             fits_write_img(
                 fptr_box.as_mut(),
                 TUSHORT,
-                fpixel.into(),
-                nelements.into(),
+                fpixel as LONGLONG,
+                nelements as LONGLONG,
                 array.as_ptr() as *const _,
                 &mut status,
             )
@@ -620,7 +620,7 @@ fn selectrows() {
                 colnum,
                 frow,
                 felem,
-                naxes[1].into(),
+                naxes[1] as LONGLONG,
                 &nullval as *const c_float as *const _,
                 density.as_mut_ptr() as *mut _,
                 &mut anynulls,
@@ -644,9 +644,9 @@ fn selectrows() {
                 unsafe {
                     fits_read_tblbytes(
                         infptr_box.as_mut(),
-                        irow.into(),
+                        irow as LONGLONG,
                         1,
-                        naxes[0].into(),
+                        naxes[0] as LONGLONG,
                         buffer,
                         &mut status,
                     );
@@ -654,7 +654,7 @@ fn selectrows() {
                         outfptr_box.as_mut(),
                         noutrows,
                         1,
-                        naxes[0].into(),
+                        naxes[0] as LONGLONG,
                         buffer,
                         &mut status,
                     );

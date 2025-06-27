@@ -141,7 +141,6 @@ impl<'a> LZW_Compress<'a> {
                 if last_write_len.is_err() || last_write_len.unwrap() != cnt {
                     self.error("failed to write buffer to uncompressed output file (write_buf)");
                     self.exit_code = ERROR;
-                    return;
                 }
             } else {
                 /* get more memory if current buffer is too small */

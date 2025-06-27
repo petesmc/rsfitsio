@@ -6,7 +6,6 @@
 
 use core::slice;
 use std::ffi::CStr;
-use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, stdin};
 use std::sync::Mutex;
 use std::{cmp, mem, ptr};
@@ -14,7 +13,6 @@ use std::{cmp, mem, ptr};
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
 use crate::helpers::cfile::CFile;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
-use crate::zuncompress::zuncompress2mem;
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
