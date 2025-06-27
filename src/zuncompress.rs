@@ -3,8 +3,13 @@
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort, c_void};
-use libc::{EOF, fread, fwrite, memcpy};
+use crate::{
+    c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort, c_void},
+    helpers::cfile::CFile,
+};
+use core::slice;
+use libc::EOF;
+use std::io::{Read, Write};
 
 use crate::{
     fitscore::{ffpmsg_slice, ffpmsg_str},
@@ -83,23 +88,24 @@ impl<'a> LZW_Compress<'a> {
     /* =========================================================================== */
     /// set if EOF acceptable as a result
     fn fill_inbuf(&mut self, eof_ok: c_int) -> c_int {
-        let mut len: usize = 0;
-
         /* Read as much as possible from file */
         self.insize = 0;
         loop {
-            len = unsafe {
-                fread(
-                    self.inbuf[self.insize..].as_mut_ptr() as *mut c_void,
-                    1,
-                    INBUFSIZ - self.insize,
-                    self.ifd,
-                )
-            };
-            if len == 0 || len == (EOF as usize) {
-                break;
+            let mut cfile: CFile = self.ifd.into();
+
+            let last_read_len = cfile.read(&mut self.inbuf[self.insize..INBUFSIZ]);
+
+            match last_read_len {
+                Err(_) => {
+                    break; // Unexpected error while reading
+                }
+                Ok(0) => {
+                    break; // EOF
+                }
+                Ok(len) => {
+                    self.insize += len;
+                }
             }
-            self.insize += len;
 
             if self.insize >= INBUFSIZ {
                 break;
@@ -127,10 +133,15 @@ impl<'a> LZW_Compress<'a> {
             let buf = &mut self.outbuf[..];
             if self.realloc_fn.is_none() {
                 /* append buffer to file */
-                /* added 'unsigned' to get rid of compiler warning (WDP 1/1/99) */
-                if fwrite(buf.as_ptr() as *mut c_void, 1, cnt, self.ofd) != cnt {
+
+                let mut cfile = CFile::from(self.ofd);
+
+                let last_write_len = cfile.write(&buf[..cnt]);
+
+                if last_write_len.is_err() || last_write_len.unwrap() != cnt {
                     self.error("failed to write buffer to uncompressed output file (write_buf)");
                     self.exit_code = ERROR;
+                    return;
                 }
             } else {
                 /* get more memory if current buffer is too small */
@@ -144,12 +155,10 @@ impl<'a> LZW_Compress<'a> {
                         return;
                     }
                 }
-                /* copy  into memory buffer */
-                memcpy(
-                    (*self.memptr).add(self.bytes_out),
-                    buf.as_ptr() as *mut c_void,
-                    cnt,
-                );
+                /* copy into memory buffer */
+                let tmp_slice =
+                    slice::from_raw_parts_mut((*self.memptr).add(self.bytes_out) as *mut u8, cnt);
+                tmp_slice.copy_from_slice(&buf[..cnt]);
             }
         }
     }
@@ -303,22 +312,22 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
         posbits = 0;
 
         if lzw.insize < INBUF_EXTRA {
-            rsize = unsafe {
-                fread(
-                    lzw.inbuf[lzw.insize..].as_mut_ptr() as *mut c_void,
-                    1,
-                    INBUFSIZ,
-                    in_file,
-                ) as c_int
-            };
+            let mut cfile = CFile::from(in_file);
 
-            if rsize == EOF {
-                lzw.error("unexpected end of file");
-                lzw.exit_code = ERROR;
-                return ERROR;
+            let last_rsize = cfile.read(&mut lzw.inbuf[lzw.insize..(lzw.insize + INBUFSIZ)]);
+
+            match last_rsize {
+                Err(_) => {
+                    lzw.error("unexpected end of file");
+                    lzw.exit_code = ERROR;
+                    return ERROR;
+                }
+                Ok(len) => {
+                    rsize = len as c_int;
+                    lzw.insize += rsize as usize;
+                    lzw.bytes_in += rsize as usize;
+                }
             }
-            lzw.insize += rsize as usize;
-            lzw.bytes_in += rsize as usize;
         }
 
         inbits = if rsize != 0 {

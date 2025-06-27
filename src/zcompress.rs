@@ -1,7 +1,9 @@
-use std::{io::Read, ptr};
+use std::{
+    io::{Read, Write},
+    ptr,
+};
 
-use crate::c_types::{FILE, c_char, c_int, c_uint, c_ulong, c_void};
-use libc::{feof, ferror, fread, free, fwrite, malloc};
+use crate::c_types::{c_char, c_int, c_uint, c_ulong, c_void};
 
 use libz_rs_sys::{
     Z_BEST_SPEED, Z_BUF_ERROR, Z_DEFAULT_STRATEGY, Z_DEFLATED, Z_FINISH, Z_NO_FLUSH, Z_OK,
@@ -223,9 +225,9 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
 }
 
 /*--------------------------------------------------------------------------*/
-///Uncompress the file in memory into memory.  Fill whatever amount of memory has
-///already been allocated, then realloc more memory, using the supplied
-///input function, if necessary.
+/// Uncompress the file in memory into memory.  Fill whatever amount of memory has
+/// already been allocated, then realloc more memory, using the supplied
+/// input function, if necessary.
 pub(crate) unsafe fn uncompress2mem_from_mem(
     inmemptr: &[c_char],   /* I - memory pointer to compressed bytes */
     inmemsize: usize,      /* I - size of input compressed file      */
@@ -335,41 +337,43 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 
 /*--------------------------------------------------------------------------*/
 /// Uncompress the file into another file.
-pub(crate) unsafe fn uncompress2file(
-    filename: &[c_char],    /* name of input file                  */
-    indiskfile: &mut FILE,  /* I - input file pointer                */
-    outdiskfile: &mut FILE, /* I - output file pointer               */
-    status: &mut c_int,     /* IO - error status                       */
+pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
+    filename: &[c_char], /* name of input file                  */
+    indiskfile: &mut R,  /* I - input file pointer                */
+    outdiskfile: &mut W, /* I - output file pointer               */
+    status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
     unsafe {
         let mut err: c_int = 0;
-
         let mut bytes_out: c_ulong = 0;
-        //char *infilebuff, *outfilebuff;
-        let mut d_stream: z_stream; /* decompression stream */
 
         if *status > 0 {
             return *status;
         }
 
         /* Allocate buffers to hold compressed and uncompressed */
-        let infilebuff = malloc(GZBUFSIZE) as *mut u8;
-        if infilebuff.is_null() {
+        let mut infilebuff: Vec<u8> = Vec::new();
+        if infilebuff.try_reserve_exact(GZBUFSIZE).is_err() {
             *status = MEMORY_ALLOCATION;
             return *status; /* memory error */
+        } else {
+            infilebuff.resize(GZBUFSIZE, 0);
         }
 
-        let outfilebuff = malloc(GZBUFSIZE) as *mut u8;
-        if outfilebuff.is_null() {
+        let mut outfilebuff: Vec<u8> = Vec::new();
+        if outfilebuff.try_reserve_exact(GZBUFSIZE).is_err() {
             *status = MEMORY_ALLOCATION;
             return *status; /* memory error */
+        } else {
+            outfilebuff.resize(GZBUFSIZE, 0);
         }
 
-        d_stream = z_stream {
+        /* decompression stream */
+        let mut d_stream: z_stream = z_stream {
             next_in: ptr::null_mut(),
             avail_in: Default::default(),
             total_in: Default::default(),
-            next_out: outfilebuff,
+            next_out: outfilebuff.as_mut_ptr(),
             avail_out: GZBUFSIZE as uInt,
             total_out: Default::default(),
             msg: ptr::null_mut(),
@@ -397,23 +401,28 @@ pub(crate) unsafe fn uncompress2file(
             return *status;
         }
 
+        // This is used to keep track of the last read length
+        // If last read length is 0, it means we are at the end of the file
+        let mut last_read_len: usize = 0;
+
         /* loop through the file, reading a buffer and uncompressing it */
         loop {
-            let len = fread(infilebuff as *mut c_void, 1, GZBUFSIZE, indiskfile);
-            if ferror(indiskfile) != 0 {
+            let len = indiskfile.read(&mut infilebuff[..GZBUFSIZE]);
+
+            if len.is_err() {
                 inflateEnd(&mut d_stream);
-                free(infilebuff as *mut c_void);
-                free(outfilebuff as *mut c_void);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
 
-            if len == 0 {
+            last_read_len = len.unwrap();
+
+            if last_read_len == 0 {
                 break; /* no more data */
             }
 
-            d_stream.next_in = infilebuff;
-            d_stream.avail_in = len as uInt;
+            d_stream.next_in = infilebuff.as_ptr();
+            d_stream.avail_in = last_read_len as uInt;
 
             loop {
                 /* uncompress as much of the input as will fit in the output */
@@ -430,50 +439,56 @@ pub(crate) unsafe fn uncompress2file(
                     }
 
                     /* flush out the full output buffer */
-                    if fwrite(outfilebuff as *const c_void, 1, GZBUFSIZE, outdiskfile) != GZBUFSIZE
-                    {
+                    let out_len = outdiskfile.write(&outfilebuff[..GZBUFSIZE]);
+                    if out_len.is_err() {
                         inflateEnd(&mut d_stream);
-                        free(infilebuff as *mut c_void);
-                        free(outfilebuff as *mut c_void);
                         *status = DATA_DECOMPRESSION_ERR;
                         return *status;
                     }
+
+                    last_read_len = out_len.unwrap();
+
+                    if last_read_len != GZBUFSIZE {
+                        inflateEnd(&mut d_stream);
+                        *status = DATA_DECOMPRESSION_ERR;
+                        return *status;
+                    }
+
                     bytes_out += GZBUFSIZE as c_ulong;
-                    d_stream.next_out = outfilebuff;
+                    d_stream.next_out = outfilebuff.as_mut_ptr();
                     d_stream.avail_out = GZBUFSIZE as _;
                 } else {
                     /* some other error */
                     inflateEnd(&mut d_stream);
-                    free(infilebuff as *mut c_void);
-                    free(outfilebuff as *mut c_void);
                     *status = DATA_DECOMPRESSION_ERR;
                     return *status;
                 }
             }
 
-            if feof(indiskfile) != 0 {
+            /* Check for end of file */
+            if last_read_len == 0 {
+                // In rust, 0 indicates EOF
                 break;
             }
         }
 
         /* write out any remaining bytes in the buffer */
-        if d_stream.total_out > bytes_out
-            && fwrite(
-                outfilebuff as *const c_void,
-                1,
-                (d_stream.total_out - bytes_out) as usize,
-                outdiskfile,
-            ) != (d_stream.total_out - bytes_out) as usize
-        {
-            inflateEnd(&mut d_stream);
-            free(infilebuff as *mut c_void);
-            free(outfilebuff as *mut c_void);
-            *status = DATA_DECOMPRESSION_ERR;
-            return *status;
-        }
+        if d_stream.total_out > bytes_out {
+            let out_len =
+                outdiskfile.write(&outfilebuff[..(d_stream.total_out - bytes_out) as usize]);
 
-        free(infilebuff as *mut c_void); /* free temporary output data buffer */
-        free(outfilebuff as *mut c_void); /* free temporary output data buffer */
+            if out_len.is_err() {
+                inflateEnd(&mut d_stream);
+                *status = DATA_DECOMPRESSION_ERR;
+                return *status;
+            }
+
+            if out_len.unwrap() != (d_stream.total_out - bytes_out) as usize {
+                inflateEnd(&mut d_stream);
+                *status = DATA_DECOMPRESSION_ERR;
+                return *status;
+            }
+        }
 
         err = inflateEnd(&mut d_stream); /* End the decompression */
         if err != Z_OK {
@@ -607,10 +622,10 @@ pub(crate) unsafe fn compress2mem_from_mem(
 
 /*--------------------------------------------------------------------------*/
 /// Compress the memory file into disk file.
-pub(crate) unsafe fn compress2file_from_mem(
+pub(crate) unsafe fn compress2file_from_mem<W: Write>(
     inmemptr: &[c_char], /* I - memory pointer to uncompressed bytes */
     inmemsize: usize,    /* I - size of input uncompressed file      */
-    outdiskfile: &mut FILE,
+    outdiskfile: &mut W,
     filesize: Option<&mut usize>, /* O - size of file, in bytes              */
     status: &mut c_int,
 ) -> c_int {
@@ -628,10 +643,12 @@ pub(crate) unsafe fn compress2file_from_mem(
         }
 
         /* Allocate buffer to hold compressed bytes */
-        let outfilebuff = malloc(GZBUFSIZE) as *mut u8;
-        if outfilebuff.is_null() {
+        let mut outfilebuff: Vec<u8> = Vec::new();
+        if outfilebuff.try_reserve_exact(GZBUFSIZE).is_err() {
             *status = MEMORY_ALLOCATION;
             return *status; /* memory error */
+        } else {
+            outfilebuff.resize(GZBUFSIZE, 0);
         }
 
         c_stream = z_stream {
@@ -734,7 +751,7 @@ pub(crate) unsafe fn compress2file_from_mem(
                 Z_FINISH
             };
             loop {
-                c_stream.next_out = outfilebuff;
+                c_stream.next_out = outfilebuff.as_mut_ptr();
                 c_stream.avail_out = GZBUFSIZE as uInt;
 
                 /* compress as much of the input as will fit in the output */
@@ -742,7 +759,6 @@ pub(crate) unsafe fn compress2file_from_mem(
 
                 if err == Z_STREAM_ERROR {
                     deflateEnd(&mut c_stream);
-                    free(outfilebuff as *mut c_void);
                     *status = DATA_COMPRESSION_ERR;
                     return *status;
                 } else {
@@ -752,18 +768,19 @@ pub(crate) unsafe fn compress2file_from_mem(
                     execute just one more do/while where the deflate call won't actually do
                     anything.  */
                     nBytesToFile = GZBUFSIZE as uInt - c_stream.avail_out;
-                    if nBytesToFile != 0
-                        && fwrite(
-                            outfilebuff as *const c_void,
-                            1,
-                            nBytesToFile as usize,
-                            outdiskfile,
-                        ) != nBytesToFile as usize
-                    {
-                        deflateEnd(&mut c_stream);
-                        free(outfilebuff as *mut c_void);
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
+                    if nBytesToFile != 0 {
+                        let out_len = outdiskfile.write(&outfilebuff[..nBytesToFile as usize]);
+                        if out_len.is_err() {
+                            deflateEnd(&mut c_stream);
+                            *status = DATA_COMPRESSION_ERR;
+                            return *status;
+                        }
+
+                        if out_len.unwrap() != nBytesToFile as usize {
+                            deflateEnd(&mut c_stream);
+                            *status = DATA_COMPRESSION_ERR;
+                            return *status; /* write error */
+                        }
                     }
                 }
                 if c_stream.avail_out != 0 {
@@ -771,8 +788,6 @@ pub(crate) unsafe fn compress2file_from_mem(
                 }
             }
         }
-
-        free(outfilebuff as *mut c_void); /* free temporary output data buffer */
 
         /* Set the output file size to be the total output data */
         if let Some(filesize) = filesize {

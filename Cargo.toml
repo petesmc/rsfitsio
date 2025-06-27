@@ -37,7 +37,7 @@ net_services = []
 
 [dependencies]
 libz-rs-sys = { version = "0.5.1" }
-libbz2-rs-sys = { version = "0.2", optional = true}
+libbz2-rs-sys = { version = "0.2.1", optional = true}
 libc="0.2"
 errno=">=0.3.12"
 bytemuck = "1.23.1"

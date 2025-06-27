@@ -6,12 +6,15 @@
 
 use core::slice;
 use std::ffi::CStr;
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, stdin};
 use std::sync::Mutex;
 use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
+use crate::helpers::cfile::CFile;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::zuncompress::zuncompress2mem;
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -1162,11 +1165,11 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
             zuncompress2mem(
                 filename,
                 diskfile,
-                m[hdl as usize].memaddrptr, /* pointer to memory address */
-                m[hdl as usize].memsizeptr, /* pointer to size of memory */
-                realloc,                    /* reallocation function */
-                &finalsize,
-                &status,  /* returned file size and status*/
+                m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+                m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
+                Some(realloc),                    /* reallocation function */
+                &mut finalsize,
+                &mut status,  /* returned file size and status*/
             );
             */
         } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
@@ -1233,8 +1236,7 @@ pub(crate) fn mem_close_keep(handle: c_int) -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
-/// Compress the memory file, writing it out to the fileptr (which might
-/// be stdout)
+/// Compress the memory file, writing it out to the fileptr (which might be stdout)
 pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
     unsafe {
         let mut status = 0;
@@ -1248,7 +1250,7 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         if compress2file_from_mem(
             in_mem,
             m[handle as usize].fitsfilesize as usize,
-            m[handle as usize].fileptr.as_mut().expect(NULL_MSG),
+            &mut CFile::from(m[handle as usize].fileptr),
             Some(&mut compsize),
             &mut status,
         ) != 0
@@ -1410,11 +1412,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
     filesize: &mut usize,
     status: &mut c_int,
 ) {
-    use std::os::fd::AsRawFd;
-
     use libbz2_rs_sys::*;
-
-    use crate::RB_MODE;
 
     let mut b: *mut BZFILE = ptr::null_mut();
     let mut bzerror: c_int = 0;
@@ -1426,15 +1424,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
     *status = 0;
 
     unsafe {
-        let c_file = fdopen(diskfile.as_raw_fd(), RB_MODE);
-
-        if c_file.is_null() {
-            ffpmsg_str("failed to open a bzip2 file");
-            *status = READ_ERROR;
-            return;
-        }
-
-        b = BZ2_bzReadOpen(&mut bzerror, c_file, 0, 0, ptr::null_mut(), 0);
+        b = BZ2_bzReadOpen(&mut bzerror, diskfile, 0, 0, ptr::null_mut(), 0);
         if bzerror != BZ_OK {
             BZ2_bzReadClose(&mut bzerror, b);
             if bzerror == BZ_MEM_ERROR {
