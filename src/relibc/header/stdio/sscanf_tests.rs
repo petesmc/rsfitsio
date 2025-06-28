@@ -32,14 +32,12 @@ mod tests {
         let result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
         if result != expected_matches {
             println!(
-                "FAILED: input='{}', format='{}', result={}, expected={}",
-                input, format, result, expected_matches
+                "FAILED: input='{input}', format='{format}', result={result}, expected={expected_matches}"
             );
         }
         assert_eq!(
             result, expected_matches,
-            "sscanf_internal failed for input '{}' with format '{}'",
-            input, format
+            "sscanf_internal failed for input '{input}' with format '{format}'"
         );
         result
     }
@@ -69,14 +67,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -109,14 +105,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -149,14 +143,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -191,17 +183,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert!(
                     (our_val - libc_val).abs() < 1e-10,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input,
-                    format,
-                    our_val,
-                    libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -234,14 +221,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -278,8 +263,7 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
 
             if libc_result > 0 {
@@ -288,8 +272,7 @@ mod tests {
                 let our_str = CStr::from_ptr(our_buffer.as_ptr()).to_str().unwrap();
                 assert_eq!(
                     our_str, libc_str,
-                    "Parsed strings should match for input='{}', format='{}': our='{}', libc='{}'",
-                    input, format, our_str, libc_str
+                    "Parsed strings should match for input='{input}', format='{format}': our='{our_str}', libc='{libc_str}'"
                 );
                 (our_result, our_str.to_string())
             } else {
@@ -315,8 +298,7 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
 
             our_result
@@ -352,21 +334,18 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result >= 1 {
                 assert_eq!(
                     our_val1, libc_val1,
-                    "First parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val1, libc_val1
+                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
                 );
             }
             if libc_result >= 2 {
                 assert_eq!(
                     our_val2, libc_val2,
-                    "Second parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val2, libc_val2
+                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
                 );
             }
 
@@ -410,21 +389,18 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result >= 1 {
                 assert_eq!(
                     our_val1, libc_val1,
-                    "First parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val1, libc_val1
+                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
                 );
             }
             if libc_result >= 2 {
                 assert_eq!(
                     our_val2, libc_val2,
-                    "Second parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val2, libc_val2
+                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
                 );
             }
 
@@ -468,21 +444,18 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result >= 1 {
                 assert_eq!(
                     our_val1, libc_val1,
-                    "First parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val1, libc_val1
+                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
                 );
             }
             if libc_result >= 2 {
                 assert_eq!(
                     our_val2, libc_val2,
-                    "Second parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val2, libc_val2
+                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
                 );
             }
 
@@ -515,14 +488,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -563,21 +534,18 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result >= 1 {
                 assert_eq!(
                     our_val1, libc_val1,
-                    "First parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val1, libc_val1
+                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
                 );
             }
             if libc_result >= 2 {
                 assert_eq!(
                     our_val2, libc_val2,
-                    "Second parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val2, libc_val2
+                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
                 );
             }
 
@@ -610,14 +578,12 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result > 0 {
                 assert_eq!(
                     our_val, libc_val,
-                    "Parsed values should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val, libc_val
+                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
                 );
             }
 
@@ -661,21 +627,18 @@ mod tests {
             // Compare results
             assert_eq!(
                 our_result, libc_result,
-                "Return values should match for input='{}', format='{}': our={}, libc={}",
-                input, format, our_result, libc_result
+                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
             );
             if libc_result >= 1 {
                 assert_eq!(
                     our_val1, libc_val1,
-                    "First parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val1, libc_val1
+                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
                 );
             }
             if libc_result >= 2 {
                 assert_eq!(
                     our_val2, libc_val2,
-                    "Second parsed value should match for input='{}', format='{}': our={}, libc={}",
-                    input, format, our_val2, libc_val2
+                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
                 );
             }
 
@@ -1522,7 +1485,7 @@ mod tests {
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let input = format!("{}", i);
+                let input = format!("{i}");
                 let result = test_sscanf_internal(&input, "%d", valist, 1);
                 assert_eq!(val, *i);
                 assert_eq!(result, 1);
@@ -1853,8 +1816,7 @@ mod tests {
             let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
             println!(
-                "MINIMAL TEST: input='{}', format='{}', result={}, value={}",
-                input, format, our_result, our_val
+                "MINIMAL TEST: input='{input}', format='{format}', result={our_result}, value={our_val}"
             );
 
             // Test libc too
@@ -1866,7 +1828,7 @@ mod tests {
                 format_cstring.as_ptr(),
                 &mut libc_val as *mut c_int,
             );
-            println!("LIBC: result={}, value={}", libc_result, libc_val);
+            println!("LIBC: result={libc_result}, value={libc_val}");
         }
     }
 
@@ -1888,8 +1850,7 @@ mod tests {
                 let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
                 println!(
-                    "Step 1 - input: '{}', format: '{}' - libc: {}, ours: {}",
-                    input, format, libc_result, our_result
+                    "Step 1 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
                 );
             }
 
@@ -1908,8 +1869,7 @@ mod tests {
                 let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
                 println!(
-                    "Step 2 - input: '{}', format: '{}' - libc: {}, ours: {}",
-                    input, format, libc_result, our_result
+                    "Step 2 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
                 );
             }
 
@@ -1936,8 +1896,7 @@ mod tests {
                 let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
                 println!(
-                    "Step 3 - input: '{}', format: '{}' - libc: {} (val: {}), ours: {} (val: {})",
-                    input, format, libc_result, libc_val, our_result, our_val
+                    "Step 3 - input: '{input}', format: '{format}' - libc: {libc_result} (val: {libc_val}), ours: {our_result} (val: {our_val})"
                 );
             }
         }

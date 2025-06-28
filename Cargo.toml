@@ -2,7 +2,7 @@
 name = "rsfitsio"
 version = "0.462.4"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 description = "Rust bindings for the CFITSIO library, providing access to FITS files."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/petesmc/rsfitsio"

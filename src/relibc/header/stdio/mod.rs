@@ -205,7 +205,7 @@ mod tests {
             let format = c"%d";
             let mut value: c_int = 0;
             let result = libc::sscanf(input.as_ptr(), format.as_ptr(), &mut value as *mut c_int);
-            println!("Original sscanf result: {}, value: {}", result, value);
+            println!("Original sscanf result: {result}, value: {value}");
         }
 
         // Second test: Check sscanf_internal directly
@@ -216,7 +216,7 @@ mod tests {
             let mut valist = CustomVaList::new();
             valist.push(VaArg::pointer(&mut value as *mut c_int as *const c_void));
             let result = sscanf_internal(input.as_ptr(), format.as_ptr(), valist);
-            println!("sscanf_internal result: {}, value: {}", result, value);
+            println!("sscanf_internal result: {result}, value: {value}");
         }
     }
 
@@ -249,13 +249,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for basic integer: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for basic integer: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for basic integer: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for basic integer: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -286,13 +284,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for long integer: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for long integer: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for long integer: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for long integer: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -323,13 +319,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for unsigned integer: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for unsigned integer: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for unsigned integer: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for unsigned integer: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -360,14 +354,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for double: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for double: rust={rust_result}, libc={libc_result}"
             );
             assert!(
                 (rust_value - libc_value).abs() < 1e-15,
-                "Value mismatch for double: rust={}, libc={}",
-                rust_value,
-                libc_value
+                "Value mismatch for double: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -398,14 +389,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for float: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for float: rust={rust_result}, libc={libc_result}"
             );
             assert!(
                 (rust_value - libc_value).abs() < 1e-6,
-                "Value mismatch for float: rust={}, libc={}",
-                rust_value,
-                libc_value
+                "Value mismatch for float: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -436,13 +424,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for negative integer: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for negative integer: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for negative integer: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for negative integer: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -473,14 +459,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for scientific notation: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for scientific notation: rust={rust_result}, libc={libc_result}"
             );
             assert!(
                 (rust_value - libc_value).abs() < 1e-15,
-                "Value mismatch for scientific notation: rust={}, libc={}",
-                rust_value,
-                libc_value
+                "Value mismatch for scientific notation: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -513,23 +496,19 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for multiple values: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for multiple values: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_a, libc_a,
-                "First value mismatch: rust={}, libc={}",
-                rust_a, libc_a
+                "First value mismatch: rust={rust_a}, libc={libc_a}"
             );
             assert_eq!(
                 rust_b, libc_b,
-                "Second value mismatch: rust={}, libc={}",
-                rust_b, libc_b
+                "Second value mismatch: rust={rust_b}, libc={libc_b}"
             );
             assert_eq!(
                 rust_c, libc_c,
-                "Third value mismatch: rust={}, libc={}",
-                rust_c, libc_c
+                "Third value mismatch: rust={rust_c}, libc={libc_c}"
             );
         }
 
@@ -556,13 +535,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for empty input: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for empty input: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for empty input: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for empty input: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -589,13 +566,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for invalid format: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for invalid format: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for invalid format: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for invalid format: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -622,13 +597,11 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for whitespace: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for whitespace: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_value, libc_value,
-                "Value mismatch for whitespace: rust={}, libc={}",
-                rust_value, libc_value
+                "Value mismatch for whitespace: rust={rust_value}, libc={libc_value}"
             );
         }
 
@@ -657,18 +630,15 @@ mod tests {
 
             assert_eq!(
                 rust_result, libc_result,
-                "Result mismatch for partial match: rust={}, libc={}",
-                rust_result, libc_result
+                "Result mismatch for partial match: rust={rust_result}, libc={libc_result}"
             );
             assert_eq!(
                 rust_a, libc_a,
-                "First value mismatch for partial match: rust={}, libc={}",
-                rust_a, libc_a
+                "First value mismatch for partial match: rust={rust_a}, libc={libc_a}"
             );
             assert_eq!(
                 rust_b, libc_b,
-                "Second value mismatch for partial match: rust={}, libc={}",
-                rust_b, libc_b
+                "Second value mismatch for partial match: rust={rust_b}, libc={libc_b}"
             );
         }
     }

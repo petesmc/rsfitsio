@@ -210,17 +210,12 @@ mod tests {
                 let rust_str = CStr::from_ptr(rust_buffer.as_ptr()).to_str().unwrap();
                 let libc_str = CStr::from_ptr(libc_buffer.as_ptr()).to_str().unwrap();
 
-                assert_eq!(rust_str, libc_str, "Integer {} formatting mismatch", value);
+                assert_eq!(rust_str, libc_str, "Integer {value} formatting mismatch");
                 assert_eq!(
                     rust_result, libc_result,
-                    "Return value mismatch for {}",
-                    value
+                    "Return value mismatch for {value}"
                 );
-                assert_eq!(
-                    rust_str, *expected,
-                    "Expected output mismatch for {}",
-                    value
-                );
+                assert_eq!(rust_str, *expected, "Expected output mismatch for {value}");
             }
         }
     }
@@ -255,17 +250,12 @@ mod tests {
                 let rust_str = CStr::from_ptr(rust_buffer.as_ptr()).to_str().unwrap();
                 let libc_str = CStr::from_ptr(libc_buffer.as_ptr()).to_str().unwrap();
 
-                assert_eq!(rust_str, libc_str, "Float {} formatting mismatch", value);
+                assert_eq!(rust_str, libc_str, "Float {value} formatting mismatch");
                 assert_eq!(
                     rust_result, libc_result,
-                    "Return value mismatch for {}",
-                    value
+                    "Return value mismatch for {value}"
                 );
-                assert_eq!(
-                    rust_str, *expected,
-                    "Expected output mismatch for {}",
-                    value
-                );
+                assert_eq!(rust_str, *expected, "Expected output mismatch for {value}");
             }
         }
     }
@@ -309,18 +299,15 @@ mod tests {
 
                 assert_eq!(
                     rust_str, libc_str,
-                    "Precision {} for {} formatting mismatch",
-                    precision, value
+                    "Precision {precision} for {value} formatting mismatch"
                 );
                 assert_eq!(
                     rust_result, libc_result,
-                    "Return value mismatch for precision {} value {}",
-                    precision, value
+                    "Return value mismatch for precision {precision} value {value}"
                 );
                 assert_eq!(
                     rust_str, *expected,
-                    "Expected output mismatch for precision {} value {}",
-                    precision, value
+                    "Expected output mismatch for precision {precision} value {value}"
                 );
             }
         }

@@ -5,7 +5,6 @@ use crate::c_types::{
     c_ulonglong, c_ushort, intmax_t, ptrdiff_t, size_t, ssize_t, uintmax_t,
 };
 
-use std::ffi::c_void;
 use std::string::String;
 use std::vec::Vec;
 
