@@ -11,8 +11,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -29,8 +27,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -46,8 +42,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -64,8 +58,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -82,8 +74,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
     - name: Output rust version for educational purposes
       run: rustup --version
 

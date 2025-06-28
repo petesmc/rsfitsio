@@ -1,5 +1,3 @@
-// These are required for printf in Relibc
-#![feature(c_variadic)]
 #![allow(
     non_camel_case_types,
     non_snake_case,

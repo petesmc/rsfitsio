@@ -1175,7 +1175,7 @@ pub fn ffphbn_safe(
             if cptr.is_some() {
                 let c = cptr.unwrap() + 1;
 
-                // iread = sscanf(tfmt[c..].as_ptr(), c"%ld".as_ptr(), &width);
+                // iread = sscanf_ld(&tfmt[c..], cs!(c"%ld"), &mut width);
                 let tmp: Result<c_long, ParseIntError> =
                     atoi(str::from_utf8(cast_slice(&tfmt[c..])).unwrap());
 

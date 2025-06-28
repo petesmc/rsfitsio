@@ -52,7 +52,7 @@ use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
 use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
 use crate::putkey::ffphis_safe;
-use crate::relibc::header::stdio::sscanf;
+use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
 use crate::wrappers::*;
 use crate::{FFLOCK, FFUNLOCK};
 use crate::{bb, cs};
@@ -1378,7 +1378,7 @@ pub unsafe fn ffopen_safer(
 
             if !isdigit_safe(rowexpress[0]) {
                 /* is the row specification a number? */
-                sscanf(rowexpress.as_ptr(), c"%ld".as_ptr(), &mut rownum);
+                sscanf_ld(&rowexpress, cs!(c"%ld"), &mut rownum);
                 if rownum < 1 {
                     ffpmsg_str("illegal rownum for image cell:");
                     ffpmsg_slice(&rowexpress);
@@ -6092,7 +6092,7 @@ pub unsafe fn ffexts_safer(
 
             if (isdigit((int) extspec[ptr1]))
             {
-                sscanf(ptr1, "%d", extnum);
+                sscanf_d(ptr1, cs!(c"%d"), &mut extnum);
                 if (*extnum < 0 || *extnum > 9999)
                 {
                     *extnum = 0;
@@ -6131,7 +6131,7 @@ pub unsafe fn ffexts_safer(
 
             slen = strcspn_safe(&extspec[ptr1..], cs!(c" ,:;")); /* length of EXTVERS */
             if slen != 0 {
-                nvals = sscanf(extspec[ptr1..].as_ptr(), c"%d".as_ptr(), extvers); /* EXTVERS value */
+                nvals = sscanf_d(&extspec[ptr1..], cs!(c"%d"), extvers); /* EXTVERS value */
                 if nvals != 1 {
                     ffpmsg_str("illegal EXTVER value in input URL:");
                     ffpmsg_slice(extspec);

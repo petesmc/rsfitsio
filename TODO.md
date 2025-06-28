@@ -10,7 +10,7 @@
 - [ ] Fix all todo!()s
 - [ ] Implement Utility programs
 - [ ] Restructure modules, ::api ??
-- [ ] Every extern function should be a wrapper around a safe interface
+- [X] Every extern function should be a wrapper around a safe interface
 - [X] Fix broken testprog.out comparison
 - [X] Miri currently fails, fix.
 - [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO

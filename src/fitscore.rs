@@ -60,7 +60,7 @@ use crate::getkey::{
 use crate::imcompress::{TILE_STRUCTS, imcomp_get_compressed_image_par};
 use crate::modkey::{ffdkey_safe, ffmkyj_safe, ffmrec_safe};
 use crate::putkey::ffprec_safe;
-use crate::relibc::header::stdio::sscanf;
+use crate::relibc::header::stdio::{sscanf_ld, sscanf_lf};
 use crate::{FFLOCK, FFUNLOCK, fitsio::*};
 use crate::{atoi, bb, cs, int_snprintf};
 use crate::{buffers::*, raw_to_slice};
@@ -3392,7 +3392,7 @@ pub fn ffbnfm_safe(
 
         /*
         unsafe {
-            if sscanf(temp.as_ptr(), c"%ld".as_ptr(), &repeat) != 1 {
+            if sscanf_ld(&temp, cs!(c"%ld"), &mut repeat) != 1 {
                 /* read repeat count */
 
                 ffpmsg_str("Error: Bad repeat format in TFORM (ffbnfm).");
@@ -3461,7 +3461,7 @@ pub fn ffbnfm_safe(
             }
 
             /*
-            iread = unsafe { sscanf(temp[(fi + 1)..].as_ptr(), c"%ld".as_ptr(), &width) };
+            iread = unsafe { sscanf_ld(&temp[(fi + 1)..], cs!(c"%ld"), &mut width) };
             */
 
             let tmp: Result<c_long, ParseIntError> =
@@ -3629,7 +3629,7 @@ pub fn ffbnfmll_safe(
         /* character is platform dependent (%lld, %ld, %I64d)           */
 
         unsafe {
-            sscanf(temp[fi..].as_ptr(), c"%lf".as_ptr(), &mut drepeat);
+            sscanf_lf(&temp[fi..], cs!(c"%lf"), &mut drepeat);
         }
         repeat = (drepeat + 0.1) as LONGLONG;
     }
@@ -3694,7 +3694,7 @@ pub fn ffbnfmll_safe(
             }
 
             unsafe {
-                iread = sscanf(temp[(1 + fi)..].as_ptr(), c"%ld".as_ptr(), &mut width);
+                iread = sscanf_ld(&temp[(1 + fi)..], cs!(c"%ld"), &mut width);
             }
         }
 
