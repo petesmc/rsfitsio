@@ -3628,9 +3628,7 @@ pub fn ffbnfmll_safe(
         /* print as double, because the string-to-64-bit int conversion */
         /* character is platform dependent (%lld, %ld, %I64d)           */
 
-        unsafe {
-            sscanf_lf(&temp[fi..], cs!(c"%lf"), &mut drepeat);
-        }
+        sscanf_lf(&temp[fi..], cs!(c"%lf"), &mut drepeat);
         repeat = (drepeat + 0.1) as LONGLONG;
     }
     /*-----------------------------------------------*/
@@ -3693,9 +3691,7 @@ pub fn ffbnfmll_safe(
                 fi += 1; /* variable length column width */
             }
 
-            unsafe {
-                iread = sscanf_ld(&temp[(1 + fi)..], cs!(c"%ld"), &mut width);
-            }
+            iread = sscanf_ld(&temp[(1 + fi)..], cs!(c"%ld"), &mut width);
         }
 
         if iread != 1 || (variable == 0 && (width as LONGLONG > repeat)) {

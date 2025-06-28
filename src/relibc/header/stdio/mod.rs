@@ -209,15 +209,14 @@ mod tests {
         }
 
         // Second test: Check sscanf_internal directly
-        unsafe {
-            let input = c"42";
-            let format = c"%d";
-            let mut value: c_int = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut value as *mut c_int as *const c_void));
-            let result = sscanf_internal(input.as_ptr(), format.as_ptr(), valist);
-            println!("sscanf_internal result: {result}, value: {value}");
-        }
+
+        let input = c"42";
+        let format = c"%d";
+        let mut value: c_int = 0;
+        let mut valist = CustomVaList::new();
+        valist.push(VaArg::pointer(&mut value as *mut c_int as *const c_void));
+        let result = sscanf_internal(input.as_ptr(), format.as_ptr(), valist);
+        println!("sscanf_internal result: {result}, value: {value}");
     }
 
     #[test]

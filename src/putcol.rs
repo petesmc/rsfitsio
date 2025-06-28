@@ -2632,9 +2632,7 @@ pub fn ffiter_safe(
                                 message,
                                 FLEN_ERRMSG,
                                 "Column '{}' not found for column number {}  (ffiter)",
-                                unsafe {
-                                    CStr::from_ptr(cols[jj].colname.as_ptr()).to_string_lossy()
-                                },
+                                CStr::from_ptr(cols[jj].colname.as_ptr()).to_string_lossy(),
                                 jj + 1
                             );
                             ffpmsg_slice(&message);
@@ -3141,9 +3139,8 @@ pub fn ffiter_safe(
 
                 match cols[jj].datatype {
                     TBYTE => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3160,9 +3157,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TSBYTE => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3179,9 +3175,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TSHORT => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_short>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_short>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_short>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3198,9 +3193,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TUSHORT => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_ushort>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_ushort>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_ushort>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3217,9 +3211,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TINT => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_int>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_int>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_int>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3236,9 +3229,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TUINT => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_uint>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_uint>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_uint>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3255,9 +3247,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TLONG => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_long>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_long>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_long>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3272,9 +3263,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TULONG => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_ulong>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_ulong>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_ulong>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3294,9 +3284,8 @@ pub fn ffiter_safe(
                         }
                     }
                     TFLOAT => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<f32>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<f32>()) as *mut c_void;
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3311,16 +3300,14 @@ pub fn ffiter_safe(
                         }
                     }
                     TCOMPLEX => {
-                        cols[jj].array = unsafe {
-                            calloc(((ntodo * 2) + 1) as usize, size_of::<f32>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc(((ntodo * 2) + 1) as usize, size_of::<f32>()) as *mut c_void;
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
                         col[jj].null = ColNullValue::FloatNull(FLOATNULLVALUE); /* special value */
                     }
                     TDOUBLE => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<f64>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<f64>()) as *mut c_void;
                         col[jj].nullsize = size_of::<f64>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3336,9 +3323,7 @@ pub fn ffiter_safe(
                     }
 
                     TDBLCOMPLEX => {
-                        cols[jj].array = unsafe {
-                            calloc(((ntodo * 2) + 1) as usize, size_of::<f64>()) as *mut c_void
-                        };
+                        cols[jj].array = calloc(((ntodo * 2) + 1) as usize, size_of::<f64>());
                         col[jj].nullsize = size_of::<f64>(); /* number of bytes per value */
                         col[jj].null = ColNullValue::DoubleNull(DOUBLENULLVALUE); /* special value */
                     }
@@ -3347,41 +3332,35 @@ pub fn ffiter_safe(
                         if hdutype == ASCII_TBL {
                             rept = width;
                         }
-                        stringptr = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<*mut c_char>())
-                                as *mut *mut c_char
-                        };
+                        stringptr = calloc((ntodo + 1) as usize, size_of::<*mut c_char>())
+                            as *mut *mut c_char;
                         cols[jj].array = stringptr as *mut c_void;
                         col[jj].nullsize = (rept + 1) as usize; /* number of bytes per value */
 
                         if !stringptr.is_null() {
                             /* allocate string to store the null string value */
-                            let stringnull = unsafe {
-                                calloc((rept + 1) as usize, size_of::<c_char>()) as *mut c_char
-                            };
+                            let stringnull =
+                                calloc((rept + 1) as usize, size_of::<c_char>()) as *mut c_char;
                             col[jj].null = ColNullValue::StringNull(stringnull);
                             if rept > 0 {
                                 if let ColNullValue::StringNull(ptr) = col[jj].null {
-                                    unsafe {
-                                        *ptr.add(1) = 1;
-                                    } /* to make sure string != 0 */
+                                    *ptr.add(1) = 1;
+                                    /* to make sure string != 0 */
                                 }
                             }
 
                             /* allocate big block for the array of table column strings */
-                            unsafe {
-                                (*stringptr) =
-                                    calloc(((ntodo + 1) * (rept + 1)) as usize, size_of::<c_char>())
-                                        as *mut c_char
-                            };
 
-                            if unsafe { !(*stringptr).is_null() } {
+                            (*stringptr) =
+                                calloc(((ntodo + 1) * (rept + 1)) as usize, size_of::<c_char>())
+                                    as *mut c_char;
+
+                            if !(*stringptr).is_null() {
                                 for ii in 1..=ntodo as usize {
                                     /* pointer to each string */
-                                    unsafe {
-                                        let prev = *stringptr.add(ii - 1);
-                                        *stringptr.add(ii) = prev.add((rept + 1) as usize);
-                                    }
+
+                                    let prev = *stringptr.add(ii - 1);
+                                    *stringptr.add(ii) = prev.add((rept + 1) as usize);
                                 }
 
                                 /* get the TNULL keyword value, if it exists */
@@ -3401,9 +3380,7 @@ pub fn ffiter_safe(
                                 );
                                 if tstatus == 0 {
                                     if let ColNullValue::StringNull(ptr) = col[jj].null {
-                                        unsafe {
-                                            libc::strncat(ptr, nullstr.as_ptr(), rept as usize);
-                                        }
+                                        libc::strncat(ptr, nullstr.as_ptr(), rept as usize);
                                     }
                                 }
                             } else {
@@ -3415,18 +3392,16 @@ pub fn ffiter_safe(
                     }
 
                     TLOGICAL => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         /* use value = 2 to flag null values in logical columns */
                         col[jj].null = ColNullValue::UCharNull(2);
                     }
                     TLONGLONG => {
-                        cols[jj].array = unsafe {
-                            calloc((ntodo + 1) as usize, size_of::<LONGLONG>()) as *mut c_void
-                        };
+                        cols[jj].array =
+                            calloc((ntodo + 1) as usize, size_of::<LONGLONG>()) as *mut c_void;
                         col[jj].nullsize = size_of::<LONGLONG>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3476,13 +3451,13 @@ pub fn ffiter_safe(
                     if cols[jj].iotype != OutputCol && cols[jj].iotype != TemporaryCol {
                         if cols[jj].datatype == TSTRING {
                             stringptr = cols[jj].array as *mut *mut c_char;
-                            dataptr = unsafe { stringptr.add(1) as *mut c_void };
+                            dataptr = stringptr.add(1) as *mut c_void;
                             defaultnull = match col[jj].null {
                                 ColNullValue::StringNull(ptr) => ptr as *mut c_void,
                                 _ => std::ptr::null_mut(),
                             }; /* ptr to the null value */
                         } else {
-                            dataptr = unsafe { cols[jj].array.add(col[jj].nullsize) };
+                            dataptr = cols[jj].array.add(col[jj].nullsize);
                             defaultnull = &col[jj].null as *const ColNullValue as *mut c_void; /* ptr to the null value */
                         }
 
@@ -3563,30 +3538,23 @@ pub fn ffiter_safe(
                             if cols[jj].datatype == TSTRING {
                                 stringptr = &mut (cols[jj].array as *mut c_char);
                                 if let ColNullValue::StringNull(ptr) = col[jj].null {
-                                    unsafe {
-                                        memcpy(
-                                            *stringptr as *mut c_void,
-                                            ptr as *const c_void,
-                                            col[jj].nullsize,
-                                        );
-                                    }
+                                    memcpy(
+                                        *stringptr as *mut c_void,
+                                        ptr as *const c_void,
+                                        col[jj].nullsize,
+                                    );
                                 }
                             } else {
-                                unsafe {
-                                    memcpy(cols[jj].array, defaultnull, col[jj].nullsize);
-                                }
+                                memcpy(cols[jj].array, defaultnull, col[jj].nullsize);
                             }
                         } else {
                             /* no null values so copy zero into first element */
                             if cols[jj].datatype == TSTRING {
                                 stringptr = cols[jj].array as *mut *mut c_char;
-                                unsafe {
-                                    memset((*stringptr) as *mut c_void, 0, col[jj].nullsize);
-                                }
+
+                                memset((*stringptr) as *mut c_void, 0, col[jj].nullsize);
                             } else {
-                                unsafe {
-                                    memset(cols[jj].array, 0, col[jj].nullsize);
-                                }
+                                memset(cols[jj].array, 0, col[jj].nullsize);
                             }
                         }
                     }
@@ -3630,22 +3598,21 @@ pub fn ffiter_safe(
                     if cols[jj].iotype != InputCol && cols[jj].iotype != TemporaryCol {
                         if cols[jj].datatype == TSTRING {
                             stringptr = cols[jj].array as *mut *mut c_char;
-                            dataptr = unsafe { stringptr.add(1) as *mut c_void };
+                            dataptr = stringptr.add(1) as *mut c_void;
                             nullpointer = *stringptr;
                             nbytes = 2;
                         } else {
-                            dataptr = unsafe { cols[jj].array.add(col[jj].nullsize) };
+                            dataptr = cols[jj].array.add(col[jj].nullsize);
                             nullpointer = cols[jj].array as *mut c_char;
                             nbytes = col[jj].nullsize as c_int;
                         }
 
-                        if unsafe {
-                            memcmp(
-                                nullpointer as *const c_void,
-                                &zeros as *const _ as *const c_void,
-                                nbytes as usize,
-                            ) != 0
-                        } {
+                        if memcmp(
+                            nullpointer as *const c_void,
+                            &zeros as *const _ as *const c_void,
+                            nbytes as usize,
+                        ) != 0
+                        {
                             /* null value flag not zero; must check for and write nulls */
                             if hdutype == IMAGE_HDU {
                                 if ffppn_safe(
@@ -3809,17 +3776,15 @@ pub fn ffiter_safe(
         for jj in 0..n_cols as usize {
             if cols[jj].datatype == TSTRING && cols[jj].array.is_null() {
                 stringptr = cols[jj].array as *mut *mut c_char;
-                unsafe {
-                    free(*stringptr as *mut c_void); /* free the block of strings */
-                    if let ColNullValue::StringNull(ptr) = col[jj].null {
-                        free(ptr as *mut c_void); /* free the null string */
-                    }
+
+                free(*stringptr as *mut c_void); /* free the block of strings */
+                if let ColNullValue::StringNull(ptr) = col[jj].null {
+                    free(ptr as *mut c_void); /* free the null string */
                 }
             }
             if cols[jj].array.is_null() {
-                unsafe {
-                    free(cols[jj].array);
-                } /* memory for the array of values from the col */
+                free(cols[jj].array);
+                /* memory for the array of values from the col */
             }
         }
     }

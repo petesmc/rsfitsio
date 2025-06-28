@@ -123,7 +123,7 @@ extern "C" fn writehisto(
     nvalues: c_long,
     narrays: c_int,
     histo: *mut iteratorCol,
-    _userPointer: *mut std::os::raw::c_void,
+    _user_pointer: *mut std::os::raw::c_void,
 ) -> c_int {
     let mut tblptr: Option<Box<fitsfile>> = None;
     let mut cols: [iteratorCol; 2] = unsafe { std::mem::zeroed() };
@@ -231,7 +231,7 @@ extern "C" fn calchisto(
     nrows: c_long,
     ncols: c_int,
     cols: *mut iteratorCol,
-    userPointer: *mut std::os::raw::c_void,
+    user_pointer: *mut std::os::raw::c_void,
 ) -> c_int {
     // Static variables to preserve values between calls - using unsafe static
     static mut XCOL: *mut c_long = ptr::null_mut();
@@ -259,7 +259,7 @@ extern "C" fn calchisto(
             /* assign the input array pointers to the X and Y arrays */
             XCOL = fits_iter_get_array(&mut cols[0]) as *mut c_long;
             YCOL = fits_iter_get_array(&mut cols[1]) as *mut c_long;
-            HISTOGRAM = userPointer as *mut c_long;
+            HISTOGRAM = user_pointer as *mut c_long;
 
             /* initialize the histogram image pixels = 0 */
             for ii in 0..=(XSIZE * YSIZE) {

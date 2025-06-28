@@ -15,7 +15,7 @@ mod tests {
     macro_rules! c_str {
         ($s:literal) => {{
             const S: &str = concat!($s, "\0");
-            unsafe { std::mem::transmute::<*const u8, *const c_char>(S.as_ptr()) }
+            std::mem::transmute::<*const u8, *const c_char>(S.as_ptr())
         }};
     }
 
