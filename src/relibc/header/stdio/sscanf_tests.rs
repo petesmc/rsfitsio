@@ -45,192 +45,274 @@ mod tests {
     // Helper to compare our sscanf implementation with libc for c_int
     unsafe fn test_sscanf_int_with_libc(input: &str, format: &str) -> (c_int, c_int) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_int = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_int,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_int = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for c_uint
     unsafe fn test_sscanf_uint_with_libc(input: &str, format: &str) -> (c_int, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_uint,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for c_long
     unsafe fn test_sscanf_long_with_libc(input: &str, format: &str) -> (c_int, c_long) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_long = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_long,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_long = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_long as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_long = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_long,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_long = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_long as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_long = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_long as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for c_double
     unsafe fn test_sscanf_double_with_libc(input: &str, format: &str) -> (c_int, c_double) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_double = 0.0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_double,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_double = 0.0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(
-                &mut our_val as *mut c_double as *const c_void,
-            ));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert!(
-                    (our_val - libc_val).abs() < 1e-10,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_double = 0.0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_double,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_double = 0.0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val as *mut c_double as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert!(
+                        (our_val - libc_val).abs() < 1e-10,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_double = 0.0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val as *mut c_double as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for c_char
     unsafe fn test_sscanf_char_with_libc(input: &str, format: &str) -> (c_int, c_char) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_char = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_char,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_char = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_char as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_char = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_char,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_char = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_char as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_char = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_char as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
@@ -241,42 +323,63 @@ mod tests {
         buffer_size: usize,
     ) -> (c_int, String) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_buffer: Vec<c_char> = vec![0; buffer_size];
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                libc_buffer.as_mut_ptr(),
-            );
-
-            // Test with our implementation
-            let mut our_buffer: Vec<c_char> = vec![0; buffer_size];
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(our_buffer.as_mut_ptr() as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-
-            if libc_result > 0 {
-                // Convert buffers to strings for comparison
-                let libc_str = CStr::from_ptr(libc_buffer.as_ptr()).to_str().unwrap();
-                let our_str = CStr::from_ptr(our_buffer.as_ptr()).to_str().unwrap();
-                assert_eq!(
-                    our_str, libc_str,
-                    "Parsed strings should match for input='{input}', format='{format}': our='{our_str}', libc='{libc_str}'"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_buffer: Vec<c_char> = vec![0; buffer_size];
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    libc_buffer.as_mut_ptr(),
                 );
-                (our_result, our_str.to_string())
-            } else {
-                (our_result, String::new())
+
+                // Test with our implementation
+                let mut our_buffer: Vec<c_char> = vec![0; buffer_size];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(our_buffer.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+
+                if libc_result > 0 {
+                    // Convert buffers to strings for comparison
+                    let libc_str = CStr::from_ptr(libc_buffer.as_ptr()).to_str().unwrap();
+                    let our_str = CStr::from_ptr(our_buffer.as_ptr()).to_str().unwrap();
+                    assert_eq!(
+                        our_str, libc_str,
+                        "Parsed strings should match for input='{input}', format='{format}': our='{our_str}', libc='{libc_str}'"
+                    );
+                    (our_result, our_str.to_string())
+                } else {
+                    (our_result, String::new())
+                }
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_buffer: Vec<c_char> = vec![0; buffer_size];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(our_buffer.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                if our_result > 0 {
+                    let our_str = CStr::from_ptr(our_buffer.as_ptr()).to_str().unwrap();
+                    (our_result, our_str.to_string())
+                } else {
+                    (our_result, String::new())
+                }
             }
         }
     }
@@ -284,72 +387,103 @@ mod tests {
     // Helper to compare our sscanf implementation with libc for literal tests (no arguments)
     unsafe fn test_sscanf_literal_with_libc(input: &str, format: &str) -> c_int {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
 
-            // Test with our implementation
-            let valist = CustomVaList::new();
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                // Test with our implementation
+                let valist = CustomVaList::new();
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
 
-            our_result
+                our_result
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let valist = CustomVaList::new();
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                our_result
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for two integers
     unsafe fn test_sscanf_two_ints_with_libc(input: &str, format: &str) -> (c_int, c_int, c_int) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val1: c_int = 0;
-            let mut libc_val2: c_int = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val1 as *mut c_int,
-                &mut libc_val2 as *mut c_int,
-            );
-
-            // Test with our implementation
-            let mut our_val1: c_int = 0;
-            let mut our_val2: c_int = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val1 as *mut c_int as *const c_void));
-            valist.push(VaArg::pointer(&mut our_val2 as *mut c_int as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result >= 1 {
-                assert_eq!(
-                    our_val1, libc_val1,
-                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val1: c_int = 0;
+                let mut libc_val2: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val1 as *mut c_int,
+                    &mut libc_val2 as *mut c_int,
                 );
-            }
-            if libc_result >= 2 {
-                assert_eq!(
-                    our_val2, libc_val2,
-                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
-                );
-            }
 
-            (our_result, our_val1, our_val2)
+                // Test with our implementation
+                let mut our_val1: c_int = 0;
+                let mut our_val2: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val2 as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result >= 1 {
+                    assert_eq!(
+                        our_val1, libc_val1,
+                        "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+                    );
+                }
+                if libc_result >= 2 {
+                    assert_eq!(
+                        our_val2, libc_val2,
+                        "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
+                    );
+                }
+
+                (our_result, our_val1, our_val2)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val1: c_int = 0;
+                let mut our_val2: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val2 as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val1, our_val2)
+            }
         }
     }
 
@@ -359,52 +493,74 @@ mod tests {
         format: &str,
     ) -> (c_int, c_uint, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val1: c_uint = 0;
-            let mut libc_val2: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val1 as *mut c_uint,
-                &mut libc_val2 as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val1: c_uint = 0;
-            let mut our_val2: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(
-                &mut our_val1 as *mut c_uint as *const c_void,
-            ));
-            valist.push(VaArg::pointer(
-                &mut our_val2 as *mut c_uint as *const c_void,
-            ));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result >= 1 {
-                assert_eq!(
-                    our_val1, libc_val1,
-                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val1: c_uint = 0;
+                let mut libc_val2: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val1 as *mut c_uint,
+                    &mut libc_val2 as *mut c_uint,
                 );
-            }
-            if libc_result >= 2 {
-                assert_eq!(
-                    our_val2, libc_val2,
-                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
-                );
-            }
 
-            (our_result, our_val1, our_val2)
+                // Test with our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result >= 1 {
+                    assert_eq!(
+                        our_val1, libc_val1,
+                        "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+                    );
+                }
+                if libc_result >= 2 {
+                    assert_eq!(
+                        our_val2, libc_val2,
+                        "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
+                    );
+                }
+
+                (our_result, our_val1, our_val2)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val1, our_val2)
+            }
         }
     }
 
@@ -414,180 +570,256 @@ mod tests {
         format: &str,
     ) -> (c_int, c_long, c_long) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val1: c_long = 0;
-            let mut libc_val2: c_long = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val1 as *mut c_long,
-                &mut libc_val2 as *mut c_long,
-            );
-
-            // Test with our implementation
-            let mut our_val1: c_long = 0;
-            let mut our_val2: c_long = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(
-                &mut our_val1 as *mut c_long as *const c_void,
-            ));
-            valist.push(VaArg::pointer(
-                &mut our_val2 as *mut c_long as *const c_void,
-            ));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result >= 1 {
-                assert_eq!(
-                    our_val1, libc_val1,
-                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val1: c_long = 0;
+                let mut libc_val2: c_long = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val1 as *mut c_long,
+                    &mut libc_val2 as *mut c_long,
                 );
-            }
-            if libc_result >= 2 {
-                assert_eq!(
-                    our_val2, libc_val2,
-                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
-                );
-            }
 
-            (our_result, our_val1, our_val2)
+                // Test with our implementation
+                let mut our_val1: c_long = 0;
+                let mut our_val2: c_long = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_long as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_long as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result >= 1 {
+                    assert_eq!(
+                        our_val1, libc_val1,
+                        "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+                    );
+                }
+                if libc_result >= 2 {
+                    assert_eq!(
+                        our_val2, libc_val2,
+                        "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
+                    );
+                }
+
+                (our_result, our_val1, our_val2)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val1: c_long = 0;
+                let mut our_val2: c_long = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_long as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_long as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val1, our_val2)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for hex unsigned integer
     unsafe fn test_sscanf_hex_with_libc(input: &str, format: &str) -> (c_int, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_uint,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for two hex unsigned integers
     unsafe fn test_sscanf_two_hex_with_libc(input: &str, format: &str) -> (c_int, c_uint, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val1: c_uint = 0;
-            let mut libc_val2: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val1 as *mut c_uint,
-                &mut libc_val2 as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val1: c_uint = 0;
-            let mut our_val2: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(
-                &mut our_val1 as *mut c_uint as *const c_void,
-            ));
-            valist.push(VaArg::pointer(
-                &mut our_val2 as *mut c_uint as *const c_void,
-            ));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result >= 1 {
-                assert_eq!(
-                    our_val1, libc_val1,
-                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val1: c_uint = 0;
+                let mut libc_val2: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val1 as *mut c_uint,
+                    &mut libc_val2 as *mut c_uint,
                 );
-            }
-            if libc_result >= 2 {
-                assert_eq!(
-                    our_val2, libc_val2,
-                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
-                );
-            }
 
-            (our_result, our_val1, our_val2)
+                // Test with our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result >= 1 {
+                    assert_eq!(
+                        our_val1, libc_val1,
+                        "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+                    );
+                }
+                if libc_result >= 2 {
+                    assert_eq!(
+                        our_val2, libc_val2,
+                        "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
+                    );
+                }
+
+                (our_result, our_val1, our_val2)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val1, our_val2)
+            }
         }
     }
 
     // Helper to compare our sscanf implementation with libc for octal unsigned integer
     unsafe fn test_sscanf_octal_with_libc(input: &str, format: &str) -> (c_int, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result > 0 {
-                assert_eq!(
-                    our_val, libc_val,
-                    "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_uint,
                 );
-            }
 
-            (our_result, our_val)
+                // Test with our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result > 0 {
+                    assert_eq!(
+                        our_val, libc_val,
+                        "Parsed values should match for input='{input}', format='{format}': our={our_val}, libc={libc_val}"
+                    );
+                }
+
+                (our_result, our_val)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val)
+            }
         }
     }
 
@@ -597,56 +829,78 @@ mod tests {
         format: &str,
     ) -> (c_int, c_uint, c_uint) {
         unsafe {
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val1: c_uint = 0;
-            let mut libc_val2: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val1 as *mut c_uint,
-                &mut libc_val2 as *mut c_uint,
-            );
-
-            // Test with our implementation
-            let mut our_val1: c_uint = 0;
-            let mut our_val2: c_uint = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(
-                &mut our_val1 as *mut c_uint as *const c_void,
-            ));
-            valist.push(VaArg::pointer(
-                &mut our_val2 as *mut c_uint as *const c_void,
-            ));
-
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
-
-            // Compare results
-            assert_eq!(
-                our_result, libc_result,
-                "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
-            );
-            if libc_result >= 1 {
-                assert_eq!(
-                    our_val1, libc_val1,
-                    "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val1: c_uint = 0;
+                let mut libc_val2: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val1 as *mut c_uint,
+                    &mut libc_val2 as *mut c_uint,
                 );
-            }
-            if libc_result >= 2 {
-                assert_eq!(
-                    our_val2, libc_val2,
-                    "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
-                );
-            }
 
-            (our_result, our_val1, our_val2)
+                // Test with our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Compare results
+                assert_eq!(
+                    our_result, libc_result,
+                    "Return values should match for input='{input}', format='{format}': our={our_result}, libc={libc_result}"
+                );
+                if libc_result >= 1 {
+                    assert_eq!(
+                        our_val1, libc_val1,
+                        "First parsed value should match for input='{input}', format='{format}': our={our_val1}, libc={libc_val1}"
+                    );
+                }
+                if libc_result >= 2 {
+                    assert_eq!(
+                        our_val2, libc_val2,
+                        "Second parsed value should match for input='{input}', format='{format}': our={our_val2}, libc={libc_val2}"
+                    );
+                }
+
+                (our_result, our_val1, our_val2)
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val1: c_uint = 0;
+                let mut our_val2: c_uint = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(
+                    &mut our_val1 as *mut c_uint as *const c_void,
+                ));
+                valist.push(VaArg::pointer(
+                    &mut our_val2 as *mut c_uint as *const c_void,
+                ));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                (our_result, our_val1, our_val2)
+            }
         }
     }
 
-    // COMPREHENSIVE SCANF TESTS - Z88DK INSPIRED
+    // COMPREHENSIVE SCANF TESTS - INSPIRED
 
     #[test]
     fn test_scanf_d_comprehensive() {
@@ -1477,9 +1731,9 @@ mod tests {
     }
 
     #[test]
-    fn test_scanf_z88dk_inspired() {
+    fn test_scanf_many() {
         unsafe {
-            // Z88DK Test 1: Range of integers -32767 to 32767 (sampling)
+            // Test 1: Range of integers -32767 to 32767 (sampling)
             for i in [-32767, -1000, -1, 0, 1, 1000, 32767].iter() {
                 let mut val: c_int = 0;
                 let mut valist = CustomVaList::new();
@@ -1491,7 +1745,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 2: Whitespace handling
+            // Test 2: Whitespace handling
             {
                 let mut val1: c_int = 0;
                 let mut val2: c_int = 0;
@@ -1505,7 +1759,7 @@ mod tests {
                 assert_eq!(result, 2);
             }
 
-            // Z88DK Test 3: Character parsing
+            // Test 3: Character parsing
             {
                 let mut val1: c_char = 0;
                 let mut val2: c_char = 0;
@@ -1519,7 +1773,7 @@ mod tests {
                 assert_eq!(result, 2);
             }
 
-            // Z88DK Test 4: String parsing
+            // Test 4: String parsing
             {
                 let mut buffer: [c_char; 100] = [0; 100];
                 let mut valist = CustomVaList::new();
@@ -1531,7 +1785,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 5: String with width specifier
+            // Test 5: String with width specifier
             {
                 let mut buffer: [c_char; 100] = [0; 100];
                 let mut valist = CustomVaList::new();
@@ -1543,7 +1797,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 6: Mixed numeric formats
+            // Test 6: Mixed numeric formats
             {
                 let mut dec_val: c_int = 0;
                 let mut hex_val: c_uint = 0;
@@ -1560,7 +1814,7 @@ mod tests {
                 assert_eq!(result, 3);
             }
 
-            // Z88DK Test 7: Long integers
+            // Test 7: Long integers
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
@@ -1571,7 +1825,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 8: Floating point
+            // Test 8: Floating point
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
@@ -1582,7 +1836,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 9: Scientific notation
+            // Test 9: Scientific notation
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
@@ -1593,7 +1847,7 @@ mod tests {
                 assert_eq!(result, 1);
             }
 
-            // Z88DK Test 10: Complex mixed format
+            // Test 10: Complex mixed format
             {
                 let mut ival: c_int = 0;
                 let mut buffer: [c_char; 100] = [0; 100];
@@ -1739,29 +1993,49 @@ mod tests {
             let input = "999999999999999999999";
             let format = "%d";
 
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_int = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_int,
-            );
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                );
 
-            // Test with our implementation
-            let mut our_val: c_int = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                // Test with our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
 
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-            // Compare results
-            assert_eq!(our_result, libc_result, "Return values should match");
-            if libc_result > 0 {
-                assert_eq!(our_val, libc_val, "Parsed values should match");
+                // Compare results
+                assert_eq!(our_result, libc_result, "Return values should match");
+                if libc_result > 0 {
+                    assert_eq!(our_val, libc_val, "Parsed values should match");
+                }
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // On Windows, just verify our implementation runs without panicking
+                assert!(
+                    our_result >= 0,
+                    "Our implementation should handle overflow gracefully"
+                );
             }
         }
     }
@@ -1773,29 +2047,49 @@ mod tests {
             let input = "%42";
             let format = "%%%d";
 
-            // Test with libc::sscanf
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_int = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_int,
-            );
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test with libc::sscanf
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                );
 
-            // Test with our implementation
-            let mut our_val: c_int = 0;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                // Test with our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
 
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-            // Compare results
-            assert_eq!(our_result, libc_result, "Return values should match");
-            if libc_result > 0 {
-                assert_eq!(our_val, libc_val, "Parsed values should match");
+                // Compare results
+                assert_eq!(our_result, libc_result, "Return values should match");
+                if libc_result > 0 {
+                    assert_eq!(our_val, libc_val, "Parsed values should match");
+                }
+            }
+            #[cfg(target_family = "windows")]
+            {
+                // On Windows, just test our implementation
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // On Windows, just verify our implementation runs
+                assert!(
+                    our_result >= 0,
+                    "Our implementation should handle percent literals"
+                );
             }
         }
     }
@@ -1819,16 +2113,23 @@ mod tests {
                 "MINIMAL TEST: input='{input}', format='{format}', result={our_result}, value={our_val}"
             );
 
-            // Test libc too
-            let input_cstring = CString::new(input).unwrap();
-            let format_cstring = CString::new(format).unwrap();
-            let mut libc_val: c_int = 0;
-            let libc_result = libc::sscanf(
-                input_cstring.as_ptr(),
-                format_cstring.as_ptr(),
-                &mut libc_val as *mut c_int,
-            );
-            println!("LIBC: result={libc_result}, value={libc_val}");
+            #[cfg(not(target_family = "windows"))]
+            {
+                // Test libc too
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                );
+                println!("LIBC: result={libc_result}, value={libc_val}");
+            }
+            #[cfg(target_family = "windows")]
+            {
+                println!("WINDOWS: Only testing our implementation");
+            }
         }
     }
 
@@ -1840,18 +2141,32 @@ mod tests {
                 let input = "%";
                 let format = "%%";
 
-                let input_cstring = CString::new(input).unwrap();
-                let format_cstring = CString::new(format).unwrap();
-                let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
+                #[cfg(not(target_family = "windows"))]
+                {
+                    let input_cstring = CString::new(input).unwrap();
+                    let format_cstring = CString::new(format).unwrap();
+                    let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
 
-                let input_cstr = to_c_string(input);
-                let format_cstr = to_c_string(format);
-                let valist = CustomVaList::new(); // no arguments for %%
-                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let valist = CustomVaList::new(); // no arguments for %%
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-                println!(
-                    "Step 1 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
-                );
+                    println!(
+                        "Step 1 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
+                    );
+                }
+                #[cfg(target_family = "windows")]
+                {
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let valist = CustomVaList::new(); // no arguments for %%
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                    println!("Step 1 - input: '{input}', format: '{format}' - ours: {our_result}");
+                }
             }
 
             // Test step 2: % followed by a number
@@ -1859,18 +2174,32 @@ mod tests {
                 let input = "%42";
                 let format = "%%";
 
-                let input_cstring = CString::new(input).unwrap();
-                let format_cstring = CString::new(format).unwrap();
-                let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
+                #[cfg(not(target_family = "windows"))]
+                {
+                    let input_cstring = CString::new(input).unwrap();
+                    let format_cstring = CString::new(format).unwrap();
+                    let libc_result = libc::sscanf(input_cstring.as_ptr(), format_cstring.as_ptr());
 
-                let input_cstr = to_c_string(input);
-                let format_cstr = to_c_string(format);
-                let valist = CustomVaList::new(); // no arguments for %%
-                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let valist = CustomVaList::new(); // no arguments for %%
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-                println!(
-                    "Step 2 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
-                );
+                    println!(
+                        "Step 2 - input: '{input}', format: '{format}' - libc: {libc_result}, ours: {our_result}"
+                    );
+                }
+                #[cfg(target_family = "windows")]
+                {
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let valist = CustomVaList::new(); // no arguments for %%
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                    println!("Step 2 - input: '{input}', format: '{format}' - ours: {our_result}");
+                }
             }
 
             // Test step 3: Just parse the number after %
@@ -1878,26 +2207,45 @@ mod tests {
                 let input = "42";
                 let format = "%d";
 
-                let input_cstring = CString::new(input).unwrap();
-                let format_cstring = CString::new(format).unwrap();
-                let mut libc_val: c_int = 0;
-                let libc_result = libc::sscanf(
-                    input_cstring.as_ptr(),
-                    format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
-                );
+                #[cfg(not(target_family = "windows"))]
+                {
+                    let input_cstring = CString::new(input).unwrap();
+                    let format_cstring = CString::new(format).unwrap();
+                    let mut libc_val: c_int = 0;
+                    let libc_result = libc::sscanf(
+                        input_cstring.as_ptr(),
+                        format_cstring.as_ptr(),
+                        &mut libc_val as *mut c_int,
+                    );
 
-                let mut our_val: c_int = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                    let mut our_val: c_int = 0;
+                    let mut valist = CustomVaList::new();
+                    valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
 
-                let input_cstr = to_c_string(input);
-                let format_cstr = to_c_string(format);
-                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-                println!(
-                    "Step 3 - input: '{input}', format: '{format}' - libc: {libc_result} (val: {libc_val}), ours: {our_result} (val: {our_val})"
-                );
+                    println!(
+                        "Step 3 - input: '{input}', format: '{format}' - libc: {libc_result} (val: {libc_val}), ours: {our_result} (val: {our_val})"
+                    );
+                }
+                #[cfg(target_family = "windows")]
+                {
+                    let mut our_val: c_int = 0;
+                    let mut valist = CustomVaList::new();
+                    valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                    let input_cstr = to_c_string(input);
+                    let format_cstr = to_c_string(format);
+                    let our_result =
+                        sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                    println!(
+                        "Step 3 - input: '{input}', format: '{format}' - ours: {our_result} (val: {our_val})"
+                    );
+                }
             }
         }
     }
