@@ -11762,7 +11762,7 @@ pub unsafe fn fits_compress_table_safer(
                         compress2mem_from_mem(
                             &cdescript,
                             datasize + (rowspertile * 16) as usize,
-                            &mut (cvlamem.as_mut_ptr() as *mut u8),
+                            &mut (cvlamem.as_mut_ptr()),
                             &mut datasize,
                             Some(realloc),
                             Some(&mut dlen),
@@ -13075,15 +13075,13 @@ fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
 
     let ptr: usize = 0; // index into p
     let mut heapptr: usize = 0;
-    let mut cptr: usize = 0;
 
     for ii in 0..length {
-        p[cptr] = heap[heapptr];
+        p[ii] = heap[heapptr];
         heapptr += 1;
 
-        p[cptr + length] = heap[heapptr];
+        p[ii + length] = heap[heapptr];
         heapptr += 1;
-        cptr += 1;
     }
 
     heap[0..(length * 2)].copy_from_slice(&p[..(length * 2)]);
@@ -13107,21 +13105,19 @@ fn fits_shuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
 
     let ptr: usize = 0; // index into p
     let mut heapptr: usize = 0;
-    let mut cptr: usize = 0;
 
     for ii in 0..length {
-        p[cptr] = heap[heapptr];
+        p[ii] = heap[heapptr];
         heapptr += 1;
 
-        p[cptr + length] = heap[heapptr];
+        p[ii + length] = heap[heapptr];
         heapptr += 1;
 
-        p[cptr + (length * 2)] = heap[heapptr];
+        p[ii + (length * 2)] = heap[heapptr];
         heapptr += 1;
 
-        p[cptr + (length * 3)] = heap[heapptr];
+        p[ii + (length * 3)] = heap[heapptr];
         heapptr += 1;
-        cptr += 1;
     }
 
     heap[0..(length * 4)].copy_from_slice(&p[..(length * 4)]);

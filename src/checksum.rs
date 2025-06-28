@@ -666,7 +666,7 @@ pub fn ffvcks_safe(
     /* convert string to unsigned long */
 
     /* olddatasum = strtoul(chksum, 0, 10);  doesn't work w/ gcc on SUN OS */
-    /* sscanf(chksum, "%u", &olddatasum);   doesn't work w/ cc on VAX/VMS */
+    /* sscanf_u(&chksum, cs!(c"%u"), &mut olddatasum);   doesn't work w/ cc on VAX/VMS */
 
     let tdouble = atof_safe(&chksum); /* read as a double as a workaround */
     let olddatasum: c_ulong = tdouble as c_ulong;

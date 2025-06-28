@@ -1396,7 +1396,7 @@ pub(crate) fn smem_open(filename: *const c_char, rwmode: c_int, driverhandle: &m
         return SHARED_NULPTR;
     }
 
-    nitems = sscanf(filename, c"h%d".as_ptr(), &h);
+    nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
     if 1 != nitems {
         return SHARED_BADARG;
     }
@@ -1440,7 +1440,7 @@ pub(crate) fn smem_create(filename: *const c_char, driverhandle: &mut c_int) -> 
         return SHARED_NULPTR; /* currently ignored */
     }
 
-    nitems = sscanf(filename, c"h%d".as_ptr(), &h);
+    nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
     if 1 != nitems {
         return SHARED_BADARG;
     }
@@ -1485,7 +1485,7 @@ pub(crate) fn smem_remove(filename: *const c_char) -> c_int {
     if filename.is_null() {
         return SHARED_NULPTR;
     }
-    nitems = sscanf(filename, c"h%d".as_ptr(), &h);
+    nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
     if 1 != nitems {
         return SHARED_BADARG;
     }
