@@ -249,7 +249,6 @@ fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_i
 /*--------------------------------------------------------------------------*/
 /// Write the primary array containing a 2-D image
 fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> c_int {
-
     let mut elapcpu: f32 = 0.0;
 
     let mut elapse: f64 = 0.0;

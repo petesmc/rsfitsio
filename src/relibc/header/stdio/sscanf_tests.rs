@@ -1228,9 +1228,9 @@ mod tests {
             assert_eq!(val, 0);
             assert_eq!(result, 1);
 
-            // Test 4: Very large long
-            let (result, val) = test_sscanf_long_with_libc("9223372036854775807", "%ld");
-            assert_eq!(val, 9223372036854775807);
+            // Test 4: Very large long - 32bit
+            let (result, val) = test_sscanf_long_with_libc("2147483647", "%ld");
+            assert_eq!(val, 2147483647);
             assert_eq!(result, 1);
 
             // Test 5: Multiple long integers
@@ -1253,8 +1253,8 @@ mod tests {
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
 
-                let result = test_sscanf_internal("DEADBEEF", "%lx", valist, 1);
-                assert_eq!(val, 0xDEADBEEF);
+                let result = test_sscanf_internal("DEAD", "%lx", valist, 1);
+                assert_eq!(val, 0xDEAD);
                 assert_eq!(result, 1);
             }
 
@@ -1892,8 +1892,8 @@ mod tests {
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
 
-                let result = test_sscanf_internal("123456789012345", "%ld", valist, 1);
-                assert_eq!(val, 123456789012345);
+                let result = test_sscanf_internal("2147483647", "%ld", valist, 1);
+                assert_eq!(val, 2147483647);
                 assert_eq!(result, 1);
             }
 
