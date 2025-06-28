@@ -231,34 +231,37 @@ mod tests {
             let input = c"42";
             let format = c"%d";
 
-            // Test with libc
-            let mut libc_value: c_int = 0;
-            let libc_result = libc::sscanf(
-                input.as_ptr(),
-                format.as_ptr(),
-                &mut libc_value as *mut c_int,
-            );
-
             // Test with our implementation
-            let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(
-                &mut libc_value as *mut c_int as *const c_void,
-            ));
             let mut rust_value: c_int = 0;
-            rust_valist = CustomVaList::new();
+            let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
                 &mut rust_value as *mut c_int as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
-            assert_eq!(
-                rust_result, libc_result,
-                "Result mismatch for basic integer: rust={rust_result}, libc={libc_result}"
-            );
-            assert_eq!(
-                rust_value, libc_value,
-                "Value mismatch for basic integer: rust={rust_value}, libc={libc_value}"
-            );
+            // Expected values
+            assert_eq!(rust_result, 1, "Expected 1 successful conversion");
+            assert_eq!(rust_value, 42, "Expected value to be 42");
+
+            // Compare with libc on non-Windows platforms
+            #[cfg(not(target_family = "windows"))]
+            {
+                let mut libc_value: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input.as_ptr(),
+                    format.as_ptr(),
+                    &mut libc_value as *mut c_int,
+                );
+
+                assert_eq!(
+                    rust_result, libc_result,
+                    "Result mismatch for basic integer: rust={rust_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    rust_value, libc_value,
+                    "Value mismatch for basic integer: rust={rust_value}, libc={libc_value}"
+                );
+            }
         }
 
         // Test 2: Long integer parsing with %ld
@@ -266,34 +269,37 @@ mod tests {
             let input = c"1234567890";
             let format = c"%ld";
 
-            // Test with libc
-            let mut libc_value: c_long = 0;
-            let libc_result = libc::sscanf(
-                input.as_ptr(),
-                format.as_ptr(),
-                &mut libc_value as *mut c_long,
-            );
-
             // Test with our implementation
-            let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(
-                &mut libc_value as *mut c_long as *const c_void,
-            ));
             let mut rust_value: c_long = 0;
-            rust_valist = CustomVaList::new();
+            let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
                 &mut rust_value as *mut c_long as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
-            assert_eq!(
-                rust_result, libc_result,
-                "Result mismatch for long integer: rust={rust_result}, libc={libc_result}"
-            );
-            assert_eq!(
-                rust_value, libc_value,
-                "Value mismatch for long integer: rust={rust_value}, libc={libc_value}"
-            );
+            // Expected values
+            assert_eq!(rust_result, 1, "Expected 1 successful conversion");
+            assert_eq!(rust_value, 1234567890, "Expected value to be 1234567890");
+
+            // Compare with libc on non-Windows platforms
+            #[cfg(not(target_family = "windows"))]
+            {
+                let mut libc_value: c_long = 0;
+                let libc_result = libc::sscanf(
+                    input.as_ptr(),
+                    format.as_ptr(),
+                    &mut libc_value as *mut c_long,
+                );
+
+                assert_eq!(
+                    rust_result, libc_result,
+                    "Result mismatch for long integer: rust={rust_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    rust_value, libc_value,
+                    "Value mismatch for long integer: rust={rust_value}, libc={libc_value}"
+                );
+            }
         }
 
         // Test 3: Unsigned integer parsing with %u
@@ -301,34 +307,37 @@ mod tests {
             let input = c"4294967295";
             let format = c"%u";
 
-            // Test with libc
-            let mut libc_value: c_uint = 0;
-            let libc_result = libc::sscanf(
-                input.as_ptr(),
-                format.as_ptr(),
-                &mut libc_value as *mut c_uint,
-            );
-
             // Test with our implementation
-            let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(
-                &mut libc_value as *mut c_uint as *const c_void,
-            ));
             let mut rust_value: c_uint = 0;
-            rust_valist = CustomVaList::new();
+            let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
                 &mut rust_value as *mut c_uint as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
-            assert_eq!(
-                rust_result, libc_result,
-                "Result mismatch for unsigned integer: rust={rust_result}, libc={libc_result}"
-            );
-            assert_eq!(
-                rust_value, libc_value,
-                "Value mismatch for unsigned integer: rust={rust_value}, libc={libc_value}"
-            );
+            // Expected values
+            assert_eq!(rust_result, 1, "Expected 1 successful conversion");
+            assert_eq!(rust_value, 4294967295, "Expected value to be 4294967295");
+
+            // Compare with libc on non-Windows platforms
+            #[cfg(not(target_family = "windows"))]
+            {
+                let mut libc_value: c_uint = 0;
+                let libc_result = libc::sscanf(
+                    input.as_ptr(),
+                    format.as_ptr(),
+                    &mut libc_value as *mut c_uint,
+                );
+
+                assert_eq!(
+                    rust_result, libc_result,
+                    "Result mismatch for unsigned integer: rust={rust_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    rust_value, libc_value,
+                    "Value mismatch for unsigned integer: rust={rust_value}, libc={libc_value}"
+                );
+            }
         }
 
         // Test 4: Double parsing with %lf
@@ -377,34 +386,40 @@ mod tests {
             let input = c"2.71828";
             let format = c"%f";
 
-            // Test with libc
-            let mut libc_value: c_float = 0.0;
-            let libc_result = libc::sscanf(
-                input.as_ptr(),
-                format.as_ptr(),
-                &mut libc_value as *mut c_float,
-            );
-
             // Test with our implementation
-            let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(
-                &mut libc_value as *mut c_float as *const c_void,
-            ));
             let mut rust_value: c_float = 0.0;
-            rust_valist = CustomVaList::new();
+            let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
                 &mut rust_value as *mut c_float as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
-            assert_eq!(
-                rust_result, libc_result,
-                "Result mismatch for float: rust={rust_result}, libc={libc_result}"
-            );
+            // Expected values
+            assert_eq!(rust_result, 1, "Expected 1 successful conversion");
             assert!(
-                (rust_value - libc_value).abs() < 1e-6,
-                "Value mismatch for float: rust={rust_value}, libc={libc_value}"
+                (rust_value - 2.71828).abs() < 1e-5,
+                "Expected value to be close to 2.71828, got {rust_value}"
             );
+
+            // Compare with libc on non-Windows platforms
+            #[cfg(not(target_family = "windows"))]
+            {
+                let mut libc_value: c_float = 0.0;
+                let libc_result = libc::sscanf(
+                    input.as_ptr(),
+                    format.as_ptr(),
+                    &mut libc_value as *mut c_float,
+                );
+
+                assert_eq!(
+                    rust_result, libc_result,
+                    "Result mismatch for float: rust={rust_result}, libc={libc_result}"
+                );
+                assert!(
+                    (rust_value - libc_value).abs() < 1e-6,
+                    "Value mismatch for float: rust={rust_value}, libc={libc_value}"
+                );
+            }
         }
 
         // Test 6: Negative integer
@@ -412,34 +427,37 @@ mod tests {
             let input = c"-12345";
             let format = c"%d";
 
-            // Test with libc
-            let mut libc_value: c_int = 0;
-            let libc_result = libc::sscanf(
-                input.as_ptr(),
-                format.as_ptr(),
-                &mut libc_value as *mut c_int,
-            );
-
             // Test with our implementation
-            let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(
-                &mut libc_value as *mut c_int as *const c_void,
-            ));
             let mut rust_value: c_int = 0;
-            rust_valist = CustomVaList::new();
+            let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
                 &mut rust_value as *mut c_int as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
-            assert_eq!(
-                rust_result, libc_result,
-                "Result mismatch for negative integer: rust={rust_result}, libc={libc_result}"
-            );
-            assert_eq!(
-                rust_value, libc_value,
-                "Value mismatch for negative integer: rust={rust_value}, libc={libc_value}"
-            );
+            // Expected values
+            assert_eq!(rust_result, 1, "Expected 1 successful conversion");
+            assert_eq!(rust_value, -12345, "Expected value to be -12345");
+
+            // Compare with libc on non-Windows platforms
+            #[cfg(not(target_family = "windows"))]
+            {
+                let mut libc_value: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input.as_ptr(),
+                    format.as_ptr(),
+                    &mut libc_value as *mut c_int,
+                );
+
+                assert_eq!(
+                    rust_result, libc_result,
+                    "Result mismatch for negative integer: rust={rust_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    rust_value, libc_value,
+                    "Value mismatch for negative integer: rust={rust_value}, libc={libc_value}"
+                );
+            }
         }
 
         // Test 7: Scientific notation
