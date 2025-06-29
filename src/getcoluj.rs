@@ -95,7 +95,7 @@ pub fn ffgpvuj_safe(
             firstelem,
             nelem,
             nullcheck,
-            &Some(NullValue::ULONGLONG(nullvalue)),
+            &Some(NullValue::ULong(nullvalue)),
             cast_slice_mut(array),
             None,
             anynul,
