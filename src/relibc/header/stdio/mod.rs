@@ -383,7 +383,7 @@ mod tests {
 
         // Test 5: Float parsing with %f
         unsafe {
-            let input = c"2.71828";
+            let input = c"2.81828";
             let format = c"%f";
 
             // Test with our implementation
@@ -397,8 +397,8 @@ mod tests {
             // Expected values
             assert_eq!(rust_result, 1, "Expected 1 successful conversion");
             assert!(
-                (rust_value - 2.71828).abs() < 1e-5,
-                "Expected value to be close to 2.71828, got {rust_value}"
+                (rust_value - 2.81828).abs() < 1e-5,
+                "Expected value to be close to 2.81828, got {rust_value}"
             );
 
             // Compare with libc on non-Windows platforms
