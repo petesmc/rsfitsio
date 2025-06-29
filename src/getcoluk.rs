@@ -360,8 +360,8 @@ pub fn ffg3duk_safe(
         fits_read_compressed_img(
             fptr,
             TUINT,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::UInt(nullvalue)),

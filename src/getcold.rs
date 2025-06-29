@@ -360,8 +360,8 @@ pub fn ffg3dd_safe(
         fits_read_compressed_img(
             fptr,
             TDOUBLE,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::Double(nullvalue)),

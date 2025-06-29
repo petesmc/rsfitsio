@@ -360,8 +360,8 @@ pub fn ffg3dsb_safe(
         fits_read_compressed_img(
             fptr,
             TSBYTE,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::Byte(nullvalue)),

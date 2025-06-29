@@ -368,8 +368,8 @@ pub fn ffg3dj_safe(
         fits_read_compressed_img(
             fptr,
             TLONG,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::Long(nullvalue as c_long)),
@@ -2900,8 +2900,8 @@ pub fn ffg3djj_safe(
         fits_read_compressed_img(
             fptr,
             TLONGLONG,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::LONGLONG(nullvalue)),

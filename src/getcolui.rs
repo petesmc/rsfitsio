@@ -358,8 +358,8 @@ pub fn ffg3dui_safe(
         fits_read_compressed_img(
             fptr,
             TUSHORT,
-            &fpixel,
-            &lpixel,
+            cast_slice(&fpixel),
+            cast_slice(&lpixel),
             &inc,
             nullcheck,
             &Some(NullValue::UShort(nullvalue)),
