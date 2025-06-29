@@ -239,7 +239,6 @@ pub(crate) fn ffgcll(
     let mut tcode: c_int = 0;
     let mut maxelem: c_int = 0;
     let mut hdutype: c_int = 0;
-    let ii: c_int = 0;
     let mut nulcheck = NullCheckType::None;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
@@ -441,7 +440,6 @@ pub fn ffgcx_safe(
     let mut bstart: LONGLONG = 0;
     let mut offset: c_long = 0;
     let mut ndone: c_long = 0;
-    let ii: c_long = 0;
     let mut repeat: c_long = 0;
     let mut bitloc: c_long = 0;
     let mut fbyte: c_long = 0;
@@ -622,14 +620,14 @@ pub unsafe extern "C" fn ffgcxui(
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxui_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: &mut [c_ushort],  /* O - array of integer values            */
-    status: &mut c_int,      /* IO - error status                           */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    _colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    _firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    _nrows: LONGLONG,         /* I - no. of rows to read                     */
+    _input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    _input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    _array: &mut [c_ushort],  /* O - array of integer values            */
+    _status: &mut c_int,      /* IO - error status                           */
 ) -> c_int {
     todo!()
 }
@@ -675,14 +673,14 @@ pub unsafe extern "C" fn ffgcxuk(
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxuk_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: &mut [c_uint],    /* O - array of integer values            */
-    status: &mut c_int,      /* IO - error status                           */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    _colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    _firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    _nrows: LONGLONG,         /* I - no. of rows to read                     */
+    _input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    _input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    _array: &mut [c_uint],    /* O - array of integer values            */
+    _status: &mut c_int,      /* IO - error status                           */
 ) -> c_int {
     todo!()
 }

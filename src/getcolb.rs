@@ -82,9 +82,8 @@ pub fn ffgpvb_safe(
     anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
-    let cdummy = 0;
     let nullcheck = NullCheckType::SetPixel;
-    let mut nullvalue: u8 = 0;
+    let nullvalue: u8;
 
     let mut dummy_nularray = vec![0; nelem as usize];
 
@@ -340,14 +339,13 @@ pub fn ffg3db_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,             /* IO - error status                           */
 ) -> c_int {
-    let mut narray = 0;
-    let mut nfits: LONGLONG = 0;
-    let cdummy: c_char = 0;
+    let mut narray;
+    let mut nfits: LONGLONG;
     let nullcheck = NullCheckType::SetPixel;
     let inc: [c_long; 3] = [1; 3];
     let fpixel: [LONGLONG; 3] = [1; 3];
     let mut lpixel: [LONGLONG; 3] = [0; 3];
-    let mut nullvalue: u8 = 0;
+    let nullvalue: u8;
 
     let mut dummy_nularray = vec![0; (ncols * naxis2 * naxis3) as usize];
 
@@ -407,11 +405,11 @@ pub fn ffg3db_safe(
     narray = 0; /* next pixel in output array to be filled */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* reading naxis1 pixels to each row            */
 
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffgclb(
                 fptr,
                 2,
@@ -492,18 +490,18 @@ pub fn ffgsvb_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,  /* IO - error status                             */
 ) -> c_int {
-    let mut rstr: c_long = 0;
-    let mut rstp: c_long = 0;
-    let mut rinc: c_long = 0;
+    let rstr: c_long;
+    let mut rstp: c_long;
+    let rinc: c_long;
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
     let mut dir: [c_long; 9] = [0; 9];
-    let mut nelem: c_long = 0;
-    let mut nultyp = NullCheckType::None;
-    let mut ninc: c_long = 0;
-    let mut numcol: c_long = 0;
-    let mut felem: LONGLONG = 0;
+    let nelem: c_long;
+
+    let ninc: c_long;
+    let numcol: c_long;
+    let mut felem: LONGLONG;
     let mut dsize: [LONGLONG; 10] = [0; 10];
     let mut blcll: [LONGLONG; 9] = [0; 9];
     let mut trcll: [LONGLONG; 9] = [0; 9];
@@ -512,7 +510,7 @@ pub fn ffgsvb_safe(
     let ldummy = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let nullcheck = NullCheckType::SetPixel;
-    let mut nullvalue: u8 = 0;
+    let nullvalue: u8;
 
     let naxis = naxis as usize;
 
@@ -582,7 +580,7 @@ pub fn ffgsvb_safe(
         numcol = colnum as c_long;
     }
 
-    nultyp = NullCheckType::SetPixel;
+    let nultyp = NullCheckType::SetPixel;
 
     if let Some(anynul) = anynul.as_deref_mut() {
         *anynul = FALSE as c_int;
@@ -708,27 +706,26 @@ pub fn ffgsfb_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,     /* IO - error status                             */
 ) -> c_int {
-    let mut rstr: c_long = 0;
-    let mut rstp: c_long = 0;
-    let mut rinc: c_long = 0;
+    let rstr: c_long;
+    let mut rstp: c_long;
+    let rinc: c_long;
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
     let dir: [c_long; 9] = [0; 9];
     let mut nelem: c_long = 0;
     let mut nultyp = NullCheckType::None;
-    let mut ninc: c_long = 0;
-    let mut numcol: c_long = 0;
-    let mut felem: LONGLONG = 0;
+    let nulval: u8 = 0;
+    let ninc: c_long;
+    let numcol: c_long;
+    let mut felem: LONGLONG;
     let mut dsize: [LONGLONG; 10] = [0; 10];
     let mut blcll: [LONGLONG; 9] = [0; 9];
     let mut trcll: [LONGLONG; 9] = [0; 9];
     let mut hdutype: c_int = 0;
-    let anyf: c_int = 0;
-    let ldummy: c_char = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let nullcheck = NullCheckType::SetNullArray;
-    let nullval: u8 = 0;
+    let mut anyf: c_int = 0;
 
     let naxis = naxis as usize;
 
@@ -802,7 +799,6 @@ pub fn ffgsfb_safe(
         *anynul = FALSE as c_int;
     }
 
-    let mut i0 = 0;
     for ii in 0..9 {
         str[ii] = 1;
         stp[ii] = 1;
@@ -812,190 +808,84 @@ pub fn ffgsfb_safe(
 
     for ii in 0..(naxis) {
         if trc[ii] < blc[ii] {
-            if hdutype == IMAGE_HDU {
-                /*
-                support negative strides for FITS primary arrays
-                (not tables, because the FITSIO column handlers don't
-                support it).
-                */
-                str[ii] = blc[ii];
-                stp[ii] = trc[ii];
-                incr[ii] = inc[ii];
-                dsize[ii + 1] = dsize[ii] * naxes[ii] as LONGLONG;
-            } else {
-                int_snprintf!(
-                    &mut msg,
-                    FLEN_ERRMSG,
-                    "ffgsfb: illegal range specified for axis {}",
-                    ii + 1,
-                );
-                ffpmsg_slice(&msg);
-                *status = BAD_PIX_NUM;
-                return *status;
-            }
-        } else {
-            str[ii] = blc[ii];
-            stp[ii] = trc[ii];
-            incr[ii] = inc[ii];
-            dsize[ii + 1] = dsize[ii] * naxes[ii] as LONGLONG;
-        }
-    }
-    nelem = 1;
-    for ii in 0..naxis {
-        nelem *= ((stp[ii] - str[ii]) / inc[ii]) + 1;
-    }
-
-    i0 = 0;
-
-    if hdutype == IMAGE_HDU {
-        felem = str[0] as LONGLONG;
-    } else {
-        felem = (rstr + (str[0] - 1) * (rstp - rstr + 1) / rinc) as LONGLONG;
-    }
-    let mut hh = str[0] as LONGLONG;
-
-    for jj in 1..naxis {
-        felem += (str[jj] as LONGLONG - 1) * dsize[jj];
-        hh += (str[jj] as LONGLONG - 1) * dsize[jj];
-    }
-
-    /* determine the number of pixels to process in each loop */
-    if naxis == 1 {
-        ninc = incr[0];
-    } else {
-        ninc = incr[0];
-        for jj in 1..naxis {
-            if (stp[jj] - str[jj]) / inc[jj] > 0 {
-                ninc = incr[0];
-            } else {
-                ninc = cmp::min(ninc, nelem);
-            }
-        }
-    }
-    ninc = cmp::min(ninc, nelem);
-
-    if hdutype == IMAGE_HDU {
-        ffmbyt_safe(
-            fptr,
-            (felem - 1) * mem::size_of::<c_char>() as LONGLONG,
-            REPORT_EOF,
-            status,
-        );
-        if *status > 0 {
+            int_snprintf!(
+                &mut msg,
+                FLEN_ERRMSG,
+                "ffgsfb: illegal range specified for axis {}",
+                ii + 1,
+            );
+            ffpmsg_slice(&msg);
+            *status = BAD_PIX_NUM;
             return *status;
         }
+        str[ii] = blc[ii];
+        stp[ii] = trc[ii];
+        incr[ii] = inc[ii];
+        dsize[ii + 1] = dsize[ii] * naxes[ii] as LONGLONG;
+    }
+    if naxis == 1 && naxes[0] == 1 {
+        /* This is not a vector column, so read all the rows at once */
+        nelem = (rstp - rstr) / rinc + 1;
+        ninc = rinc;
+        rstp = rstr;
+    } else {
+        /* have to read each row individually, in all dimensions */
+        nelem = (stp[0] - str[0]) / inc[0] + 1;
+        ninc = incr[0];
     }
 
-    /* read the null value parameters */
-    // TODO: Implement table null value reading
-    // let mut tnull: c_long = 0;
-    // if (hdutype != IMAGE_HDU)
-    //     && ffgtnlll(fptr, numcol, &mut tnull, status) > 0
-    // {
-    //     *status = COL_NOT_FOUND;
-    //     return *status;
-    // }
+    let mut i0 = 0;
+    for row in (rstr..=rstp).step_by(rinc as usize) {
+        for i8 in ((str[8])..=(stp[8])).step_by(incr[8] as usize) {
+            for i7 in ((str[7])..=(stp[7])).step_by(incr[7] as usize) {
+                for i6 in ((str[6])..=(stp[6])).step_by(incr[6] as usize) {
+                    for i5 in ((str[5])..=(stp[5])).step_by(incr[5] as usize) {
+                        for i4 in ((str[4])..=(stp[4])).step_by(incr[4] as usize) {
+                            for i3 in ((str[3])..=(stp[3])).step_by(incr[3] as usize) {
+                                for i2 in ((str[2])..=(stp[2])).step_by(incr[2] as usize) {
+                                    for i1 in ((str[1])..=(stp[1])).step_by(incr[1] as usize) {
+                                        felem = (str[0] as LONGLONG)
+                                            + (i1 - dir[1]) as LONGLONG * dsize[1]
+                                            + (i2 - dir[2]) as LONGLONG * dsize[2]
+                                            + (i3 - dir[3]) as LONGLONG * dsize[3]
+                                            + (i4 - dir[4]) as LONGLONG * dsize[4]
+                                            + (i5 - dir[5]) as LONGLONG * dsize[5]
+                                            + (i6 - dir[6]) as LONGLONG * dsize[6]
+                                            + (i7 - dir[7]) as LONGLONG * dsize[7]
+                                            + (i8 - dir[8]) as LONGLONG * dsize[8];
 
-    let anynul_int = 0;
-    let nularray = vec![0u8; ninc as usize];
+                                        if ffgclb(
+                                            fptr,
+                                            numcol as c_int,
+                                            row as LONGLONG,
+                                            felem,
+                                            nelem as LONGLONG,
+                                            ninc,
+                                            nultyp,
+                                            nulval,
+                                            &mut array[i0..],
+                                            &mut flagval[i0..],
+                                            Some(&mut anyf),
+                                            status,
+                                        ) > 0
+                                        {
+                                            return *status;
+                                        }
 
-    i0 = 0;
-    while nelem > 0 && *status <= 0 {
-        /* read the next subset of pixels */
-        if hdutype == IMAGE_HDU {
-            if incr[0] != 1 {
-                ffgbytoff(
-                    fptr,
-                    1,           // gsize
-                    ninc,        // ngroups
-                    incr[0] - 1, // offset
-                    &mut array[i0 as usize..i0 as usize + ninc as usize],
-                    status,
-                );
-            } else {
-                ffgbyt(
-                    fptr,
-                    ninc as LONGLONG,
-                    &mut array[i0 as usize..i0 as usize + ninc as usize],
-                    status,
-                );
-            }
-        } else {
-            /* read from a table - this should use the nested loop structure from the original */
-            /* For now, return an error indicating this is not implemented */
-            ffpmsg_str("ffgsfb_safe: table reading not yet implemented");
-            *status = COL_NOT_FOUND;
-            return *status;
-        }
-
-        if *status != 0 {
-            /* test for EOF */
-            if *status == END_OF_FILE {
-                if hdutype > 0 || (i0 + 1) >= nelem {
-                    *status = 0; /* reading from image extension or */
-                }
-                /* single pixel table so ignore EOF */
-                else {
-                    return *status;
-                }
-            } else if *status == ARRAY_TOO_BIG {
-                /* ignore this error message */
-                *status = 0;
-            } else {
-                return *status;
-            }
-        }
-
-        /* increment the counters for the next loop */
-        i0 += ninc;
-        let remain = nelem - i0;
-
-        let nextelem = ninc;
-        ninc = cmp::min(ninc, remain); /* don't exceed the maximum */
-
-        if incr[0] == 1
-            && naxis > 1
-            && (felem + nextelem as LONGLONG - 1 - dsize[1]) / dsize[1]
-                != (felem - 1 - dsize[1]) / dsize[1]
-        {
-            /* we have reached the boundary between successive planes */
-            felem += dsize[1] - (felem - 1 - dsize[1]) % dsize[1];
-
-            /* recalculate the indices of the next element to read */
-            for kk in 1..naxis {
-                hh /= dsize[kk];
-                if hh
-                    == ((str[kk] + ((stp[kk] - str[kk]) / inc[kk]) * inc[kk]) / naxes[kk - 1])
-                        as LONGLONG
-                {
-                    str[kk] += 1;
-                    hh = 1;
-                    for ll in kk + 1..naxis {
-                        hh += ((str[ll] - 1) / naxes[ll - 1]) as LONGLONG;
+                                        if anyf > 0 {
+                                            if let Some(anynul) = anynul.as_deref_mut() {
+                                                *anynul = TRUE as c_int;
+                                            }
+                                        }
+                                        i0 += nelem as usize;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    if kk == naxis - 1 {
-                        ninc = incr[0]; /* completed a row */
-                    }
-                    break;
                 }
             }
-        } else {
-            felem += ninc as LONGLONG;
         }
-
-        nelem = remain;
-    }
-
-    // TODO: Implement null checking for images
-    // if anynul.is_some() {
-    //     if nultyp == NullCheckType::SetNullArray {
-    //         /* this is an image, so check entire array for nulls */
-    //         // Implement null checking logic here
-    //     }
-    // }
-
-    if let Some(anynul) = anynul {
-        *anynul = anynul_int;
     }
 
     *status
@@ -1159,8 +1049,6 @@ pub fn ffgcvb_safe(
     anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
-    let cdummy = 0;
-
     let mut dummy_nularray = vec![0; (nelem) as usize];
 
     ffgclb(
@@ -1281,7 +1169,7 @@ pub(crate) fn ffgclb(
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut power: f64 = 1.0;
-    let mut dtemp: f64 = 0.0;
+    let dtemp: f64;
     let mut tcode: c_int = 0;
     let mut maxelem2: c_int = 0;
     let mut hdutype: c_int = 0;
@@ -1289,29 +1177,29 @@ pub(crate) fn ffgclb(
     let mut decimals: c_int = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let mut ntodo: c_long = 0;
+    let mut ntodo: c_long;
     let mut xwidth: c_long = 0;
-    let mut convert: bool = false;
-    let mut nulcheck = NullCheckType::None;
+    let mut convert: bool;
+    let mut nulcheck;
     let mut readcheck: c_int = 16; /* see note below on readcheck */
     let mut repeat: LONGLONG = 0;
     let mut startpos: LONGLONG = 0;
     let mut elemnum: LONGLONG = 0;
-    let mut readptr: LONGLONG = 0;
+    let mut readptr: LONGLONG;
     let mut tnull: LONGLONG = 0;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: usize = 0;
-    let mut rowincre: LONGLONG = 0;
-    let mut maxelem: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: usize;
+    let mut rowincre: LONGLONG;
+    let mut maxelem: LONGLONG;
     let mut tform: [c_char; 20] = [0; 20];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut snull: [c_char; 20] = [0; 20]; /*  the FITS null value if reading from ASCII table  */
     let mut buffer: [f64; DBUFFSIZE as usize / mem::size_of::<f64>()] =
         [0.0; DBUFFSIZE as usize / mem::size_of::<f64>()]; /* align cbuff on word boundary */
 
-    let mut u: c_char = 0;
+    let u: c_char;
 
     if *status > 0 || nelem == 0 {
         /* inherit input status value if > 0 */
@@ -1405,7 +1293,7 @@ pub(crate) fn ffgclb(
             Some(&mut decimals),
             status,
         );
-        for ii in 0..(decimals as usize) {
+        for _ii in 0..(decimals as usize) {
             power *= 10.0;
         }
     }
@@ -1860,7 +1748,7 @@ pub(crate) fn fffi1i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -1961,7 +1849,7 @@ pub(crate) fn fffi1i1_inplace(
     anynul: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2060,7 +1948,7 @@ pub(crate) fn fffi2i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2177,7 +2065,7 @@ pub(crate) fn fffi4i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2295,8 +2183,8 @@ pub(crate) fn fffi8i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
-    let mut ulltemp: ULONGLONG = 0;
+    let mut dvalue: f64;
+    let mut ulltemp: ULONGLONG;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2452,9 +2340,8 @@ pub(crate) fn fffr4i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2503,7 +2390,6 @@ pub(crate) fn fffr4i1(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
 
-            let ii = 0;
             for ii in 0..(ntodo as usize) {
                 let iret = fnan(shortBuffer[sptr]);
                 if 0 != iret {
@@ -2536,7 +2422,6 @@ pub(crate) fn fffr4i1(
         } else {
             /* must scale the data */
 
-            let ii = 0;
             for ii in 0..(ntodo as usize) {
                 let iret = fnan(shortBuffer[sptr]);
                 if 0 != iret {
@@ -2610,9 +2495,9 @@ pub(crate) fn fffr8i1(
     output: &mut [u8],          /* O - array of converted pixels           */
     status: &mut c_int,         /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
     let mut sptr = 0;
-    let mut iret = 0;
+    let mut iret;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2768,16 +2653,15 @@ pub(crate) fn fffstri1(
     output: &mut [u8],              /* O - array of converted pixels          */
     status: &mut c_int,             /* IO - error status                       */
 ) -> c_int {
-    let mut dvalue: f64 = 0.0;
+    let mut dvalue: f64;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let tempstore: c_char = 0;
     let chrzero: c_char = bb(b'0'); // 49
-    let mut val: f64 = 0.0;
-    let mut power: f64 = 0.0;
-    let mut exponent: c_int = 0;
-    let mut sign: c_int = 0;
-    let mut esign: c_int = 0;
-    let mut decpt: c_int = 0;
+    let mut val: f64;
+    let mut power: f64;
+    let mut exponent: c_int;
+    let mut sign: c_int;
+    let mut esign: c_int;
+    let mut decpt: c_int;
 
     let nullen = strlen_safe(snull);
     let mut cptr: usize = 0; /* pointer to start of input string */

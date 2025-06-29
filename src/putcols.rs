@@ -6,7 +6,7 @@
 /*  Goddard Space Flight Center.                                           */
 use core::slice;
 use std::ffi::CStr;
-use std::{cmp, mem, ptr};
+use std::{cmp, mem};
 
 use crate::c_types::*;
 
@@ -67,31 +67,27 @@ pub fn ffpcls_safe(
     array: &[&[c_char]], /* I - array of pointers to strings            */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    let mut tcode: c_int = 0;
+    let mut tcode: c_int;
     let mut maxelem: c_int = 0;
     let mut hdutype: c_int = 0;
-    let mut nchar: c_int = 0;
+    let nchar: c_int;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: c_long = 0;
-    let jj: c_long = 0;
-    let mut ntodo: c_long = 0;
+    let mut ntodo: c_long;
     let mut repeat: LONGLONG = 0;
     let mut startpos: LONGLONG = 0;
     let mut elemnum: LONGLONG = 0;
-    let mut wrtptr: LONGLONG = 0;
+    let mut wrtptr: LONGLONG;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: LONGLONG;
     let mut tnull: LONGLONG = 0;
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut tform: [c_char; 20] = [0; 20];
-    let mut blanks: &[c_char];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut snull: [c_char; 20] = [0; 20]; /*  the FITS null value  */
-    let colptr: *mut tcolumn = ptr::null_mut();
     let mut cbuff: [f64; DBUFFSIZE as usize / mem::size_of::<f64>()] =
         [0.0; DBUFFSIZE as usize / mem::size_of::<f64>()]; /* align cbuff on word boundary */
 
@@ -123,7 +119,7 @@ pub fn ffpcls_safe(
         return *status;
     }
 
-    let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+    /* point to first column structure */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = (colnum - 1) as usize; /* offset to the correct column */
 
@@ -254,7 +250,7 @@ pub fn ffpcls_safe(
         let buffer: &mut [c_char] = cast_slice_mut(&mut cbuff);
         let mut bi = 0;
         /* copy the user's strings into the buffer */
-        for ii in 0..(ntodo as usize) {
+        for _ii in 0..(ntodo as usize) {
             let arrayptr = array[next as usize];
             let mut ai = 0;
 

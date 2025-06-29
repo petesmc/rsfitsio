@@ -217,7 +217,6 @@ pub(crate) fn ffgcls(
     let mut intcol: c_int = 0;
     let mut dwidth: c_int = 0;
     let mut nulwidth: c_int = 0;
-    let ll: c_int = 0;
     let mut dlen: c_int = 0;
     let mut equivtype: c_int = 0;
     let mut jj: usize = 0;
@@ -1013,16 +1012,14 @@ pub(crate) fn ffgcls2(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,        /* IO - error status                           */
 ) -> c_int {
-    let mut dtemp: f64 = 0.0;
-    let mut nullen: c_long = 0;
-    let mut tcode: c_int = 0;
+    let dtemp: f64;
+    let mut nullen: c_long;
+    let mut tcode: c_int;
     let mut maxelem: c_int = 0;
     let mut hdutype: c_int = 0;
     let mut nulcheck = NullCheckType::None;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: c_long = 0;
-    let jj: c_long = 0;
     let mut ntodo: c_long = 0;
     let mut repeat: LONGLONG = 0;
     let mut startpos: LONGLONG = 0;
@@ -1030,9 +1027,9 @@ pub(crate) fn ffgcls2(
     let mut readptr: LONGLONG = 0;
     let mut tnull: LONGLONG = 0;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: LONGLONG;
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut tform: [c_char; 20] = [0; 20];
@@ -1040,7 +1037,6 @@ pub(crate) fn ffgcls2(
     let mut snull: [c_char; 20] = [0; 20]; /*  the FITS null value  */
     let mut cbuff: [f64; DBUFFSIZE as usize / mem::size_of::<f64>()] =
         [0.0; DBUFFSIZE as usize / mem::size_of::<f64>()]; /* align cbuff on word boundary */
-    let buffer: *mut c_char = std::ptr::null_mut::<c_char>();
     let mut arrayptr;
 
     if *status > 0 || nelem == 0 {

@@ -329,10 +329,10 @@ pub fn ffp3duk_safe(
     narray = 0; /* next pixel in input array to be written */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* writing naxis1 pixels to each row            */
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffpcluk_safe(
                 fptr,
                 2,
@@ -507,14 +507,14 @@ pub fn ffpssuk_safe(
 
     astart = 0;
 
-    for i7 in 0..irange[6] {
-        for i6 in 0..irange[5] {
-            for i5 in 0..irange[4] {
-                for i4 in 0..irange[3] {
-                    for i3 in 0..irange[2] {
+    for _i7 in 0..irange[6] {
+        for _i6 in 0..irange[5] {
+            for _i5 in 0..irange[4] {
+                for _i4 in 0..irange[3] {
+                    for _i3 in 0..irange[2] {
                         pstart = st1 + st2 + st3 + st4 + st5 + st6 + st7;
 
-                        for i2 in 0..irange[1] {
+                        for _i2 in 0..irange[1] {
                             if ffpcluk_safe(
                                 fptr,
                                 2,
@@ -1034,7 +1034,7 @@ pub fn ffpcnuk_safe(
         return *status;
     }
 
-    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    /* set pointer to first column */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* offset to correct column structure */
 

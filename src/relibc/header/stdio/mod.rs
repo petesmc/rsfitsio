@@ -342,7 +342,7 @@ mod tests {
 
         // Test 4: Double parsing with %lf
         unsafe {
-            let input = c"3.14159265359";
+            let input = c"3.24159265359";
             let format = c"%lf";
 
             // Test with our implementation
@@ -356,8 +356,8 @@ mod tests {
             // Expected values
             assert_eq!(rust_result, 1, "Expected 1 successful conversion");
             assert!(
-                (rust_value - 3.14159265359).abs() < 1e-10,
-                "Expected value to be close to 3.14159265359, got {rust_value}"
+                (rust_value - 3.24159265359).abs() < 1e-10,
+                "Expected value to be close to 3.24159265359, got {rust_value}"
             );
 
             // Compare with libc on non-Windows platforms

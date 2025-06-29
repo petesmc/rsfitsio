@@ -353,7 +353,7 @@ impl VaListCache {
 
             // Add the value to the cache
             self.args.push(match default {
-                Some((fmtkind, intkind)) => ap.arg(),
+                Some((_fmtkind, _intkind)) => ap.arg(),
                 None => ap.arg(),
             });
 
@@ -622,7 +622,7 @@ impl Iterator for PrintfIter {
             self.format = self.format.add(1);
 
             let mut peekahead = self.format;
-            let index = pop_index(&mut peekahead).inspect(|i| {
+            let index = pop_index(&mut peekahead).inspect(|_i| {
                 self.format = peekahead;
             });
 
@@ -732,7 +732,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
 
         for section in iterator {
             let arg = match section {
-                Ok(PrintfFmt::Plain(text)) => continue,
+                Ok(PrintfFmt::Plain(_text)) => continue,
                 Ok(PrintfFmt::Arg(arg)) => arg,
                 Err(()) => return Ok(-1),
             };
@@ -816,7 +816,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     let string = match varargs.get(index, &mut ap, Some((arg.fmtkind, arg.intkind)))
                     {
                         VaArg::c_char(i) => i.to_string(),
-                        VaArg::c_double(i) => panic!("this should not be possible"),
+                        VaArg::c_double(_i) => panic!("this should not be possible"),
                         VaArg::c_int(i) => i.to_string(),
                         VaArg::c_long(i) => i.to_string(),
                         VaArg::c_longlong(i) => i.to_string(),
@@ -865,7 +865,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     let string = match varargs.get(index, &mut ap, Some((arg.fmtkind, arg.intkind)))
                     {
                         VaArg::c_char(i) => fmt_int(fmt, i as c_uchar),
-                        VaArg::c_double(i) => panic!("this should not be possible"),
+                        VaArg::c_double(_i) => panic!("this should not be possible"),
                         VaArg::c_int(i) => fmt_int(fmt, i as c_uint),
                         VaArg::c_long(i) => fmt_int(fmt, i as c_ulong),
                         VaArg::c_longlong(i) => fmt_int(fmt, i as c_ulonglong),

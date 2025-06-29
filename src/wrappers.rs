@@ -647,7 +647,7 @@ mod tests {
         // Test with empty string
         let s: &[c_char] = bytemuck::cast_slice(b"\0");
         let mut endps: *mut libc::c_char = std::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -656,7 +656,7 @@ mod tests {
         // Test with only whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   \0");
         let mut endps: *mut libc::c_char = std::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -665,7 +665,7 @@ mod tests {
         // Test with only invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"abcde\0");
         let mut endps: *mut libc::c_char = std::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());

@@ -85,7 +85,7 @@ pub fn ffcsum_safe(
       the FITSIO file pointer points to the start of the records to be summed.
       Read each FITS block as 1440 short values (do byte swapping if needed).
     */
-    for jj in 0..nrec {
+    for _jj in 0..nrec {
         ffgbyt(fptr, 2880, cast_slice_mut(&mut sbuf), status);
         if BYTESWAPPED {
             /* reverse order of bytes in each value */

@@ -194,20 +194,19 @@ pub fn ffpclu_safe(
     let mut i4null: c_int = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: LONGLONG = 0;
     let mut largeelem: LONGLONG = 0;
-    let mut nelem: LONGLONG = 0;
+    let mut nelem: LONGLONG;
     let mut tnull: LONGLONG = 0;
     let mut i8null: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
     let mut startpos: LONGLONG = 0;
     let mut elemnum: LONGLONG = 0;
-    let mut wrtptr: LONGLONG = 0;
+    let mut wrtptr: LONGLONG;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: LONGLONG = 0;
-    let mut ntodo: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: LONGLONG;
+    let mut ntodo: LONGLONG;
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut i1null: c_uchar = 0;
@@ -345,37 +344,37 @@ pub fn ffpclu_safe(
 
         match tcode {
             TBYTE => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 1, &[i1null], status);
                 }
             }
             TSHORT => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 2, cast_slice(&[i2null]), status);
                 }
             }
             TLONG => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 4, cast_slice(&[i4null]), status);
                 }
             }
             TLONGLONG => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 8, cast_slice(&[i8null]), status);
                 }
             }
             TFLOAT => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 4, cast_slice(&jbuff), status);
                 }
             }
             TDOUBLE => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 8, cast_slice(&jbuff), status);
                 }
             }
             TLOGICAL => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 1, cast_slice(&[lognul]), status);
                 }
             }
@@ -467,7 +466,6 @@ pub(crate) fn ffpcluc(
     let mut i4null: c_int = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: LONGLONG = 0;
     let mut tnull: LONGLONG = 0;
     let mut i8null: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
@@ -475,10 +473,10 @@ pub(crate) fn ffpcluc(
     let mut elemnum: LONGLONG = 0;
     let mut wrtptr: LONGLONG = 0;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: LONGLONG = 0;
-    let mut ntodo: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: LONGLONG;
+    let mut ntodo: LONGLONG;
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut i1null: c_uchar = 0;
@@ -609,37 +607,37 @@ pub(crate) fn ffpcluc(
 
         match tcode {
             TBYTE => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 1, &[i1null], status);
                 }
             }
             TSHORT => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 2, cast_slice(&[i2null]), status);
                 }
             }
             TLONG => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 4, cast_slice(&[i4null]), status);
                 }
             }
             TLONGLONG => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 8, cast_slice(&[i8null]), status);
                 }
             }
             TFLOAT => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 4, cast_slice(&jbuff), status);
                 }
             }
             TDOUBLE => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 8, cast_slice(&jbuff), status);
                 }
             }
             TLOGICAL => {
-                for ii in 0..(ntodo as usize) {
+                for _ii in 0..(ntodo as usize) {
                     ffpbyt(fptr, 1, cast_slice(&[lognul]), status);
                 }
             }
@@ -750,10 +748,10 @@ pub fn ffprwu_safe(
 ) -> c_int {
     let mut ntotrows: LONGLONG = 0;
     let mut ncols: c_int = 0;
-    let mut typecode: c_int = 0;
-    let mut repeat: LONGLONG = 0;
-    let mut width = 0;
-    let mut nullstatus: c_int = 0;
+    let mut typecode: c_int;
+    let mut repeat: LONGLONG;
+    let mut width;
+    let mut nullstatus: c_int;
 
     if *status > 0 {
         return *status;

@@ -25,11 +25,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use core::slice;
 
 use libc::fwrite;
-use std::{
-    cmp,
-    ffi::CStr,
-    ptr::{self},
-};
+use std::{cmp, ffi::CStr};
 
 /*--------------------------------------------------------------------------*/
 /// copy the CHDU from infptr to the CHDU of outfptr.
@@ -228,14 +224,11 @@ pub unsafe fn ffcphd_safer(
 ) -> c_int {
     unsafe {
         let mut nkeys: c_int = 0;
-        let ii: c_int = 0;
         let mut inPrim: c_int = 0;
         let mut outPrim: c_int = 0;
         let mut naxis: c_long = 0;
         let naxes: [c_long; 1] = [0; 1];
-        let card: *mut c_char = ptr::null_mut();
         let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let tmpbuff2: *mut c_char = ptr::null_mut();
 
         if *status > 0 {
             return *status;
@@ -505,7 +498,6 @@ pub fn ffcpdt_safe(
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
     let mut nb: c_long = 0;
-    let ii: c_long = 0;
     let mut indatastart: LONGLONG = 0;
     let mut indataend: LONGLONG = 0;
     let mut outdatastart: LONGLONG = 0;
@@ -534,7 +526,7 @@ pub fn ffcpdt_safe(
             unreachable!(
                 "Above ptr comparison prevents us from landing here. Matching original code"
             );
-            for ii in 0..(nb as usize) {
+            for _ii in 0..(nb as usize) {
                 ffmbyt_safe(infptr, indatastart, REPORT_EOF, status);
                 ffgbyt(infptr, IOBUFLEN, cast_slice_mut(&mut buffer), status); /* read input block */
 
@@ -550,7 +542,7 @@ pub fn ffcpdt_safe(
             ffmbyt_safe(infptr, indatastart, REPORT_EOF, status);
             ffmbyt_safe(outfptr, outdatastart, IGNORE_EOF, status);
 
-            for ii in 0..(nb as usize) {
+            for _ii in 0..(nb as usize) {
                 ffgbyt(infptr, IOBUFLEN, cast_slice_mut(&mut buffer), status); /* read input block */
                 ffpbyt(outfptr, IOBUFLEN, cast_slice_mut(&mut buffer), status); /* write output block */
             }
@@ -691,12 +683,11 @@ pub unsafe fn ffiimgll_safer(
         let mut bytlen: c_int = 0;
         let mut nexthdu: c_int = 0;
         let mut maxhdu: c_int = 0;
-        let ii: c_int = 0;
         let mut onaxis: c_int = 0;
-        let mut nblocks: c_long = 0;
-        let mut npixels: LONGLONG = 0;
-        let mut newstart: LONGLONG = 0;
-        let mut datasize: LONGLONG = 0;
+
+        let mut npixels: LONGLONG;
+        let newstart: LONGLONG;
+
         let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         let mut naxiskey: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -784,8 +775,8 @@ pub unsafe fn ffiimgll_safer(
             npixels *= naxes[ii];
         }
 
-        datasize = npixels * bytlen as LONGLONG; /* size of image in bytes */
-        nblocks = (((datasize + (BL!() - 1)) / BL!()) + 1) as c_long; /* +1 for the header */
+        let datasize: LONGLONG = npixels * bytlen as LONGLONG; /* size of image in bytes */
+        let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + 1) as c_long; /* +1 for the header */
 
         if fptr.Fptr.writemode == READWRITE
         /* must have write access */

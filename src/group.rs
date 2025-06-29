@@ -88,10 +88,10 @@ pub unsafe extern "C" fn ffgtcr(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtcr_safe(
-    fptr: &mut fitsfile, /* FITS file pointer                         */
-    grpname: &[c_char],  /* name of the grouping table                */
-    grouptype: c_int,    /* code specifying the type of  */
-    status: &mut c_int,  /* return status code                        */
+    _fptr: &mut fitsfile, /* FITS file pointer                         */
+    _grpname: &[c_char],  /* name of the grouping table                */
+    _grouptype: c_int,    /* code specifying the type of  */
+    _status: &mut c_int,  /* return status code                        */
 ) -> c_int {
     todo!();
 }
@@ -138,10 +138,10 @@ pub unsafe extern "C" fn ffgtis(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtis_safe(
-    fptr: &mut fitsfile, /* FITS file pointer                         */
-    grpname: &[c_char],  /* name of the grouping table                */
-    grouptype: c_int,    /* code specifying the type of  */
-    status: &mut c_int,  /* return status code                        */
+    _fptr: &mut fitsfile, /* FITS file pointer                         */
+    _grpname: &[c_char],  /* name of the grouping table                */
+    _grouptype: c_int,    /* code specifying the type of  */
+    _status: &mut c_int,  /* return status code                        */
 ) -> c_int {
     todo!();
 }
@@ -193,9 +193,9 @@ pub unsafe extern "C" fn ffgtch(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtch_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer                         */
-    grouptype: c_int,     /* code specifying the type of  */
-    status: &mut c_int,   /* return status code                        */
+    _gfptr: &mut fitsfile, /* FITS file pointer                         */
+    _grouptype: c_int,     /* code specifying the type of  */
+    _status: &mut c_int,   /* return status code                        */
 ) -> c_int {
     todo!();
 }
@@ -235,13 +235,13 @@ pub unsafe extern "C" fn ffgtrm(
 /// tables are also updated. The CHDU of the FITS file pointed to by gfptr must
 /// be positioned to the grouping table to be deleted.
 pub fn ffgtrm_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer to group                   */
-    rmopt: c_int,         /* code specifying if member
-                          elements are to be deleted:
-                          OPT_RM_GPT ==> remove only group table
-                          OPT_RM_ALL ==> recursively remove members
-                          and their members (if groups)                */
-    status: &mut c_int, /* return status code                           */
+    _gfptr: &mut fitsfile, /* FITS file pointer to group                   */
+    _rmopt: c_int,         /* code specifying if member
+                           elements are to be deleted:
+                           OPT_RM_GPT ==> remove only group table
+                           OPT_RM_ALL ==> recursively remove members
+                           and their members (if groups)                */
+    _status: &mut c_int, /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -292,13 +292,13 @@ pub unsafe extern "C" fn ffgtcp(
 /// to perform the group table copy. In the case of cpopt == OPT_GCP_GPT
 /// ffgtcpr() does not actually use recursion.
 pub fn ffgtcp_safe(
-    infptr: &mut fitsfile,  /* input FITS file pointer                     */
-    outfptr: &mut fitsfile, /* output FITS file pointer                    */
-    cpopt: c_int,           /* code specifying copy options:
-                            OPT_GCP_GPT (0) ==> copy only grouping table
-                            OPT_GCP_ALL (2) ==> recusrively copy members
-                            and their members (if  groups)                  */
-    status: &mut c_int, /* return status code                          */
+    _infptr: &mut fitsfile,  /* input FITS file pointer                     */
+    _outfptr: &mut fitsfile, /* output FITS file pointer                    */
+    _cpopt: c_int,           /* code specifying copy options:
+                             OPT_GCP_GPT (0) ==> copy only grouping table
+                             OPT_GCP_ALL (2) ==> recusrively copy members
+                             and their members (if  groups)                  */
+    _status: &mut c_int, /* return status code                          */
 ) -> c_int {
     todo!()
 }
@@ -342,12 +342,12 @@ pub unsafe extern "C" fn ffgtmg(
 /// is OPT_MRG_MOV then the source grouping table is deleted after the merge,
 /// and all member HDUs are updated accordingly.
 pub fn ffgtmg_safe(
-    infptr: &mut fitsfile,  /* FITS file ptr to source grouping table      */
-    outfptr: &mut fitsfile, /* FITS file ptr to target grouping table      */
-    mgopt: c_int,           /* code specifying merge options:
-                            OPT_MRG_COPY (0) ==> copy members to target group, leaving source group in place
-                            OPT_MRG_MOV  (1) ==> move members to target group, source group is deleted after merge    */
-    status: &mut c_int, /* return status code                         */
+    _infptr: &mut fitsfile,  /* FITS file ptr to source grouping table      */
+    _outfptr: &mut fitsfile, /* FITS file ptr to target grouping table      */
+    _mgopt: c_int,           /* code specifying merge options:
+                             OPT_MRG_COPY (0) ==> copy members to target group, leaving source group in place
+                             OPT_MRG_MOV  (1) ==> move members to target group, source group is deleted after merge    */
+    _status: &mut c_int, /* return status code                         */
 ) -> c_int {
     todo!();
 }
@@ -387,11 +387,11 @@ pub unsafe extern "C" fn ffgtcm(
 /// table contains no members that are themselves grouping tables then this
 /// function performs a NOOP.
 pub fn ffgtcm_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
-    cmopt: c_int,         /* code specifying compact options
-                          OPT_CMT_MBR      (1) ==> compact only direct members (if groups)
-                          OPT_CMT_MBR_DEL (11) ==> (1) + delete all compacted groups    */
-    status: &mut c_int, /* return status code                           */
+    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
+    _cmopt: c_int,         /* code specifying compact options
+                           OPT_CMT_MBR      (1) ==> compact only direct members (if groups)
+                           OPT_CMT_MBR_DEL (11) ==> (1) + delete all compacted groups    */
+    _status: &mut c_int, /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -424,9 +424,9 @@ pub unsafe extern "C" fn ffgtvf(
 /// verification if positive or the first group link to fail if negative;
 /// otherwise firstfailed contains a return value of 0.
 pub fn ffgtvf_safe(
-    gfptr: &mut fitsfile,     /* FITS file pointer to group             */
-    firstfailed: &mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
-    status: &mut c_int,       /* return status code                     */
+    _gfptr: &mut fitsfile,     /* FITS file pointer to group             */
+    _firstfailed: &mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
+    _status: &mut c_int,       /* return status code                     */
 ) -> c_int {
     todo!();
 }
@@ -478,10 +478,10 @@ pub unsafe extern "C" fn ffgtop(
 /// identify the (grpid)th GRPID value. In the above example, if grpid == 3,
 /// then the group specified by GRPID5 would be opened.
 pub fn ffgtop_safe(
-    mfptr: &mut fitsfile,      /* FITS file pointer to the member HDU          */
-    grpid: c_int,              /* group ID (GRPIDn index) within member HDU    */
-    gfptr: &mut *mut fitsfile, /* FITS file pointer to grouping table HDU      */
-    status: &mut c_int,        /* return status code                           */
+    _mfptr: &mut fitsfile,      /* FITS file pointer to the member HDU          */
+    _grpid: c_int,              /* group ID (GRPIDn index) within member HDU    */
+    _gfptr: &mut *mut fitsfile, /* FITS file pointer to grouping table HDU      */
+    _status: &mut c_int,        /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -529,10 +529,10 @@ pub unsafe extern "C" fn ffgtam(
 /// Note that if the member HDU to be added to the grouping table is already
 /// a member of the group then it will not be added a sceond time.
 pub fn ffgtam_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer to grouping table HDU     */
-    mfptr: &mut fitsfile, /* FITS file pointer to member HDU             */
-    hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
-    status: &mut c_int, /* return status code                          */
+    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table HDU     */
+    _mfptr: &mut fitsfile, /* FITS file pointer to member HDU             */
+    _hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
+    _status: &mut c_int, /* return status code                          */
 ) -> c_int {
     todo!();
 }
@@ -630,9 +630,9 @@ pub unsafe extern "C" fn ffgmng(
 /// keywords are checked to make sure they are continuous (ie no gaps) and
 /// are re-enumerated to eliminate gaps if gaps are found to be present.
 pub fn ffgmng_safe(
-    mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
-    ngroups: *mut c_long, /* total number of groups linked to HDU       */
-    status: &mut c_int,   /* return status code                         */
+    _mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
+    _ngroups: *mut c_long, /* total number of groups linked to HDU       */
+    _status: &mut c_int,   /* return status code                         */
 ) -> c_int {
     todo!();
 }
@@ -680,10 +680,10 @@ pub unsafe extern "C" fn ffgmop(
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
 pub fn ffgmop_safe(
-    gfptr: *mut fitsfile,      /* FITS file pointer to grouping table          */
-    member: c_long,            /* member ID (row num) within grouping table    */
-    mfptr: *mut *mut fitsfile, /* FITS file pointer to member HDU              */
-    status: *mut c_int,        /* return status code                           */
+    _gfptr: *mut fitsfile,      /* FITS file pointer to grouping table          */
+    _member: c_long,            /* member ID (row num) within grouping table    */
+    _mfptr: *mut *mut fitsfile, /* FITS file pointer to member HDU              */
+    _status: *mut c_int,        /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -734,17 +734,17 @@ pub unsafe extern "C" fn ffgmcp(
 /// combination of XTENSION, EXTNAME and EXVTER is unique within its new
 /// FITS file.
 pub fn ffgmcp_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer to group                   */
-    mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
-    member: c_long,       /* member ID (row num) within grouping table    */
-    cpopt: c_int,         /* code specifying copy options:
-                          OPT_MCP_ADD  (0) ==> add copied member to the
-                                              grouping table
-                          OPT_MCP_NADD (1) ==> do not add member copy to
-                                              the grouping table
-                          OPT_MCP_REPL (2) ==> replace current member
-                                              entry with member copy  */
-    status: &mut c_int, /* return status code                           */
+    _gfptr: &mut fitsfile, /* FITS file pointer to group                   */
+    _mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
+    _member: c_long,       /* member ID (row num) within grouping table    */
+    _cpopt: c_int,         /* code specifying copy options:
+                           OPT_MCP_ADD  (0) ==> add copied member to the
+                                               grouping table
+                           OPT_MCP_NADD (1) ==> do not add member copy to
+                                               the grouping table
+                           OPT_MCP_REPL (2) ==> replace current member
+                                               entry with member copy  */
+    _status: &mut c_int, /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -787,13 +787,13 @@ pub unsafe extern "C" fn ffgmtf(
 /// source group after the transfer to the destination group. The member to be
 /// transfered is identified by its row number within the source grouping table.
 pub fn ffgmtf_safe(
-    infptr: &mut fitsfile,  /* FITS file pointer to source grouping table */
-    outfptr: &mut fitsfile, /* FITS file pointer to target grouping table */
-    member: c_long,         /* member ID within source grouping table     */
-    tfopt: c_int,           /* code specifying transfer opts:
-                            OPT_MCP_ADD (0) ==> copy member to dest.
-                            OPT_MCP_MOV (3) ==> move member to dest.   */
-    status: &mut c_int, /* return status code                         */
+    _infptr: &mut fitsfile,  /* FITS file pointer to source grouping table */
+    _outfptr: &mut fitsfile, /* FITS file pointer to target grouping table */
+    _member: c_long,         /* member ID within source grouping table     */
+    _tfopt: c_int,           /* code specifying transfer opts:
+                             OPT_MCP_ADD (0) ==> copy member to dest.
+                             OPT_MCP_MOV (3) ==> move member to dest.   */
+    _status: &mut c_int, /* return status code                         */
 ) -> c_int {
     todo!();
 }
@@ -832,12 +832,12 @@ pub unsafe extern "C" fn ffgmrm(
 /// HDU's header shall be updated accordingly) or if the member HDU shall
 /// itself be removed from its FITS file.
 pub fn ffgmrm_safe(
-    gfptr: &mut fitsfile, /* FITS file pointer to group table             */
-    member: c_long,       /* member ID (row num) in the group             */
-    rmopt: c_int,         /* code specifying the delete option:
-                          OPT_RM_ENTRY ==> delete the member entry
-                          OPT_RM_MBR   ==> delete entry and member HDU */
-    status: &mut c_int, /* return status code                          */
+    _gfptr: &mut fitsfile, /* FITS file pointer to group table             */
+    _member: c_long,       /* member ID (row num) in the group             */
+    _rmopt: c_int,         /* code specifying the delete option:
+                           OPT_RM_ENTRY ==> delete the member entry
+                           OPT_RM_MBR   ==> delete entry and member HDU */
+    _status: &mut c_int, /* return status code                          */
 ) -> c_int {
     todo!();
 }
@@ -852,22 +852,22 @@ pub fn ffgmrm_safe(
 /// an index of 0 is returned. the grptype parameter returns the structure
 /// of the grouping table ==> what columns are defined.
 pub(crate) fn ffgtgc(
-    gfptr: &mut fitsfile,    /* pointer to the grouping table                */
-    xtensionCol: &mut c_int, /* column ID of the MEMBER_XTENSION column      */
-    extnameCol: &mut c_int,  /* column ID of the MEMBER_NAME column          */
-    extverCol: &mut c_int,   /* column ID of the MEMBER_VERSION column       */
-    positionCol: &mut c_int, /* column ID of the MEMBER_POSITION column      */
-    locationCol: &mut c_int, /* column ID of the MEMBER_LOCATION column      */
-    uriCol: &mut c_int,      /* column ID of the MEMBER_URI_TYPE column      */
-    grptype: &mut c_int,     /* group structure type code specifying the
-                             grouping table columns that are defined:
-                             GT_ID_ALL_URI  (0) ==> all columns defined
-                             GT_ID_REF      (1) ==> reference cols only
-                             GT_ID_POS      (2) ==> position col only
-                             GT_ID_ALL      (3) ==> ref & pos cols
-                             GT_ID_REF_URI (11) ==> ref & loc cols
-                             GT_ID_POS_URI (12) ==> pos & loc cols        */
-    status: &mut c_int, /* return status code                           */
+    _gfptr: &mut fitsfile,    /* pointer to the grouping table                */
+    _xtensionCol: &mut c_int, /* column ID of the MEMBER_XTENSION column      */
+    _extnameCol: &mut c_int,  /* column ID of the MEMBER_NAME column          */
+    _extverCol: &mut c_int,   /* column ID of the MEMBER_VERSION column       */
+    _positionCol: &mut c_int, /* column ID of the MEMBER_POSITION column      */
+    _locationCol: &mut c_int, /* column ID of the MEMBER_LOCATION column      */
+    _uriCol: &mut c_int,      /* column ID of the MEMBER_URI_TYPE column      */
+    _grptype: &mut c_int,     /* group structure type code specifying the
+                              grouping table columns that are defined:
+                              GT_ID_ALL_URI  (0) ==> all columns defined
+                              GT_ID_REF      (1) ==> reference cols only
+                              GT_ID_POS      (2) ==> position col only
+                              GT_ID_ALL      (3) ==> ref & pos cols
+                              GT_ID_REF_URI (11) ==> ref & loc cols
+                              GT_ID_POS_URI (12) ==> pos & loc cols        */
+    _status: &mut c_int, /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -877,14 +877,14 @@ pub(crate) fn ffgtgc(
 /// format the get functions expect.  Particularly want to check widths of
 /// string columns.
 pub(crate) fn ffvcfm(
-    gfptr: &mut fitsfile,
-    xtensionCol: c_int,
-    extnameCol: c_int,
-    extverCol: c_int,
-    positionCol: c_int,
-    locationCol: c_int,
-    uriCol: c_int,
-    status: &mut c_int,
+    _gfptr: &mut fitsfile,
+    _xtensionCol: c_int,
+    _extnameCol: c_int,
+    _extverCol: c_int,
+    _positionCol: c_int,
+    _locationCol: c_int,
+    _uriCol: c_int,
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -897,24 +897,24 @@ pub(crate) fn ffvcfm(
 /// and TTFORM[] arrays must contain enough pre-allocated strings to hold
 /// the returned information.
 pub(crate) fn ffgtdc(
-    grouptype: c_int,            /* code specifying the type of
-                                 grouping table information:
-                                 GT_ID_ALL_URI  0 ==> defualt (all columns)
-                                 GT_ID_REF      1 ==> ID by reference
-                                 GT_ID_POS      2 ==> ID by position
-                                 GT_ID_ALL      3 ==> ID by ref. and position
-                                 GT_ID_REF_URI 11 ==> (1) + URI info
-                                 GT_ID_POS_URI 12 ==> (2) + URI info       */
-    xtensioncol: c_int,          /* does MEMBER_XTENSION already exist?         */
-    extnamecol: c_int,           /* does MEMBER_NAME aleady exist?              */
-    extvercol: c_int,            /* does MEMBER_VERSION already exist?          */
-    positioncol: c_int,          /* does MEMBER_POSITION already exist?         */
-    locationcol: c_int,          /* does MEMBER_LOCATION already exist?         */
-    uricol: c_int,               /* does MEMBER_URI_TYPE aleardy exist?         */
-    ttype: &[Option<&[c_char]>], /* array of grouping table column TTYPE names to define (if *col var false)               */
-    tform: &[Option<&[c_char]>], /* array of grouping table column TFORM values to define (if*col variable false)           */
-    ncols: &mut c_int,           /* number of TTYPE and TFORM values returned   */
-    status: &mut c_int,          /* return status code                          */
+    _grouptype: c_int,            /* code specifying the type of
+                                  grouping table information:
+                                  GT_ID_ALL_URI  0 ==> defualt (all columns)
+                                  GT_ID_REF      1 ==> ID by reference
+                                  GT_ID_POS      2 ==> ID by position
+                                  GT_ID_ALL      3 ==> ID by ref. and position
+                                  GT_ID_REF_URI 11 ==> (1) + URI info
+                                  GT_ID_POS_URI 12 ==> (2) + URI info       */
+    _xtensioncol: c_int, /* does MEMBER_XTENSION already exist?         */
+    _extnamecol: c_int,  /* does MEMBER_NAME aleady exist?              */
+    _extvercol: c_int,   /* does MEMBER_VERSION already exist?          */
+    _positioncol: c_int, /* does MEMBER_POSITION already exist?         */
+    _locationcol: c_int, /* does MEMBER_LOCATION already exist?         */
+    _uricol: c_int,      /* does MEMBER_URI_TYPE aleardy exist?         */
+    _ttype: &[Option<&[c_char]>], /* array of grouping table column TTYPE names to define (if *col var false)               */
+    _tform: &[Option<&[c_char]>], /* array of grouping table column TFORM values to define (if*col variable false)           */
+    _ncols: &mut c_int,           /* number of TTYPE and TFORM values returned   */
+    _status: &mut c_int,          /* return status code                          */
 ) -> c_int {
     todo!();
 }
@@ -926,10 +926,10 @@ pub(crate) fn ffgtdc(
 /// specifies if the GRPIDn/GRPLCn keywords are to be removed from the
 /// member HDUs header after the unlinking.
 pub(crate) fn ffgmul(
-    mfptr: &mut fitsfile, /* pointer to the grouping table member HDU    */
-    rmopt: c_int,         /* 0 ==> leave GRPIDn/GRPLCn keywords,
-                          1 ==> remove GRPIDn/GRPLCn keywords         */
-    status: &mut c_int, /* return status code                          */
+    _mfptr: &mut fitsfile, /* pointer to the grouping table member HDU    */
+    _rmopt: c_int,         /* 0 ==> leave GRPIDn/GRPLCn keywords,
+                           1 ==> remove GRPIDn/GRPLCn keywords         */
+    _status: &mut c_int, /* return status code                          */
 ) -> c_int {
     todo!();
 }
@@ -947,14 +947,14 @@ pub(crate) fn ffgmul(
 /// is because the position information can become invalid much more
 /// easily then the reference information for a group member.
 pub(crate) fn ffgmf(
-    gfptr: &mut fitsfile,        /* pointer to grouping table HDU to search       */
-    xtension: &[c_char],         /* XTENSION value for member HDU                */
-    extname: &[c_char],          /* EXTNAME value for member HDU                 */
-    extver: c_int,               /* EXTVER value for member HDU                  */
-    position: c_int,             /* HDU position value for member HDU            */
-    location: &mut [c_char],     /* FITS file location value for member HDU      */
-    member: Option<&mut c_long>, /* member HDU ID within group table (if found)  */
-    status: &mut c_int,          /* return status code                           */
+    _gfptr: &mut fitsfile,    /* pointer to grouping table HDU to search       */
+    _xtension: &[c_char],     /* XTENSION value for member HDU                */
+    _extname: &[c_char],      /* EXTNAME value for member HDU                 */
+    _extver: c_int,           /* EXTVER value for member HDU                  */
+    _position: c_int,         /* HDU position value for member HDU            */
+    _location: &mut [c_char], /* FITS file location value for member HDU      */
+    _member: Option<&mut c_long>, /* member HDU ID within group table (if found)  */
+    _status: &mut c_int,      /* return status code                           */
 ) -> c_int {
     todo!();
 }
@@ -971,9 +971,9 @@ pub(crate) fn ffgmf(
 /// is not processed twice, thus avoiding an infinite loop (e.g., a grouping
 /// table contains itself as a member).
 pub(crate) fn ffgtrmr(
-    gfptr: &mut fitsfile, /* FITS file pointer to group               */
-    HDU: &mut HDUtracker, /* list of processed HDUs                   */
-    status: &mut c_int,   /* return status code                       */
+    _gfptr: &mut fitsfile, /* FITS file pointer to group               */
+    _HDU: &mut HDUtracker, /* list of processed HDUs                   */
+    _status: &mut c_int,   /* return status code                       */
 ) -> c_int {
     todo!();
 }
@@ -991,14 +991,14 @@ pub(crate) fn ffgtrmr(
 /// itself whenever a member HDU of the current grouping table is itself a
 /// grouping table (i.e., EXTNAME = 'GROUPING').
 pub(crate) fn ffgtcpr(
-    infptr: &mut fitsfile,  /* input FITS file pointer                 */
-    outfptr: &mut fitsfile, /* output FITS file pointer                */
-    cpopt: c_int,           /* code specifying copy options:
-                            OPT_GCP_GPT (0) ==> cp only grouping table
-                            OPT_GCP_ALL (2) ==> recusrively copy
-                            members and their members (if groups)   */
-    HDU: &mut [HDUtracker], /* list of already copied HDUs             */
-    status: &mut c_int,     /* return status code                      */
+    _infptr: &mut fitsfile,  /* input FITS file pointer                 */
+    _outfptr: &mut fitsfile, /* output FITS file pointer                */
+    _cpopt: c_int,           /* code specifying copy options:
+                             OPT_GCP_GPT (0) ==> cp only grouping table
+                             OPT_GCP_ALL (2) ==> recusrively copy
+                             members and their members (if groups)   */
+    _HDU: &mut [HDUtracker], /* list of already copied HDUs             */
+    _status: &mut c_int,     /* return status code                      */
 ) -> c_int {
     todo!();
 }
@@ -1013,10 +1013,10 @@ pub(crate) fn ffgtcpr(
 /// resides in the HDUtracker then the new HDU postion and file name are
 /// returned in  newPosition and newFileName (if != NULL)
 pub(crate) fn fftsad(
-    mfptr: &mut fitsfile,       /* pointer to an member HDU             */
-    HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
-    newPosition: &mut c_int,    /* new HDU position of the member HDU   */
-    newFileName: &mut [c_char], /* file containing member HDU           */
+    _mfptr: &mut fitsfile,       /* pointer to an member HDU             */
+    _HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
+    _newPosition: &mut c_int,    /* new HDU position of the member HDU   */
+    _newFileName: &mut [c_char], /* file containing member HDU           */
 ) -> c_int {
     todo!();
 }
@@ -1028,10 +1028,10 @@ pub(crate) fn fftsad(
 /// non-NULL the newFileName value is used to update the HDU->newFilename[]
 /// value for mfptr.
 pub(crate) fn fftsud(
-    mfptr: &mut fitsfile,       /* pointer to an member HDU             */
-    HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
-    newPosition: c_int,         /* new HDU position of the member HDU   */
-    newFileName: &mut [c_char], /* file containing member HDU           */
+    _mfptr: &mut fitsfile,       /* pointer to an member HDU             */
+    _HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
+    _newPosition: c_int,         /* new HDU position of the member HDU   */
+    _newFileName: &mut [c_char], /* file containing member HDU           */
 ) -> c_int {
     todo!();
 }
@@ -1042,7 +1042,7 @@ pub(crate) fn fftsud(
 ///
 /// this is necessary so that a standard comparision of keyword values may
 /// be made
-pub(crate) fn prepare_keyvalue(keyvalue: &[c_char]) /* string containing keyword value     */
+pub(crate) fn prepare_keyvalue(_keyvalue: &[c_char]) /* string containing keyword value     */
 {
     todo!();
 }
@@ -1333,7 +1333,6 @@ pub(crate) fn fits_path2url(
 
         let mut i: usize = 0;
         let mut j: usize = 0;
-        let k: isize = 0;
 
         let mut firstColon: bool = true; // first colon encountered
         let mut size: usize = 0;
@@ -1426,9 +1425,9 @@ pub(crate) fn fits_path2url(
 /// platform dependent code segment is conditionally compiled depending
 /// upon the setting of the appropriate C preprocesser macros.
 pub(crate) fn fits_url2path(
-    inpath: &[c_char],      /* input file path string  */
-    outpath: &mut [c_char], /* output file path string */
-    status: &mut c_int,
+    _inpath: &[c_char],      /* input file path string  */
+    _outpath: &mut [c_char], /* output file path string */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -1513,13 +1512,13 @@ pub(crate) fn fits_get_cwd(
 /// It is assumed that the url string has enough room to hold the resulting
 /// URL, and the the accessType string has enough room to hold the access type.
 pub(crate) fn fits_get_url(
-    fptr: &mut fitsfile,      /* I ptr to FITS file to evaluate    */
-    realURL: &mut [c_char],   /* O URL of real FITS file           */
-    startURL: &mut [c_char],  /* O URL of starting FITS file       */
-    realAccess: &mut c_char,  /* O true access method of FITS file */
-    startAccess: &mut c_char, /* O "official" access of FITS file  */
-    iostate: &mut c_int,      /* O can this file be modified?      */
-    status: &mut c_int,
+    _fptr: &mut fitsfile,      /* I ptr to FITS file to evaluate    */
+    _realURL: &mut [c_char],   /* O URL of real FITS file           */
+    _startURL: &mut [c_char],  /* O URL of starting FITS file       */
+    _realAccess: &mut c_char,  /* O true access method of FITS file */
+    _startAccess: &mut c_char, /* O "official" access of FITS file  */
+    _iostate: &mut c_int,      /* O can this file be modified?      */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -1681,10 +1680,10 @@ pub(crate) fn fits_clean_url(
 /// with an access method of ftp:// cannot be expressed a a relative URL to
 /// a local disk file.
 pub(crate) fn fits_url2relurl(
-    refURL: &[c_char],     /* I reference URL string             */
-    absURL: &[c_char],     /* I absoulute URL string to process  */
-    relURL: &mut [c_char], /* O resulting relative URL string    */
-    status: &mut c_int,
+    _refURL: &[c_char],     /* I reference URL string             */
+    _absURL: &[c_char],     /* I absoulute URL string to process  */
+    _relURL: &mut [c_char], /* O resulting relative URL string    */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -1703,10 +1702,10 @@ pub(crate) fn fits_url2relurl(
 /// Note that the relative URL string relURL must conform to the Unix-like
 /// URL syntax; host dependent partial URL strings are not allowed.
 pub fn fits_relurl2url(
-    cwd: [c_char; FLEN_FILENAME], /* I reference URL string             */
-    filename: *mut c_char,        /* I relative URL string to process   */
-    abs_url: [c_char; FLEN_FILENAME], /* O absolute URL string              */
-    status: &mut c_int,
+    _cwd: [c_char; FLEN_FILENAME], /* I reference URL string             */
+    _filename: *mut c_char,        /* I relative URL string to process   */
+    _abs_url: [c_char; FLEN_FILENAME], /* O absolute URL string              */
+    _status: &mut c_int,
 ) -> c_int {
     todo!()
 }
@@ -1822,9 +1821,9 @@ pub(crate) fn fits_encode_url(
 /// This function was adopted from code in the libwww.a library available
 /// via the W3 consortium <URL: http://www.w3.org>
 pub(crate) fn fits_unencode_url(
-    inpath: &[c_char],      /* I input URL with encoding            */
-    outpath: &mut [c_char], /* O unencoded URL                      */
-    status: &mut c_int,
+    _inpath: &[c_char],      /* I input URL with encoding            */
+    _outpath: &mut [c_char], /* O unencoded URL                      */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }

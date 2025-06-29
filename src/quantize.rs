@@ -1037,7 +1037,7 @@ fn FnMeanSigma_short(
     let mut value: usize = 0;
 
     if nullcheck {
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             if array[value] != nullvalue {
                 ngood += 1;
@@ -1049,7 +1049,7 @@ fn FnMeanSigma_short(
         }
     } else {
         ngood = npix;
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             xtemp = array[value].into();
             sum += xtemp;
@@ -1097,7 +1097,7 @@ fn FnMeanSigma_int(
     let mut value: usize = 0;
 
     if nullcheck {
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             if array[value] != nullvalue {
                 ngood += 1;
@@ -1109,7 +1109,7 @@ fn FnMeanSigma_int(
         }
     } else {
         ngood = npix;
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             xtemp = array[value].into();
             sum += xtemp;
@@ -1157,7 +1157,7 @@ fn FnMeanSigma_float(
     let mut value: usize = 0;
 
     if nullcheck {
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             if array[value] != nullvalue {
                 ngood += 1;
@@ -1169,7 +1169,7 @@ fn FnMeanSigma_float(
         }
     } else {
         ngood = npix;
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             xtemp = array[value].into();
             sum += xtemp;
@@ -1217,7 +1217,7 @@ fn FnMeanSigma_double(
     let mut value: usize = 0;
 
     if nullcheck {
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             if array[value] != nullvalue {
                 ngood += 1;
@@ -1229,7 +1229,7 @@ fn FnMeanSigma_double(
         }
     } else {
         ngood = npix;
-        for ii in 0..npix {
+        for _ii in 0..npix {
             //for (ii = 0; ii < npix; ii+=1, value+=1) {
             xtemp = array[value];
             sum += xtemp;
@@ -4411,7 +4411,7 @@ fn FnNoise1_short(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise *= std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4574,7 +4574,7 @@ fn FnNoise1_int(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise *= std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4737,7 +4737,7 @@ fn FnNoise1_float(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise *= std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4900,7 +4900,7 @@ fn FnNoise1_double(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise *= std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }

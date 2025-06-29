@@ -17,7 +17,7 @@ use crate::fitscore::{
     ffasfm_safe, ffgcprll, ffghdt_safe, ffpmsg_slice, ffpmsg_str, fits_is_compressed_image_safe,
 };
 use crate::fitsio2::*;
-use crate::imcompress::fits_read_compressed_img;
+use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
 use crate::{NullValue, bb};
@@ -89,21 +89,19 @@ pub fn ffgpvuj_safe(
         /* this is a compressed image in a binary table */
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        /*
         fits_read_compressed_pixels(
             fptr,
             TULONG,
             firstelem,
             nelem,
             nullcheck,
-            &nullvalue,
-            array,
-            ptr::null_mut(),
+            &Some(NullValue::ULONGLONG(nullvalue)),
+            cast_slice_mut(array),
+            None,
             anynul,
             status,
         );
-        */
+
         return *status;
     }
 
@@ -191,21 +189,19 @@ pub fn ffgpfuj_safe(
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
 
-        todo!();
-        /*
         fits_read_compressed_pixels(
             fptr,
             TULONG,
             firstelem,
             nelem,
             nullcheck,
-            ptr::null_mut(),
-            array,
-            nularray,
+            &None,
+            cast_slice_mut(array),
+            Some(nularray),
             anynul,
             status,
         );
-        */
+
         return *status;
     }
 
@@ -414,10 +410,10 @@ pub fn ffg3duj_safe(
     narray = 0; /* next pixel in output array to be filled */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* reading naxis1 pixels to each row            */
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffgcluj(
                 fptr,
                 2,
@@ -497,14 +493,12 @@ pub fn ffgsvuj_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,    /* IO - error status                             */
 ) -> c_int {
-    let row: c_long = 0;
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
     let mut rinc: c_long = 0;
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
-    let dir: [c_long; 9] = [0; 9];
     let mut nelem: c_long = 0;
     let mut nultyp = NullCheckType::None;
     let mut ninc: c_long = 0;
@@ -515,7 +509,6 @@ pub fn ffgsvuj_safe(
     let mut trcll: [LONGLONG; 9] = [0; 9];
     let mut hdutype: c_int = 0;
     let mut anyf: c_int = 0;
-    let ldummy: c_char = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let nullcheck = NullCheckType::SetPixel;
     let mut nullvalue: c_ulong = 0;
@@ -737,7 +730,6 @@ pub fn ffgsfuj_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,     /* IO - error status                             */
 ) -> c_int {
-    let row: c_long = 0;
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
     let mut rinc: c_long = 0;
@@ -1164,10 +1156,8 @@ pub(crate) fn ffgcluj(
     let mut decimals: c_int = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: c_long = 0;
     let mut xwidth: c_long = 0;
     let mut ntodo: c_long = 0;
-    let convert = false;
     let mut nulcheck = NullCheckType::None;
     let readcheck: c_int = 0;
     let mut repeat: LONGLONG = 0;
@@ -1243,7 +1233,7 @@ pub(crate) fn ffgcluj(
             Some(&mut decimals),
             status,
         );
-        for ii in 0..(decimals as usize) {
+        for _ii in 0..(decimals as usize) {
             power *= 10.0;
         }
     }
@@ -2068,7 +2058,6 @@ pub(crate) fn fffr4u4(
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2219,7 +2208,6 @@ pixels are null, otherwise anynull will be returned with a value = 0;
 {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2614,12 +2602,19 @@ pub fn ffgpvujj_safe(
         /* this is a compressed image in a binary table */
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        /*
         fits_read_compressed_pixels(
-            fptr, TULONGLONG, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
+            fptr,
+            TULONGLONG,
+            firstelem,
+            nelem,
+            nullcheck,
+            &Some(NullValue::ULONGLONG(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
         );
-        */
+
         return *status;
     }
 
@@ -2707,12 +2702,20 @@ pub fn ffgpfujj_safe(
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
-        todo!();
-        /*
+
         fits_read_compressed_pixels(
-            fptr, TULONGLONG, firstelem, nelem, nullcheck, None, cast_slice_mut(array), nularray, anynul, status,
+            fptr,
+            TULONGLONG,
+            firstelem,
+            nelem,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(nularray),
+            anynul,
+            status,
         );
-        */
+
         return *status;
     }
 
@@ -2854,8 +2857,6 @@ pub fn ffg3dujj_safe(
     status: &mut c_int,             /* IO - error status                           */
 ) -> c_int {
     let mut tablerow: c_long = 0;
-    let ii: c_long = 0;
-    let jj: c_long = 0;
     let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let inc: [c_long; 3] = [1, 1, 1];
@@ -2922,11 +2923,11 @@ pub fn ffg3dujj_safe(
     narray = 0; /* next pixel in output array to be filled */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* reading naxis1 pixels to each row            */
 
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffgclujj(
                 fptr,
                 2,
@@ -3007,7 +3008,6 @@ pub fn ffgsvujj_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,      /* IO - error status                             */
 ) -> c_int {
-    let ii: c_long = 0;
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
     let mut rinc: c_long = 0;
@@ -3054,12 +3054,20 @@ pub fn ffgsvujj_safe(
 
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        /*
         fits_read_compressed_img(
-            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status,
+            fptr,
+            TULONGLONG,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &Some(NullValue::ULONGLONG(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
         );
-         */
+
         return *status;
     }
 
@@ -3258,9 +3266,6 @@ pub fn ffgsfujj_safe(
     mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
     status: &mut c_int,      /* IO - error status                             */
 ) -> c_int {
-    let ii: c_long = 0;
-    let i0: c_long = 0;
-    let row: c_long = 0;
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
     let mut rinc: c_long = 0;
@@ -3302,12 +3307,21 @@ pub fn ffgsfujj_safe(
             blcll[ii] = blc[ii] as LONGLONG;
             trcll[ii] = trc[ii] as LONGLONG;
         }
-        todo!();
-        /*
+
         fits_read_compressed_img(
-            fptr, TULONGLONG, blcll, trcll, inc, nullcheck, None, cast_slice_mut(array), flagval, anynul, status,
+            fptr,
+            TULONGLONG,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(flagval),
+            anynul,
+            status,
         );
-        */
+
         return *status;
     }
 
@@ -3700,10 +3714,8 @@ pub(crate) fn ffgclujj(
     let mut decimals: c_int = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
-    let ii: c_long = 0;
     let mut xwidth: c_long = 0;
     let mut ntodo: c_long = 0;
-    let mut convert: bool = false;
     let mut nulcheck = NullCheckType::None;
     let mut readcheck: c_int = 0;
     let mut repeat: LONGLONG = 0;
@@ -3786,7 +3798,7 @@ pub(crate) fn ffgclujj(
             status,
         );
 
-        for ii in 0..(decimals as usize) {
+        for _ii in 0..(decimals as usize) {
             power *= 10.;
         }
     }
@@ -3811,8 +3823,6 @@ pub(crate) fn ffgclujj(
     } else if tcode == TSTRING && snull[0] == ASCII_NULL_UNDEFINED {
         nulcheck = NullCheckType::None;
     }
-
-    convert = true;
 
     /*---------------------------------------------------------------------*/
     /*  Now read the pixels from the FITS column. If the column does not   */
@@ -4398,7 +4408,6 @@ pub(crate) fn fffi8u8(
     status: &mut c_int,          /* IO - error status                       */
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
-    let ulltemp: ULONGLONG = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -4531,7 +4540,6 @@ pub(crate) fn fffr4u8(
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -4680,7 +4688,6 @@ pub(crate) fn fffr8u8(
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -4830,7 +4837,6 @@ pub(crate) fn fffstru8(
     status: &mut c_int,              /* IO - error status                       */
 ) -> c_int {
     let mut nullen: c_int = 0;
-    let ii: c_long = 0;
     let mut dvalue: f64 = 0.0;
 
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];

@@ -795,7 +795,7 @@ pub unsafe fn ffopen_safer(
         let mut driver = 0;
         let mut hdutyp = 0;
         let mut hdunum = 0;
-        let mut slen = 0;
+        let slen;
         let mut isopen = 0;
         let mut filesize = 0;
         let mut rownum: c_long = 0;
@@ -805,7 +805,7 @@ pub unsafe fn ffopen_safer(
         let mut extvers = 0;
         let mut handle = 0;
         let mut movetotype = 0;
-        let mut tstatus = 0;
+        let mut tstatus;
         let mut only_one = 0;
         let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
         let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
@@ -1753,7 +1753,7 @@ pub unsafe fn ffopen_safer(
 
                 ffphis_safe(f, name, status);
             } else {
-                let f = (*fptr).as_mut().unwrap();
+                let _f = (*fptr).as_mut().unwrap();
                 ffpmsg_str("cannot use pixel filter on non-IMAGE HDU");
                 ffpmsg_slice(&pixfilter);
 
@@ -1933,8 +1933,6 @@ pub(crate) unsafe fn fits_already_open(
         let mut oldrowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut oldbinspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut oldcolspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let tmpStr: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut tmpinfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
         *isopen = 0;
@@ -2477,7 +2475,6 @@ pub(crate) unsafe fn ffedit_columns(
 ) -> c_int {
     unsafe {
         let mut newptr: Option<Box<fitsfile>> = None;
-        let ii: c_int = 0;
         let mut hdunum: c_int = 0;
         let mut slen: c_int = 0;
         let mut colnum: c_int = -1;
@@ -3228,11 +3225,11 @@ pub unsafe extern "C" fn fits_copy_cell2image(
 ///
 /// This routine was written by Craig Markwardt, GSFC
 pub fn fits_copy_cell2image_safe(
-    fptr: &mut fitsfile,   /* I - point to input table */
-    newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
-    colname: &[c_char],    /* I - column name / number containing the image*/
-    rownum: c_long,        /* I - number of the row containing the image */
-    status: &mut c_int,    /* IO - error status */
+    _fptr: &mut fitsfile,   /* I - point to input table */
+    _newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
+    _colname: &[c_char],    /* I - column name / number containing the image*/
+    _rownum: c_long,        /* I - number of the row containing the image */
+    _status: &mut c_int,    /* IO - error status */
 ) -> c_int {
     todo!()
 }
@@ -3273,12 +3270,12 @@ pub unsafe extern "C" fn fits_copy_image2cell(
 /*--------------------------------------------------------------------------*/
 /// Copy an image to a table cell (safe version)
 pub fn fits_copy_image2cell_safe(
-    fptr: &mut fitsfile,   /* I - pointer to input image extension */
-    newptr: &mut fitsfile, /* I - pointer to output table */
-    colname: &[c_char],    /* I - name of column containing the image */
-    rownum: c_long,        /* I - number of the row containing the image */
-    copykeyflag: c_int,    /* I - controls which keywords to copy */
-    status: &mut c_int,    /* IO - error status */
+    _fptr: &mut fitsfile,   /* I - pointer to input image extension */
+    _newptr: &mut fitsfile, /* I - pointer to output table */
+    _colname: &[c_char],    /* I - name of column containing the image */
+    rownum: c_long,         /* I - number of the row containing the image */
+    _copykeyflag: c_int,    /* I - controls which keywords to copy */
+    _status: &mut c_int,    /* IO - error status */
 ) -> c_int {
     todo!(
         "fits_copy_image2cell_safe: Copy image to table cell row {}",
@@ -3314,11 +3311,11 @@ pub unsafe extern "C" fn fits_select_image_section(
 /// Any HDUs preceding or following the image are also copied to the
 /// output file.
 pub fn fits_select_image_section_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new subimage */
-    outfile: &[c_char], /* I - name for output file        */
-    expr: &[c_char],    /* I - Image section expression    */
-    status: &mut c_int,
+    _outfile: &[c_char], /* I - name for output file        */
+    _expr: &[c_char],    /* I - Image section expression    */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -3346,10 +3343,10 @@ pub unsafe extern "C" fn fits_copy_image_section(
 /*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output HDU
 pub fn fits_copy_image_section_safer(
-    fptr: &mut fitsfile,   /* I - pointer to input image */
-    newptr: &mut fitsfile, /* I - pointer to output image */
-    expr: &[c_char],       /* I - Image section expression    */
-    status: &mut c_int,
+    _fptr: &mut fitsfile,   /* I - pointer to input image */
+    _newptr: &mut fitsfile, /* I - pointer to output image */
+    _expr: &[c_char],       /* I - Image section expression    */
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -3532,11 +3529,11 @@ pub fn fits_get_section_range_safer(
 
 /*--------------------------------------------------------------------------*/
 pub(crate) fn ffselect_table(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
+    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
     /*      points to the new selected rows table */
-    outfile: &[c_char; FLEN_FILENAME], /* I - name for output file */
-    rowfilter: &[c_char; FLEN_FILENAME], /* I - Boolean expression    */
-    status: &mut c_int,
+    _outfile: &[c_char; FLEN_FILENAME], /* I - name for output file */
+    _rowfilter: &[c_char; FLEN_FILENAME], /* I - Boolean expression    */
+    _status: &mut c_int,
 ) -> c_int {
     todo!()
 }
@@ -3569,9 +3566,9 @@ pub(crate) fn ffselect_table(
 /// The compression parameters are saved in the fptr->Fptr structure for use
 /// when writing FITS images.
 pub(crate) fn ffparsecompspec(
-    fptr: &mut fitsfile, /* I - FITS file pointer               */
-    compspec: &[c_char], /* I - image compression specification */
-    status: *mut c_int,  /* IO - error status                       */
+    _fptr: &mut fitsfile, /* I - FITS file pointer               */
+    _compspec: &[c_char], /* I - image compression specification */
+    _status: *mut c_int,  /* IO - error status                       */
 ) -> c_int {
     todo!()
 }
@@ -3650,9 +3647,7 @@ pub unsafe fn ffinit_safer(
     status: &mut c_int,               /* IO - error status                       */
 ) -> c_int {
     unsafe {
-        let ii: c_int = 0;
         let mut driver: c_int = 0;
-        let slen: c_int = 0;
         let mut clobber: c_int = 0 as c_int;
 
         let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
@@ -3861,11 +3856,11 @@ pub unsafe fn ffinit_safer(
 /// Create and initialize a new FITS file in memory
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffimem(
-    fptr: *mut *mut fitsfile,  /* O - FITS file pointer                   */
-    buffptr: *mut *mut c_void, /* I - address of memory pointer           */
-    buffsize: *mut usize,      /* I - size of buffer, in bytes            */
-    deltasize: usize,          /* I - increment for future realloc's      */
-    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
+    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
+    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
+    buffsize: *mut usize,             /* I - size of buffer, in bytes            */
+    deltasize: usize,                 /* I - increment for future realloc's      */
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
     status: *mut c_int, /* IO - error status                       */
 ) -> c_int {
     unsafe {
@@ -3881,12 +3876,12 @@ pub unsafe extern "C" fn ffimem(
 /*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file in memory
 pub unsafe fn ffimem_safer(
-    fptr: &mut *mut fitsfile,  /* O - FITS file pointer                   */
-    buffptr: &mut *mut c_void, /* I - address of memory pointer           */
-    buffsize: &mut usize,      /* I - size of buffer, in bytes            */
-    deltasize: usize,          /* I - increment for future realloc's      */
-    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
-    status: &mut c_int, /* IO - error status                       */
+    _fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
+    _buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
+    _buffsize: &mut usize,             /* I - size of buffer, in bytes            */
+    _deltasize: usize,                 /* I - increment for future realloc's      */
+    _mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
+    _status: &mut c_int, /* IO - error status                       */
 ) -> c_int {
     todo!()
 }
@@ -4349,7 +4344,7 @@ pub fn fits_init_cfitsio_safer() -> c_int {
         return status;
     }
 
-    let dd = DRIVER_TABLE.set(drivers);
+    let _dd = DRIVER_TABLE.set(drivers);
 
     let l = NEED_TO_INITIALIZE.lock();
     *l.unwrap() = false;
@@ -4603,20 +4598,19 @@ pub unsafe fn ffifile2_safer(
     unsafe {
         let mut infilelen = 0;
         let mut plus_ext = 0;
-        let collen = 0;
         let mut ptr2: *mut c_char = ptr::null_mut();
         let mut ptr3: *mut c_char = ptr::null_mut();
         let mut ptr4: *mut c_char = ptr::null_mut();
-        let mut hasAt = 0;
-        let mut hasDot = 0;
-        let mut hasOper = 0;
-        let mut followingOper = 0;
-        let mut spaceTerm = 0;
-        let mut rowFilter = 0;
-        let mut colStart = 0;
-        let mut binStart = 0;
-        let mut pixStart = 0;
-        let mut compStart = 0;
+        let mut hasAt;
+        let mut hasDot;
+        let mut hasOper;
+        let mut followingOper;
+        let mut spaceTerm;
+        let mut rowFilter;
+        let mut colStart;
+        let mut binStart;
+        let mut pixStart;
+        let mut compStart;
 
         if *status > 0 {
             return *status;
@@ -5749,13 +5743,13 @@ pub unsafe extern "C" fn ffexist(
 /// If the specified file can't be found, it then searches for a
 /// compressed version of the file.
 pub fn ffexist_safer(
-    infile: &[c_char],  /* I - input filename or URL */
-    exists: &mut c_int, /* O -  2 = a compressed version of file exists */
+    _infile: &[c_char],  /* I - input filename or URL */
+    _exists: &mut c_int, /* O -  2 = a compressed version of file exists */
     /*      1 = yes, disk file exists               */
     /*      0 = no, disk file could not be found    */
     /*     -1 = infile is not a disk file (could    */
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
-    status: &mut c_int, /* I/O - error status */
+    _status: &mut c_int, /* I/O - error status */
 ) -> c_int {
     todo!();
 }
@@ -5778,7 +5772,7 @@ pub unsafe extern "C" fn ffrtnm(
 
 /*--------------------------------------------------------------------------*/
 /// parse the input URL, returning the root name (filetype://basename).
-pub fn ffrtnm_safe(url: &[c_char], rootname: *mut c_char, status: &mut c_int) -> c_int {
+pub fn ffrtnm_safe(_url: &[c_char], _rootname: *mut c_char, _status: &mut c_int) -> c_int {
     todo!();
 }
 
@@ -6318,9 +6312,9 @@ pub unsafe extern "C" fn ffextn(
 ///     existing FTOOLS software.  CFITSIO would open the primary array by default
 ///     (extension_num = 1) in this case.
 pub fn ffextn_safer(
-    url: &[c_char],            /* I - input filename/URL  */
-    extension_num: &mut c_int, /* O - returned extension number */
-    status: &mut c_int,
+    _url: &[c_char],            /* I - input filename/URL  */
+    _extension_num: &mut c_int, /* O - returned extension number */
+    _status: &mut c_int,
 ) -> c_int {
     todo!("Implementation of ffextn_safer needed");
 }
@@ -6498,10 +6492,10 @@ pub unsafe extern "C" fn fits_get_token(
 ///
 /// Safe wrapper for fits_get_token - copies token to provided String buffer
 pub fn fits_get_token_safe(
-    ptr: &mut *mut c_char,
-    delimiter: &[c_char],
-    token: *mut c_char,
-    isanumber: Option<&mut c_int>, /* O - is this token a number? */
+    _ptr: &mut *mut c_char,
+    _delimiter: &[c_char],
+    _token: *mut c_char,
+    _isanumber: Option<&mut c_int>, /* O - is this token a number? */
 ) -> c_int {
     todo!()
 }
@@ -6588,7 +6582,7 @@ pub unsafe extern "C" fn fits_split_names(
 }
 
 /// We probably can't create a safe wrapper around fits_split_names
-pub unsafe fn fits_split_names_safer(list: *const c_char) -> *mut c_char {
+pub unsafe fn fits_split_names_safer(_list: *const c_char) -> *mut c_char {
     todo!()
 }
 
@@ -7023,9 +7017,9 @@ pub unsafe fn fftplt_safer(
 /*--------------------------------------------------------------------------*/
 /// open template file and use it to create new file
 pub(crate) unsafe fn ffoptplt(
-    fptr: &mut fitsfile, /* O - FITS file pointer                   */
-    tempname: &[c_char], /* I - name of template file               */
-    status: &mut c_int,  /* IO - error status                       */
+    _fptr: &mut fitsfile, /* O - FITS file pointer                   */
+    _tempname: &[c_char], /* I - name of template file               */
+    _status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
     todo!();
 }
@@ -7067,11 +7061,11 @@ pub unsafe fn ffrprt_safer(stream: *mut FILE, status: c_int) {
 
 /*--------------------------------------------------------------------------*/
 pub fn pixel_filter_helper(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new image */
-    outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
-    pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
-    status: *mut c_int,
+    _outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
+    _pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
+    _status: *mut c_int,
 ) -> c_int {
     todo!()
 }
@@ -7205,9 +7199,6 @@ pub fn fits_get_token2_safe(
     status: &mut c_int,
 ) -> c_int {
     let mut tval: [c_char; 73] = [0; 73];
-    let mut slen = 0;
-    let mut dval: f64 = 0.0;
-    let loc = 0;
 
     *ptr_index = 0; // Ensure starts at beginning of ptr
 
@@ -7221,7 +7212,7 @@ pub fn fits_get_token2_safe(
     }
 
     let p_tmp = &ptr[*ptr_index..];
-    slen = strcspn_safe(p_tmp, delimiter); /* length of next token */
+    let slen = strcspn_safe(p_tmp, delimiter); /* length of next token */
     if slen != 0 {
         // HEAP ALLOCATION
         let mut t: Vec<c_char> = Vec::new();
@@ -7255,10 +7246,10 @@ pub fn fits_get_token2_safe(
                 }
 
                 r = &tval[..];
-                dval = strtod_safe(r, &mut loc);
+                strtod_safe(r, &mut loc);
             } else {
                 r = t.as_slice();
-                dval = strtod_safe(r, &mut loc);
+                strtod_safe(r, &mut loc);
             }
 
             /* check for read error, or junk following the value */

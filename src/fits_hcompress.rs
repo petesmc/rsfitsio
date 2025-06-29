@@ -56,13 +56,13 @@ pub unsafe extern "C" fn fits_hcompress(
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
 pub fn fits_hcompress_safe(
-    a: &[c_int],
-    ny: c_int,
-    nx: c_int,
-    scale: c_int,
-    output: &mut [c_char],
-    nbytes: &mut c_long,
-    status: &mut c_int,
+    _a: &[c_int],
+    _ny: c_int,
+    _nx: c_int,
+    _scale: c_int,
+    _output: &mut [c_char],
+    _nbytes: &mut c_long,
+    _status: &mut c_int,
 ) -> c_int {
     todo!()
 }
@@ -117,13 +117,13 @@ pub unsafe extern "C" fn fits_hcompress64(
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
 pub fn fits_hcompress64_safe(
-    a: &[LONGLONG],
-    ny: c_int,
-    nx: c_int,
-    scale: c_int,
-    output: &mut [c_char],
-    nbytes: &mut c_long,
-    status: &mut c_int,
+    _a: &[LONGLONG],
+    _ny: c_int,
+    _nx: c_int,
+    _scale: c_int,
+    _output: &mut [c_char],
+    _nbytes: &mut c_long,
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }

@@ -10,10 +10,10 @@ use std::ffi::CStr;
 use std::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint};
+use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::bb;
 use crate::fitscore::{
     ffasfm_safe, ffgcprll, ffghdt_safe, ffpmsg_slice, ffpmsg_str, fits_is_compressed_image_safe,
 };
@@ -22,6 +22,7 @@ use crate::getcolui::ffgclui;
 use crate::getcoluj::ffgcluj;
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
+use crate::{NullValue, bb};
 use crate::{buffers::*, calculate_subsection_length};
 use crate::{int_snprintf, slice_to_str};
 
@@ -89,8 +90,18 @@ pub fn ffgpvuk_safe(
         /* this is a compressed image in a binary table */
         nullvalue = nulval; /* set local variable */
 
-        todo!();
-        //fits_read_compressed_pixels(fptr, TUINT, firstelem, nelem, nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+        fits_read_compressed_pixels(
+            fptr,
+            TUINT,
+            firstelem,
+            nelem,
+            nullcheck,
+            &Some(NullValue::UInt(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -177,8 +188,18 @@ pub fn ffgpfuk_safe(
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
 
-        todo!();
-        //fits_read_compressed_pixels(fptr, TUINT, firstelem, nelem,          nullcheck, None, cast_slice_mut(array), nularray, anynul, status);
+        fits_read_compressed_pixels(
+            fptr,
+            TUINT,
+            firstelem,
+            nelem,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(nularray),
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -335,8 +356,20 @@ pub fn ffg3duk_safe(
         lpixel[1] = nrows as c_long;
         lpixel[2] = naxis3 as c_long;
         nullvalue = nulval; /* set local variable */
-        todo!();
-        //fits_read_compressed_img(fptr, TUINT, fpixel, lpixel, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+
+        fits_read_compressed_img(
+            fptr,
+            TUINT,
+            &fpixel,
+            &lpixel,
+            &inc,
+            nullcheck,
+            &Some(NullValue::UInt(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -372,11 +405,11 @@ pub fn ffg3duk_safe(
     narray = 0; /* next pixel in output array to be filled */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* reading naxis1 pixels to each row            */
 
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffgcluk(
                 fptr,
                 2,
@@ -502,8 +535,20 @@ pub fn ffgsvuk_safe(
         }
 
         nullvalue = nulval; /* set local variable */
-        todo!();
-        // fits_read_compressed_img(fptr, TUINT, blcll, trcll, inc,            nullcheck, &nullvalue, cast_slice_mut(array), None, anynul, status);
+
+        fits_read_compressed_img(
+            fptr,
+            TUINT,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &Some(NullValue::UInt(nullvalue)),
+            cast_slice_mut(array),
+            None,
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -707,7 +752,6 @@ pub fn ffgsfuk_safe(
     let mut trcll: [LONGLONG; 9] = [0; 9];
     let mut hdutype: c_int = 0;
     let mut anyf: c_int = 0;
-    let ldummy: c_char = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let nullcheck = NullCheckType::SetNullArray;
     let nullval: c_uint = 0;
@@ -733,8 +777,20 @@ pub fn ffgsfuk_safe(
             blcll[ii] = blc[ii] as LONGLONG;
             trcll[ii] = trc[ii] as LONGLONG;
         }
-        todo!();
-        // fits_read_compressed_img(fptr, TUINT, blcll, trcll, inc,     nullcheck, None, cast_slice_mut(array), flagval, anynul, status);
+
+        fits_read_compressed_img(
+            fptr,
+            TUINT,
+            &blcll,
+            &trcll,
+            inc,
+            nullcheck,
+            &None,
+            cast_slice_mut(array),
+            Some(flagval),
+            anynul,
+            status,
+        );
         return *status;
     }
 
@@ -1119,7 +1175,6 @@ pub(crate) fn ffgcluk(
     let mut incre: c_long = 0;
     let mut ntodo: c_long = 0;
     let mut xwidth: c_long = 0;
-    let convert: bool = false;
     let mut nulcheck = NullCheckType::None;
     let readcheck: c_int = 0;
     let mut repeat: LONGLONG = 0;
@@ -1238,7 +1293,7 @@ pub(crate) fn ffgcluk(
                 Some(&mut decimals),
                 status,
             );
-            for ii in 0..(decimals as usize) {
+            for _ii in 0..(decimals as usize) {
                 power *= 10.0;
             }
         }
@@ -2087,7 +2142,6 @@ pub(crate) fn fffr4uint(
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
-    let iret = 0;
 
     if nullcheck == NullCheckType::None {
         /* no null checking required */
@@ -2132,7 +2186,6 @@ pub(crate) fn fffr4uint(
 
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
-            let ii = 0;
             for ii in 0..(ntodo as usize) {
                 let iret = fnan(shortBuffer[sptr]);
                 if 0 != iret {
@@ -2163,7 +2216,6 @@ pub(crate) fn fffr4uint(
             }
         } else {
             /* must scale the data */
-            let ii = 0;
             for ii in 0..(ntodo as usize) {
                 let iret = fnan(shortBuffer[sptr]);
                 if 0 != iret {
@@ -2385,7 +2437,6 @@ pub(crate) fn fffstruint(
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let tempstore: c_char = 0;
     let chrzero: c_char = bb(b'0'); // 49
     let mut val: f64 = 0.0;
     let mut power: f64 = 0.0;

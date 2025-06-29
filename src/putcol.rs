@@ -1917,15 +1917,15 @@ pub unsafe extern "C" fn ffpcln(
 /// the defined null value, unless nulval[i]=0,
 /// in which case no checking for undefined values will be performed.
 pub fn ffpcln_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer                       */
-    ncols: c_int,             /* I - number of columns to write              */
-    datatype: &[c_int],       /* I - datatypes of the values                 */
-    colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
-    firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
-    nrows: LONGLONG,          /* I - number of rows to write             */
-    array: &[*const c_void],  /* I - array of pointers to values to write    */
-    nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
-    status: &mut c_int,       /* IO - error status                           */
+    _fptr: &mut fitsfile,      /* I - FITS file pointer                       */
+    _ncols: c_int,             /* I - number of columns to write              */
+    _datatype: &[c_int],       /* I - datatypes of the values                 */
+    _colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
+    _firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
+    _nrows: LONGLONG,          /* I - number of rows to write             */
+    _array: &[*const c_void],  /* I - array of pointers to values to write    */
+    _nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
+    _status: &mut c_int,       /* IO - error status                           */
 ) -> c_int {
     todo!();
 }

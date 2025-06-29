@@ -937,8 +937,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
     let mut yprime: f64;
     let mut r: f64;
     let th: f64;
-    let mut Shapes: &mut [RgnShape];
-    let mut i: c_int;
     let mut cur_comp: c_int;
     let mut result: bool = false;
     let mut comp_result: bool = false;
@@ -1772,8 +1770,6 @@ pub(crate) unsafe fn fits_read_fits_region(
     status: &mut c_int,
 ) -> c_int {
     unsafe {
-        let mut i: c_int;
-        let mut j: c_int;
         let mut icol: [c_int; 6] = [0; 6];
         let mut idum: c_int = 0;
         let mut anynul: c_int = 0;

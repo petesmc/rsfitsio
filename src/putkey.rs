@@ -10,7 +10,7 @@ use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufRead;
 use std::num::ParseIntError;
-use std::{cmp, mem, ptr};
+use std::{cmp, mem};
 
 use chrono::{DateTime, Utc};
 
@@ -322,11 +322,11 @@ pub unsafe extern "C" fn ffphpsll(
 /*--------------------------------------------------------------------------*/
 /// Write STANDARD set of required primary header keywords
 pub fn ffphpsll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    bitpix: c_int,       /* I - number of bits per data value pixel      */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    _fptr: &mut fitsfile, /* I - FITS file pointer                        */
+    _bitpix: c_int,       /* I - number of bits per data value pixel      */
+    _naxis: c_int,        /* I - number of axes in the data array         */
+    _naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    _status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
     todo!()
 }
@@ -719,7 +719,6 @@ pub fn ffphtb_safe(
     extnmx: Option<&[c_char]>,   /* I - value of EXTNAME keyword, if any         */
     status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
-    let ii: c_int = 0;
     let mut ncols: c_int = 0;
 
     let mut rowlen: c_long = 0; /* must be 'long' because it is passed to ffgabc */
@@ -994,7 +993,6 @@ pub fn ffphbn_safe(
     pcount: LONGLONG,            /* I - size of the variable length heap area    */
     status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
-    let ii: c_int = 0;
     let mut datatype: c_int = 0;
     let mut iread: c_int = 0;
     let mut repeat: c_long = 0;
@@ -1004,9 +1002,7 @@ pub fn ffphbn_safe(
     let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut extnm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let cptr: *mut c_char = ptr::null_mut();
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let colptr: *mut tcolumn = ptr::null_mut();
 
     if *status > 0 {
         return *status;
@@ -1382,14 +1378,14 @@ pub unsafe extern "C" fn ffphext(
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into a conforming extension:
 pub fn ffphext_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
-    bitpix: c_int,        /* I - value for the BIXPIX keyword            */
-    naxis: c_int,         /* I - value for the NAXIS keyword             */
-    naxes: &[c_long],     /* I - value for the NAXISn keywords           */
-    pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
-    gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
-    status: &mut c_int,   /* IO - error status                           */
+    _fptr: &mut fitsfile,  /* I - FITS file pointer                       */
+    _xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
+    _bitpix: c_int,        /* I - value for the BIXPIX keyword            */
+    _naxis: c_int,         /* I - value for the NAXIS keyword             */
+    _naxes: &[c_long],     /* I - value for the NAXISn keywords           */
+    _pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
+    _gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
+    _status: &mut c_int,   /* IO - error status                           */
 ) -> c_int {
     todo!();
 }
@@ -1403,12 +1399,6 @@ pub unsafe extern "C" fn ffprec(
     status: *mut c_int,  /* IO - error status            */
 ) -> c_int {
     unsafe {
-        let tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let len: usize = 0;
-        let ii: usize = 0;
-        let nblocks: c_long = 0;
-        let keylength: c_int = 0;
-
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -1426,10 +1416,10 @@ pub fn ffprec_safe(
     status: &mut c_int,  /* IO - error status            */
 ) -> c_int {
     let mut tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let mut len: usize = 0;
-    let mut ii: usize = 0;
-    let mut nblocks: c_long = 0;
-    let mut keylength: c_int = 0;
+
+    let mut ii: usize;
+    let nblocks: c_long;
+    let mut keylength: c_int;
 
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -1452,7 +1442,7 @@ pub fn ffprec_safe(
     strncpy_safe(&mut tcard, card, 80);
     tcard[80] = 0;
 
-    len = strlen_safe(&tcard);
+    let len: usize = strlen_safe(&tcard);
 
     /* silently replace any illegal characters with a space */
     ii = 0;
@@ -2209,7 +2199,6 @@ pub fn fits_make_longstr_key_util(
     let mut tmpkeyname: [c_char; FLEN_CARD] = [0; FLEN_CARD]; /* give tmpkeyname same size restriction as in ffmkky */
     let mut tstring: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-    let commlen = 0;
     let mut nocomment = false;
     let mut tstatus = -1;
 
@@ -3747,7 +3736,6 @@ pub fn ffpktp_safe(
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut newname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut keytype: c_int = 0;
-    let mut slen: usize = 0;
 
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -3785,7 +3773,6 @@ pub fn ffpktp_safe(
 
         template[to_copy] = 0; /* make sure string is terminated */
         template[160] = 0; /* make sure string is terminated */
-        slen = strlen_safe(&template); /* get string length */
 
         if ffgthd_safe(&template, &mut card, &mut keytype, status) > 0 {
             /* parse template */
@@ -3853,7 +3840,6 @@ pub fn ffptdm_safe(
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut value: [c_char; 80] = [0; 80];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let ii: c_int = 0;
     let mut totalpix: c_long = 1;
     let mut repeat: c_long = 0;
 
@@ -3970,11 +3956,11 @@ pub unsafe extern "C" fn ffptdmll(
 /*--------------------------------------------------------------------------*/
 /// Write the TDIMnnn keyword describing the dimensionality of a column
 pub fn ffptdmll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    colnum: c_int,       /* I - column number                            */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    _fptr: &mut fitsfile, /* I - FITS file pointer                      */
+    _colnum: c_int,       /* I - column number                            */
+    _naxis: c_int,        /* I - number of axes in the data array         */
+    _naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    _status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
     todo!();
 }
@@ -4047,11 +4033,11 @@ pub unsafe extern "C" fn ffdt2s(
 /*-----------------------------------------------------------------*/
 /// Construct a date character string
 pub fn ffdt2s_safe(
-    year: c_int,            /* I - year (0 - 9999)           */
-    month: c_int,           /* I - month (1 - 12)            */
-    day: c_int,             /* I - day (1 - 31)              */
-    datestr: &[c_char; 11], /* O - date string: "YYYY-MM-DD" */
-    status: *mut c_int,     /* IO - error status             */
+    _year: c_int,            /* I - year (0 - 9999)           */
+    _month: c_int,           /* I - month (1 - 12)            */
+    _day: c_int,             /* I - day (1 - 31)              */
+    _datestr: &[c_char; 11], /* O - date string: "YYYY-MM-DD" */
+    _status: *mut c_int,     /* IO - error status             */
 ) -> c_int {
     todo!()
 }
@@ -4080,11 +4066,11 @@ pub unsafe extern "C" fn ffs2dt(
 /*-----------------------------------------------------------------*/
 /// Parse a date character string into year, month, and day values
 pub fn ffs2dt_safe(
-    datestr: &[c_char], /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
-    year: &mut c_int,   /* O - year (0 - 9999)                         */
-    month: &mut c_int,  /* O - month (1 - 12)                          */
-    day: &mut c_int,    /* O - day (1 - 31)                            */
-    status: &mut c_int, /* IO - error status                           */
+    _datestr: &[c_char], /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
+    _year: &mut c_int,   /* O - year (0 - 9999)                         */
+    _month: &mut c_int,  /* O - month (1 - 12)                          */
+    _day: &mut c_int,    /* O - day (1 - 31)                            */
+    _status: &mut c_int, /* IO - error status                           */
 ) -> c_int {
     todo!();
 }
@@ -4118,15 +4104,15 @@ pub unsafe extern "C" fn fftm2s(
 /*-----------------------------------------------------------------*/
 /// Construct a date and time character string
 pub fn fftm2s_safe(
-    year: c_int,            /* I - year (0 - 9999)           */
-    month: c_int,           /* I - month (1 - 12)            */
-    day: c_int,             /* I - day (1 - 31)              */
-    hour: c_int,            /* I - hour (0 - 23)             */
-    minute: c_int,          /* I - minute (0 - 59)           */
-    second: c_double,       /* I - second (0. - 60.9999999)  */
-    decimals: c_int,        /* I - number of decimal points to write      */
-    datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
-    status: &mut c_int,     /* IO - error status             */
+    _year: c_int,            /* I - year (0 - 9999)           */
+    _month: c_int,           /* I - month (1 - 12)            */
+    _day: c_int,             /* I - day (1 - 31)              */
+    _hour: c_int,            /* I - hour (0 - 23)             */
+    _minute: c_int,          /* I - minute (0 - 59)           */
+    _second: c_double,       /* I - second (0. - 60.9999999)  */
+    _decimals: c_int,        /* I - number of decimal points to write      */
+    _datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
+    _status: &mut c_int,     /* IO - error status             */
 ) -> c_int {
     todo!();
 }
@@ -4173,16 +4159,16 @@ pub unsafe extern "C" fn ffs2tm(
 /*-----------------------------------------------------------------*/
 /// Parse a date character string into date and time values
 pub fn ffs2tm_safe(
-    datestr: &[c_char], /* I - date string: "YYYY-MM-DD"    */
+    _datestr: &[c_char], /* I - date string: "YYYY-MM-DD"    */
     /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
     /*     or "dd/mm/yy"                */
-    year: &mut c_int,   /* O - year (0 - 9999)              */
-    month: &mut c_int,  /* O - month (1 - 12)               */
-    day: &mut c_int,    /* O - day (1 - 31)                 */
-    hour: &c_int,       /* I - hour (0 - 23)                */
-    minute: &c_int,     /* I - minute (0 - 59)              */
-    second: &c_double,  /* I - second (0. - 60.9999999)     */
-    status: &mut c_int, /* IO - error status                */
+    _year: &mut c_int,   /* O - year (0 - 9999)              */
+    _month: &mut c_int,  /* O - month (1 - 12)               */
+    _day: &mut c_int,    /* O - day (1 - 31)                 */
+    _hour: &c_int,       /* I - hour (0 - 23)                */
+    _minute: &c_int,     /* I - minute (0 - 59)              */
+    _second: &c_double,  /* I - second (0. - 60.9999999)     */
+    _status: &mut c_int, /* IO - error status                */
 ) -> c_int {
     todo!();
 }
@@ -4211,10 +4197,10 @@ pub unsafe extern "C" fn ffgsdt(
 /// his routine is included for backward compatibility with the Fortran FITSIO library.
 /// Get current System DaTe (GMT if available)
 pub fn ffgsdt_safe(
-    day: &mut c_int,
-    month: &mut c_int,
-    year: &mut c_int,
-    status: &mut c_int,
+    _day: &mut c_int,
+    _month: &mut c_int,
+    _year: &mut c_int,
+    _status: &mut c_int,
 ) -> c_int {
     todo!();
 }
@@ -4538,8 +4524,6 @@ pub(crate) fn ffd2f(
     cval: &mut [c_char], /* O - character string representation of the value */
     status: &mut c_int,  /* IO - error status */
 ) -> c_int {
-    let cptr: *mut c_char = ptr::null_mut();
-
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -4666,10 +4650,10 @@ pub unsafe extern "C" fn ffverifydate(
 
 /// Verify that the specified date is valid (safe version)
 pub fn ffverifydate_safer(
-    year: c_int,        /* I - year */
-    month: c_int,       /* I - month (1-12) */
-    day: c_int,         /* I - day (1-31) */
-    status: &mut c_int, /* IO - error status */
+    year: c_int,         /* I - year */
+    month: c_int,        /* I - month (1-12) */
+    day: c_int,          /* I - day (1-31) */
+    _status: &mut c_int, /* IO - error status */
 ) -> c_int {
     todo!("ffverifydate: Verify date {}/{}/{}", year, month, day)
 }
@@ -4703,13 +4687,13 @@ pub unsafe extern "C" fn ffpknjj(
 
 /// Put a sequence of numeric keywords with LONGLONG values (safe version)
 pub fn ffpknjj_safer(
-    fptr: &mut fitsfile,            /* I - FITS file pointer */
-    keyroot: &CStr,                 /* I - root name of keywords */
-    nstart: c_int,                  /* I - starting index number */
-    nkey: c_int,                    /* I - number of keywords to write */
-    value: &[LONGLONG],             /* I - array of keyword values */
-    comm: Option<&[*const c_char]>, /* I - array of keyword comments */
-    status: &mut c_int,             /* IO - error status */
+    _fptr: &mut fitsfile,            /* I - FITS file pointer */
+    keyroot: &CStr,                  /* I - root name of keywords */
+    nstart: c_int,                   /* I - starting index number */
+    nkey: c_int,                     /* I - number of keywords to write */
+    _value: &[LONGLONG],             /* I - array of keyword values */
+    _comm: Option<&[*const c_char]>, /* I - array of keyword comments */
+    _status: &mut c_int,             /* IO - error status */
 ) -> c_int {
     todo!(
         "ffpknjj: Put {} LONGLONG keywords starting from {} with root {}",

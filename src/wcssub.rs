@@ -79,8 +79,6 @@ pub unsafe fn fits_read_wcstab_safer(
         let mut anynul: c_int = 0;
         let mut colnum: c_int = 0;
         let mut hdunum: c_int = 0;
-        let iwtb: c_int = 0;
-        let m: c_int = 0;
         let mut naxis: c_int = 0;
         let mut nostat: c_int = 0;
         let mut nelem: c_long = 0;
@@ -1114,7 +1112,6 @@ pub fn ffgtwcs_safe(
     header: &mut *mut c_char, /* O - string of all the WCS keywords  */
     status: &mut c_int,       /* IO - error status                   */
 ) -> c_int {
-    let tstatus: c_int = 0;
     let mut hdutype: c_int = 0;
     let mut ncols: c_int = 0;
     let mut tstatus: c_int = 0;

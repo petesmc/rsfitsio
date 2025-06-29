@@ -167,7 +167,7 @@ pub fn ffppne_safe(
     nulval: f32,         /* I - undefined pixel value                   */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    let mut nullvalue: f32 = 0.0;
+    let nullvalue: f32;
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -359,11 +359,11 @@ pub fn ffp3de_safe(
     let mut narray = 0; /* next pixel in input array to be written */
 
     /* loop over naxis3 planes in the data cube */
-    for jj in 0..(naxis3 as usize) {
+    for _jj in 0..(naxis3 as usize) {
         /* loop over the naxis2 rows in the FITS image, */
         /* writing naxis1 pixels to each row            */
 
-        for ii in 0..(naxis2 as usize) {
+        for _ii in 0..(naxis2 as usize) {
             if ffpcle_safe(
                 fptr,
                 2,
@@ -443,28 +443,15 @@ pub fn ffpsse_safe(
 ) -> c_int {
     let mut fpix: [LONGLONG; 7] = [0; 7];
     let mut dimen: [LONGLONG; 7] = [0; 7];
-    let mut astart: LONGLONG = 0;
-    let mut pstart: LONGLONG = 0;
-    let mut off2: LONGLONG = 0;
-    let mut off3: LONGLONG = 0;
-    let mut off4: LONGLONG = 0;
-    let mut off5: LONGLONG = 0;
-    let mut off6: LONGLONG = 0;
-    let mut off7: LONGLONG = 0;
-    let mut st10: LONGLONG = 0;
-    let mut st20: LONGLONG = 0;
-    let mut st30: LONGLONG = 0;
-    let mut st40: LONGLONG = 0;
-    let mut st50: LONGLONG = 0;
-    let mut st60: LONGLONG = 0;
-    let mut st70: LONGLONG = 0;
-    let mut st1: LONGLONG = 0;
-    let mut st2: LONGLONG = 0;
-    let mut st3: LONGLONG = 0;
-    let mut st4: LONGLONG = 0;
-    let mut st5: LONGLONG = 0;
-    let mut st6: LONGLONG = 0;
-    let mut st7: LONGLONG = 0;
+    let mut astart: LONGLONG;
+    let mut pstart: LONGLONG;
+
+    let mut st2: LONGLONG;
+    let mut st3: LONGLONG;
+    let mut st4: LONGLONG;
+    let mut st5: LONGLONG;
+    let mut st6: LONGLONG;
+    let mut st7: LONGLONG;
 
     let mut irange: [c_long; 7] = [0; 7];
 
@@ -511,23 +498,23 @@ pub fn ffpsse_safe(
     let i1 = irange[0];
 
     /* compute the pixel offset between each dimension */
-    off2 = dimen[0];
-    off3 = off2 * dimen[1];
-    off4 = off3 * dimen[2];
-    off5 = off4 * dimen[3];
-    off6 = off5 * dimen[4];
-    off7 = off6 * dimen[5];
+    let off2: LONGLONG = dimen[0];
+    let off3: LONGLONG = off2 * dimen[1];
+    let off4: LONGLONG = off3 * dimen[2];
+    let off5: LONGLONG = off4 * dimen[3];
+    let off6: LONGLONG = off5 * dimen[4];
+    let off7: LONGLONG = off6 * dimen[5];
 
-    st10 = fpix[0];
-    st20 = (fpix[1] - 1) * off2;
-    st30 = (fpix[2] - 1) * off3;
-    st40 = (fpix[3] - 1) * off4;
-    st50 = (fpix[4] - 1) * off5;
-    st60 = (fpix[5] - 1) * off6;
-    st70 = (fpix[6] - 1) * off7;
+    let st10: LONGLONG = fpix[0];
+    let st20: LONGLONG = (fpix[1] - 1) * off2;
+    let st30: LONGLONG = (fpix[2] - 1) * off3;
+    let st40: LONGLONG = (fpix[3] - 1) * off4;
+    let st50: LONGLONG = (fpix[4] - 1) * off5;
+    let st60: LONGLONG = (fpix[5] - 1) * off6;
+    let st70: LONGLONG = (fpix[6] - 1) * off7;
 
     /* store the initial offset in each dimension */
-    st1 = st10;
+    let st1: LONGLONG = st10;
     st2 = st20;
     st3 = st30;
     st4 = st40;
@@ -537,14 +524,14 @@ pub fn ffpsse_safe(
 
     astart = 0;
 
-    for i7 in 0..irange[6] {
-        for i6 in 0..irange[5] {
-            for i5 in 0..irange[4] {
-                for i4 in 0..irange[3] {
-                    for i3 in 0..irange[2] {
+    for _i7 in 0..irange[6] {
+        for _i6 in 0..irange[5] {
+            for _i5 in 0..irange[4] {
+                for _i4 in 0..irange[3] {
+                    for _i3 in 0..irange[2] {
                         pstart = st1 + st2 + st3 + st4 + st5 + st6 + st7;
 
-                        for i2 in 0..irange[1] {
+                        for _i2 in 0..irange[1] {
                             if ffpcle_safe(
                                 fptr,
                                 2,
@@ -701,7 +688,6 @@ pub fn ffpcle_safe(
     array: &[f32],       /* I - array of values to write                */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    let writemode: c_int = 0;
     let mut tcode: c_int = 0;
     let mut maxelem2: c_int = 0;
     let mut hdutype: c_int = 0;
@@ -712,13 +698,13 @@ pub fn ffpcle_safe(
     let mut repeat: LONGLONG = 0;
     let mut startpos: LONGLONG = 0;
     let mut elemnum: LONGLONG = 0;
-    let mut wrtptr: LONGLONG = 0;
+    let mut wrtptr: LONGLONG;
     let mut rowlen: LONGLONG = 0;
-    let mut rownum: LONGLONG = 0;
-    let mut remain: LONGLONG = 0;
-    let mut next: LONGLONG = 0;
+    let mut rownum: LONGLONG;
+    let mut remain: LONGLONG;
+    let mut next: LONGLONG;
     let mut tnull: LONGLONG = 0;
-    let mut maxelem: LONGLONG = 0;
+    let mut maxelem: LONGLONG;
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
     let mut tform: [c_char; 20] = [0; 20];
@@ -1130,9 +1116,9 @@ pub fn ffpcne_safe(
     let mut ngood: LONGLONG = 0;
     let mut nbad: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
-    let mut first: LONGLONG = 0;
-    let mut fstelm: LONGLONG = 0;
-    let mut fstrow: LONGLONG = 0;
+
+    let mut fstelm: LONGLONG;
+    let mut fstrow: LONGLONG;
 
     let mut tcode = 0;
     let mut overflow = 0;
@@ -1149,7 +1135,7 @@ pub fn ffpcne_safe(
         return *status;
     }
 
-    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    /* set pointer to first column */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* offset to correct column structure */
 
@@ -1189,7 +1175,7 @@ pub fn ffpcne_safe(
     }
 
     /* absolute element number in the column */
-    first = (firstrow - 1) * repeat + firstelem;
+    let first: LONGLONG = (firstrow - 1) * repeat + firstelem;
 
     let mut ii: usize = 0;
     while ii < nelem as usize {

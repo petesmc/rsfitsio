@@ -255,11 +255,11 @@ pub(crate) fn ffpbytoff(
     buffer: &[u8],       /* I - buffer to be written                */
     status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
-    let mut bcurrent: c_int = 0;
-    let mut bufpos: LONGLONG = 0;
-    let mut nspace: LONGLONG = 0;
-    let mut nwrite: LONGLONG = 0;
-    let mut record: c_long = 0;
+    let mut bcurrent: c_int;
+    let mut bufpos: LONGLONG;
+    let mut nspace: LONGLONG;
+    let mut nwrite: LONGLONG;
+    let mut record: c_long;
 
     let gsize = gsize as LONGLONG;
     let offset = offset as LONGLONG;
@@ -493,11 +493,11 @@ pub(crate) fn ffgbytoff(
     buffer: &mut [u8],   /* I - buffer to be filled                 */
     status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
-    let mut bcurrent: c_int = 0;
-    let mut bufpos: c_long = 0;
-    let mut nspace: c_long = 0;
-    let mut nread: c_long = 0;
-    let mut record: c_long = 0;
+    let mut bcurrent: c_int;
+    let mut bufpos: c_long;
+    let mut nspace: c_long;
+    let mut nread: c_long;
+    let mut record: c_long;
 
     if *status > 0 {
         return *status;
@@ -525,7 +525,7 @@ pub(crate) fn ffgbytoff(
     nspace = IOBUFLEN as c_long - bufpos; /* amount of space left in buffer */
     let mut ioptr_index = (bcurrent as usize * IOBUFLEN as usize) + bufpos as usize;
 
-    for ii in 1..(ngroups as usize) {
+    for _ii in 1..(ngroups as usize) {
         /* read all but the last group */
 
         /* copy bytes from IO buffer to the user's buffer */
@@ -613,7 +613,7 @@ pub(crate) fn ffldrc(
     status: &mut c_int,  /* IO - error status                 */
 ) -> c_int {
     let mut updatebuf = false;
-    let mut ibuff: c_int = 0;
+    let mut ibuff: c_int;
     let mut nbuff = 0;
 
     /* check if record is already loaded in one of the buffers */
@@ -961,7 +961,7 @@ pub fn ffgrsz_safe(
     status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
     let mut typecode = 0;
-    let mut bytesperpixel = 0;
+    let bytesperpixel;
 
     /* There are NIOBUF internal buffers available each IOBUFLEN bytes long. */
 
@@ -1068,7 +1068,7 @@ pub(crate) fn ffgi1b(
     values: &mut [c_uchar], /* O - returned array of values           */
     status: &mut c_int,     /* IO - error status                             */
 ) -> c_int {
-    let mut postemp: LONGLONG = 0;
+    let postemp: LONGLONG;
 
     if incre == 1 {
         /* read all the values at once (contiguous bytes) */
@@ -1325,7 +1325,7 @@ pub(crate) fn ffgr8b(
     }
 
     if CFITSIO_MACHINE == VAXVMS {
-        let ii: c_long = nvals; /* call VAX macro routine to convert */
+        /* call VAX macro routine to convert */
         todo!();
         //ieevud(values, values, &ii); /* from  IEEE float -> D float       */
     } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
@@ -1390,9 +1390,7 @@ pub fn ffptbb_safe(
     values: &[c_uchar],  /* I - array of bytes to write           */
     status: &mut c_int,  /* IO - error status                     */
 ) -> c_int {
-    let mut bytepos: LONGLONG = 0;
-    let mut endrow: LONGLONG = 0;
-    let mut nrows: LONGLONG = 0;
+    let nrows: LONGLONG;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if *status > 0 || nchars <= 0 {
@@ -1412,7 +1410,7 @@ pub fn ffptbb_safe(
         ffrdef_safe(fptr, status);
     }
 
-    endrow = ((firstchar + nchars - 2) / fptr.Fptr.rowlength) + firstrow;
+    let endrow: LONGLONG = ((firstchar + nchars - 2) / fptr.Fptr.rowlength) + firstrow;
 
     /* check if we are writing beyond the current end of table */
     if endrow > fptr.Fptr.numrows {
@@ -1442,7 +1440,8 @@ pub fn ffptbb_safe(
     }
 
     /* move the i/o pointer to the start of the sequence of characters */
-    bytepos = fptr.Fptr.datastart + (fptr.Fptr.rowlength * (firstrow - 1)) + firstchar - 1;
+    let bytepos: LONGLONG =
+        fptr.Fptr.datastart + (fptr.Fptr.rowlength * (firstrow - 1)) + firstchar - 1;
 
     ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status);
     ffpbyt(fptr, nchars, values, status); /* write the bytes */
@@ -1574,7 +1573,6 @@ pub(crate) fn ffpr4b(
     let mut v: Vec<f32> = values.to_vec();
 
     if CFITSIO_MACHINE == VAXVMS {
-        let ii: c_long = nvals;
         todo!(); /* call VAX macro routine to convert */
     //ieevpr(values, values, &ii);     /* from F float -> IEEE float        */
     } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
@@ -1613,7 +1611,7 @@ pub(crate) fn ffpr8b(
     let mut v: Vec<f64> = values.to_vec();
 
     if CFITSIO_MACHINE == VAXVMS {
-        let ii = nvals; /* call VAX macro routine to convert */
+        /* call VAX macro routine to convert */
         todo!();
     //ieevpd(values, values, &ii);     /* from D float -> IEEE float        */
     } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {

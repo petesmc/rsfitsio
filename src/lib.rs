@@ -668,7 +668,7 @@ mod tests {
     #[test]
     fn test_write_image() {
         unsafe {
-            with_temp_file(|filename| {
+            with_temp_file(|_filename| {
                 let bitpix = USHORT_IMG;
                 let naxis = 2;
                 const NAXES: [c_long; 2] = [300, 200];
@@ -677,14 +677,14 @@ mod tests {
                 let mut fptr: Option<Box<fitsfile>> = None;
                 let mut status = 0;
 
-                let tempfile = Builder::new()
+                let _tempfile = Builder::new()
                     .prefix("my-temporary-note")
                     .suffix(".fits")
                     .tempfile()
                     .unwrap();
 
                 let tdir = Builder::new().prefix("rsfitsio-").tempdir().unwrap();
-                let abc = Builder::new().prefix("prefix").tempfile();
+                let _abc = Builder::new().prefix("prefix").tempfile();
                 let tdir_path = tdir.path();
                 let filename = tdir_path.join("test.fits");
 

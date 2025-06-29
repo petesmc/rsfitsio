@@ -44,7 +44,7 @@
 *              express or implied warranty.
 */
 
-use crate::c_types::{c_char, c_int, c_long};
+use crate::c_types::{c_char, c_int};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -227,7 +227,7 @@ pub(crate) unsafe fn iraf2mem(
         let irafheader = irafheader.unwrap();
 
         /* convert IRAF header to FITS header in memory */
-        let tmp_buffer = iraftofits(
+        let _tmp_buffer = iraftofits(
             filename,
             &irafheader,
             lenirafhead,
@@ -365,12 +365,11 @@ fn irafrdimage(
     let mut npaxis2: c_int = 0;
     let mut bitpix: c_int = 0;
     let mut bytepix: c_int = 0;
-    let i: c_int = 0;
     let mut nbr: usize = 0;
     let mut nbimage: usize = 0;
     let mut nbaxis: usize = 0;
     let mut nbl: usize = 0;
-    let mut nbdiff: c_long = 0;
+    // let mut nbdiff: c_long = 0;
 
     let mut imhver: c_int = 0;
     let mut lpixhead: c_int = 0;
@@ -427,7 +426,7 @@ fn irafrdimage(
         pixheader.resize(lpixhead as usize, 0);
     }
 
-    let r = fd.read(cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
+    let _r = fd.read(cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
 
     /* Check size of pixel header */
     if nbr < lpixhead {
@@ -518,7 +517,7 @@ fn irafrdimage(
 
     /* Read IRAF image one line at a time if physical and image dimensions differ */
     } else {
-        nbdiff = ((npaxis1 - naxis1) * bytepix) as c_long;
+        // nbdiff = ((npaxis1 - naxis1) * bytepix) as c_long;
         nbaxis = (naxis1 * bytepix) as usize;
         let mut linebuff = &mut fitsheader[*filesize..];
         nbr = 0;
@@ -526,7 +525,7 @@ fn irafrdimage(
             naxis2 = naxis3;
         }
 
-        for i in 0..naxis2 {
+        for _i in 0..naxis2 {
             nbl = fd.read(cast_slice_mut(&mut linebuff[..nbaxis])).unwrap();
             nbr += nbl;
 
@@ -627,16 +626,12 @@ fn iraftofits(
     status: &mut c_int,
 ) -> c_int {
     let mut lstr: usize = 0;
-    let i: c_int = 0;
     let mut j: usize = 0;
-    let k: c_int = 0;
-    let ib: c_int = 0;
     let mut nax: c_int = 0;
     let mut nbits: c_int = 0;
     let mut newpixname: Option<Vec<c_char>>;
     let mut nblock: usize = 0;
     let mut nlines: usize = 0;
-    let mut fp: *mut c_char;
     let mut endline: [c_char; 81] = [0; 81];
     let mut irafchar: c_char = 0;
     let mut fitsline: [c_char; 81] = [0; 81];
@@ -644,7 +639,6 @@ fn iraftofits(
     let mut imhver: c_int = 0;
     let mut n: c_int = 0;
     let mut imu: usize = 0;
-    let pixoff: usize = 0;
     let mut impixoff: usize = 0;
     let mut imndim: usize = 0;
     let mut imlen: usize = 0;
@@ -1272,7 +1266,7 @@ fn iraf2str(
     let mut j = if irafstring[0] != 0 { 0 } else { 1 };
 
     /* Convert appropriate byte of input to output character */
-    for i in 0..(nchar) {
+    for _i in 0..(nchar) {
         string.push(irafstring[j]);
         j += 2;
     }
@@ -1490,7 +1484,7 @@ fn hgetc(
                          (the first 8 characters must be unique) */
 ) -> Option<Vec<c_char>> {
     let mut cval: [c_char; 80] = [0; 80];
-    let value: Option<usize>;
+    // let value: Option<usize>;
     let mut squot: [c_char; 2] = [0; 2];
     let mut dquot: [c_char; 2] = [0; 2];
     let mut lbracket: [c_char; 2] = [0; 2];
@@ -1631,7 +1625,7 @@ fn hgetc(
 
             let mut tokens = v_tok.split(|f| (*f == b' ' as c_char) || (*f == 0));
 
-            for i in 1..=ipar {
+            for _i in 1..=ipar {
                 cpar = tokens.next();
             }
 
@@ -1642,7 +1636,7 @@ fn hgetc(
                     cval[len] = 0; // Null termiante
                 }
             } else {
-                value = None;
+                // value = None;
             }
         }
     }
@@ -2261,7 +2255,7 @@ mod tests {
         let z = z.unwrap();
 
         let header_version = head_version(&z);
-        let pix_version = pix_version(&z);
+        let _pix_version = pix_version(&z);
 
         assert_eq!(header_version, 2);
         // assert_eq!(pix_version, 2);

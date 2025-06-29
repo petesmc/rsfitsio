@@ -662,15 +662,8 @@ pub fn ffdrrg_safe(
     ranges: &[c_char],   /* I - ranges of rows to delete (1 = first)     */
     status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
-    let nranges: c_int = 0;
     let mut nranges2: c_int = 0;
-    let ii: c_int = 0;
-    let mut minrow: *mut c_long;
-    let mut maxrow: *mut c_long;
     let mut nrows: c_long = 0;
-    let mut rowarray: *mut c_long;
-    let jj: c_long = 0;
-    let kk: c_long = 0;
     let mut naxis2: LONGLONG = 0;
 
     if *status > 0 {
@@ -793,10 +786,8 @@ pub fn ffdrws_safe(
     let mut naxis2: LONGLONG = 0;
     let mut insertpos: LONGLONG = 0;
     let mut nextrowpos: LONGLONG = 0;
-    let ii: c_long = 0;
     let mut nextrow: LONGLONG = 0;
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-    let mut buffer: *mut u8;
 
     if *status > 0 {
         return *status;
@@ -953,10 +944,8 @@ pub fn ffdrwsll_safe(
     let mut nextrowpos: LONGLONG = 0;
     let mut naxis1: LONGLONG = 0;
     let mut naxis2: LONGLONG = 0;
-    let ii: LONGLONG = 0;
     let mut nextrow: LONGLONG = 0;
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-    let mut buffer: *mut u8;
 
     if *status > 0 {
         return *status;
@@ -1139,7 +1128,6 @@ pub fn ffrwrg_safe(
     maxrow: &mut [c_long], /* O - last row in each range */
     status: &mut c_int,    /* IO - status value */
 ) -> c_int {
-    let mut next: *mut c_char;
     let mut minval: c_long = 0;
     let mut maxval: c_long = 0;
 
@@ -1565,7 +1553,6 @@ pub fn fficls_safe(
     let mut decims: c_int = 0;
     let mut tfields: c_int = 0;
     let mut tstatus: c_int = 0;
-    let ii: c_int = 0;
     let mut datasize: LONGLONG = 0;
     let mut firstbyte: LONGLONG = 0;
     let mut nbytes: LONGLONG = 0;
@@ -1582,9 +1569,7 @@ pub fn fficls_safe(
     let mut tfm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-    let mut cptr: *mut c_char;
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let mut colptr: *mut tcolumn;
 
     if *status > 0 {
         return *status;
@@ -1649,7 +1634,7 @@ pub fn fficls_safe(
             if datacode < 0 {
                 /* variable length array column */
                 match strchr_safe(&tfm, bb(b'Q')) {
-                    Some(x) => {
+                    Some(_x) => {
                         delbyte += 16;
                     }
                     None => {
@@ -1723,7 +1708,7 @@ pub fn fficls_safe(
     if colnum > tfields {
         firstcol = naxis1;
     } else {
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+        /* point to first column structure */
         let c = fptr.Fptr.get_tableptr_as_slice();
         let ci = (colnum - 1) as usize; /* offset to the correct column */
         firstcol = c[ci].tbcol;
@@ -1939,7 +1924,6 @@ pub fn ffmvec_safe(
     let mut tfm: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcode: [c_char; 2] = [0; 2];
-    let mut colptr: *mut tcolumn;
 
     if *status > 0 {
         return *status;
@@ -1968,7 +1952,7 @@ pub fn ffmvec_safe(
 
     /* look up the current vector length and element width */
 
-    let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+    /* point to first column structure */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = (colnum - 1) as usize; /* offset to the correct column */
 
@@ -2046,7 +2030,7 @@ pub fn ffmvec_safe(
 
         /* Must reset colptr before using it again.  fptr.Fptr.tableptr
         may have been reallocated down in ffbinit via the call to ffiblk above.*/
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+        /* point to first column structure */
         let c = fptr.Fptr.get_tableptr_as_slice();
         let ci = (colnum - 1) as usize; /* offset to the correct column */
 
@@ -2198,7 +2182,6 @@ pub fn ffcpcl_safe(
     let mut npixels: c_long = 0;
     let mut firstrow: c_long = 0;
     let mut firstelem: c_long = 0;
-    let ii: c_long = 0;
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut ttype: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -2212,11 +2195,6 @@ pub fn ffcpcl_safe(
     let mut dvalues: Vec<f64> = Vec::new();
     let mut fnull: f32 = 0.0;
     let mut fvalues: Vec<f32> = Vec::new();
-    let typecodes: [c_int; 1000] = [0; 1000];
-
-    let icol: c_int = 0;
-    let incol1: c_int = 0;
-    let outcol1: c_int = 0;
 
     let mut jjvalues: Vec<c_longlong> = Vec::new();
     let mut ujjvalues: Vec<c_ulonglong> = Vec::new();
@@ -2444,7 +2422,7 @@ pub fn ffcpcl_safe(
         strarray.reserve_exact(maxloop as usize);
 
         /* allocate space for each string */
-        for ii in 0..(maxloop as usize) {
+        for _ii in 0..(maxloop as usize) {
             let str_storage = vec![0; (width + 1) as usize];
 
             strarray.push(str_storage);
@@ -2764,51 +2742,24 @@ pub fn ffccls_safe(
     create_col: c_int,      /* I - create new col if TRUE, else overwrite */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    let mut tstatus: c_int = 0;
-    let mut colnum: c_int = 0;
+    let mut tstatus: c_int;
+
     let mut typecode: c_int = 0;
     let mut otypecode: c_int = 0;
-    let anynull: c_int = 0;
-    let mut inHduType: c_int = 0;
-    let mut outHduType: c_int = 0;
+
     let mut tfields: c_long = 0;
     let mut repeat: c_long = 0;
     let mut orepeat: c_long = 0;
     let mut width: c_long = 0;
     let mut owidth: c_long = 0;
-    let nrows: c_long = 0;
-    let outrows: c_long = 0;
-    let inloop: c_long = 0;
-    let outloop: c_long = 0;
-    let maxloop: c_long = 0;
-    let ndone: c_long = 0;
-    let ntodo: c_long = 0;
-    let npixels: c_long = 0;
-    let firstrow: c_long = 0;
-    let firstelem: c_long = 0;
-    let ii: c_long = 0;
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut ttype: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut ttype_comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut tform_comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-    let lvalues: Vec<c_char> = Vec::new();
-    let nullflag: c_char = 0;
-    let strarray: Vec<*mut c_char> = Vec::new();
-    let nulstr: [c_char; 2] = [5, 0];
-    let dnull: f64 = 0.0;
-    let dvalues: Vec<f64> = Vec::new();
-    let fnull: f32 = 0.0;
-    let fvalues: Vec<f32> = Vec::new();
     let mut typecodes: [c_int; 1000] = [0; 1000];
     let mut ttypes: [[c_char; FLEN_CARD]; 1000] = [[0; FLEN_CARD]; 1000];
     let mut tforms: [[c_char; FLEN_CARD]; 1000] = [[0; FLEN_CARD]; 1000];
-
-    let ikey: c_int = 0;
-    let jkey = 0;
-    let icol: c_int = 0;
-    let incol1: c_int = 0;
-    let outcol1: c_int = 0;
 
     if *status > 0 {
         return *status;
@@ -2826,7 +2777,7 @@ pub fn ffccls_safe(
         ffrdef_safe(infptr, status); /* rescan header */
     }
 
-    inHduType = infptr.Fptr.hdutype;
+    let inHduType: c_int = infptr.Fptr.hdutype;
 
     if outfptr.HDUposition != outfptr.Fptr.curhdu {
         ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
@@ -2834,7 +2785,7 @@ pub fn ffccls_safe(
         ffrdef_safe(outfptr, status); /* rescan header */
     }
 
-    outHduType = outfptr.Fptr.hdutype;
+    let outHduType: c_int = outfptr.Fptr.hdutype;
 
     if *status > 0 {
         return *status;
@@ -2872,7 +2823,7 @@ pub fn ffccls_safe(
         return *status;
     }
 
-    colnum = cmp::min((tfields + 1) as c_int, outcol); /* output col. number */
+    let colnum: c_int = cmp::min((tfields + 1) as c_int, outcol); /* output col. number */
 
     /* Collect data about input column (type, repeat, etc) */
     let mut incol1 = incol;
@@ -2966,7 +2917,7 @@ pub fn ffccls_safe(
         /* Copy meta-data strings from input column to output */
         let mut incol1 = incol;
         let mut outcol1 = colnum;
-        for icol in 0..(ncols as usize) {
+        for _icol in 0..(ncols as usize) {
             /* copy the comment strings from the input file for TTYPE and TFORM */
             ffkeyn_safe(cs!(c"TTYPE"), incol1, &mut keyname, status);
             ffgkys_safe(infptr, &keyname, &mut ttype, Some(&mut ttype_comm), status);
@@ -3012,7 +2963,7 @@ pub fn ffccls_safe(
     the I/O-intensive column expanding is done */
     let mut incol1 = incol;
     let mut outcol1 = colnum;
-    for icol in 0..(ncols as usize) {
+    for _icol in 0..(ncols as usize) {
         ffcpcl_safe(infptr, outfptr, incol1, outcol1, 0, status);
         incol1 += 1;
         outcol1 += 1;
@@ -3049,30 +3000,23 @@ pub fn ffcprw_safe(
     nrows: LONGLONG,        /* I - number of rows to copy  */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    let mut current_block: LONGLONG;
     let mut innaxis1: LONGLONG = 0;
     let mut innaxis2: LONGLONG = 0;
     let mut outnaxis1: LONGLONG = 0;
     let mut outnaxis2: LONGLONG = 0;
-    let ii: LONGLONG = 0;
-    let mut jj: LONGLONG = 0;
-    let icol: LONGLONG = 0;
-    let mut iVarCol: LONGLONG = 0;
-    let mut inPos: LONGLONG = 0;
-    let mut outPos: LONGLONG = 0;
-    let mut nVarBytes: LONGLONG = 0;
+    let mut jj: LONGLONG;
+    let mut iVarCol: LONGLONG;
+    let mut inPos: LONGLONG;
+    let mut outPos: LONGLONG;
+    let mut nVarBytes: LONGLONG;
     let mut nVarAllocBytes: LONGLONG = 0;
-    let mut buffer: *mut u8;
     let mut varColBuff: Vec<u8> = Vec::new();
     let mut nInVarCols: c_int = 0;
     let mut nOutVarCols: c_int = 0;
     let mut varColDiff: c_int = 0;
-    let mut inVarCols: *mut c_int;
-    let mut outVarCols: *mut c_int;
-    let mut nNewBlocks: c_long = 0;
+    let mut nNewBlocks: c_long;
     let mut hrepeat: LONGLONG = 0;
     let mut hoffset: LONGLONG = 0;
-    let mut colptr: *mut tcolumn;
 
     if *status > 0 {
         return *status;
@@ -3187,8 +3131,8 @@ pub fn ffcprw_safe(
             /* Now make corrections for variable length columns */
             iVarCol = 0;
 
-            let colptr = infptr.Fptr.tableptr; /* point to first column structure */
-            let c = infptr.Fptr.get_tableptr_as_slice();
+            // let colptr = infptr.Fptr.tableptr; /* point to first column structure */
+            // let c = infptr.Fptr.get_tableptr_as_slice();
 
             for icol in 0..(infptr.Fptr.tfield as usize) {
                 if iVarCol < nInVarCols as LONGLONG
@@ -3335,31 +3279,24 @@ pub fn ffcpsr_safe(
     row_status: Option<&[c_char]>, /* I - quality list of rows to keep (1) or not keep (0) */
     status: &mut c_int,            /* IO - error status     */
 ) -> c_int {
-    let mut current_block: LONGLONG;
     let mut innaxis1: LONGLONG = 0;
     let mut innaxis2: LONGLONG = 0;
     let mut outnaxis1: LONGLONG = 0;
     let mut outnaxis2: LONGLONG = 0;
-    let ii: LONGLONG = 0;
-    let mut jj: LONGLONG = 0;
-    let i0: LONGLONG = 0;
-    let icol: LONGLONG = 0;
-    let mut iVarCol: LONGLONG = 0;
-    let mut inPos: LONGLONG = 0;
-    let mut outPos: LONGLONG = 0;
-    let mut nVarBytes: LONGLONG = 0;
+    let mut jj: LONGLONG;
+    let mut iVarCol: LONGLONG;
+    let mut inPos: LONGLONG;
+    let mut outPos: LONGLONG;
+    let mut nVarBytes: LONGLONG;
     let mut nVarAllocBytes: LONGLONG = 0;
 
     let mut varColBuff: Vec<u8> = Vec::new();
     let mut nInVarCols: c_int = 0;
     let mut nOutVarCols: c_int = 0;
     let mut varColDiff: c_int = 0;
-    let mut inVarCols: *mut c_int;
-    let mut outVarCols: *mut c_int;
-    let mut nNewBlocks: c_long = 0;
+    let mut nNewBlocks: c_long;
     let mut hrepeat: LONGLONG = 0;
     let mut hoffset: LONGLONG = 0;
-    let mut colptr: *mut tcolumn;
     let mut n_good_rows: LONGLONG = nrows;
 
     if *status > 0 {
@@ -3468,7 +3405,7 @@ pub fn ffcpsr_safe(
     jj = outnaxis2 + 1;
     if nInVarCols != 0 {
         if let Some(row_status) = row_status {
-            let mut n_good_rows = 0;
+            n_good_rows = 0;
             for ii in 0..(nrows as usize) {
                 if row_status[ii] != 0 {
                     n_good_rows += 1;
@@ -3490,8 +3427,8 @@ pub fn ffcpsr_safe(
             ffptbb_safe(outfptr, jj, 1, innaxis1, &buffer, status);
             /* Now make corrections for variable length columns */
             iVarCol = 0;
-            let colptr = infptr.Fptr.tableptr; /* point to first column structure */
-            let c = infptr.Fptr.get_tableptr_as_slice();
+            // let colptr = infptr.Fptr.tableptr; /* point to first column structure */
+            // let c = infptr.Fptr.get_tableptr_as_slice();
 
             for icol in 0..(infptr.Fptr.tfield as usize) {
                 if iVarCol < (nInVarCols as LONGLONG)
@@ -3694,23 +3631,18 @@ pub fn ffdcol_safe(
     colnum: c_int,       /* I - column to delete (1 = 1st)               */
     status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
-    let ii: c_int = 0;
     let mut tstatus: c_int = 0;
-    let mut firstbyte: LONGLONG = 0;
-    let mut size: LONGLONG = 0;
-    let mut ndelete: LONGLONG = 0;
-    let mut nbytes: LONGLONG = 0;
-    let mut naxis1: LONGLONG = 0;
-    let mut naxis2: LONGLONG = 0;
-    let mut firstcol: LONGLONG = 0;
-    let mut delbyte: LONGLONG = 0;
-    let mut freespace: LONGLONG = 0;
+
+    let nbytes: LONGLONG;
+
+    let mut firstcol: LONGLONG;
+    let mut delbyte: LONGLONG;
+
     let mut tbcol: LONGLONG = 0;
-    let mut nblock: c_long = 0;
-    let mut nspace: c_long = 0;
+
+    let nspace: c_long;
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-    let mut colptr: *mut tcolumn;
     let mut nextcol: usize = 0;
 
     if *status > 0 {
@@ -3736,7 +3668,7 @@ pub fn ffdcol_safe(
         return *status;
     }
 
-    let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+    /* point to first column structure */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = (colnum - 1) as usize; /* offset to the correct column */
 
@@ -3774,19 +3706,20 @@ pub fn ffdcol_safe(
         delbyte = (fptr.Fptr.rowlength) - (c[ci].tbcol);
     }
 
-    naxis1 = fptr.Fptr.rowlength; /* current width of the table */
-    naxis2 = fptr.Fptr.numrows;
+    let naxis1: LONGLONG = fptr.Fptr.rowlength; /* current width of the table */
+    let naxis2: LONGLONG = fptr.Fptr.numrows;
 
     /* current size of table */
-    size = fptr.Fptr.heapstart + fptr.Fptr.heapsize;
-    freespace = ((delbyte as LONGLONG) * naxis2) + ((size + 2879) / 2880) * 2880 - size;
-    nblock = (freespace / 2880) as c_long; /* number of empty blocks to delete */
+    let size: LONGLONG = fptr.Fptr.heapstart + fptr.Fptr.heapsize;
+    let freespace: LONGLONG =
+        ((delbyte as LONGLONG) * naxis2) + ((size + 2879) / 2880) * 2880 - size;
+    let nblock: c_long = (freespace / 2880) as c_long; /* number of empty blocks to delete */
 
     ffcdel_safe(fptr, naxis1, naxis2, delbyte, firstcol, status); /* delete col */
 
     /* absolute heap position */
-    firstbyte = fptr.Fptr.datastart + fptr.Fptr.heapstart;
-    ndelete = (delbyte as LONGLONG) * naxis2; /* size of shift */
+    let firstbyte: LONGLONG = fptr.Fptr.datastart + fptr.Fptr.heapstart;
+    let ndelete: LONGLONG = (delbyte as LONGLONG) * naxis2; /* size of shift */
 
     /* shift heap up (if it exists) */
     if fptr.Fptr.heapsize > 0 {
@@ -3887,9 +3820,7 @@ pub fn ffcins_safe(
     let mut newlen: LONGLONG = 0;
     let mut fbyte: LONGLONG = 0;
     let mut nbytes: LONGLONG = 0;
-    let irow: LONGLONG = 0;
     let mut nseg: LONGLONG = 0;
-    let ii: LONGLONG = 0;
 
     if *status > 0 {
         return *status;
@@ -3973,7 +3904,7 @@ pub fn ffcins_safe(
         fbyte = (nseg - 1) * 10000 + bytepos + 1;
         nbytes = naxis1 - fbyte + 1;
 
-        for ii in 0..(nseg as usize) {
+        for _ii in 0..(nseg as usize) {
             ffgtbb_safe(fptr, naxis2, fbyte, nbytes, &mut buffer, status);
             fptr.Fptr.rowlength = newlen; /* new row length */
 
@@ -3991,7 +3922,7 @@ pub fn ffcins_safe(
 
             fbyte = (nseg - 1) * 10000 + bytepos + 1;
             nbytes = naxis1 - (nseg - 1) * 10000;
-            for ii in 0..(nseg as usize) {
+            for _ii in 0..(nseg as usize) {
                 /* read the row to be shifted (work backwards thru the table) */
                 ffgtbb_safe(fptr, irow as LONGLONG, fbyte, nbytes, &mut buffer, status);
                 fptr.Fptr.rowlength = newlen; /* new row length */
@@ -4022,7 +3953,7 @@ pub fn ffcins_safe(
         for irow in 1..=(naxis2 as usize) {
             fbyte = bytepos + 1;
             nbytes = ninsert - ((nseg - 1) * 10000);
-            for ii in 0..(nseg as usize) {
+            for _ii in 0..(nseg as usize) {
                 ffptbb_safe(fptr, irow as LONGLONG, fbyte, nbytes, &buffer, status);
                 fbyte += nbytes;
                 nbytes = 10000;
@@ -4065,8 +3996,7 @@ pub fn ffcdel_safe(
     let mut buffer: [u8; 10000] = [0; 10000];
     let mut i1: LONGLONG = 0;
     let mut i2: LONGLONG = 0;
-    let ii: LONGLONG = 0;
-    let irow: LONGLONG = 0;
+
     let mut nseg: LONGLONG = 0;
     let mut newlen: LONGLONG = 0;
     let mut remain: LONGLONG = 0;
@@ -4117,7 +4047,7 @@ pub fn ffcdel_safe(
             i2 = i1 + ndelete;
 
             nbytes = newlen - (nseg - 1) * 10000;
-            for ii in 0..(nseg as usize) {
+            for _ii in 0..(nseg as usize) {
                 ffgtbb_safe(fptr, irow as LONGLONG, i2, nbytes, &mut buffer, status); /* read bytes */
                 fptr.Fptr.rowlength = newlen; /* new row length */
 
@@ -4138,7 +4068,7 @@ pub fn ffcdel_safe(
             i1 = bytepos + 1;
             i2 = i1 + ndelete;
             nbytes = remain - (nseg - 1) * 10000;
-            for ii in 0..(nseg as usize) {
+            for _ii in 0..(nseg as usize) {
                 ffgtbb_safe(fptr, naxis2, i2, nbytes, &mut buffer, status);
                 fptr.Fptr.rowlength = newlen; /* new row length */
 
@@ -4197,7 +4127,6 @@ pub fn ffkshf_safe(
 ) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nmore: c_int = 0;
-    let nrec: c_int = 0;
     let mut tstatus: c_int = 0;
     let mut i1 = 0;
     let mut ivalue: c_long = 0;
@@ -4321,8 +4250,6 @@ pub fn fffvcl_safe(
     status: &mut c_int,   /* IO - error status                           */
 ) -> c_int {
     let mut tfields: c_int = 0;
-    let icol: c_int = 0;
-    let mut colptr: *mut tcolumn;
 
     *nvarcols = 0;
 
@@ -4338,7 +4265,7 @@ pub fn fffvcl_safe(
 
     if !fptr.Fptr.tableptr.is_null() {
         tfields = fptr.Fptr.tfield;
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+        /* point to first column structure */
         let c = fptr.Fptr.get_tableptr_as_slice();
 
         for (ci, icol) in (0..(tfields as usize)).enumerate() {

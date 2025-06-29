@@ -243,7 +243,7 @@ pub fn ffpcnl_safe(
         return *status;
     }
 
-    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    /* set pointer to first column */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* increment to the correct column */
 
@@ -375,7 +375,6 @@ pub fn ffpclx_safe(
     larray: &[c_char],   /* I - array of logicals corresponding to bits */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    let mut offset: LONGLONG = 0;
     let mut bstart: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
     let mut rowlen: LONGLONG = 0;
@@ -388,7 +387,6 @@ pub fn ffpclx_safe(
     let mut nbyte: c_long = 0;
     let mut bitloc: c_long = 0;
     let mut ndone: c_long = 0;
-    let ii: c_long = 0;
     let mut twidth: c_long = 0;
     let mut incre: c_long = 0;
     let mut tcode: c_int = 0;
@@ -436,7 +434,7 @@ pub fn ffpclx_safe(
 
     /* Save the current heapsize; ffgcprll will increment the value if */
     /* we are writing to a variable length column. */
-    offset = fptr.Fptr.heapsize;
+    // offset = fptr.Fptr.heapsize;
 
     /* call ffgcprll in case we are writing beyond the current end of   */
     /* the table; it will allocate more space and shift any following */
@@ -475,7 +473,7 @@ pub fn ffpclx_safe(
     rstart = frow - 1;
     estart = fbyte as LONGLONG - 1;
 
-    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    /* set pointer to first column */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* increment to the correct column */
 

@@ -776,10 +776,10 @@ pub fn fftkey_safe(
     keyword: &[c_char], /* I -  keyword name */
     status: &mut c_int, /* IO - error status */
 ) -> c_int {
-    let mut maxchr: usize = 0;
+    let mut maxchr: usize;
     let mut spaces: c_int = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let mut testchar = 0;
+    let mut testchar;
 
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -985,9 +985,9 @@ pub fn ffmkky_safe(
     card: &mut [c_char],     /* O - constructed keyword card */
     status: &mut c_int,      /* IO - status value   */
 ) -> c_int {
-    let mut namelen: usize = 0;
-    let mut len: usize = 0;
-    let mut ii: usize = 0;
+    let mut namelen: usize;
+    let mut len: usize;
+    let mut ii: usize;
     let mut tmpname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tmpname2: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
 
@@ -1221,7 +1221,7 @@ pub(crate) fn ffmkey(
     status: &mut c_int,  /* IO - error status      */
 ) -> c_int {
     let mut tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let mut keylength = 8;
+    let mut keylength;
 
     let card_len = FLEN_CARD - 1;
 
@@ -1428,8 +1428,7 @@ pub fn ffpsvc_safe(
     comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - comment string parsed from the card */
     status: &mut c_int,   /* IO - error status   */
 ) -> c_int {
-    let jj: isize = 0;
-    let mut valpos: usize = 0;
+    let mut valpos: usize;
     let mut strbuf: [c_char; 21] = [0; 21];
 
     if *status > 0 {
@@ -1708,17 +1707,17 @@ pub fn ffgthd_safe(
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut value: [c_char; 140] = [0; 140];
     let mut comment: [c_char; 140] = [0; 140];
-    let mut tok: usize = 0;
-    let mut suffix: c_char = 0;
+    let mut tok: usize;
+    let mut suffix: c_char;
 
     let mut tvalue: [c_char; 140] = [0; 140];
-    let mut len = 0;
-    let mut vlen = 0;
-    let mut more: bool = false;
-    let mut tstatus: c_int = 0;
-    let mut lentok1 = 0;
-    let mut remainlen = 0;
-    let mut dval: f64 = 0.0;
+    let mut len;
+    let vlen;
+    let mut more: bool;
+    let mut tstatus: c_int;
+    let lentok1;
+    let mut remainlen;
+    let mut dval: f64;
 
     if *status > 0 {
         return *status;
@@ -2160,16 +2159,16 @@ pub fn fits_translate_keyword_safer(
     let mut j1: c_int = 0;
     let mut n1: c_int = 0;
     let mut m1: c_int = 0;
-    let mut fac: c_int = 0;
+    let mut fac: c_int;
     let mut a: c_char = bb(b' ');
-    let mut oldp: c_char = 0;
-    let mut c: c_char = 0;
-    let mut s: c_char = 0;
-    let mut ip: usize = 0;
-    let mut ic: usize = 0;
+    let mut oldp: c_char;
+    let mut c: c_char;
+    let mut s: c_char;
+    let mut ip: usize;
+    let mut ic: usize;
     let pat: c_int = 0;
     let mut pass = false;
-    let mut firstfail = false;
+    let mut firstfail;
 
     if *status > 0 {
         return *status;
@@ -2483,8 +2482,7 @@ pub fn fits_translate_keywords_safer(
     let mut n: c_int = 0;
     let mut m: c_int = 0;
     let mut pat_num: c_int = 0;
-    let mut maxchr: usize = 0;
-    let ii: c_int = 0;
+    let mut maxchr: usize;
     let mut outrec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
     if *status > 0 {
@@ -2605,7 +2603,6 @@ pub fn fits_copy_pixlist2image_safe(
     colnum: &[c_int],       /* I - numbers of the columns to be binned  */
     status: &mut c_int,     /* IO - error status */
 ) -> c_int {
-    let nrec: c_int = 0;
     let mut nkeys: c_int = 0;
     let mut nmore: c_int = 0;
     let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2815,7 +2812,7 @@ pub(crate) fn fits_translate_pixkeyword(
     patterns: &[[*const c_char; 2]], /* I - pointer to input / output string */
     /*     templates */
     npat: usize,         /* I - number of templates passed */
-    naxis: c_int,        /* I - number of columns to be binned */
+    _naxis: c_int,       /* I - number of columns to be binned */
     colnum: &[c_int],    /* I - numbers of the columns to be binned */
     pat_num: &mut c_int, /* O - matched pattern number (0 based) or -1 */
     i: &mut c_int,
@@ -2827,20 +2824,20 @@ pub(crate) fn fits_translate_pixkeyword(
 ) -> c_int {
     let mut i1: c_int = 0;
     let mut j1: c_int = 0;
-    let mut val: c_int = 0;
-    let mut fac: c_int = 0;
+    let mut val: c_int;
+    let mut fac: c_int;
     let mut nval: c_int = 0;
     let mut mval: c_int = 0;
     let mut lval: c_int = 0;
     let mut a: c_char = b' ' as c_char;
-    let mut oldp: c_char = 0;
-    let mut c: c_char = 0;
-    let mut s: c_char = 0;
-    let mut ip: c_int = 0;
-    let mut ic: c_int = 0;
+    let mut oldp: c_char;
+    let mut c: c_char;
+    let mut s: c_char;
+    let mut ip: c_int;
+    let mut ic: c_int;
     let pat: c_int = 0;
     let mut pass: bool = false;
-    let mut firstfail: bool = false;
+    let mut firstfail: bool;
     let mut spat;
 
     if *status > 0 {
@@ -3314,11 +3311,11 @@ pub fn ffbnfm_safe(
     mut twidth: Option<&mut c_long>,  /* O - width  of the field, in chars */
     status: &mut c_int,               /* IO - error status      */
 ) -> c_int {
-    let mut datacode = 0; /* flag variable cols w/ neg type code */
-    let mut variable = 0;
-    let mut iread = 0;
+    let mut datacode; /* flag variable cols w/ neg type code */
+    let variable;
+    let mut iread;
     let mut width: c_long = 0;
-    let mut repeat: c_long = 0;
+    let repeat: c_long;
     let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
@@ -3382,7 +3379,7 @@ pub fn ffbnfm_safe(
             Ok(x) => {
                 repeat = x;
             }
-            Err(x) => {
+            Err(_x) => {
                 /* read repeat count */
                 ffpmsg_str("Error: Bad repeat format in TFORM (ffbnfm).");
                 *status = BAD_TFORM;
@@ -3561,11 +3558,11 @@ pub fn ffbnfmll_safe(
     mut twidth: Option<&mut c_long>,    /* O - width of the field, in chars */
     status: &mut c_int,                 /* IO - error status      */
 ) -> c_int {
-    let mut datacode: c_int = 0;
-    let mut variable: c_int = 0;
-    let mut iread: c_int = 0;
+    let mut datacode: c_int;
+    let variable: c_int;
+    let mut iread: c_int;
     let mut width: c_long = 0;
-    let mut repeat: LONGLONG = 0;
+    let repeat: LONGLONG;
     let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut drepeat: f64 = 0.0;
@@ -3826,7 +3823,7 @@ pub(crate) fn ffcdsp(
     tform: &[c_char],     /* value of an ASCII table TFORMn keyword */
     cform: &mut [c_char], /* equivalent format code in C language syntax */
 ) {
-    let mut ii: usize = 0;
+    let mut ii: usize;
 
     cform[0] = 0;
     ii = 0;
@@ -3958,8 +3955,7 @@ pub fn ffgcnn_safe(
     status: &mut c_int,     /* IO - error status                           */
 ) -> c_int {
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let mut tstatus: c_int = 0;
-    let ii: c_int = 0;
+    let mut tstatus: c_int;
     let mut founde: bool = false; /* initialize 'found exact match' flag */
     let mut foundw: bool = false; /* initialize 'found wildcard match' flag */
     let mut matchi = 0;
@@ -4125,10 +4121,9 @@ pub fn ffcmps_safe(
     matchi: &mut c_int, /* O - do template and colname match? 1=yes     */
     exact: &mut c_int,  /* O - do strings exactly match, or wildcards   */
 ) {
-    let ii = 0;
-    let mut found = false;
-    let mut t1 = 0;
-    let mut s1 = 0;
+    let mut found;
+    let mut t1;
+    let mut s1;
     let mut wildsearch = false;
     let mut tsave: c_int = 0 as c_int;
     let mut ssave: c_int = 0 as c_int;
@@ -4579,13 +4574,12 @@ pub fn ffeqtyll_safe(
 ) -> c_int {
     let mut hdutype: c_int = 0;
     let mut decims: c_int = 0;
-    let mut tcode: c_int = 0;
-    let mut effcode: c_int = 0;
-    let mut tscale: f64 = 0.0;
-    let mut tzero: f64 = 0.0;
-    let mut min_val: f64 = 0.0;
-    let mut max_val: f64 = 0.0;
-    let mut lngscale: c_long = 0;
+
+    let effcode: c_int;
+
+    let mut min_val: f64;
+    let mut max_val: f64;
+
     let mut lngzero: c_long = 0;
     let mut tmpwidth: c_long = 0;
 
@@ -4650,15 +4644,15 @@ pub fn ffeqtyll_safe(
     /* check if the tscale and tzero keywords are defined, which might
     change the effective datatype of the column  */
 
-    tscale = c[ci].tscale;
-    tzero = c[ci].tzero;
+    let tscale: f64 = c[ci].tscale;
+    let tzero: f64 = c[ci].tzero;
 
     if tscale == 1.0 && tzero == 0.0 {
         /* no scaling */
         return *status;
     }
 
-    tcode = (*typecode).abs();
+    let tcode: c_int = (*typecode).abs();
 
     match tcode {
         TBYTE => {
@@ -4696,7 +4690,7 @@ pub fn ffeqtyll_safe(
         /* don't exceed range of 32-bit integer */
         lngzero = tzero as c_long;
     }
-    lngscale = tscale as c_long;
+    let lngscale: c_long = tscale as c_long;
 
     if (tzero != 2147483648.0) && /* special value that exceeds integer range */
 (tzero != 9223372036854775808.0) &&  /* indicates unsigned long long */
@@ -4932,7 +4926,7 @@ pub unsafe fn ffgacl_safer(
     unsafe {
         let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
         let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut tstatus = 0;
+        let mut tstatus;
 
         if *status > 0 {
             return *status;
@@ -5166,7 +5160,7 @@ pub fn ffgbclll_safe(
     let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
-    let mut tstatus = 0;
+    let mut tstatus;
 
     if *status > 0 {
         return *status;
@@ -5186,7 +5180,7 @@ pub fn ffgbclll_safe(
     }
 
     /* get what we can from the column structure */
-    let colptr = fptr.Fptr.tableptr; /* set pointer to first column */
+    /* set pointer to first column */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* offset to correct column structure */
 
@@ -5517,7 +5511,7 @@ pub unsafe fn ffrhdu_safer(
     status: &mut c_int,          /* IO - error status     */
 ) -> c_int {
     unsafe {
-        let mut tstatus = 0;
+        let mut tstatus;
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
         let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -5665,17 +5659,15 @@ pub(crate) unsafe fn ffpinit(
         let mut nspace: c_int = 0;
         let mut ttype: c_int = 0;
         let mut bytlen: LONGLONG = 0;
-        let mut ii: usize = 0;
-        let ntilebins: c_int = 0;
+        let mut ii: usize;
         let mut pcount: c_long = 0;
         let mut gcount: c_long = 0;
         let mut naxes: [LONGLONG; 999] = [0; 999];
-        let mut npix: LONGLONG = 0;
+        let mut npix: LONGLONG;
         let mut blank: LONGLONG = 0;
         let mut bscale: f64 = 0.0;
         let mut bzero: f64 = 0.0;
         let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut colptr: &mut tcolumn;
 
         if *status > 0 {
             return *status;
@@ -5938,14 +5930,12 @@ pub(crate) unsafe fn ffainit(
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
     unsafe {
-        let ii: c_int = 0;
-        let mut nspace: c_int = 0;
-        let ntilebins: c_int = 0;
+        let mut nspace: c_int;
         let mut tfield: c_long = 0;
         let mut pcount: LONGLONG = 0;
         let mut rowlen: LONGLONG = 0;
         let mut nrows: LONGLONG = 0;
-        let mut tbcoln: LONGLONG = 0;
+        let mut tbcoln: LONGLONG;
         let mut colptr: *mut tcolumn = ptr::null_mut();
         let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
         let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -6213,9 +6203,6 @@ pub(crate) unsafe fn ffbinit(
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
     unsafe {
-        let ii: c_int = 0;
-        let nspace: c_int = 0;
-        let ntilebins: c_int = 0;
         let mut tfield: c_long = 0;
         let mut pcount: LONGLONG = 0;
         let mut rowlen: LONGLONG = 0;
@@ -6533,8 +6520,7 @@ pub(crate) fn ffgtbc(
     totalwidth: &mut LONGLONG, /* O - total width of a table row */
     status: &mut c_int,        /* IO - error status              */
 ) -> c_int {
-    let mut tfields: c_int = 0;
-    let mut nbytes: LONGLONG = 0;
+    let mut nbytes: LONGLONG;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if *status > 0 {
@@ -6548,7 +6534,7 @@ pub(crate) fn ffgtbc(
         /* rescan header */
         return *status;
     }
-    tfields = fptr.Fptr.tfield;
+    let tfields: c_int = fptr.Fptr.tfield;
 
     *totalwidth = 0;
 
@@ -6610,7 +6596,7 @@ pub(crate) fn ffgtbp(
     value: &[c_char],    /* I - value string of the keyword */
     status: &mut c_int,  /* IO - error status       */
 ) -> c_int {
-    let mut tstatus: c_int = 0;
+    let mut tstatus: c_int;
     let mut datacode: c_int = 0;
     let mut decimals: c_int = 0;
     let mut width: c_long = 0;
@@ -6620,7 +6606,6 @@ pub(crate) fn ffgtbp(
     let mut jjvalue: LONGLONG = 0;
     let mut dvalue: f64 = 0.0;
     let mut tvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let loc: *mut c_char = ptr::null_mut();
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if *status > 0 {
@@ -6887,12 +6872,10 @@ pub(crate) fn ffgtbp(
         }
 
         let loc = loc.unwrap() + 1;
-        let mut endp = 0;
         /* read size of first dimension */
         // width = strtol_safe(&value[loc..], &mut endp, 10);
-        let (r, p) = strtol_safe(&value[loc..]).unwrap();
+        let (r, _p) = strtol_safe(&value[loc..]).unwrap();
         width = r;
-        endp = p;
 
         if c[ci].trepeat != 1 && c[ci].trepeat < width as LONGLONG {
             return *status; /* string length is greater than column width */
@@ -6959,15 +6942,14 @@ pub(crate) fn ffgcprll(
 ) -> c_int {
     let mut writemode = writemode;
 
-    let mut nulpos = 0;
+    let nulpos;
     let mut rangecheck = 1;
-    let tstatus = 0;
-    let mut endpos: LONGLONG = 0;
-    let mut nblock: c_long = 0;
+    let endpos: LONGLONG;
+    let nblock: c_long;
     let mut heapoffset: LONGLONG = 0;
     let mut lrepeat: LONGLONG = 0;
-    let mut endrow: LONGLONG = 0;
-    let mut nrows: LONGLONG = 0;
+    let endrow: LONGLONG;
+    let nrows: LONGLONG;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if fptr.HDUposition != fptr.Fptr.curhdu {
@@ -7073,7 +7055,7 @@ pub(crate) fn ffgcprll(
     let datastart = fptr.Fptr.datastart; /* offset in file to start of table */
 
     let ci = colnum as usize - 1; /* offset to correct column structure */
-    let mut tbcol = 0;
+    let tbcol;
     {
         let c: &[tcolumn] = fptr.Fptr.get_tableptr_as_slice(); /* point to first column structure */
 
@@ -7579,9 +7561,9 @@ pub fn fftheap_safe(
     status: &mut c_int,  /* IO - error status                             */
 ) -> c_int {
     let mut typecode = 0;
-    let mut pixsize = 0;
-    let mut ii: c_long = 0;
-    let mut nbytes: c_long = 0;
+    let mut pixsize;
+    let mut ii: c_long;
+    let mut nbytes: c_long;
     let mut repeat: LONGLONG = 0;
     let mut offset: LONGLONG = 0;
     let mut tunused = 0;
@@ -7737,22 +7719,21 @@ pub unsafe fn ffcmph_safer(
 ) -> c_int {
     unsafe {
         let mut typecode = 0;
-        let mut pixsize = 0;
+        let mut pixsize;
         let mut valid = 0;
-        let mut ii: LONGLONG = 0;
+        let mut ii: LONGLONG;
         let mut buffsize = 10000;
-        let mut nbytes: usize = 0;
+        let mut nbytes: usize;
         let mut unused: LONGLONG = 0;
         let mut overlap: LONGLONG = 0;
         let mut repeat: LONGLONG = 0;
         let mut offset: LONGLONG = 0;
-        let mut tbuff: *mut c_char;
         let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
         let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
         let mut pcount: LONGLONG = 0;
-        let mut endpos: LONGLONG = 0;
-        let mut t2heapsize: LONGLONG = 0;
-        let mut nblock = 0;
+        let mut endpos: LONGLONG;
+        let t2heapsize: LONGLONG;
+        let mut nblock;
 
         if *status > 0 {
             return *status;
@@ -8180,7 +8161,7 @@ pub fn ffgdess_safe(
         return *status;
     }
 
-    let colptr = 0; /* point to first column structure */
+    /* point to first column structure */
     let c = fptr.Fptr.get_tableptr_as_slice();
     let ci = colnum as usize - 1; /* offset to the correct column */
 
@@ -8408,8 +8389,6 @@ pub fn ffpdes_safe(
     heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
     status: &mut c_int,  /* IO - error status                             */
 ) -> c_int {
-    let mut bytepos: LONGLONG = 0;
-
     let mut descript4: [c_uint; 2] = [0; 2];
     let mut descript8: [LONGLONG; 2] = [0; 2];
 
@@ -8432,7 +8411,8 @@ pub fn ffpdes_safe(
         *status = NOT_VARI_LEN;
     }
 
-    bytepos = fptr.Fptr.datastart + (fptr.Fptr.rowlength * (rownum - 1)) + c[ci].tbcol;
+    let bytepos: LONGLONG =
+        fptr.Fptr.datastart + (fptr.Fptr.rowlength * (rownum - 1)) + c[ci].tbcol;
 
     ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status); /* move to element */
 
@@ -8476,9 +8456,7 @@ pub(crate) unsafe fn ffchdu(
 ) -> c_int {
     unsafe {
         let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let ii: isize = 0;
         let mut stdriver = -1; // -1 so that if stream driver not found, it doesn't default
-        let ntilebins = 0;
 
         /* reset position to the correct HDU if necessary */
         if fptr.HDUposition != fptr.Fptr.curhdu {
@@ -8558,9 +8536,8 @@ pub(crate) fn ffuptf(
     let mut tflds: c_long = 0;
     let mut length: LONGLONG = 0;
     let mut addr: LONGLONG = 0;
-    let mut maxlen: LONGLONG = 0;
+    let mut maxlen: LONGLONG;
     let mut naxis2: LONGLONG = 0;
-    let jj: LONGLONG = 0;
     let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -8945,7 +8922,7 @@ pub(crate) fn ffpdfl(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
-    let mut chfill: u8 = 0;
+    let chfill: u8;
     let mut fill: [u8; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
     let mut fillstart: LONGLONG;
     let mut nfill;
@@ -9206,7 +9183,6 @@ pub unsafe fn ffcrhd_safer(
     unsafe {
         let mut tstatus: c_int = 0;
         let bytepos: LONGLONG;
-        let ptr: *mut LONGLONG;
 
         if *status > 0 {
             return *status;
@@ -9314,7 +9290,7 @@ pub(crate) fn ffdblk(
     buffer.fill(0);
     ffmbyt_safe(fptr, writepos as LONGLONG, REPORT_EOF, status);
 
-    for ii in 0..nblocks {
+    for _ii in 0..nblocks {
         ffpbyt(fptr, BL!(), cast_slice(&buffer), status);
     }
 
@@ -9657,13 +9633,13 @@ pub fn ffgiet_safe(
     imgtype: &mut c_int, /* O - image data type                         */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    let mut tstatus: c_int = 0;
-    let mut lngscale: c_long = 0;
+    let mut tstatus: c_int;
+
     let mut lngzero: c_long = 0;
     let mut bscale: f64 = 0.0;
     let mut bzero: f64 = 0.0;
-    let mut min_val: f64 = 0.0;
-    let mut max_val: f64 = 0.0;
+    let mut min_val: f64;
+    let mut max_val: f64;
 
     if *status > 0 {
         return *status;
@@ -9755,7 +9731,7 @@ pub fn ffgiet_safe(
         lngzero = bzero as c_long;
     }
 
-    lngscale = bscale as c_long;
+    let lngscale: c_long = bscale as c_long;
 
     if (bzero != 2147483648.) && /* special value that exceeds integer range */
        ((lngzero as f64) != bzero || (lngscale as f64) != bscale)
@@ -10022,10 +9998,9 @@ pub fn ffmahd_safe(
     exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2 */
     status: &mut c_int,          /* IO - error status                 */
 ) -> c_int {
-    let mut moveto = 0;
-    let mut tstatus = 0;
+    let mut moveto;
+    let mut tstatus;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let ptr: *mut LONGLONG = ptr::null_mut();
 
     let mut exttype = exttype;
 
@@ -10181,14 +10156,13 @@ pub fn ffmnhd_safe(
     status: &mut c_int,
 ) -> c_int {
     let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let ii: c_int = 0;
     let mut hdutype: c_int = 0;
-    let mut alttype: c_int = 0;
-    let mut extnum: c_int = 0;
-    let mut tstatus: c_int = 0;
+    let mut alttype: c_int;
+
+    let mut tstatus: c_int;
     let mut matched: c_int = 0;
     let mut exact: c_int = 0;
-    let mut slen = 0;
+    let mut slen;
     let mut putback: c_int = 0;
     let mut chopped: c_int = 0;
     let mut extver: c_long = 0;
@@ -10197,7 +10171,7 @@ pub fn ffmnhd_safe(
         return *status;
     }
 
-    extnum = fptr.HDUposition + 1; /* save the current HDU number */
+    let extnum: c_int = fptr.HDUposition + 1; /* save the current HDU number */
 
     /*
        This is a kludge to deal with a special case where the
@@ -10378,9 +10352,9 @@ pub(crate) fn ffgext(
     exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2    */
     status: &mut c_int,          /* IO - error status                    */
 ) -> c_int {
-    let mut xcurhdu: c_int = 0;
-    let mut xmaxhdu: c_int = 0;
-    let mut xheadend: LONGLONG = 0;
+    let xcurhdu: c_int;
+    let xmaxhdu: c_int;
+    let xheadend: LONGLONG;
 
     if *status > 0 {
         return *status;
@@ -10421,8 +10395,8 @@ pub(crate) fn ffiblk(
     status: &mut c_int, /* IO - error status                   */
 ) -> c_int {
     let mut typhdu: c_int = 0;
-    let mut insertpt: LONGLONG = 0;
-    let mut charfill: c_char = 0;
+    let mut insertpt: LONGLONG;
+    let charfill: c_char;
 
     let buff1: [c_char; BLOCK_LEN] = [0; BLOCK_LEN];
     let buff2: [c_char; BLOCK_LEN] = [0; BLOCK_LEN];
@@ -10520,7 +10494,7 @@ pub(crate) fn ffiblk(
         let mut jpoint = headstart[(fptr.Fptr.maxhdu + 1) as usize] - BL!();
 
         /* move all the blocks starting at end of file working backwards */
-        for ii in 0..(nshift as usize) {
+        for _ii in 0..(nshift as usize) {
             /* move to the read start position */
             if ffmbyt_safe(fptr, jpoint, REPORT_EOF, status) > 0 {
                 return *status;
@@ -10544,7 +10518,7 @@ pub(crate) fn ffiblk(
         /* move back to the write start postion (might be EOF) */
         ffmbyt_safe(fptr, insertpt, IGNORE_EOF, status);
 
-        for ii in 0..(nblock as usize) {
+        for _ii in 0..(nblock as usize) {
             /* insert correct fill value */
             ffpbyt(fptr, BL!(), cast_slice(&outbuff), status);
         }
@@ -12003,8 +11977,6 @@ pub(crate) fn ffc2s(
     outstr: &mut [c_char], /* O - null terminated output string without quotes */
     status: &mut c_int,    /* IO - error status */
 ) -> c_int {
-    let mut len = 0;
-
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12021,7 +11993,7 @@ pub(crate) fn ffc2s(
         }
     }
 
-    len = strlen_safe(instr);
+    let len = strlen_safe(instr);
     let mut ii = 1;
     let mut jj: isize = 0;
     while ii < len {
@@ -12130,7 +12102,7 @@ pub(crate) fn ffc2rr(
         Ok(val) => {
             *fval = val;
         }
-        Err(err) => {
+        Err(_err) => {
             strcpy_safe(
                 &mut msg,
                 cs!(c"Error in ffc2rr converting string to float: "),
@@ -12234,7 +12206,7 @@ pub(crate) fn ffc2dd(
         Ok(val) => {
             *dval = val;
         }
-        Err(err) => {
+        Err(_err) => {
             strcpy_safe(
                 &mut msg,
                 cs!(c"Error in ffc2dd converting string to double: "),
@@ -12339,10 +12311,10 @@ pub(crate) fn fits_strncasecmp(s1: &[c_char], s2: &[c_char], n: usize) -> c_int 
  *
  * */
 pub(crate) unsafe fn fits_recalloc(
-    ptr: *mut c_void,
-    old_num: usize,
-    new_num: usize,
-    size: usize,
+    _ptr: *mut c_void,
+    _old_num: usize,
+    _new_num: usize,
+    _size: usize,
 ) -> *mut c_void {
     todo!();
 }

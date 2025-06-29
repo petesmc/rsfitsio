@@ -2782,7 +2782,6 @@ pub fn ffgcv_safe(
             match nulval {
                 None => {
                     cdummy[0] = 0;
-                    let cdummy2 = cdummy;
                     ffgcls(
                         fptr,
                         colnum,

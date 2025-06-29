@@ -484,7 +484,6 @@ pub fn ffgky_safe(
 ) -> c_int {
     let mut longval: LONGLONG = 0;
     let mut ulongval: ULONGLONG = 0;
-    let doubleval: f64 = 0.0;
 
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -793,7 +792,6 @@ pub fn ffgcrd_safe(
     let mut cardname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut ptr1: usize;
     let mut ptr2: usize;
-    let mut gotstar: Option<usize>;
 
     if *status > 0 {
         return *status;
@@ -998,8 +996,8 @@ pub fn ffgstr_safe(
     ffghps_safe(fptr, Some(&mut nkeys), Some(&mut nextkey), status); /* get no. keywords and position */
     ntodo = nkeys - nextkey + 1; /* first, read from next keyword to end */
 
-    for jj in 0..2 {
-        for kk in 0..(ntodo as usize) {
+    for _jj in 0..2 {
+        for _kk in 0..(ntodo as usize) {
             ffgnky(fptr, card, status); /* get next keyword */
             if strstr_safe(card, string).is_some() {
                 return *status; /* found the matching string */
@@ -1048,7 +1046,6 @@ pub fn ffgknm_safe(
 ) -> c_int {
     let mut ptr1: usize = 0;
 
-    let mut ii: usize;
     let namelength = FLEN_KEYWORD - 1;
 
     name[0] = 0;
@@ -1087,7 +1084,6 @@ pub fn ffgknm_safe(
         name[ii] = 0;
         *length = ii as c_int;
     } else {
-        let ii = 0;
         for ii in 0..namelength {
             /* look for string terminator, or a blank */
             if card[ii] != bb(b' ') && card[ii] != bb(b'=') && card[ii] != 0 {
@@ -1293,9 +1289,6 @@ pub unsafe extern "C" fn ffgkcsl(
             return *status;
         }
 
-        let dummy_vallen: c_int = 0;
-        let dummy_comlen: c_int = 0;
-
         ffglkut(
             fptr, keyname, 0, 0, 0, None, length, None, comlength, status,
         );
@@ -1317,9 +1310,6 @@ pub fn ffgkcsl_safe(
     if *status > 0 {
         return *status;
     }
-
-    let dummy_vallen: c_int = 0;
-    let dummy_comlen: c_int = 0;
 
     ffglkut(
         fptr, keyname, 0, 0, 0, None, length, None, comlength, status,
@@ -2770,7 +2760,6 @@ pub fn ffgkns_safe(
 ) -> c_int {
     let mut nend: c_int = 0;
     let mut lenroot: usize = 0;
-    let ii: c_int = 0;
     let mut nkeys: c_int = 0;
     let mut mkeys: c_int = 0;
     let mut tstatus: c_int = 0;
@@ -2937,7 +2926,7 @@ pub fn ffgknl_safe(
     ffmaky_safe(fptr, 3, status); /* move to 3rd keyword (skip 1st 2 keywords) */
 
     let mut undefinedval = false;
-    for ii in 3..=(nkeys as usize) {
+    for _ii in 3..=(nkeys as usize) {
         if ffgnky(fptr, &mut card, status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -3064,7 +3053,7 @@ pub fn ffgknj_safe(
 
     let mut undefinedval = false;
 
-    for ii in 3..=(nkeys) {
+    for _ii in 3..=(nkeys) {
         if ffgnky(fptr, &mut card, status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -3191,7 +3180,7 @@ pub fn ffgknjj_safe(
 
     let mut undefinedval = false;
 
-    for ii in 3..=(nkeys) {
+    for _ii in 3..=(nkeys) {
         if ffgnky(fptr, &mut card, status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -3316,7 +3305,7 @@ pub fn ffgkne_safe(
 
     let mut undefinedval = false;
 
-    for ii in 3..=(nkeys) {
+    for _ii in 3..=(nkeys) {
         if ffgnky(fptr, &mut card, status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -3441,7 +3430,7 @@ pub fn ffgknd_safe(
 
     let mut undefinedval = false;
 
-    for ii in 3..=(nkeys) {
+    for _ii in 3..=(nkeys) {
         if ffgnky(fptr, &mut card, status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -6147,8 +6136,8 @@ pub unsafe extern "C" fn fffkls(
 
 /// Free a keyword long string that was allocated by CFITSIO
 pub fn fffkls_safer(
-    value: *mut c_char, /* I - pointer to string to free */
-    status: &mut c_int, /* IO - error status */
+    value: *mut c_char,  /* I - pointer to string to free */
+    _status: &mut c_int, /* IO - error status */
 ) -> c_int {
     todo!("fffkls: Free keyword long string at address {:p}", value)
 }

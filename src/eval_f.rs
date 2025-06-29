@@ -95,13 +95,13 @@ pub unsafe extern "C" fn fffrow(
 /// Evaluate a boolean expression using the indicated rows, returning an
 /// array of flags indicating which rows evaluated to TRUE/FALSE
 pub fn fffrow_safe(
-    fptr: &mut fitsfile,       /* I - Input FITS file                   */
-    expr: &[c_char],           /* I - Boolean expression                */
-    firstrow: c_long,          /* I - First row of table to eval        */
-    nrows: c_long,             /* I - Number of rows to evaluate        */
-    n_good_rows: &mut c_long,  /* O - Number of rows eval to True       */
-    row_status: &mut [c_char], /* O - Array of boolean results          */
-    status: &mut c_int,        /* O - Error status                      */
+    _fptr: &mut fitsfile,       /* I - Input FITS file                   */
+    _expr: &[c_char],           /* I - Boolean expression                */
+    _firstrow: c_long,          /* I - First row of table to eval        */
+    _nrows: c_long,             /* I - Number of rows to evaluate        */
+    _n_good_rows: &mut c_long,  /* O - Number of rows eval to True       */
+    _row_status: &mut [c_char], /* O - Array of boolean results          */
+    _status: &mut c_int,        /* O - Error status                      */
 ) -> c_int {
     todo!()
 }
@@ -139,10 +139,10 @@ pub unsafe extern "C" fn ffsrow(
 /// extension is before the input extension, the second extension *MUST* be
 /// opened using ffreopen, so that CFITSIO can handle changing file lengths
 pub fn ffsrow_safe(
-    infptr: &mut fitsfile,  /* I - Input FITS file                      */
-    outfptr: &mut fitsfile, /* I - Output FITS file                     */
-    expr: &[c_char],        /* I - Boolean expression                   */
-    status: &mut c_int,     /* O - Error status                         */
+    _infptr: &mut fitsfile,  /* I - Input FITS file                      */
+    _outfptr: &mut fitsfile, /* I - Output FITS file                     */
+    _expr: &[c_char],        /* I - Boolean expression                   */
+    _status: &mut c_int,     /* O - Error status                         */
 ) -> c_int {
     todo!()
 }
@@ -193,15 +193,15 @@ pub unsafe extern "C" fn ffcrow(
 /// even multiple of the result dimension.  Call fftexp to obtain the
 /// dimensions of the results.
 pub fn ffcrow_safe(
-    fptr: &mut fitsfile,   /* I - Input FITS file                      */
-    datatype: c_int,       /* I - Datatype to return results as        */
-    expr: &[c_char],       /* I - Arithmetic expression                */
-    firstrow: c_long,      /* I - First row to evaluate                */
-    nelements: c_long,     /* I - Number of elements to return         */
-    nulval: *const c_void, /* I - Ptr to value to use as UNDEF         */
-    array: &mut [u8],      /* O - Array of results                     */
-    anynul: &mut c_int,    /* O - Were any UNDEFs encountered?         */
-    status: &mut c_int,    /* O - Error status                         */
+    _fptr: &mut fitsfile,   /* I - Input FITS file                      */
+    _datatype: c_int,       /* I - Datatype to return results as        */
+    _expr: &[c_char],       /* I - Arithmetic expression                */
+    _firstrow: c_long,      /* I - First row to evaluate                */
+    _nelements: c_long,     /* I - Number of elements to return         */
+    _nulval: *const c_void, /* I - Ptr to value to use as UNDEF         */
+    _array: &mut [u8],      /* O - Array of results                     */
+    _anynul: &mut c_int,    /* O - Were any UNDEFs encountered?         */
+    _status: &mut c_int,    /* O - Error status                         */
 ) -> c_int {
     todo!()
 }
@@ -266,15 +266,15 @@ pub fn ffcalc_safe(
 ///        If parInfo is NULL, use a default data type for the column.      
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcalc_rng(
-    infptr: *mut fitsfile,  /* I - Input FITS file                  */
-    expr: *const c_char,    /* I - Arithmetic expression            */
-    outfptr: *mut fitsfile, /* I - Output fits file                 */
-    parName: *const c_char, /* I - Name of output parameter         */
-    parInfo: *const c_char, /* I - Extra information on parameter   */
-    nRngs: c_int,           /* I - Row range info                   */
-    start: *mut c_long,     /* I - Row range info                   */
-    end: *mut c_long,       /* I - Row range info                   */
-    status: *mut c_int,     /* O - Error status                     */
+    _infptr: *mut fitsfile,  /* I - Input FITS file                  */
+    _expr: *const c_char,    /* I - Arithmetic expression            */
+    _outfptr: *mut fitsfile, /* I - Output fits file                 */
+    _parName: *const c_char, /* I - Name of output parameter         */
+    _parInfo: *const c_char, /* I - Extra information on parameter   */
+    _nRngs: c_int,           /* I - Row range info                   */
+    _start: *mut c_long,     /* I - Row range info                   */
+    _end: *mut c_long,       /* I - Row range info                   */
+    _status: *mut c_int,     /* O - Error status                     */
 ) -> c_int {
     todo!();
 }
@@ -294,15 +294,15 @@ pub unsafe extern "C" fn ffcalc_rng(
 ///    (4) Else, create a new column with name parName and TFORM parInfo.   
 ///        If parInfo is NULL, use a default data type for the column.      
 pub fn ffcalc_rng_safe(
-    infptr: &mut fitsfile,  /* I - Input FITS file                  */
-    expr: &[c_char],        /* I - Arithmetic expression            */
-    outfptr: &mut fitsfile, /* I - Output fits file                 */
-    parName: &[c_char],     /* I - Name of output parameter         */
-    parInfo: &[c_char],     /* I - Extra information on parameter   */
-    nRngs: c_int,           /* I - Row range info                   */
-    start: &mut c_long,     /* I - Row range info                   */
-    end: &mut c_long,       /* I - Row range info                   */
-    status: &mut c_int,     /* O - Error status                     */
+    _infptr: &mut fitsfile,  /* I - Input FITS file                  */
+    _expr: &[c_char],        /* I - Arithmetic expression            */
+    _outfptr: &mut fitsfile, /* I - Output fits file                 */
+    _parName: &[c_char],     /* I - Name of output parameter         */
+    _parInfo: &[c_char],     /* I - Extra information on parameter   */
+    _nRngs: c_int,           /* I - Row range info                   */
+    _start: &mut c_long,     /* I - Row range info                   */
+    _end: &mut c_long,       /* I - Row range info                   */
+    _status: &mut c_int,     /* O - Error status                     */
 ) -> c_int {
     todo!();
 }
@@ -337,14 +337,14 @@ pub unsafe extern "C" fn fftexp(
 /*--------------------------------------------------------------------------*/
 /// Evaluate the given expression and return information on the result.
 pub fn fftexp_safe(
-    fptr: &mut fitsfile,  /* I - Input FITS file                     */
-    expr: &[c_char],      /* I - Arithmetic expression               */
-    maxdim: c_int,        /* I - Max Dimension of naxes              */
-    datatype: &mut c_int, /* O - Data type of result                 */
-    nelem: &mut c_long,   /* O - Vector length of result             */
-    naxis: &mut c_int,    /* O - # of dimensions of result           */
-    naxes: &mut [c_long], /* O - Size of each dimension              */
-    status: &mut c_int,   /* O - Error status                        */
+    _fptr: &mut fitsfile,  /* I - Input FITS file                     */
+    _expr: &[c_char],      /* I - Arithmetic expression               */
+    _maxdim: c_int,        /* I - Max Dimension of naxes              */
+    _datatype: &mut c_int, /* O - Data type of result                 */
+    _nelem: &mut c_long,   /* O - Vector length of result             */
+    _naxis: &mut c_int,    /* O - # of dimensions of result           */
+    _naxes: &mut [c_long], /* O - Size of each dimension              */
+    _status: &mut c_int,   /* O - Error status                        */
 ) -> c_int {
     todo!();
 }
@@ -353,23 +353,23 @@ pub fn fftexp_safe(
 /// Initialize the parser and determine what type of result the expression
 /// produces.
 pub(crate) fn ffiprs(
-    fptr: &mut fitsfile,     /* I - Input FITS file                     */
-    arg: c_int,              /* I - Is FITS file hkunexpanded?          */
-    expr: *const c_char,     /* I - Arithmetic expression               */
-    maxdim: c_int,           /* I - Max Dimension of naxes              */
-    datatype: *mut c_int,    /* O - Data type of result                 */
-    nelem: &mut c_long,      /* O - Vector length of result             */
-    naxis: &mut c_long,      /* O - # of dimensions of result           */
-    naxes: &mut [c_long],    /* O - Size of each dimension              */
-    l_parse: &mut ParseData, /* O - parser status                       */
-    status: &mut c_int,      /* O - Error status                        */
+    _fptr: &mut fitsfile,     /* I - Input FITS file                     */
+    _arg: c_int,              /* I - Is FITS file hkunexpanded?          */
+    _expr: *const c_char,     /* I - Arithmetic expression               */
+    _maxdim: c_int,           /* I - Max Dimension of naxes              */
+    _datatype: *mut c_int,    /* O - Data type of result                 */
+    _nelem: &mut c_long,      /* O - Vector length of result             */
+    _naxis: &mut c_long,      /* O - # of dimensions of result           */
+    _naxes: &mut [c_long],    /* O - Size of each dimension              */
+    _l_parse: &mut ParseData, /* O - parser status                       */
+    _status: &mut c_int,      /* O - Error status                        */
 ) -> c_int {
     todo!()
 }
 
 /*---------------------------------------------------------------------------*/
 /// Clear the parser, making it ready to accept a new expression.
-fn ffcprs(l_parse: &mut ParseData) -> c_int {
+fn ffcprs(_l_parse: &mut ParseData) -> c_int {
     todo!()
 }
 
@@ -378,13 +378,13 @@ fn ffcprs(l_parse: &mut ParseData) -> c_int {
 /// into either an OutputCol or a data pointer supplied in the userPtr
 /// structure.
 fn fits_parser_workfn(
-    totalrows: c_long,         /* I - Total rows to be processed     */
-    offset: c_long,            /* I - Number of rows skipped at start*/
-    firstrow: c_long,          /* I - First row of this iteration    */
-    nrows: c_long,             /* I - Number of rows in this iter    */
-    nCols: c_int,              /* I - Number of columns in use       */
-    colData: *mut iteratorCol, /* IO- Column information/data        */
-    userPtr: *mut c_void,      /* I - Data handling instructions     */
+    _totalrows: c_long,         /* I - Total rows to be processed     */
+    _offset: c_long,            /* I - Number of rows skipped at start*/
+    _firstrow: c_long,          /* I - First row of this iteration    */
+    _nrows: c_long,             /* I - Number of rows in this iter    */
+    _nCols: c_int,              /* I - Number of columns in use       */
+    _colData: *mut iteratorCol, /* IO- Column information/data        */
+    _userPtr: *mut c_void,      /* I - Data handling instructions     */
 ) -> c_int {
     todo!()
 }
@@ -434,15 +434,15 @@ pub unsafe extern "C" fn fffrwc(
 /// Evaluate a boolean expression for each time in a compressed file,
 /// returning an array of flags indicating which times evaluated to TRUE/FALSE
 pub fn fffrwc_safe(
-    fptr: &mut fitsfile,        /* I - Input FITS file                    */
-    expr: &[c_char],            /* I - Boolean expression                 */
-    timeCol: &[c_char],         /* I - Name of time column                */
-    parCol: &[c_char],          /* I - Name of parameter column           */
-    valCol: &[c_char],          /* I - Name of value column               */
-    ntimes: c_long,             /* I - Number of distinct times in file   */
-    times: &mut [f64],          /* O - Array of times in file             */
-    time_status: &mut [c_char], /* O - Array of boolean results           */
-    status: &mut c_int,         /* O - Error status                       */
+    _fptr: &mut fitsfile,        /* I - Input FITS file                    */
+    _expr: &[c_char],            /* I - Boolean expression                 */
+    _timeCol: &[c_char],         /* I - Name of time column                */
+    _parCol: &[c_char],          /* I - Name of parameter column           */
+    _valCol: &[c_char],          /* I - Name of value column               */
+    _ntimes: c_long,             /* I - Number of distinct times in file   */
+    _times: &mut [f64],          /* O - Array of times in file             */
+    _time_status: &mut [c_char], /* O - Array of boolean results           */
+    _status: &mut c_int,         /* O - Error status                       */
 ) -> c_int {
     todo!()
 }
@@ -483,8 +483,10 @@ pub fn ffffrw_safer(
     let nelem: c_long = 0;
     let naxes: [c_long; 5] = [0; 5];
     let result: c_char = 0;
-    todo!();
+
     let mut lParse: ParseData;
+
+    todo!();
 
     if *status != 0 {
         return *status;
@@ -559,19 +561,14 @@ pub fn ffffrw_safer(
 /// Iterator work function which calls the parser and searches for the
 /// first row which evaluates to TRUE.
 pub(crate) fn ffffrw_work(
-    totalrows: c_long,     /* I - Total rows to be processed     */
-    offset: c_long,        /* I - Number of rows skipped at start*/
-    firstrow: c_long,      /* I - First row of this iteration    */
-    nrows: c_long,         /* I - Number of rows in this iter    */
-    nCols: c_int,          /* I - Number of columns in use       */
-    colData: &iteratorCol, /* IO- Column information/data        */
-    userPtr: *const c_void,
+    _totalrows: c_long,     /* I - Total rows to be processed     */
+    _offset: c_long,        /* I - Number of rows skipped at start*/
+    _firstrow: c_long,      /* I - First row of this iteration    */
+    _nrows: c_long,         /* I - Number of rows in this iter    */
+    _nCols: c_int,          /* I - Number of columns in use       */
+    _colData: &iteratorCol, /* IO- Column information/data        */
+    _userPtr: *const c_void,
 ) -> c_int {
-    /*                                                                           */
-    /* Iterator work function which calls the parser and searches for the        */
-    /* first row which evaluates to TRUE.                                        */
-    /*---------------------------------------------------------------------------*/
-
     todo!()
 }
 
@@ -592,8 +589,8 @@ pub unsafe extern "C" fn fits_pixel_filter(
 
 /// Apply pixel filtering operations (safe version)
 pub fn fits_pixel_filter_safer(
-    filter: &mut PixelFilter, /* I - pixel filter structure */
-    status: &mut c_int,       /* IO - error status */
+    _filter: &mut PixelFilter, /* I - pixel filter structure */
+    _status: &mut c_int,       /* IO - error status */
 ) -> c_int {
     todo!("fits_pixel_filter: Apply pixel filtering operations")
 }

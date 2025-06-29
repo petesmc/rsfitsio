@@ -17,8 +17,8 @@ use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, rea
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::cfileio::MAX_PREFIX_LEN;
 use crate::cfileio::ffclos_safer;
+use crate::cfileio::{MAX_PREFIX_LEN, ffimem_safer};
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
@@ -89,7 +89,7 @@ pub(crate) fn mem_init() -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn mem_setoptions(options: c_int) -> c_int {
+pub(crate) fn mem_setoptions(_options: c_int) -> c_int {
     0
 }
 /*--------------------------------------------------------------------------*/
@@ -110,7 +110,7 @@ pub(crate) fn mem_shutdown() -> c_int {
 /*--------------------------------------------------------------------------*/
 /// Create a new empty memory file for subsequent writes.
 /// The file name is ignored in this case.
-pub(crate) fn mem_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
+pub(crate) fn mem_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
     /* initially allocate 1 FITS block = 2880 bytes */
     let status = mem_createmem(BL!(), handle);
 
@@ -154,7 +154,7 @@ pub(crate) fn mem_create_comp_unsafe(
                 .to_str()
                 .unwrap();
 
-            if let Ok(exists) = std::fs::exists(filename_str) {
+            if let Ok(_exists) = std::fs::exists(filename_str) {
                 return FILE_NOT_CREATED;
             }
 
@@ -317,7 +317,7 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
 /// do any special case checking when opening a file on the stdin stream
 pub(crate) fn stdin_checkfile(
     urltype: &mut [c_char; MAX_PREFIX_LEN],
-    infile: &mut [c_char; FLEN_FILENAME],
+    _infile: &mut [c_char; FLEN_FILENAME],
     outfile: &mut [c_char; FLEN_FILENAME],
 ) -> c_int {
     let mut s = STDIN_OUTFILE.lock().unwrap();
@@ -612,7 +612,7 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
 /// the memory 'file' to be opened with READWRITE access.
 pub(crate) fn mem_compress_openrw(
     filename: &mut [c_char],
-    rwmode: c_int,
+    _rwmode: c_int,
     hdl: &mut c_int,
 ) -> c_int {
     mem_compress_open(filename, READONLY, hdl)
@@ -855,7 +855,7 @@ pub(crate) unsafe fn mem_compress_stdin_open(
 /*--------------------------------------------------------------------------*/
 /// This routine creates an empty memory buffer, then calls iraf2mem to
 /// open the IRAF disk file and convert it to a FITS file in memeory.
-pub(crate) fn mem_iraf_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut c_int) -> c_int {
+pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c_int) -> c_int {
     unsafe {
         let mut filesize = 0;
 
@@ -898,7 +898,7 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut c_
 pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut c_int) -> c_int {
     unsafe {
         let mut diskfile = None;
-        let mut fptr: *mut fitsfile;
+        let mut fptr: Option<Box<fitsfile>> = None;
         let mut status: c_int = 0;
         let mut endian: c_int = 0;
         let mut datatype: c_int = 0;
@@ -1026,7 +1026,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
             /* read starting offset value */
 
             // offset = strtol_safe(&filename[(cptr + 1)..], &mut dummy, 10);
-            let (r, n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
+            let (r, _n) = strtol_safe(&filename[(cptr + 1)..]).unwrap();
             offset = r;
         }
 
@@ -1043,7 +1043,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
             return status;
         }
 
-        let diskfile = diskfile.unwrap();
+        let mut diskfile = diskfile.unwrap();
 
         /* create a memory file with corrct size for the FITS converted raw file */
         status = mem_createmem(filesize, hdl);
@@ -1052,22 +1052,20 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
             return status;
         }
 
-        let m = MEM_TABLE.lock().unwrap();
+        let mut m = MEM_TABLE.lock().unwrap();
 
         /* open this piece of memory as a new FITS file */
-        todo!();
-        /*
-        ffimem(
-            &fptr,
-            m[*hdl as usize].memaddrptr,
+
+        ffimem_safer(
+            &mut fptr,
+            m[*hdl as usize].memaddrptr as *mut *mut _ as *mut *mut c_void,
             &mut filesize,
             0,
-            0,
+            None,
             &mut status,
         );
-        */
 
-        let fptr = Box::from_raw(fptr);
+        let mut fptr = fptr.unwrap();
 
         /* write the required header keywords */
         ffcrim_safer(&mut fptr, datatype, naxis, &dim, &mut status);

@@ -54,7 +54,7 @@ pub(crate) unsafe fn deflateInit2(
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
 pub(crate) unsafe fn uncompress2mem<T: Read>(
-    filename: &[c_char],   /* name of input file                 */
+    _filename: &[c_char],  /* name of input file                 */
     diskfile: &mut T,      /* I - file pointer                        */
     buffptr: *mut *mut u8, /* IO - memory pointer                     */
     buffsize: &mut usize,  /* IO - size of buffer, in bytes           */
@@ -338,10 +338,10 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 /*--------------------------------------------------------------------------*/
 /// Uncompress the file into another file.
 pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
-    filename: &[c_char], /* name of input file                  */
-    indiskfile: &mut R,  /* I - input file pointer                */
-    outdiskfile: &mut W, /* I - output file pointer               */
-    status: &mut c_int,  /* IO - error status                       */
+    _filename: &[c_char], /* name of input file                  */
+    indiskfile: &mut R,   /* I - input file pointer                */
+    outdiskfile: &mut W,  /* I - output file pointer               */
+    status: &mut c_int,   /* IO - error status                       */
 ) -> c_int {
     unsafe {
         let mut err: c_int = 0;
@@ -734,7 +734,6 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
         }
         */
 
-        let iPage: uLong = 0;
         for iPage in 0..nPages {
             // SAFETY: Converted a const pointer to a mutable pointer, don't know why it needs to be.
             c_stream.next_in =

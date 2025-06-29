@@ -1289,11 +1289,11 @@ pub unsafe extern "C" fn ffmkls(
 ///
 /// This routine is not very efficient, so it should be used sparingly.
 pub fn ffmkls_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer        */
-    keyname: &[c_char],        /* I - name of keyword to write */
-    value: &[c_char],          /* I - keyword value            */
-    incomm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,        /* IO - error status            */
+    _fptr: &mut fitsfile,       /* I - FITS file pointer        */
+    _keyname: &[c_char],        /* I - name of keyword to write */
+    _value: &[c_char],          /* I - keyword value            */
+    _incomm: Option<&[c_char]>, /* I - keyword comment          */
+    _status: &mut c_int,        /* IO - error status            */
 ) -> c_int {
     todo!();
 }
@@ -1751,12 +1751,12 @@ pub unsafe extern "C" fn ffmkfc(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkfc_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f32; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f32; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -1785,12 +1785,12 @@ pub unsafe extern "C" fn ffmkyc(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkyc_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f32; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f32; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -1819,12 +1819,12 @@ pub unsafe extern "C" fn ffmkfm(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkfm_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f64; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f64; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -1853,12 +1853,12 @@ pub unsafe extern "C" fn ffmkym(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkym_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f64; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f64; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -1987,11 +1987,11 @@ pub unsafe extern "C" fn ffikls(
 /// This routine also supports simple string keywords which are less than
 /// 69 characters in length.
 pub fn ffikls_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: &[c_char],        /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer        */
+    _keyname: &[c_char],      /* I - name of keyword to write */
+    _value: &[c_char],        /* I - keyword value            */
+    _comm: Option<&[c_char]>, /* I - keyword comment          */
+    _status: &mut c_int,      /* IO - error status            */
 ) -> c_int {
     todo!();
 }
@@ -2291,12 +2291,12 @@ pub unsafe extern "C" fn ffikfc(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex float keyword into the FITS header at the current position.
 pub fn ffikfc_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f32; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f32; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -2326,12 +2326,12 @@ pub unsafe extern "C" fn ffikyc(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex float keyword into the FITS header at the current position.
 pub fn ffikyc_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f32; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f32; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -2361,12 +2361,12 @@ pub unsafe extern "C" fn ffikfm(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex double keyword into the FITS header at the current position.
 pub fn ffikfm_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f64; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f64; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    _status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
     todo!();
 }
@@ -2396,16 +2396,16 @@ pub unsafe extern "C" fn ffikym(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex double keyword into the FITS header at the current position.
 pub fn ffikym_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    keyname: &[c_char],      /* I - keyword name       */
-    value: &[f64; 2],        /* I - keyword value      */
-    decim: c_int,            /* I - no of decimals     */
-    comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,      /* IO - error status      */
+    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    _keyname: &[c_char],      /* I - keyword name       */
+    _value: &[f64; 2],        /* I - keyword value      */
+    _decim: c_int,            /* I - no of decimals     */
+    _comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,       /* IO - error status      */
 ) -> c_int {
-    let valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let _valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let _card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let _tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -2478,7 +2478,6 @@ pub fn ffikey_safe(
     card: &[c_char],     /* I - card string value  */
     status: &mut c_int,  /* IO - error status      */
 ) -> c_int {
-    let keylength = 0;
     let mut nblocks = 0;
     let buff1: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut buff2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2553,7 +2552,7 @@ pub fn ffikey_safe(
     let mut bytepos = fptr.Fptr.nextkey; /* pointer to next keyword in header */
     ffmbyt_safe(fptr, bytepos, REPORT_EOF, status);
 
-    for ii in 0..(nshift as usize) {
+    for _ii in 0..(nshift as usize) {
         /* shift each keyword down one position */
 
         ffgbyt(fptr, 80, cast_slice_mut(&mut inbuff), status); /* read the current keyword */
@@ -2683,9 +2682,9 @@ pub unsafe extern "C" fn ffdstr(
 /*--------------------------------------------------------------------------*/
 /// delete a specified header keyword containing the input string
 pub fn ffdstr_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer  */
-    string: &[c_char],   /* I - keyword string     */
-    status: &mut c_int,  /* IO - error status      */
+    _fptr: &mut fitsfile, /* I - FITS file pointer  */
+    _string: &[c_char],   /* I - keyword string     */
+    _status: &mut c_int,  /* IO - error status      */
 ) -> c_int {
     todo!()
 }
@@ -2763,7 +2762,7 @@ pub fn ffdrec_safe(
     strcat_safe(&mut buff2, cs!(c"                                        "));
     let mut inbuff = buff1;
     let mut outbuff = buff2;
-    for ii in 0..(nshift as usize) {
+    for _ii in 0..(nshift as usize) {
         /* shift each keyword up one position */
 
         ffmbyt_safe(fptr, bytepos, REPORT_EOF, status);

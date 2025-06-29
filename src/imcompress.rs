@@ -180,7 +180,7 @@ pub(crate) fn fits_init_randoms() -> c_int {
 
 /*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub extern "C" fn bz_internal_error(errcode: c_int) {
+pub extern "C" fn bz_internal_error(_errcode: c_int) {
     /* external function declared by the bzip2 code in bzlib_private.h */
     ffpmsg_str("bzip2 returned an internal error");
     ffpmsg_str("This should never happen");
@@ -1380,7 +1380,6 @@ pub(crate) fn imcomp_init_table(
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut zcmptype: [c_char; 12] = [0; 12];
-    let ii: c_int = 0;
     let mut remain: c_long = 0;
     let mut ndiv: c_int = 0;
     let mut addToDim: c_int = 0;
@@ -2050,7 +2049,6 @@ unsafe fn imcomp_compress_image(
         let mut anynul: c_int = 0;
         let mut gotnulls = false;
         let mut datatype: c_int = 0;
-        let ii: c_long = 0;
         let mut row: c_long = 0;
         let mut naxis: c_int = 0;
         let dummy: f64 = 0.0;
@@ -2064,12 +2062,7 @@ unsafe fn imcomp_compress_image(
         let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
         let mut tile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
         let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let i0: c_long = 0;
-        let i1: c_long = 0;
-        let i2: c_long = 0;
-        let i3: c_long = 0;
-        let i4: c_long = 0;
-        let i5: c_long = 0;
+
         let mut trowsize: c_long = 0;
         let mut ntrows: c_long = 0;
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2412,13 +2405,12 @@ unsafe fn imcomp_compress_tile(
         let mut flag: c_int = 1; // true by default; only = 0 if float data couldn't be quantized
         let mut intlength: c_int = 0; // size of integers to be compressed
 
-        let mut ii: c_long;
         let mut clen: usize; // size of cbuf
         let mut cbuf: Vec<c_short> = Vec::new(); // compressed data
         let mut nelem: c_int = 0; // number of bytes
         let tilecol: c_int;
         let mut gzip_nelem: usize = 0;
-        let bzlen: c_uint;
+
         let ihcompscale: c_int;
         let mut hcompscale: f32;
         let mut noise2: f64 = 0.0;
@@ -2915,41 +2907,49 @@ unsafe fn imcomp_compress_tile(
 
             /* =========================================================================== */
             } else if (outfptr.Fptr).compress_type == BZIP2_1 {
-                if BYTESWAPPED {
-                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
-
-                    if intlength == 2 {
-                        ffswap2(cast_slice_mut(idata), tilelen);
-                    } else if intlength == 4 {
-                        ffswap4(idata, tilelen);
-                    }
-                }
-
-                bzlen = clen as c_uint;
-
-                /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
-
-                /*  bzip2 is not supported in the public release.  This is only for
-                test purposes. if (BZ2_bzBuffToBuffCompress( (char *) cbuf,
-                &bzlen, (char *) idata, (unsigned int) (tilelen * intlength), 9,
-                0, 0) )
-                */
+                #[cfg(feature = "bzip2")]
                 {
-                    ffpmsg_str("bzip2 compression error");
-                    *status = DATA_COMPRESSION_ERR;
-                    return *status;
-                }
+                    if BYTESWAPPED {
+                        let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
-                /* Write the compressed byte stream. */
-                ffpclb_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_compressed,
-                    row as LONGLONG,
-                    1,
-                    bzlen as LONGLONG,
-                    cast_slice_mut(&mut cbuf),
-                    status,
-                );
+                        if intlength == 2 {
+                            ffswap2(cast_slice_mut(idata), tilelen);
+                        } else if intlength == 4 {
+                            ffswap4(idata, tilelen);
+                        }
+                    }
+
+                    let bzlen: c_uint = clen as c_uint;
+
+                    /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
+
+                    /*  bzip2 is not supported in the public release.  This is only for
+                    test purposes. */
+                    if (BZ2_bzBuffToBuffCompress(
+                        cbuf,
+                        &mut bzlen,
+                        cast_slice(tiledata),
+                        (tilelen * intlength),
+                        9,
+                        0,
+                        0,
+                    )) {
+                        ffpmsg_str("bzip2 compression error");
+                        *status = DATA_COMPRESSION_ERR;
+                        return *status;
+                    }
+
+                    /* Write the compressed byte stream. */
+                    ffpclb_safe(
+                        outfptr,
+                        (outfptr.Fptr).cn_compressed,
+                        row as LONGLONG,
+                        1,
+                        bzlen as LONGLONG,
+                        cast_slice_mut(&mut cbuf),
+                        status,
+                    );
+                }
 
             /* =========================================================================== */
             } else if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
@@ -3011,7 +3011,7 @@ unsafe fn imcomp_compress_tile(
                         ihcompscale,
                     );
 
-                    if let Err(e) = encode_res {
+                    if let Err(_e) = encode_res {
                         *status = DATA_COMPRESSION_ERR;
                         return *status;
                     }
@@ -3032,7 +3032,7 @@ unsafe fn imcomp_compress_tile(
                         ihcompscale,
                     );
 
-                    if let Err(e) = encode_res {
+                    if let Err(_e) = encode_res {
                         *status = DATA_COMPRESSION_ERR;
                         return *status;
                     }
@@ -3224,8 +3224,8 @@ fn imcomp_write_nocompress_tile(
     datatype: c_int,
     tiledata: &[u8],
     tilelen: c_long,
-    nullcheck: NullCheckType,
-    nullflagval: &Option<NullValue>,
+    _nullcheck: NullCheckType,
+    _nullflagval: &Option<NullValue>,
     status: &mut c_int,
 ) -> c_int {
     let mut coltype: [c_char; 4] = [0; 4];
@@ -3436,7 +3436,6 @@ fn imcomp_convert_tile_tushort(
     status: &mut c_int,
 ) -> c_int {
     let mut flagval: c_ushort = 0;
-    let ii: c_long = 0;
 
     /* datatype of input array is unsigned short.  We only support writing this
     datatype to a FITS image with BITPIX = 16 and with BZERO = 0 and BSCALE =
@@ -3520,7 +3519,7 @@ fn imcomp_convert_tile_tushort(
 /// Convert input integer tile array in place to 4 or 8-byte ints for compression,
 /// If needed, do null value substitution.
 fn imcomp_convert_tile_tint(
-    outfptr: &mut fitsfile,
+    _outfptr: &mut fitsfile,
     tiledata: &mut [u8],
     tilelen: c_long,
     nullcheck: NullCheckType,
@@ -3533,8 +3532,6 @@ fn imcomp_convert_tile_tint(
     status: &mut c_int,
 ) -> c_int {
     let mut flagval: c_int = 0;
-
-    let ii: c_long = 0;
 
     /* datatype of input array is int.  We only support writing this datatype
     to a FITS image with BITPIX = 32 and with BZERO = 0 and BSCALE = 1.  */
@@ -3572,7 +3569,7 @@ fn imcomp_convert_tile_tint(
 /// Convert input unsigned integer tile array in place to 4 or 8-byte ints for compression,
 /// If needed, do null value substitution.
 fn imcomp_convert_tile_tuint(
-    outfptr: &mut fitsfile,
+    _outfptr: &mut fitsfile,
     tiledata: &mut [u8],
     tilelen: c_long,
     nullcheck: NullCheckType,
@@ -3585,7 +3582,6 @@ fn imcomp_convert_tile_tuint(
     status: &mut c_int,
 ) -> c_int {
     let mut uintflagval: c_uint = 0;
-    let ii: c_long = 0;
 
     /* datatype of input array is unsigned int.  We only support writing this
     datatype to a FITS image with BITPIX = 32 and with BZERO = 0 and BSCALE =
@@ -3649,7 +3645,6 @@ fn imcomp_convert_tile_tbyte(
     status: &mut c_int,
 ) -> c_int {
     let mut flagval: c_uchar = 0;
-    let ii: c_long = 0;
 
     /* datatype of input array is unsigned byte.  We only support writing this
     datatype to a FITS image with BITPIX = 8 and with BZERO = 0 and BSCALE
@@ -3734,7 +3729,6 @@ fn imcomp_convert_tile_tsbyte(
     status: &mut c_int,
 ) -> c_int {
     let mut flagval: c_char = 0;
-    let ii: c_long = 0;
 
     /* datatype of input array is signed byte.  We only support writing this
     datatype to a FITS image with BITPIX = 8 and with BZERO = 0 and BSCALE =
@@ -3831,7 +3825,6 @@ unsafe fn imcomp_convert_tile_tfloat(
     status: &mut c_int,
 ) -> c_int {
     let mut irow: c_long = 0;
-    let ii: c_long = 0;
     let mut floatnull: f32 = 0.0;
 
     let mut dithersum: c_ulong = 0;
@@ -4020,7 +4013,6 @@ fn imcomp_convert_tile_tdouble(
     status: &mut c_int,
 ) -> c_int {
     let mut irow: c_long = 0;
-    let ii: c_long = 0;
     let mut doublenull: f64 = 0.0;
 
     let mut dithersum: c_ulong = 0;
@@ -4829,17 +4821,10 @@ pub(crate) fn fits_write_compressed_img(
     let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-    let i5: c_long = 0;
-    let i4: c_long = 0;
-    let i3: c_long = 0;
-    let i2: c_long = 0;
-    let i1: c_long = 0;
-    let i0: c_long = 0;
     let mut irow: c_long = 0;
     let mut trowsize: c_long = 0;
     let mut ntrows: c_long = 0;
 
-    let ii: c_int = 0;
     let mut ndim: c_int = 0;
     let mut pixlen: usize = 0;
     let mut tilenul: c_int = 0;
@@ -5133,7 +5118,6 @@ pub(crate) fn fits_write_compressed_pixels(
     status: &mut c_int,          /* IO - error status                           */
 ) -> c_int {
     let mut naxis: c_int = 0;
-    let ii: c_int = 0;
     let mut bytesperpixel: c_int = 0;
     let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut nread: c_long = 0;
@@ -5456,7 +5440,6 @@ pub unsafe fn fits_img_decompress_safer(
         let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
         let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
         let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut imgsize: c_long = 0;
         let mut fnulval: f32 = 0.0;
         let mut dnulval: f64 = 0.0;
 
@@ -5497,9 +5480,9 @@ pub unsafe fn fits_img_decompress_safer(
         }
 
         /* calculate size of the image (in pixels) */
-        imgsize = 1;
+        // let mut imgsize = 1;
         for ii in 0..((infptr.Fptr).zndim as usize) {
-            imgsize *= (infptr.Fptr).znaxis[ii];
+            // imgsize *= (infptr.Fptr).znaxis[ii];
             fpixel[ii] = 1; /* Set first and last pixel to */
             lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
             inc[ii] = 1;
@@ -5555,7 +5538,6 @@ unsafe fn fits_decompress_img_safer(
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
     unsafe {
-        let ii: c_int = 0;
         let mut datatype: c_int = 0;
         let mut byte_per_pix: usize = 0;
         let mut anynul: c_int = 0;
@@ -5734,7 +5716,6 @@ pub unsafe fn fits_img_decompress_header_safer(
         let mut norec = false;
         let mut tstatus: c_int = 0;
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let ii: c_int = 0;
         let mut naxis: c_int = 0;
         let mut bitpix: c_int = 0;
         let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -5939,14 +5920,8 @@ pub(crate) fn fits_read_compressed_img(
     let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-    let i5: c_long = 0;
-    let i4: c_long = 0;
-    let i3: c_long = 0;
-    let i2: c_long = 0;
-    let i1: c_long = 0;
-    let i0: c_long = 0;
+
     let mut irow: c_long = 0;
-    let ii: c_int = 0;
     let mut ndim: c_int = 0;
     let mut pixlen: usize = 0;
     let mut tilenul: c_int = 0 as c_int;
@@ -6213,14 +6188,8 @@ unsafe fn fits_read_write_compressed_img(
     let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-    let i5: c_long = 0;
-    let i4: c_long = 0;
-    let i3: c_long = 0;
-    let i2: c_long = 0;
-    let i1: c_long = 0;
-    let i0: c_long = 0;
+
     let mut irow: c_long = 0;
-    let ii: c_int = 0;
     let mut ndim: c_int = 0;
     let mut tilenul: c_int = 0;
     let mut buffer: Vec<u8> = Vec::new();
@@ -6480,7 +6449,6 @@ pub(crate) fn fits_read_compressed_pixels(
     status: &mut c_int,          /* IO - error status                           */
 ) -> c_int {
     let mut naxis: c_int = 0;
-    let ii: c_int = 0;
     let mut bytesperpixel: usize = 0;
     let mut planenul: c_int = 0;
     let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -6862,7 +6830,6 @@ fn fits_read_compressed_img_plane(
 pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let ii: c_int = 0;
     let mut tstatus: c_int = 0;
     let mut tstatus2: c_int = 0;
     let mut doffset: c_int = 0;
@@ -7388,8 +7355,7 @@ unsafe fn imcomp_copy_img2comp(
         let mut card2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         let mut nkeys: c_int = 0;
         let mut nmore: c_int = 0;
-        let ii: c_int = 0;
-        let jj: c_int = 0;
+
         let mut tstatus: c_int = 0;
         let mut bitpix: c_int = 0;
 
@@ -7520,8 +7486,8 @@ unsafe fn imcomp_copy_img2comp(
 
         /* preserve the same number of spare header blocks in the output header */
 
-        for jj in 0..(nmore as usize) {
-            for ii in 0..36 {
+        for _jj in 0..(nmore as usize) {
+            for _ii in 0..36 {
                 fits_write_record(outfptr, cs!(c"    "), status);
             }
         }
@@ -7542,8 +7508,7 @@ unsafe fn imcomp_copy_comp2img(
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD]; /* a header record */
     let mut patterns: [[&CStr; 2]; 40] = [[c""; 2]; 40];
     let negative: &CStr = c"-";
-    let ii: c_int = 0;
-    let jj: c_int = 0;
+
     let mut npat: c_int = 0;
     let mut nreq: c_int = 0;
     let mut nsp: c_int = 0;
@@ -7638,8 +7603,8 @@ unsafe fn imcomp_copy_comp2img(
 
     /* preserve the same number of spare header blocks in the output header */
 
-    for jj in 0..(nmore as usize) {
-        for ii in 0..36 {
+    for _jj in 0..(nmore as usize) {
+        for _ii in 0..36 {
             fits_write_record(outfptr, cs!(c"    "), status);
         }
     }
@@ -7713,12 +7678,10 @@ fn imcomp_decompress_tile(
     mut anynul: Option<&mut c_int>, /* O - any null values returned?  */
     status: &mut c_int,
 ) -> c_int {
-    let mut idata: &mut [c_int];
     let mut tiledatatype: c_int = 0;
     let mut pixlen: usize = 0; /* uncompressed integer data */
     let mut idatalen: size_t = 0;
     let mut tilebytesize: size_t = 0;
-    let ii: c_int = 0;
     let mut tnull: c_int = 0; /* value in the data which represents nulls */
     let mut cbuf: Vec<u8> = Vec::new(); /* compressed data */
     let charnull: c_uchar = 0;
@@ -7736,15 +7699,14 @@ fn imcomp_decompress_tile(
     let mut bscale: f64 = 0.;
     let mut bzero: f64 = 0.;
     let mut actual_bzero: f64 = 0.;
-    let dummy: f64 = 0.0;
 
     let mut tilesize: c_long = 0; /* number of bytes */
 
     /* hcompress parameters */
     let mut smooth: c_int = 0;
-    let mut nx: c_int = 0;
-    let mut ny: c_int = 0;
-    let mut scale: c_int = 0;
+    // let mut nx: c_int = 0;
+    // let mut ny: c_int = 0;
+    // let mut scale: c_int = 0;
 
     let mut nelemll: LONGLONG = 0;
     let mut offset: LONGLONG = 0;
@@ -8438,10 +8400,10 @@ fn imcomp_decompress_tile(
             hcd.read64(&cbuf, smooth, cast_slice_mut(idata))
         };
 
-        if let Ok(res) = res {
-            nx = res.0 as c_int;
-            ny = res.1 as c_int;
-            scale = res.2;
+        if let Ok(_res) = res {
+            // nx = res.0 as c_int;
+            // ny = res.1 as c_int;
+            // scale = res.2;
         } else {
             *status = DATA_DECOMPRESSION_ERR;
         }
@@ -9757,7 +9719,6 @@ fn imcomp_copy_overlap(
     let mut im2: c_long = 0;
     let mut im3: c_long = 0;
     let mut im4: c_long = 0;
-    let ipos: c_long = 0;
     let mut tf: c_long = 0;
     let mut tl: c_long = 0;
 
@@ -9769,7 +9730,6 @@ fn imcomp_copy_overlap(
     let mut imgpix: c_long = 0;
     let mut tilepixbyte: c_long = 0;
     let mut imgpixbyte: c_long = 0;
-    let ii: c_int = 0;
     let mut overlap_bytes: c_int = 0;
     let mut overlap_flags: c_int = 0;
 
@@ -9957,7 +9917,8 @@ fn imcomp_copy_overlap(
                     tilepix, imgpix);
                     */
                     /* loop over pixels along one row of the image */
-                    for ipos in (imgfpix[0]..=imglpix[0]).step_by(overlap_flags.try_into().unwrap())
+                    for _ipos in
+                        (imgfpix[0]..=imglpix[0]).step_by(overlap_flags.try_into().unwrap())
                     {
                         if nullcheck == NullCheckType::SetNullArray {
                             /* copy overlapping null flags from tile to image */
@@ -10005,16 +9966,16 @@ fn imcomp_copy_overlap(
 /// Similar to imcomp_copy_overlap, except it copies the overlapping pixels from
 /// the 'image' to the 'tile'.
 fn imcomp_merge_overlap(
-    tile: &mut [c_char],      /* O - multi dimensional array of tile pixels */
-    pixlen: c_int,            /* I - number of bytes in each tile or image pixel */
-    ndim: c_int,              /* I - number of dimension in the tile and image */
-    tfpixel: &[c_long],       /* I - first pixel number in each dim. of the tile */
-    tlpixel: &[c_long],       /* I - last pixel number in each dim. of the tile */
-    bnullarray: &[c_char],    /* I - array of null flags; used if nullcheck = 2 */
-    image: &[c_char],         /* I - multi dimensional output image */
-    fpixel: &[c_long],        /* I - first pixel number in each dim. of the image */
-    lpixel: &[c_long],        /* I - last pixel number in each dim. of the image */
-    nullcheck: NullCheckType, /* I - 0, 1: do nothing; 2: set nullarray for nulls */
+    tile: &mut [c_char],       /* O - multi dimensional array of tile pixels */
+    pixlen: c_int,             /* I - number of bytes in each tile or image pixel */
+    ndim: c_int,               /* I - number of dimension in the tile and image */
+    tfpixel: &[c_long],        /* I - first pixel number in each dim. of the tile */
+    tlpixel: &[c_long],        /* I - last pixel number in each dim. of the tile */
+    _bnullarray: &[c_char],    /* I - array of null flags; used if nullcheck = 2 */
+    image: &[c_char],          /* I - multi dimensional output image */
+    fpixel: &[c_long],         /* I - first pixel number in each dim. of the image */
+    lpixel: &[c_long],         /* I - last pixel number in each dim. of the image */
+    _nullcheck: NullCheckType, /* I - 0, 1: do nothing; 2: set nullarray for nulls */
     status: &mut c_int,
 ) -> c_int {
     let mut imgdim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; // product of preceding dimensions in the output image, allowing for inc factor
@@ -10024,22 +9985,11 @@ fn imcomp_merge_overlap(
     let mut tilefpix: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; // 1st tile pix overlapping img 0 base, allowing for inc factor
     let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; // local copy of input ininc
 
-    // offset along each axis of the image
-    let i1: c_long = 0;
-    let i2: c_long = 0;
-    let i3: c_long = 0;
-    let i4: c_long = 0;
-    let it1: c_long = 0;
-    let it2: c_long = 0;
-    let it3: c_long = 0;
-    let it4: c_long = 0;
-
     // offset to image pixel, allowing for inc
     let mut im1: c_long = 0;
     let mut im2: c_long = 0;
     let mut im3: c_long = 0;
     let mut im4: c_long = 0;
-    let ipos: c_long = 0;
     let mut tf: c_long = 0;
     let mut tl: c_long = 0;
 
@@ -10051,7 +10001,6 @@ fn imcomp_merge_overlap(
     let mut imgpix: c_long = 0;
     let mut tilepixbyte: c_long = 0;
     let mut imgpixbyte: c_long = 0;
-    let ii: c_int = 0;
     let mut overlap_bytes: c_int = 0;
     let mut overlap_flags: c_int = 0;
 
@@ -10237,7 +10186,7 @@ fn imcomp_merge_overlap(
                     tilepix, imgpix);
                     */
                     /* loop over pixels along one row of the image */
-                    for ipos in (imgfpix[0]..=imglpix[0]).step_by(overlap_flags as usize) {
+                    for _ipos in (imgfpix[0]..=imglpix[0]).step_by(overlap_flags as usize) {
                         /* convert from image pixel to byte offset */
                         tilepixbyte = tilepix * (pixlen as c_long);
                         imgpixbyte = imgpix * (pixlen as c_long);
@@ -10279,7 +10228,7 @@ fn unquantize_i1r4(
     ntodo: c_long,            /* I - number of elements in the array     */
     scale: f64,               /* I - FITS TSCALn or BSCALE value         */
     zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
+    _dither_method: c_int,    /* I - dithering method to use             */
     nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
@@ -10368,7 +10317,7 @@ fn unquantize_i2r4(
     ntodo: c_long,            /* I - number of elements in the array     */
     scale: f64,               /* I - FITS TSCALn or BSCALE value         */
     zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
+    _dither_method: c_int,    /* I - dithering method to use             */
     nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
@@ -10546,7 +10495,7 @@ fn unquantize_i1r8(
     ntodo: c_long,            /* I - number of elements in the array     */
     scale: f64,               /* I - FITS TSCALn or BSCALE value         */
     zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
+    _dither_method: c_int,    /* I - dithering method to use             */
     nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
@@ -10636,7 +10585,7 @@ fn unquantize_i2r8(
     ntodo: c_long,            /* I - number of elements in the array     */
     scale: f64,               /* I - FITS TSCALn or BSCALE value         */
     zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
+    _dither_method: c_int,    /* I - dithering method to use             */
     nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
@@ -10965,12 +10914,11 @@ pub unsafe fn fits_compress_table_safer(
         let mut tot_compressed_size: f32;
         let mut tot_uncompressed_size: f32;
         let mut nrows: LONGLONG = 0;
-        let mut firstrow: LONGLONG = 0;
+
         let mut headstart: LONGLONG = 0;
         let mut datastart: LONGLONG = 0;
         let mut dataend: LONGLONG = 0;
         let mut startbyte: LONGLONG = 0;
-        let mut jj: LONGLONG;
         let mut kk: LONGLONG;
         let mut naxis1: LONGLONG = 0;
         let mut vlalen: LONGLONG = 0;
@@ -10982,8 +10930,6 @@ pub unsafe fn fits_compress_table_safer(
         let mut nchunks: c_long = 0;
         let mut rowspertile: c_long = 0;
         let mut lastrows: c_long = 0;
-        let mut ii: c_int;
-        let mut ll: c_int;
         let mut ncols: c_int = 0;
         let mut hdutype: c_int = 0;
         let ltrue: c_int = 1;
@@ -11324,7 +11270,7 @@ pub unsafe fn fits_compress_table_safer(
 
         tot_uncompressed_size = 0.0;
         tot_compressed_size = 0.0;
-        firstrow = 1;
+        // let mut firstrow: LONGLONG = 1;
         for ll in 0..(nchunks as usize) {
             if ll as c_long == nchunks - 1 {
                 /* the last chunk may have fewer rows */
@@ -11565,7 +11511,7 @@ pub unsafe fn fits_compress_table_safer(
                                         );
                                         match r {
                                             Ok(x) => dlen = x,
-                                            Err(e) => {
+                                            Err(_e) => {
                                                 *status = DATA_COMPRESSION_ERR;
                                                 // return *status;
                                             }
@@ -11579,7 +11525,7 @@ pub unsafe fn fits_compress_table_safer(
                                             rce.encode(cast_slice(&vlamem), vlalen as usize, 32);
                                         match r {
                                             Ok(x) => dlen = x,
-                                            Err(e) => {
+                                            Err(_e) => {
                                                 *status = DATA_COMPRESSION_ERR;
                                                 // return *status;
                                             }
@@ -11592,7 +11538,7 @@ pub unsafe fn fits_compress_table_safer(
                                         );
                                         match r {
                                             Ok(x) => dlen = x,
-                                            Err(e) => {
+                                            Err(_e) => {
                                                 *status = DATA_COMPRESSION_ERR;
                                                 // return *status;
                                             }
@@ -11850,7 +11796,7 @@ pub unsafe fn fits_compress_table_safer(
                             );
                             match r {
                                 Ok(x) => dlen = x,
-                                Err(e) => {
+                                Err(_e) => {
                                     *status = DATA_COMPRESSION_ERR;
                                     // return *status;
                                 }
@@ -11870,7 +11816,7 @@ pub unsafe fn fits_compress_table_safer(
                             );
                             match r {
                                 Ok(x) => dlen = x,
-                                Err(e) => {
+                                Err(_e) => {
                                     *status = DATA_COMPRESSION_ERR;
                                     // return *status;
                                 }
@@ -11883,7 +11829,7 @@ pub unsafe fn fits_compress_table_safer(
                             );
                             match r {
                                 Ok(x) => dlen = x,
-                                Err(e) => {
+                                Err(_e) => {
                                     *status = DATA_COMPRESSION_ERR;
                                     // return *status;
                                 }
@@ -11957,8 +11903,7 @@ pub unsafe fn fits_compress_table_safer(
             } /* end of loop over columns */
 
             datastart += rowspertile as LONGLONG * naxis1; /* increment to start of next chunk */
-            firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
-
+            // firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
             if print_report {
                 println!("\nChunk = {}", ll + 1);
                 for ii in 0..(ncols as usize) {
@@ -12024,14 +11969,11 @@ pub fn fits_uncompress_table_safe(
     let mut cmajor_repeat: [LONGLONG; 999] = [0; 999];
     let mut rmajor_repeat: [LONGLONG; 999] = [0; 999];
     let mut cmajor_bytespan: [LONGLONG; 999] = [0; 999];
-    let mut kk: LONGLONG;
     let mut headstart: LONGLONG = 0;
     let mut datastart: LONGLONG = 0;
     let mut dataend: LONGLONG = 0;
     let mut rowsremain: LONGLONG;
-    let mut descript: *mut LONGLONG;
-    let qdescript: *mut LONGLONG = std::ptr::null_mut();
-    let mut rowstart: LONGLONG;
+    // let mut rowstart: LONGLONG;
     let mut cvlalen: LONGLONG;
     let mut cvlastart: LONGLONG;
     let mut vlalen: LONGLONG;
@@ -12049,16 +11991,12 @@ pub fn fits_uncompress_table_safe(
     let mut tstatus: c_int = 0;
     let mut zctype: [c_int; 999] = [0; 999];
     let mut addspace: c_int = 0;
-    let pdescript: usize = 0;
-    let mut cptr: *mut c_char;
     let mut keyname: [c_char; 9] = [0; 9];
     let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut pcount: c_long = 0;
     let mut zheapptr: c_long = 0;
     let mut naxis1: c_long = 0;
     let mut naxis2: c_long = 0;
-    let mut ii: c_long;
-    let mut jj: c_long;
     let mut ptr: Vec<c_char> = Vec::new();
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut zvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -12349,7 +12287,7 @@ pub fn fits_uncompress_table_safe(
          */
 
         rowsremain = naxis2 as LONGLONG;
-        rowstart = 1;
+        // rowstart = 1;
         ntile = 0;
 
         while rowsremain > 0 {
@@ -12430,8 +12368,8 @@ pub fn fits_uncompress_table_safe(
                                     32,
                                     cast_slice_mut(cptr),
                                 ) {
-                                    Ok(x) => dlen = cptr.len(),
-                                    Err(e) => {
+                                    Ok(_x) => dlen = cptr.len(),
+                                    Err(_e) => {
                                         *status = DATA_DECOMPRESSION_ERR;
                                         // return *status;
                                     }
@@ -12467,8 +12405,8 @@ pub fn fits_uncompress_table_safe(
                                     32,
                                     cast_slice_mut(cptr),
                                 ) {
-                                    Ok(x) => dlen = cptr.len(),
-                                    Err(e) => {
+                                    Ok(_x) => dlen = cptr.len(),
+                                    Err(_e) => {
                                         *status = DATA_DECOMPRESSION_ERR;
                                         // return *status;
                                     }
@@ -12504,8 +12442,8 @@ pub fn fits_uncompress_table_safe(
                                     32,
                                     cast_slice_mut(cptr),
                                 ) {
-                                    Ok(x) => dlen = cptr.len(),
-                                    Err(e) => {
+                                    Ok(_x) => dlen = cptr.len(),
+                                    Err(_e) => {
                                         *status = DATA_DECOMPRESSION_ERR;
                                         // return *status;
                                     }
@@ -12564,7 +12502,7 @@ pub fn fits_uncompress_table_safe(
                                         let cptr = &mut rm_buffer[(rmajor_colstart[ii] as usize
                                             + (jj * rmajor_colstart[ncols as usize] as usize))..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 2;
@@ -12578,7 +12516,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 1)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 2;
@@ -12593,7 +12531,7 @@ pub fn fits_uncompress_table_safe(
                                         let cptr = &mut rm_buffer[(rmajor_colstart[ii] as usize
                                             + (jj * rmajor_colstart[ncols as usize] as usize))..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 4;
@@ -12607,7 +12545,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 1)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 4;
@@ -12621,7 +12559,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 2)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 4;
@@ -12634,7 +12572,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 3)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 4;
@@ -12649,7 +12587,7 @@ pub fn fits_uncompress_table_safe(
                                         let cptr = &mut rm_buffer[(rmajor_colstart[ii] as usize
                                             + (jj * rmajor_colstart[ncols as usize] as usize))..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12663,7 +12601,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 1)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12677,7 +12615,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 2)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12691,7 +12629,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 3)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12705,7 +12643,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 4)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12719,7 +12657,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 5)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12733,7 +12671,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 6)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12747,7 +12685,7 @@ pub fn fits_uncompress_table_safe(
                                             + (jj * rmajor_colstart[ncols as usize] as usize)
                                             + 7)..];
                                         let mut cptr_idx = 0;
-                                        for kk in 0..(rmajor_repeat[ii] as usize) {
+                                        for _kk in 0..(rmajor_repeat[ii] as usize) {
                                             cptr[cptr_idx] = ptr[ptr_idx]; /* copy 1 byte */
                                             ptr_idx += 1;
                                             cptr_idx += 8;
@@ -12835,10 +12773,8 @@ pub fn fits_uncompress_table_safe(
 
                         let pdescript: &[c_int] =
                             cast_slice(&cm_buffer[cmajor_colstart[ii] as usize..]);
-                        let pdescript_idx = 0;
                         let qdescript: &[LONGLONG] =
                             cast_slice(&cm_buffer[cmajor_colstart[ii] as usize..]);
-                        let qdescript_idx = 0;
                         let descript: &[LONGLONG] = cast_slice(
                             &cm_buffer[(cmajor_colstart[ii]
                                 + (rmajor_colwidth[ii] * rowspertile as LONGLONG))
@@ -12911,7 +12847,7 @@ pub fn fits_uncompress_table_safe(
                                                 cast_slice_mut(&mut uncompressed_vla),
                                             );
 
-                                            if let Err(e) = res {
+                                            if let Err(_e) = res {
                                                 *status = DATA_DECOMPRESSION_ERR;
                                                 return *status;
                                             }
@@ -12930,7 +12866,7 @@ pub fn fits_uncompress_table_safe(
                                                 cast_slice_mut(&mut uncompressed_vla),
                                             );
 
-                                            if let Err(e) = res {
+                                            if let Err(_e) = res {
                                                 *status = DATA_DECOMPRESSION_ERR;
                                                 return *status;
                                             }
@@ -12948,7 +12884,7 @@ pub fn fits_uncompress_table_safe(
                                                 32,
                                                 cast_slice_mut(&mut uncompressed_vla),
                                             );
-                                            if let Err(e) = res {
+                                            if let Err(_e) = res {
                                                 *status = DATA_DECOMPRESSION_ERR;
                                                 return *status;
                                             }
@@ -13046,7 +12982,7 @@ pub fn fits_uncompress_table_safe(
             );
 
             /* increment pointers for next tile */
-            rowstart += rowspertile as LONGLONG;
+            // rowstart += rowspertile as LONGLONG;
             rowsremain -= rowspertile as LONGLONG;
             datastart += (naxis1 * rowspertile) as LONGLONG;
             if rowspertile as LONGLONG > rowsremain {
@@ -13073,7 +13009,6 @@ fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
         p.resize(2, 0);
     }
 
-    let ptr: usize = 0; // index into p
     let mut heapptr: usize = 0;
 
     for ii in 0..length {
@@ -13103,7 +13038,6 @@ fn fits_shuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
         p.resize(4, 0);
     }
 
-    let ptr: usize = 0; // index into p
     let mut heapptr: usize = 0;
 
     for ii in 0..length {
@@ -13222,7 +13156,7 @@ fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let mut heapptr: usize = (2 * length) - 1;
     let mut cptr: usize = ptr + (2 * length) - 1;
 
-    for ii in 0..length {
+    for _ii in 0..length {
         p[cptr] = heap[heapptr];
         cptr -= 1;
         p[cptr] = heap[heapptr - length];
@@ -13246,7 +13180,7 @@ fn fits_unshuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let mut heapptr: usize = (4 * length) - 1;
     let mut cptr: usize = ptr + (4 * length) - 1;
 
-    for ii in 0..length {
+    for _ii in 0..length {
         p[cptr] = heap[heapptr];
         cptr -= 1;
         p[cptr] = heap[heapptr - length];
@@ -13275,7 +13209,7 @@ fn fits_unshuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let mut heapptr: usize = (8 * length) - 1;
     let mut cptr: usize = ptr + (8 * length) - 1;
 
-    for ii in 0..length {
+    for _ii in 0..length {
         p[cptr] = heap[heapptr];
         cptr -= 1;
         p[cptr] = heap[heapptr - length];
@@ -13318,7 +13252,6 @@ fn fits_int_to_longlong_inplace(
     length: c_long,
     status: &mut c_int,
 ) -> c_int {
-    let mut ii: c_long;
     let mut ntodo: c_long;
     let mut firstelem: usize;
     let nmax: c_long = 10000;
@@ -13394,7 +13327,6 @@ fn fits_short_to_int_inplace(
     shift: c_int,
     status: &mut c_int,
 ) -> c_int {
-    let mut ii: c_long;
     let mut ntodo: c_long;
     let mut firstelem: usize;
     let nmax: c_long = 10000;
@@ -13470,7 +13402,6 @@ fn fits_ushort_to_int_inplace(
     shift: c_int,
     status: &mut c_int,
 ) -> c_int {
-    let mut ii: c_long;
     let mut ntodo: c_long;
     let mut firstelem: usize;
     let nmax: c_long = 10000;
@@ -13545,7 +13476,6 @@ fn fits_ubyte_to_int_inplace(
     length: c_long,
     status: &mut c_int, /* */
 ) -> c_int {
-    let mut ii: c_long;
     let mut ntodo: c_long;
     let mut firstelem: usize;
     let nmax: c_long = 10000;
@@ -13756,13 +13686,13 @@ pub unsafe extern "C" fn fits_compress_img(
 
 /// Compress an image using the specified compression algorithm (safe version)
 pub fn fits_compress_img_safer(
-    infptr: &mut fitsfile,         /* I - FITS file pointer to input file */
-    outfptr: &mut fitsfile,        /* I - FITS file pointer to output file */
-    compress_type: c_int,          /* I - compression algorithm type */
-    tilesize: Option<&mut c_long>, /* I - tile size array */
-    parm1: c_int,                  /* I - compression parameter 1 */
-    parm2: c_int,                  /* I - compression parameter 2 */
-    status: &mut c_int,            /* IO - error status */
+    _infptr: &mut fitsfile,         /* I - FITS file pointer to input file */
+    _outfptr: &mut fitsfile,        /* I - FITS file pointer to output file */
+    compress_type: c_int,           /* I - compression algorithm type */
+    _tilesize: Option<&mut c_long>, /* I - tile size array */
+    parm1: c_int,                   /* I - compression parameter 1 */
+    parm2: c_int,                   /* I - compression parameter 2 */
+    _status: &mut c_int,            /* IO - error status */
 ) -> c_int {
     todo!(
         "fits_compress_img: Compress image with type {}, parm1 {}, parm2 {}",

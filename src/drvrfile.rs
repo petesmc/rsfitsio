@@ -11,6 +11,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::Mutex;
 
 use crate::c_types::{c_char, c_int};
+use crate::zcompress::uncompress2file;
 
 use bytemuck::cast_slice;
 
@@ -61,7 +62,7 @@ pub(crate) fn file_init() -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
-pub(crate) fn file_setoptions(options: c_int) -> c_int {
+pub(crate) fn file_setoptions(_options: c_int) -> c_int {
     /* do something with the options argument, to stop compiler warning */
     0
 }
@@ -89,7 +90,6 @@ pub(crate) fn file_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_i
     let mut ii = 0;
     let mut status = 0;
     let mut recbuf: [u8; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
-    let nread: usize = 0;
     let mut diskfile: Option<File> = None;
     /*
        if an output filename has been specified as part of the input
@@ -174,8 +174,6 @@ pub(crate) fn file_openfile(
     rwmode: c_int,
     diskfile: &mut Option<File>,
 ) -> c_int {
-    let mode: [c_char; 4] = [0; 4];
-
     let file: Result<File, std::io::Error>;
 
     if CFITSIO_MACHINE == ALPHAVMS || CFITSIO_MACHINE == VAXVMS {
@@ -438,7 +436,7 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
         );
 
     match diskfile {
-        Err(x) => return FILE_NOT_CREATED, /* couldn't create file */
+        Err(_x) => return FILE_NOT_CREATED, /* couldn't create file */
         Ok(x) => {
             //let mut h = handleTable.lock().unwrap();
 
@@ -637,10 +635,9 @@ pub(crate) fn file_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
 /// then gets set to a null string.
 pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut c_int) -> c_int {
     let mut indiskfile: Option<File> = None;
-    let outdiskfile: Option<File> = None;
 
     /* open the compressed disk file */
-    let status = file_openfile(filename, READONLY, &mut indiskfile);
+    let mut status = file_openfile(filename, READONLY, &mut indiskfile);
     if status != 0 {
         ffpmsg_str("failed to open compressed disk file (file_compress_open)");
         ffpmsg_slice(filename);
@@ -666,13 +663,13 @@ pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &m
         ); /* does file already exist? */
 
         match tmp_outdiskfile {
-            Ok(f) => {
+            Ok(_f) => {
                 ffpmsg_str("uncompressed file already exists: (file_compress_open)");
                 ffpmsg_slice(&*ofile);
                 ofile[0] = 0;
                 return FILE_NOT_CREATED;
             }
-            Err(e) => {}
+            Err(_e) => {}
         }
     }
 
@@ -696,9 +693,17 @@ pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &m
         return FILE_NOT_CREATED;
     }
 
+    let mut tmp_outdiskfile = tmp_outdiskfile.unwrap();
+
     /* uncompress file into another file */
-    todo!();
-    //uncompress2file(filename, indiskfile, outdiskfile, &mut status);
+    unsafe {
+        uncompress2file(
+            filename,
+            &mut indiskfile.unwrap(),
+            &mut tmp_outdiskfile,
+            &mut status,
+        );
+    }
 
     if status != 0 {
         ffpmsg_str("error in file_compress_open: failed to uncompressed file:");
@@ -845,7 +850,7 @@ pub(crate) fn file_checkfile(
 
 /*--------------------------------------------------------------------------*/
 /// read from stdin
-pub(crate) fn stream_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int {
+pub(crate) fn stream_open(_filename: &mut [c_char], _rwmode: c_int, handle: &mut c_int) -> c_int {
     *handle = 1; /*  1 = stdin */
 
     0
@@ -853,7 +858,7 @@ pub(crate) fn stream_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c
 
 /*--------------------------------------------------------------------------*/
 ///  write to stdout
-pub(crate) fn stream_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
+pub(crate) fn stream_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
     *handle = 2; /*  2 = stdout */
 
     0
@@ -861,7 +866,7 @@ pub(crate) fn stream_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut
 
 /*--------------------------------------------------------------------------*/
 /// return the size of the file in bytes
-pub(crate) fn stream_size(handle: c_int, filesize: &mut usize) -> c_int {
+pub(crate) fn stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
     /* this operation is not supported in a stream; return large value */
     *filesize = LONG_MAX as usize;
     0
@@ -869,7 +874,7 @@ pub(crate) fn stream_size(handle: c_int, filesize: &mut usize) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// don't have to close stdin or stdout
-pub(crate) fn stream_close(handle: c_int) -> c_int {
+pub(crate) fn stream_close(_handle: c_int) -> c_int {
     0
 }
 
@@ -884,7 +889,7 @@ pub(crate) fn stream_flush(handle: c_int) -> c_int {
 }
 /*--------------------------------------------------------------------------*/
 /// seeking is not allowed in a stream
-pub(crate) fn stream_seek(handle: c_int, offset: LONGLONG) -> c_int {
+pub(crate) fn stream_seek(_handle: c_int, _offset: LONGLONG) -> c_int {
     1
 }
 

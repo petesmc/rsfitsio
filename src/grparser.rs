@@ -32,9 +32,9 @@ pub unsafe extern "C" fn fits_execute_template(
 
 /// Execute template to fill in header keywords (safe version)
 pub fn fits_execute_template_safer(
-    ff: &mut fitsfile,       /* I - FITS file pointer */
-    ngp_template: &[c_char], /* I - template string */
-    status: &mut c_int,      /* IO - error status */
+    _ff: &mut fitsfile,       /* I - FITS file pointer */
+    _ngp_template: &[c_char], /* I - template string */
+    _status: &mut c_int,      /* IO - error status */
 ) -> c_int {
     todo!("fits_execute_template")
 }
