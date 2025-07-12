@@ -63,16 +63,21 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Install Rustup
-      shell: powershell
+    - name: Install rustup (Windows 11 ARM64)
+      shell: pwsh
       run: |
-          Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe" -OutFile "rustup-init.exe"
-          .\rustup-init.exe --profile minimal --default-toolchain stable -y
-    - name: Add custom path to GITHUB_PATH
-      shell: powershell
+        Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe" -OutFile rustup-init.exe
+        .\rustup-init.exe --default-toolchain none -y
+        "$env:USERPROFILE\.cargo\bin" | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+        "CARGO_HOME=$env:USERPROFILE\.cargo" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+    - name: Install Rust (Windows 11 ARM64)
+      shell: pwsh
       run: |
-        "%USERPROFILE%\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        rustup --version
+        rustup install stable
+        rustup target add aarch64-pc-windows-msvc
+        
+    - name: Output rust version for educational purposes
+      run: rustup --version
 
     - name: Build
       run: cargo build --verbose
