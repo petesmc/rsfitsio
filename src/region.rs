@@ -5,6 +5,7 @@ use std::io::Read;
 
 use crate::c_types::*;
 use crate::helpers::boxed::box_try_new;
+use crate::helpers::cfile::fgets;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -167,25 +168,25 @@ pub(crate) fn fits_read_ascii_region(
     let mut paramPtr: usize;
     let mut pX: usize;
     let mut pY: usize;
-    let endp = 0;
+    let mut endp = 0;
 
     let mut lineLen: usize;
     let mut hh: c_long;
     let mut mm: c_long;
     let mut dd: c_long;
     let mut coords: &mut [f64];
-    let X: f64 = 0.0;
-    let Y: f64 = 0.0;
-    let x: f64 = 0.0;
-    let y: f64 = 0.0;
-    let ss: f64 = 0.0;
-    let div: f64 = 0.0;
-    let xsave: f64 = 0.;
-    let ysave: f64 = 0.;
+    let mut X: f64 = 0.0;
+    let mut Y: f64 = 0.0;
+    let mut x: f64 = 0.0;
+    let mut y: f64 = 0.0;
+    let mut ss: f64 = 0.0;
+    let mut div: f64 = 0.0;
+    let mut xsave: f64 = 0.;
+    let mut ysave: f64 = 0.;
     let mut nParams: c_int;
     let mut nCoords: c_int;
     let mut negdec: c_int;
-    let i: c_int = 0;
+    let mut i: c_int = 0;
     let mut done: bool;
 
     let mut newShape: &mut RgnShape;
@@ -216,7 +217,7 @@ pub(crate) fn fits_read_ascii_region(
 
     /*  Allocate Line Buffer  */
 
-    let allocLen: usize = 512;
+    let mut allocLen: usize = 512;
     let mut currLine: Vec<c_char> = Vec::new();
     if currLine.try_reserve_exact(allocLen).is_err() {
         ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
@@ -246,20 +247,19 @@ pub(crate) fn fits_read_ascii_region(
         return *status;
     }
 
-    let rgnFile = rgnFile.unwrap();
+    let mut rgnFile = rgnFile.unwrap();
 
     /*  Read in file, line by line  */
     /*  First, set error status in case file is empty */
     *status = FILE_NOT_OPENED;
 
-    todo!(
-        "Below code was badly translated from C. It previously used 'fgets' to read a line from a file. Rusts 'read' does not do this."
-    );
+    while fgets(cast_slice_mut(&mut currLine), allocLen, &mut rgnFile).is_ok() {
+        let mut cFmt = CoordFmt::Pixel; /* set default format */
+        let mut namePtr: usize = 0;
+        let mut paramPtrSet = false;
+        let mut nParams: c_int = 1;
+        let mut nCoords: c_int = 0;
 
-    while rgnFile
-        .read(cast_slice_mut(&mut currLine))
-        .is_ok_and(|x| x > 0)
-    {
         /* reset status if we got here */
         *status = 0;
 
@@ -267,7 +267,6 @@ pub(crate) fn fits_read_ascii_region(
 
         lineLen = strlen_safe(&currLine);
         while lineLen == allocLen - 1 && currLine[lineLen - 1] != bb(b'\n') {
-            // TODO currLoc = (char *)realloc(currLine, 2 * allocLen * sizeof(char));
             if currLine.try_reserve_exact(allocLen).is_err() {
                 ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
                 *status = MEMORY_ALLOCATION;

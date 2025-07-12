@@ -14,7 +14,7 @@ use std::{cmp, mem, ptr};
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
 use crate::helpers::boxed::box_try_new;
-use crate::helpers::cfile::{fgets, CFile};
+use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 
@@ -6418,7 +6418,7 @@ pub unsafe fn ffimport_file_safer(
         }
 
         let mut aFile = aFile.unwrap();
-        
+
         // Read the file line by line
         while fgets(cast_slice_mut(&mut line), 256, &mut aFile).is_ok() {
             let mut llen = strlen_safe(&line);
@@ -7051,16 +7051,27 @@ pub unsafe fn ffrprt_safer(stream: *mut FILE, status: c_int) {
 
     let mut cfile_stream = CFile::from(stream);
 
-
     if status > 0 {
         ffgerr_safe(status, &mut status_str); /* get the error description */
-        
-        cfile_stream.write_fmt(format_args!("\nFITSIO status = {}: {}\n", status, CStr::from_bytes_until_nul(cast_slice(&status_str)).unwrap().to_str().unwrap()));
+
+        let _ = cfile_stream.write_fmt(format_args!(
+            "\nFITSIO status = {}: {}\n",
+            status,
+            CStr::from_bytes_until_nul(cast_slice(&status_str))
+                .unwrap()
+                .to_str()
+                .unwrap()
+        ));
 
         while ffgmsg_safe(&mut errmsg) > 0 {
             /* get error stack messages */
-            cfile_stream.write_fmt(format_args!("{}\n", CStr::from_bytes_until_nul(cast_slice(&errmsg)).unwrap().to_str().unwrap()));
-
+            let _ = cfile_stream.write_fmt(format_args!(
+                "{}\n",
+                CStr::from_bytes_until_nul(cast_slice(&errmsg))
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+            ));
         }
     }
 }

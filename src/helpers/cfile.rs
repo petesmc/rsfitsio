@@ -1,4 +1,7 @@
-use std::{fs::File, io::{self, Read, Write}};
+use std::{
+    fs::File,
+    io::{self, Read, Write},
+};
 
 use libc::{FILE, c_int, ferror, fflush, fread};
 
@@ -70,7 +73,7 @@ pub(crate) fn fgets(buf: &mut [u8], size: usize, file: &mut File) -> Result<(), 
 
     buf[buf.len() - 1] = 0; // Null-terminate the string
 
-    for i in 0..(size-1) {
+    for i in 0..(size - 1) {
         let read_result = file.read(&mut byte);
 
         if read_result.is_err() {
@@ -82,9 +85,8 @@ pub(crate) fn fgets(buf: &mut [u8], size: usize, file: &mut File) -> Result<(), 
         buf[i] = byte[0];
 
         if byte[0] == 0 || byte[0] == (b'\n') {
-            return Ok(());  
+            return Ok(());
         }
-
     }
 
     Ok(())
