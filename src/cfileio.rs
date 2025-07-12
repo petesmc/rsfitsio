@@ -6,14 +6,15 @@
 
 use core::slice;
 use std::ffi::CStr;
+use std::fs::File;
+use std::io::{BufReader, Read, Write};
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
-
-use libc::{fclose, fgets, fopen, fprintf};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
 use crate::helpers::boxed::box_try_new;
+use crate::helpers::cfile::{fgets, CFile};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 
@@ -6401,8 +6402,9 @@ pub unsafe fn ffimport_file_safer(
         }
         lines[0] = 0;
 
-        let aFile = fopen(filename.as_ptr(), c"r".as_ptr());
-        if aFile.is_null() {
+        let aFile = File::options().read(true).open(slice_to_str!(filename));
+
+        if aFile.is_err() {
             int_snprintf!(
                 &mut line,
                 256,
@@ -6415,7 +6417,10 @@ pub unsafe fn ffimport_file_safer(
             return *status;
         }
 
-        while !fgets(line.as_mut_ptr(), 256, aFile).is_null() {
+        let mut aFile = aFile.unwrap();
+        
+        // Read the file line by line
+        while fgets(&mut line, 256, &mut aFile).is_ok() {
             let mut llen = strlen_safe(&line);
             if eoline && (llen > 1) && (line[0] == bb(b'/') && line[1] == bb(b'/')) {
                 continue; /* skip comment lines begging with // */
@@ -6454,7 +6459,8 @@ pub unsafe fn ffimport_file_safer(
                 totalLen += 1;
             }
         }
-        fclose(aFile);
+
+        drop(aFile);
 
         // HEAP ALLOCATION
         let (p, l, c) = vec_into_raw_parts(lines);
@@ -7039,22 +7045,22 @@ pub unsafe fn ffrprt_safer(stream: *mut FILE, status: c_int) {
     let mut status_str: [c_char; FLEN_STATUS] = [0; FLEN_STATUS];
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
+    if stream.is_null() {
+        return; // If the stream is null, do nothing
+    }
+
+    let mut cfile_stream = CFile::from(stream);
+
+
     if status > 0 {
         ffgerr_safe(status, &mut status_str); /* get the error description */
-        unsafe {
-            fprintf(
-                stream,
-                c"\nFITSIO status = %d: %s\n".as_ptr(),
-                status,
-                status_str.as_ptr(),
-            );
-        }
+        
+        cfile_stream.write_fmt(format_args!("\nFITSIO status = {}: {}\n", status, CStr::from_bytes_until_nul(&status_str).unwrap().to_str().unwrap()));
 
         while ffgmsg_safe(&mut errmsg) > 0 {
             /* get error stack messages */
-            unsafe {
-                fprintf(stream, c"%s\n".as_ptr(), errmsg.as_ptr());
-            }
+            cfile_stream.write_fmt(format_args!("{}\n", CStr::from_bytes_until_nul(&errmsg).unwrap().to_str().unwrap()));
+
         }
     }
 }

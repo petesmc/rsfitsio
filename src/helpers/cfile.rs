@@ -1,6 +1,8 @@
-use std::io::{self, Read, Write};
+use std::{fs::File, io::{self, Read, Write}};
 
 use libc::{FILE, c_int, ferror, fflush, fread};
+
+use crate::bb;
 
 pub(crate) struct CFile {
     file: *mut FILE,
@@ -61,4 +63,29 @@ impl Write for CFile {
             Ok(())
         }
     }
+}
+
+pub(crate) fn fgets(buf: &mut [u8], size: usize, file: &mut File) -> Result<(), std::io::Error> {
+    let mut byte = [0; 1];
+
+    buf[buf.len() - 1] = 0; // Null-terminate the string
+
+    for i in 0..(size-1) {
+        let read_result = file.read(&mut byte);
+
+        if read_result.is_err() {
+            return Err(read_result.unwrap_err());
+        }
+
+        let read_result = read_result.unwrap();
+
+        buf[i] = byte[0];
+
+        if byte[0] == 0 || byte[0] == (b'\n') {
+            return Ok(());  
+        }
+
+    }
+
+    Ok(())
 }
