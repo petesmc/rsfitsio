@@ -910,6 +910,10 @@ impl FITSfile {
     pub fn get_tileanynull_as_mut_slice(&mut self) -> &mut [c_int] {
         unsafe { std::slice::from_raw_parts_mut(self.tileanynull, self.get_tile_alloc_len()) }
     }
+
+    pub fn get_filename_as_cstr(&self) -> &CStr {
+        unsafe { CStr::from_ptr(self.filename) }
+    }
 }
 
 impl Drop for FITSfile {

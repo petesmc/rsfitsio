@@ -1839,8 +1839,6 @@ pub(crate) unsafe fn fits_read_fits_region(
         let mut aRgn: &mut SAORegion;
         let newShape: &mut RgnShape;
 
-        // TODO this should be unneccessary but the compiler is complaining because it doesn't
-        // know that the variable `dotransform` is always set to true before it is used
         let mut regwcs: Box<WCSdata> = Box::default();
 
         if *status != 0 {

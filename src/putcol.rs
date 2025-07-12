@@ -2641,7 +2641,6 @@ pub fn ffiter_safe(
                     }
 
                     /* check that the column number is valid */
-                    // TODO: Need to access tfield properly
                     if cols[jj].colnum < 1
                         || cols[jj].colnum > ((cols[jj].fptr).as_mut().unwrap().Fptr).tfield
                     {

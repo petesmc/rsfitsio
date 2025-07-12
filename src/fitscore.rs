@@ -8679,70 +8679,71 @@ pub fn ffrdef_safe(
     } else if fptr.Fptr.writemode == 1 {
         /* write access to the file? */
 
-        // SAFETY: This is not safe, just a temporary hack to remove unsafe on upstream functions
-        // TODO: Remove this hack
-        unsafe {
-            /* don't need to check NAXIS2 and PCOUNT if data hasn't been written */
-            if fptr.Fptr.datastart != DATA_UNDEFINED as LONGLONG {
-                /* update NAXIS2 keyword if more rows were written to the table */
-                /* and if the user has not explicitly reset the NAXIS2 value */
-                if fptr.Fptr.hdutype != IMAGE_HDU {
-                    ffmaky_safe(fptr, 2, status);
-                    if ffgkyjj_safe(
-                        fptr,
-                        cs!(c"NAXIS2"),
-                        &mut naxis2,
-                        Some(&mut comm),
-                        &mut tstatus,
-                    ) > 0
-                    {
-                        /* Couldn't read NAXIS2 (odd!);  in certain circumstances */
-                        /* this may be normal, so ignore the error. */
-                        naxis2 = fptr.Fptr.numrows;
-                    }
-                    if fptr.Fptr.numrows > naxis2 && fptr.Fptr.origrows == naxis2 {
-                        /* if origrows is not equal to naxis2, then the user must */
-                        /* have manually modified the NAXIS2 keyword value, and */
-                        /* we will assume that the current value is correct. */
-                        /* would be simpler to just call ffmkyj here, but this */
-                        /* would force linking in all the modkey & putkey routines */
-
-                        /* print as double because the 64-bit int conversion */
-                        /* is platform dependent (%lld, %ld, %I64 )          */
-
-                        int_snprintf!(
-                            &mut valstring,
-                            FLEN_VALUE,
-                            "{:.0}",
-                            (fptr.Fptr.numrows) as f64,
-                        );
-                        ffmkky_safe(cs!(c"NAXIS2"), &valstring, Some(&comm), &mut card, status);
-                        ffmkey(fptr, &card, status);
-                    };
+        /* don't need to check NAXIS2 and PCOUNT if data hasn't been written */
+        if fptr.Fptr.datastart != DATA_UNDEFINED as LONGLONG {
+            /* update NAXIS2 keyword if more rows were written to the table */
+            /* and if the user has not explicitly reset the NAXIS2 value */
+            if fptr.Fptr.hdutype != IMAGE_HDU {
+                ffmaky_safe(fptr, 2, status);
+                if ffgkyjj_safe(
+                    fptr,
+                    cs!(c"NAXIS2"),
+                    &mut naxis2,
+                    Some(&mut comm),
+                    &mut tstatus,
+                ) > 0
+                {
+                    /* Couldn't read NAXIS2 (odd!);  in certain circumstances */
+                    /* this may be normal, so ignore the error. */
+                    naxis2 = fptr.Fptr.numrows;
                 }
+                if fptr.Fptr.numrows > naxis2 && fptr.Fptr.origrows == naxis2 {
+                    /* if origrows is not equal to naxis2, then the user must */
+                    /* have manually modified the NAXIS2 keyword value, and */
+                    /* we will assume that the current value is correct. */
+                    /* would be simpler to just call ffmkyj here, but this */
+                    /* would force linking in all the modkey & putkey routines */
 
-                /* if data has been written to variable length columns in a  */
-                /* binary table, then we may need to update the PCOUNT value */
-                if fptr.Fptr.heapsize > 0 {
-                    ffmaky_safe(fptr, 2, status);
-                    ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
-                    if fptr.Fptr.heapsize != pcount {
-                        ffmkyj_safe(
-                            fptr,
-                            cs!(c"PCOUNT"),
-                            fptr.Fptr.heapsize,
-                            Some(&comm),
-                            status,
-                        );
-                    };
+                    /* print as double because the 64-bit int conversion */
+                    /* is platform dependent (%lld, %ld, %I64 )          */
+
+                    int_snprintf!(
+                        &mut valstring,
+                        FLEN_VALUE,
+                        "{:.0}",
+                        (fptr.Fptr.numrows) as f64,
+                    );
+                    ffmkky_safe(cs!(c"NAXIS2"), &valstring, Some(&comm), &mut card, status);
+                    ffmkey(fptr, &card, status);
                 };
             }
 
-            if ffwend(fptr, status) <= 0 {
-                /* rewrite END keyword and fill */
-                ffrhdu_safer(fptr, Some(&mut dummy), status); /* re-scan the header keywords  */
+            /* if data has been written to variable length columns in a  */
+            /* binary table, then we may need to update the PCOUNT value */
+            if fptr.Fptr.heapsize > 0 {
+                ffmaky_safe(fptr, 2, status);
+                ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
+                if fptr.Fptr.heapsize != pcount {
+                    ffmkyj_safe(
+                        fptr,
+                        cs!(c"PCOUNT"),
+                        fptr.Fptr.heapsize,
+                        Some(&comm),
+                        status,
+                    );
+                };
             };
         }
+
+        if ffwend(fptr, status) <= 0 {
+            /* rewrite END keyword and fill */
+
+            // TODO: Remove this hack
+            // SAFETY: This is not safe, just a temporary hack to remove unsafe on upstream
+            unsafe {
+                ffrhdu_safer(fptr, Some(&mut dummy), status); /* re-scan the header keywords  */
+            }
+        };
     }
     *status
 }
@@ -9204,7 +9205,6 @@ pub unsafe fn ffcrhd_safer(
 
         if fptr.Fptr.maxhdu == fptr.Fptr.MAXHDU {
             /* allocate more space for the headstart array */
-            // WARNING THIS SHOULD BE A REALLOC
             // HEAP ALLOCATION
             let l = fptr.Fptr.MAXHDU as usize + 1;
             let mut vo = Vec::from_raw_parts(fptr.Fptr.headstart, l, l);

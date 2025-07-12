@@ -63,7 +63,6 @@ pub struct Error {
     repr: Repr,
 }
 
-// TODO?
 impl Error {
     pub fn raw_os_error(&self) -> Option<c_int> {
         if let Repr::Os(os) = self.repr {

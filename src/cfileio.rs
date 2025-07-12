@@ -3182,7 +3182,7 @@ pub(crate) unsafe fn ffedit_columns(
 
                     if ffdcol_safe(fptr, ii, status) > 0 {
                         ffpmsg_str("failed to delete column in input file:");
-                        ffpmsg_slice(clause); // SAFETY: This is a hack and probably isn't safe. TODO
+                        ffpmsg_slice(clause);
                         return *status;
                     }
                 }
@@ -6852,8 +6852,6 @@ pub(crate) fn ffseek(
     position: LONGLONG,  /* I - byte position to seek to       */
 ) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
-    // SAFETY: This is just a hack so I can make other functions 'safe'
-    // TODO: Fix
     (d[fptr.driver as usize].seek)(fptr.filehandle, position)
 }
 
@@ -6867,15 +6865,11 @@ pub(crate) fn ffwrite(
 ) -> c_int {
     {
         let d = DRIVER_TABLE.get().unwrap();
-        // SAFETY: This is just a hack so I can make other functions 'safe'
-        // TODO: Fix
-        unsafe {
-            if (d[fptr.driver as usize].write)(fptr.filehandle, buffer, nbytes as usize) > 0 {
-                ffpmsg_str("Error writing data buffer to file:");
-                ffpmsg_cstr(CStr::from_ptr(fptr.filename));
+        if (d[fptr.driver as usize].write)(fptr.filehandle, buffer, nbytes as usize) > 0 {
+            ffpmsg_str("Error writing data buffer to file:");
+            ffpmsg_cstr(fptr.get_filename_as_cstr());
 
-                *status = WRITE_ERROR;
-            }
+            *status = WRITE_ERROR;
         }
     }
     *status
@@ -6891,16 +6885,12 @@ pub(crate) fn ffwrite_int(
 ) -> c_int {
     {
         let d = DRIVER_TABLE.get().unwrap();
-        // SAFETY: This is just a hack so I can make other functions 'safe'
-        // TODO: Fix
         let buffer = cast_slice(&fptr.iobuffer[(nbuff * IOBUFLEN as usize)..]);
-        unsafe {
-            if (d[fptr.driver as usize].write)(fptr.filehandle, buffer, nbytes) > 0 {
-                ffpmsg_str("Error writing data buffer to file:");
-                ffpmsg_cstr(CStr::from_ptr(fptr.filename));
+        if (d[fptr.driver as usize].write)(fptr.filehandle, buffer, nbytes) > 0 {
+            ffpmsg_str("Error writing data buffer to file:");
+            ffpmsg_cstr(fptr.get_filename_as_cstr());
 
-                *status = WRITE_ERROR;
-            }
+            *status = WRITE_ERROR;
         }
     }
     *status
@@ -6921,12 +6911,7 @@ pub(crate) fn ffread(
         *status = END_OF_FILE;
     } else if readstatus > 0 {
         ffpmsg_str("Error reading data buffer from file:");
-
-        // SAFETY: This is just a hack so I can make other functions 'safe'
-        // TODO: Fix
-        unsafe {
-            ffpmsg_cstr(CStr::from_ptr(fptr.filename));
-        }
+        ffpmsg_cstr(fptr.get_filename_as_cstr());
 
         *status = READ_ERROR;
     }
@@ -6950,12 +6935,7 @@ pub(crate) fn ffread_int(
         *status = END_OF_FILE;
     } else if readstatus > 0 {
         ffpmsg_str("Error reading data buffer from file:");
-
-        // SAFETY: This is just a hack so I can make other functions 'safe'
-        // TODO: Fix
-        unsafe {
-            ffpmsg_cstr(CStr::from_ptr(fptr.filename));
-        }
+        ffpmsg_cstr(fptr.get_filename_as_cstr());
 
         *status = READ_ERROR;
     }
