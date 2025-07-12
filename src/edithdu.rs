@@ -1,4 +1,5 @@
 use crate::c_types::{FILE, c_char, c_int, c_long};
+use crate::helpers::cfile::CFile;
 use crate::{
     BL, TKeywords,
     buffers::*,
@@ -23,8 +24,8 @@ use crate::{
 };
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::slice;
+use std::io::Write;
 
-use libc::fwrite;
 use std::{cmp, ffi::CStr};
 
 /*--------------------------------------------------------------------------*/
@@ -590,9 +591,11 @@ pub unsafe fn ffwrhdu_safer(
         /* move to the start of the HDU */
         ffmbyt_safe(infptr, hdustart, REPORT_EOF, status);
 
+        let mut outstream_cfile = CFile::from(outstream);
+
         for _ii in 0..(nb as usize) {
             ffgbyt(infptr, BL!(), cast_slice_mut(&mut buffer), status); /* read input block */
-            unsafe { fwrite(buffer.as_ptr() as *mut _, 1, BL!(), outstream) }; /* write to output stream */
+            let _ = outstream_cfile.write(buffer[..BL!()].as_ref()); /* write to output stream */
         }
     }
     *status
