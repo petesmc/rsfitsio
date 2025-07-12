@@ -72,11 +72,7 @@ jobs:
       shell: powershell
       run: |
         "%USERPROFILE%\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      
-    - name: Temporarily modify the rust toolchain version
-      run: rustup override set nightly-2025-04-25
-    - name: Output rust version for educational purposes
-      run: rustup --version
+        rustup --version
 
     - name: Build
       run: cargo build --verbose
