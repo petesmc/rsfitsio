@@ -3086,7 +3086,7 @@ pub fn ffiter_safe(
                             } else {
                                 let mut cptr = 0; //nullstr
 
-                                while nullstr[cptr] == ' ' as c_char {
+                                while nullstr[cptr] == b' ' as c_char {
                                     /* skip over leading blanks */
                                     cptr += 1;
                                 }
@@ -3342,11 +3342,11 @@ pub fn ffiter_safe(
                             let stringnull =
                                 calloc((rept + 1) as usize, size_of::<c_char>()) as *mut c_char;
                             col[jj].null = ColNullValue::StringNull(stringnull);
-                            if rept > 0 {
-                                if let ColNullValue::StringNull(ptr) = col[jj].null {
-                                    *ptr.add(1) = 1;
-                                    /* to make sure string != 0 */
-                                }
+                            if rept > 0
+                                && let ColNullValue::StringNull(ptr) = col[jj].null
+                            {
+                                *ptr.add(1) = 1;
+                                /* to make sure string != 0 */
                             }
 
                             /* allocate big block for the array of table column strings */
@@ -3378,10 +3378,10 @@ pub fn ffiter_safe(
                                     None,
                                     &mut tstatus,
                                 );
-                                if tstatus == 0 {
-                                    if let ColNullValue::StringNull(ptr) = col[jj].null {
-                                        libc::strncat(ptr, nullstr.as_ptr(), rept as usize);
-                                    }
+                                if tstatus == 0
+                                    && let ColNullValue::StringNull(ptr) = col[jj].null
+                                {
+                                    libc::strncat(ptr, nullstr.as_ptr(), rept as usize);
                                 }
                             } else {
                                 ffpmsg_str("ffiter failed to allocate memory arrays");

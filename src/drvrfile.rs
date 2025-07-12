@@ -492,10 +492,10 @@ pub(crate) fn file_close(handle: c_int) -> c_int {
     //let mut h = handleTable.lock().unwrap();
     let mut h = HANDLE_TABLE.lock().unwrap();
 
-    if let Some(f) = &mut h[handle as usize].fileptr {
-        if f.sync_all().is_err() {
-            return FILE_NOT_CLOSED;
-        }
+    if let Some(f) = &mut h[handle as usize].fileptr
+        && f.sync_all().is_err()
+    {
+        return FILE_NOT_CLOSED;
     }
 
     (h[handle as usize]).fileptr = None; // Implicitly drop the file
@@ -519,10 +519,10 @@ pub(crate) fn file_remove(filename: &[c_char]) -> c_int {
 pub(crate) fn file_flush(handle: c_int) -> c_int {
     let mut h = HANDLE_TABLE.lock().unwrap();
 
-    if let Some(f) = &mut h[handle as usize].fileptr {
-        if f.flush().is_err() {
-            return WRITE_ERROR;
-        }
+    if let Some(f) = &mut h[handle as usize].fileptr
+        && f.flush().is_err()
+    {
+        return WRITE_ERROR;
     }
 
     /* The flush operation is not supposed to move the internal */

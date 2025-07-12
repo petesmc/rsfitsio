@@ -7,7 +7,7 @@
 use core::slice;
 use std::ffi::CStr;
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
 
@@ -3420,15 +3420,15 @@ pub fn fits_get_section_range_safer(
         *ptr = unsafe { (*ptr).add(1) };
     }
 
-    if !num_str.is_empty() {
-        if let Ok(s) = std::str::from_utf8(&num_str) {
-            if let Ok(val) = s.parse::<c_long>() {
-                *secmin = val;
-            } else {
-                ffpmsg_cstr(c"Error converting section range minimum value");
-                *status = PARSE_SYNTAX_ERR;
-                return *status;
-            }
+    if !num_str.is_empty()
+        && let Ok(s) = std::str::from_utf8(&num_str)
+    {
+        if let Ok(val) = s.parse::<c_long>() {
+            *secmin = val;
+        } else {
+            ffpmsg_cstr(c"Error converting section range minimum value");
+            *status = PARSE_SYNTAX_ERR;
+            return *status;
         }
     }
 
@@ -3495,15 +3495,15 @@ pub fn fits_get_section_range_safer(
                 *ptr = unsafe { (*ptr).add(1) };
             }
 
-            if !num_str.is_empty() {
-                if let Ok(s) = std::str::from_utf8(&num_str) {
-                    if let Ok(val) = s.parse::<c_long>() {
-                        *incre = val;
-                    } else {
-                        ffpmsg_cstr(c"Error converting section range increment value");
-                        *status = PARSE_SYNTAX_ERR;
-                        return *status;
-                    }
+            if !num_str.is_empty()
+                && let Ok(s) = std::str::from_utf8(&num_str)
+            {
+                if let Ok(val) = s.parse::<c_long>() {
+                    *incre = val;
+                } else {
+                    ffpmsg_cstr(c"Error converting section range increment value");
+                    *status = PARSE_SYNTAX_ERR;
+                    return *status;
                 }
             }
         }
@@ -4905,11 +4905,12 @@ pub unsafe fn ffifile2_safer(
         /* --------------------------------------------- */
         let ptr4 = strstr_safe(infile, cs!(c".imh"));
         /* did the infile name end with c".imh".as_ptr() ? */
-        if let Some(p4) = ptr4 {
-            if infile[p4] == 0 && !urltype.is_null() {
-                strcpy(urltype, c"irafmem://".as_ptr());
-            };
-        }
+        if let Some(p4) = ptr4
+            && infile[p4] == 0
+            && !urltype.is_null()
+        {
+            strcpy(urltype, c"irafmem://".as_ptr());
+        };
 
         /* --------------------------------------------- */
         /* check if the 'filename+n' convention has been */

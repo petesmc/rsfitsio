@@ -1154,16 +1154,17 @@ pub fn ffmkky_safe(
                 card[79] = bb(b'\'');
             }
 
-            if let Some(comm) = comm {
-                if comm[0] != 0 && len < 30 {
-                    ii = len;
-                    while ii < 30 {
-                        card[ii] = bb(b' '); /* fill with spaces to col 30 */
-                        ii += 1;
-                    }
-                    card[30] = 0;
-                    len = 30;
+            if let Some(comm) = comm
+                && comm[0] != 0
+                && len < 30
+            {
+                ii = len;
+                while ii < 30 {
+                    card[ii] = bb(b' '); /* fill with spaces to col 30 */
+                    ii += 1;
                 }
+                card[30] = 0;
+                len = 30;
             }
         } else {
             if namelen + len > 80 {
@@ -1181,12 +1182,13 @@ pub fn ffmkky_safe(
             len = cmp::min(80, namelen + len);
             len = cmp::max(30, len);
         }
-        if let Some(comm) = comm {
-            if (len < 77) && (strlen_safe(comm) > 0) {
-                /* room for a comment? */
-                strcat_safe(card, cs!(c" / ")); /* append comment separator */
-                strncat_safe(card, comm, 77 - len); /* append comment (what fits) */
-            }
+        if let Some(comm) = comm
+            && (len < 77)
+            && (strlen_safe(comm) > 0)
+        {
+            /* room for a comment? */
+            strcat_safe(card, cs!(c" / ")); /* append comment separator */
+            strncat_safe(card, comm, 77 - len); /* append comment (what fits) */
         }
     } else if namelen == 10
     /* This case applies to normal keywords only */
@@ -1460,20 +1462,20 @@ pub fn ffpsvc_safe(
 
         if valpos == cardlen {
             /* no value indicator ??? */
-            if let Some(ref mut comm) = comm {
-                if cardlen > 8 {
-                    //strcpy_safe(*comm, &card[8..]);
+            if let Some(ref mut comm) = comm
+                && cardlen > 8
+            {
+                //strcpy_safe(*comm, &card[8..]);
 
-                    for jj in (0..(cardlen - 8)).rev() {
-                        /* replace trailing blanks with nulls */
-                        if comm[jj] == bb(b' ') as c_char {
-                            comm[jj] = 0;
-                        } else {
-                            break;
-                        };
-                    }
-                };
-            }
+                for jj in (0..(cardlen - 8)).rev() {
+                    /* replace trailing blanks with nulls */
+                    if comm[jj] == bb(b' ') as c_char {
+                        comm[jj] = 0;
+                    } else {
+                        break;
+                    };
+                }
+            };
             return *status; /* no value indicator */
         }
         valpos += 1;
@@ -1487,8 +1489,33 @@ pub fn ffpsvc_safe(
         /* keywords with no value */
 
         /*  no value, so the comment extends from cols 9 - 80  */
-        if let Some(comm) = comm {
-            if cardlen > 8 {
+        if let Some(comm) = comm
+            && cardlen > 8
+        {
+            strcpy_safe(comm, &card[8..]);
+
+            for jj in (0..(cardlen - 8)).rev() {
+                /* replace trailing blanks with nulls */
+                if comm[jj] == bb(b' ') {
+                    comm[jj] = 0;
+                } else {
+                    break;
+                };
+            }
+        };
+
+        return *status;
+    } else if FSTRNCMP(&card[8..], cs!(c"= "), 2) == 0 {
+        /* normal keyword with '= ' in cols 9-10 */
+
+        valpos = 10; /* starting position of the value field */
+    } else {
+        valpos = strcspn_safe(card, cs!(c"="));
+        if valpos == cardlen {
+            /* no value indicator ??? */
+            if let Some(comm) = comm
+                && cardlen > 8
+            {
                 strcpy_safe(comm, &card[8..]);
 
                 for jj in (0..(cardlen - 8)).rev() {
@@ -1500,31 +1527,6 @@ pub fn ffpsvc_safe(
                     };
                 }
             };
-        }
-
-        return *status;
-    } else if FSTRNCMP(&card[8..], cs!(c"= "), 2) == 0 {
-        /* normal keyword with '= ' in cols 9-10 */
-
-        valpos = 10; /* starting position of the value field */
-    } else {
-        valpos = strcspn_safe(card, cs!(c"="));
-        if valpos == cardlen {
-            /* no value indicator ??? */
-            if let Some(comm) = comm {
-                if cardlen > 8 {
-                    strcpy_safe(comm, &card[8..]);
-
-                    for jj in (0..(cardlen - 8)).rev() {
-                        /* replace trailing blanks with nulls */
-                        if comm[jj] == bb(b' ') {
-                            comm[jj] = 0;
-                        } else {
-                            break;
-                        };
-                    }
-                };
-            }
             return *status; /* no value indicator */
         }
         valpos += 1; /* point to the position after the '=' */

@@ -3417,10 +3417,10 @@ pub fn ffcpsr_safe(
         let mut ii = firstrow;
         for i0 in 0..(nrows as usize) {
             /* Ignore rows with row_status[] == 0 */
-            if let Some(row_status) = row_status {
-                if row_status[i0] == 0 {
-                    continue;
-                }
+            if let Some(row_status) = row_status
+                && row_status[i0] == 0
+            {
+                continue;
             }
 
             ffgtbb_safe(infptr, ii, 1, innaxis1, &mut buffer, status);
@@ -3528,10 +3528,10 @@ pub fn ffcpsr_safe(
         let mut ii = firstrow;
         for i0 in 0..(nrows as usize) {
             /* Ignore rows with row_status[] == 0 */
-            if let Some(row_status) = row_status {
-                if row_status[i0] == 0 {
-                    continue;
-                }
+            if let Some(row_status) = row_status
+                && row_status[i0] == 0
+            {
+                continue;
             }
 
             ffgtbb_safe(infptr, ii, 1, innaxis1, &mut buffer, status);

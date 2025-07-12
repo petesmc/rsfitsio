@@ -1857,14 +1857,14 @@ pub fn fits_is_url_absolute(url: &[c_char]) -> c_int {
      than that of the colons.
     */
 
-    if let Some(colon_pos) = url.iter().position(|&c| c == reserved[0]) {
-        if reserved[1..].iter().all(|&c| {
+    if let Some(colon_pos) = url.iter().position(|&c| c == reserved[0])
+        && reserved[1..].iter().all(|&c| {
             url.iter()
                 .position(|&x| x == c)
                 .is_none_or(|pos| pos > colon_pos)
-        }) {
-            return 1;
-        }
+        })
+    {
+        return 1;
     }
     0
 }

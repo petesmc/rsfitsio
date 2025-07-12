@@ -4,8 +4,8 @@ use rsfitsio::fitsio::{FLEN_FILENAME, FLEN_KEYWORD, FLEN_VALUE, LONGLONG};
 pub(crate) const MAXERRORS: usize = 200;
 pub(crate) const MAXWRNS: usize = 200;
 
-static errmes: [c_char; 256] = [0; 256]; /* error message buffer */
-static comm: [c_char; FLEN_FILENAME + 6] = [0; FLEN_FILENAME + 6]; /* comment buffer */
+static ERRMES: [c_char; 256] = [0; 256]; /* error message buffer */
+static COMM: [c_char; FLEN_FILENAME + 6] = [0; FLEN_FILENAME + 6]; /* comment buffer */
 
 /********************************
 *				*

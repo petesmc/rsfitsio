@@ -904,21 +904,20 @@ pub fn ffphtb_safe(
             status,
         );
 
-        if let Some(tunit) = tunit {
-            if let Some(tunit_item) = tunit[ii]
-                && tunit_item[0] != 0
-            {
-                /* optional TUNITn keyword */
+        if let Some(tunit) = tunit
+            && let Some(tunit_item) = tunit[ii]
+            && tunit_item[0] != 0
+        {
+            /* optional TUNITn keyword */
 
-                ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
-                ffpkys_safe(
-                    fptr,
-                    &name,
-                    tunit_item,
-                    Some(cs!(c"physical unit of field")),
-                    status,
-                );
-            }
+            ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
+            ffpkys_safe(
+                fptr,
+                &name,
+                tunit_item,
+                Some(cs!(c"physical unit of field")),
+                status,
+            );
         }
 
         if *status > 0 {
@@ -1311,21 +1310,20 @@ pub fn ffphbn_safe(
             ffpkys_safe(fptr, &name, &tfmt, Some(&comm), status);
         }
 
-        if let Some(tunit) = tunit {
-            if let Some(tunit_item) = tunit[ii]
-                && tunit_item[0] != 0
-            {
-                /* optional TUNITn keyword */
+        if let Some(tunit) = tunit
+            && let Some(tunit_item) = tunit[ii]
+            && tunit_item[0] != 0
+        {
+            /* optional TUNITn keyword */
 
-                ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
-                ffpkys_safe(
-                    fptr,
-                    &name,
-                    tunit_item,
-                    Some(cs!(c"physical unit of field")),
-                    status,
-                );
-            }
+            ffkeyn_safe(cs!(c"TUNIT"), (ii + 1) as c_int, &mut name, status);
+            ffpkys_safe(
+                fptr,
+                &name,
+                tunit_item,
+                Some(cs!(c"physical unit of field")),
+                status,
+            );
         }
 
         if *status > 0 {

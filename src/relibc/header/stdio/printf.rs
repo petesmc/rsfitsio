@@ -400,11 +400,11 @@ unsafe fn pop_index(format: &mut *const u8) -> Option<usize> {
     unsafe {
         // Peek ahead for a positional argument:
         let mut format2 = *format;
-        if let Some(i) = pop_int_raw(&mut format2) {
-            if *format2 == b'$' {
-                *format = format2.add(1);
-                return Some(i);
-            }
+        if let Some(i) = pop_int_raw(&mut format2)
+            && *format2 == b'$'
+        {
+            *format = format2.add(1);
+            return Some(i);
         }
         None
     }

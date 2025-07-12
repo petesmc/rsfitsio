@@ -1912,14 +1912,14 @@ pub(crate) fn ffglkut(
     if lenOnly {
         ffmaky_safe(fptr, savedKeyPos, status);
     } else {
-        if let Some(value) = value {
-            if firstchar <= len as c_int {
-                strncat_safe(
-                    value,
-                    &dynValStr[(firstchar as usize - 1)..],
-                    maxvalchar as usize,
-                );
-            }
+        if let Some(value) = value
+            && firstchar <= len as c_int
+        {
+            strncat_safe(
+                value,
+                &dynValStr[(firstchar as usize - 1)..],
+                maxvalchar as usize,
+            );
         }
         if let Some(comm) = comm {
             strncat_safe(comm, &dynComStr, maxcomchar as usize);
@@ -2599,12 +2599,11 @@ pub fn ffgkyt_safe(
     /* look for decimal point, without an exponential E or D character */
 
     let loc = strchr_safe(&valstring, bb(b'.'));
-    if let Some(loc) = loc {
-        if strchr_safe(&valstring, bb(b'E')).is_none()
-            && strchr_safe(&valstring, bb(b'D')).is_none()
-        {
-            ffc2d(&valstring[loc..], fraction, status);
-        }
+    if let Some(loc) = loc
+        && strchr_safe(&valstring, bb(b'E')).is_none()
+        && strchr_safe(&valstring, bb(b'D')).is_none()
+    {
+        ffc2d(&valstring[loc..], fraction, status);
     }
 
     *status

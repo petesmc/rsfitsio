@@ -5,8 +5,6 @@ use std::{
 
 use libc::{FILE, c_int, ferror, fflush, fread};
 
-use crate::bb;
-
 pub(crate) struct CFile {
     file: *mut FILE,
 }

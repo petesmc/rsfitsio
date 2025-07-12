@@ -118,16 +118,16 @@ pub fn main() -> ExitCode {
         printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if writesimage(fptr_box, &ssarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && writesimage(fptr_box, &ssarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 
     let _ = remove_file(filename); /* Delete old file if it already exists */
@@ -138,46 +138,46 @@ pub fn main() -> ExitCode {
         printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if writeimage(fptr_box, &sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && writeimage(fptr_box, &sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if writebintable(fptr_box, &sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && writebintable(fptr_box, &sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if writeasctable(fptr_box, &sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && writeasctable(fptr_box, &sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if readimage(fptr_box, &mut sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && readimage(fptr_box, &mut sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if readbtable(fptr_box, &mut sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && readbtable(fptr_box, &mut sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if readatable(fptr_box, &mut sarray, &mut status) != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && readatable(fptr_box, &mut sarray, &mut status) != 0
+    {
+        printerror(status);
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 
     let elapsed_time = tbegin.elapsed().unwrap();

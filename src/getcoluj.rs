@@ -659,10 +659,10 @@ pub fn ffgsvuj_safe(
                                             return *status;
                                         }
 
-                                        if anyf > 0 {
-                                            if let Some(anynul) = anynul.as_deref_mut() {
-                                                *anynul = TRUE as c_int;
-                                            }
+                                        if anyf > 0
+                                            && let Some(anynul) = anynul.as_deref_mut()
+                                        {
+                                            *anynul = TRUE as c_int;
                                         }
                                         i0 += nelem;
                                     }
@@ -896,10 +896,10 @@ pub fn ffgsfuj_safe(
                                         {
                                             return *status;
                                         }
-                                        if anyf > 0 {
-                                            if let Some(anynul) = anynul.as_deref_mut() {
-                                                *anynul = TRUE as c_int;
-                                            }
+                                        if anyf > 0
+                                            && let Some(anynul) = anynul.as_deref_mut()
+                                        {
+                                            *anynul = TRUE as c_int;
                                         }
                                         i0 += nelem;
                                     }
@@ -3194,10 +3194,10 @@ pub fn ffgsvujj_safe(
                                             return *status;
                                         }
 
-                                        if anyf > 0 {
-                                            if let Some(anynul) = anynul.as_deref_mut() {
-                                                *anynul = TRUE as c_int;
-                                            }
+                                        if anyf > 0
+                                            && let Some(anynul) = anynul.as_deref_mut()
+                                        {
+                                            *anynul = TRUE as c_int;
                                         }
                                         i0 += nelem;
                                     }
@@ -3434,10 +3434,10 @@ pub fn ffgsfujj_safe(
                                             return *status;
                                         }
 
-                                        if anyf > 0 {
-                                            if let Some(anynul) = anynul.as_deref_mut() {
-                                                *anynul = TRUE as c_int;
-                                            }
+                                        if anyf > 0
+                                            && let Some(anynul) = anynul.as_deref_mut()
+                                        {
+                                            *anynul = TRUE as c_int;
                                         }
                                         i0 += nelem;
                                     }

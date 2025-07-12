@@ -2000,18 +2000,18 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
         /* to be on the safe size, allocate buffer same size as input */
 
         if zbitpix == 16 {
-            return nx * 2;
+            nx * 2
         } else if zbitpix == 8 {
-            return nx;
+            nx
         } else {
-            return nx * 4;
+            nx * 4
         }
     } else if comptype == BZIP2_1 {
         /* To guarantee that the compressed data will fit, allocate an output
         buffer of size 1% larger than the uncompressed data, plus 600 bytes
         */
 
-        return ((nx as f64) * 1.01 * (zbitpix as f64) / 8.0 + 601.0) as c_int;
+        ((nx as f64) * 1.01 * (zbitpix as f64) / 8.0 + 601.0) as c_int
     } else if comptype == HCOMPRESS_1 {
         /* Imperical evidence suggests in the worst case,
         the compressed stream could be up to 10% larger than the original
@@ -2021,12 +2021,12 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
         */
 
         if zbitpix == 16 || zbitpix == 8 {
-            return ((nx as f64) * 2.2 + 26.0) as c_int; /* will be compressing 16-bit int array */
+            ((nx as f64) * 2.2 + 26.0) as c_int /* will be compressing 16-bit int array */
         } else {
-            return ((nx as f64) * 4.4 + 26.0) as c_int; /* will be compressing 32-bit int array */
+            ((nx as f64) * 4.4 + 26.0) as c_int /* will be compressing 32-bit int array */
         }
     } else {
-        return nx * mem::size_of::<c_int>() as c_int;
+        nx * mem::size_of::<c_int>() as c_int
     }
 }
 
@@ -6214,66 +6214,66 @@ unsafe fn fits_read_write_compressed_img(
     let mut buffer_len = 0;
     if datatype == TSHORT {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_short>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TINT {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_int>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TLONG {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_long>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TFLOAT {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<f32>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TDOUBLE {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<f64>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TUSHORT {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_ushort>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TUINT {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_uint>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TULONG {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_ulong>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else if datatype == TBYTE || datatype == TSBYTE {
         buffer_len = ((fptr.Fptr).maxtilelen as usize) * mem::size_of::<c_char>();
-        if let Some(cnull) = cnull {
-            if cnull.get_value_as_f64() == 0.0 {
-                nullcheck = NullCheckType::None;
-            }
+        if let Some(cnull) = cnull
+            && cnull.get_value_as_f64() == 0.0
+        {
+            nullcheck = NullCheckType::None;
         }
     } else {
         ffpmsg_str("unsupported datatype for uncompressing image");
