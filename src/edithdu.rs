@@ -595,7 +595,7 @@ pub unsafe fn ffwrhdu_safer(
 
         for _ii in 0..(nb as usize) {
             ffgbyt(infptr, BL!(), cast_slice_mut(&mut buffer), status); /* read input block */
-            let _ = outstream_cfile.write(buffer[..BL!()].as_ref()); /* write to output stream */
+            let _ = outstream_cfile.write(cast_slice(&buffer[..BL!()])); /* write to output stream */
         }
     }
     *status

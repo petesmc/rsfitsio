@@ -6420,7 +6420,7 @@ pub unsafe fn ffimport_file_safer(
         let mut aFile = aFile.unwrap();
         
         // Read the file line by line
-        while fgets(&mut line, 256, &mut aFile).is_ok() {
+        while fgets(cast_slice_mut(&mut line), 256, &mut aFile).is_ok() {
             let mut llen = strlen_safe(&line);
             if eoline && (llen > 1) && (line[0] == bb(b'/') && line[1] == bb(b'/')) {
                 continue; /* skip comment lines begging with // */
@@ -7055,11 +7055,11 @@ pub unsafe fn ffrprt_safer(stream: *mut FILE, status: c_int) {
     if status > 0 {
         ffgerr_safe(status, &mut status_str); /* get the error description */
         
-        cfile_stream.write_fmt(format_args!("\nFITSIO status = {}: {}\n", status, CStr::from_bytes_until_nul(&status_str).unwrap().to_str().unwrap()));
+        cfile_stream.write_fmt(format_args!("\nFITSIO status = {}: {}\n", status, CStr::from_bytes_until_nul(cast_slice(&status_str)).unwrap().to_str().unwrap()));
 
         while ffgmsg_safe(&mut errmsg) > 0 {
             /* get error stack messages */
-            cfile_stream.write_fmt(format_args!("{}\n", CStr::from_bytes_until_nul(&errmsg).unwrap().to_str().unwrap()));
+            cfile_stream.write_fmt(format_args!("{}\n", CStr::from_bytes_until_nul(cast_slice(&errmsg)).unwrap().to_str().unwrap()));
 
         }
     }
