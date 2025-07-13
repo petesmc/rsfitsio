@@ -2927,7 +2927,7 @@ unsafe fn imcomp_compress_tile(
 
                     /*  bzip2 is not supported in the public release.  This is only for
                     test purposes. */
-                    if (BZ2_bzBuffToBuffCompress(
+                    if BZ2_bzBuffToBuffCompress(
                         cbuf.as_ptr() as *mut c_char,
                         &mut bzlen,
                         tiledata.as_ptr() as *mut _,
@@ -2935,7 +2935,7 @@ unsafe fn imcomp_compress_tile(
                         9,
                         0,
                         0,
-                    ) != 0)
+                    ) != 0
                     {
                         ffpmsg_str("bzip2 compression error");
                         *status = DATA_COMPRESSION_ERR;

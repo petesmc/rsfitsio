@@ -1157,32 +1157,14 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
     diskfile: &mut T,
     hdl: c_int,
 ) -> c_int {
-    let mut finalsize = 0;
-    let mut status = 0;
-    /* uncompress file into memory */
+    unsafe {
+        let mut finalsize = 0;
+        let mut status = 0;
+        /* uncompress file into memory */
 
-    let mut m = MEM_TABLE.lock().unwrap();
+        let mut m = MEM_TABLE.lock().unwrap();
 
-    if strstr_safe(filename, cs!(c".Z")).is_some() {
-        let raw_file_handle = unsafe {
-            use libc::fdopen;
-            let fd = diskfile.as_raw_fd();
-
-            fdopen(fd, c"rb".as_ptr() as *const c_char)
-        };
-
-        zuncompress2mem(
-            filename,
-            raw_file_handle,
-            m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
-            m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
-            Some(realloc),                              /* reallocation function */
-            &mut finalsize,
-            &mut status, /* returned file size and status*/
-        );
-    } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
-        #[cfg(feature = "bzip2")]
-        {
+        if strstr_safe(filename, cs!(c".Z")).is_some() {
             let raw_file_handle = unsafe {
                 use libc::fdopen;
                 let fd = diskfile.as_raw_fd();
@@ -1190,23 +1172,43 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                 fdopen(fd, c"rb".as_ptr() as *const c_char)
             };
 
-            bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
-        }
-    } else {
-        uncompress2mem(
-            filename,
-            diskfile,
-            m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
-            m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
-            Some(realloc),                              /* reallocation function */
-            &mut finalsize,
-            &mut status,
-        ); /* returned file size nd status*/
-    }
+            zuncompress2mem(
+                filename,
+                raw_file_handle,
+                m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+                m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
+                Some(realloc),                              /* reallocation function */
+                &mut finalsize,
+                &mut status, /* returned file size and status*/
+            );
+        } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
+            #[cfg(feature = "bzip2")]
+            {
+                let raw_file_handle = unsafe {
+                    use libc::fdopen;
+                    let fd = diskfile.as_raw_fd();
 
-    m[hdl as usize].currentpos = 0; /* save starting position */
-    m[hdl as usize].fitsfilesize = finalsize as LONGLONG; /* and initial file size  */
-    status
+                    fdopen(fd, c"rb".as_ptr() as *const c_char)
+                };
+
+                bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
+            }
+        } else {
+            uncompress2mem(
+                filename,
+                diskfile,
+                m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+                m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
+                Some(realloc),                                        /* reallocation function */
+                &mut finalsize,
+                &mut status,
+            ); /* returned file size nd status*/
+        }
+
+        m[hdl as usize].currentpos = 0; /* save starting position */
+        m[hdl as usize].fitsfilesize = finalsize as LONGLONG; /* and initial file size  */
+        status
+    }
 }
 
 /*--------------------------------------------------------------------------*/
