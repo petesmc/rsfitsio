@@ -519,9 +519,9 @@ mod tests {
             #[cfg(windows)]
             {
                 use libc::open_osfhandle;
-                use std::os::windows::io::IntoRawHandle;
+                use std::os::windows::io::AsRawHandle;
 
-                let handle = compressed_file.into_raw_handle();
+                let handle = compressed_file.as_raw_handle();
                 let fd = open_osfhandle(handle as isize, 0);
                 fdopen(fd, c"rb".as_ptr() as *const c_char)
             }

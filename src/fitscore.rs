@@ -468,7 +468,7 @@ pub unsafe fn ffpmsg_safer(err_message: &[c_char]) {
     }
 }
 
-pub fn ffpmsg_cstr(err_message: &CStr) {
+pub(crate) fn ffpmsg_cstr(err_message: &CStr) {
     ffpmsg_slice(cast_slice(err_message.to_bytes_with_nul()))
 }
 
@@ -532,8 +532,7 @@ pub unsafe extern "C" fn ffcmsg() {
 /*--------------------------------------------------------------------------*/
 ///  erase all messages in the error stack
 pub fn ffcmsg_safe() {
-    let dummy = ptr::null_mut();
-    unsafe { ffxmsg(DEL_ALL, dummy) };
+    ffxmsg_safer(DEL_ALL, None);
 }
 
 /*--------------------------------------------------------------------------*/
@@ -541,7 +540,7 @@ pub fn ffcmsg_safe() {
 /// The marker is also erased in this case.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmrk() {
-    ffxmsg_safer(DEL_MARK, None);
+    ffcmrk_safe();
 }
 
 /*--------------------------------------------------------------------------*/
@@ -589,11 +588,10 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
 /// PutMark    6  add a marker to the stack
 pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
     unsafe {
-        pub static mut TXTBUFF: [*mut c_char; ERRMSGSIZ] = [ptr::null_mut(); ERRMSGSIZ]; /* shift remaining pointers */
-        pub static mut TMPBUFF: *mut c_char = ptr::null_mut(); /* set pointer for the new message */
-        pub static mut MSGPTR: *mut c_char = ptr::null_mut(); /* find first empty buffer */
-        pub static mut ERRBUFF: [[c_char; FLEN_ERRMSG]; ERRMSGSIZ] = [[0; FLEN_ERRMSG]; ERRMSGSIZ]; /* put a marker on the stack */
-        pub static mut NUMMSG: usize = 0; /* buffers full; reuse oldest buffer */
+        static mut TXTBUFF: [*mut c_char; ERRMSGSIZ] = [ptr::null_mut(); ERRMSGSIZ]; /* shift remaining pointers */
+        static mut TMPBUFF: *mut c_char = ptr::null_mut(); /* set pointer for the new message */
+        static mut ERRBUFF: [[c_char; FLEN_ERRMSG]; ERRMSGSIZ] = [[0; FLEN_ERRMSG]; ERRMSGSIZ]; /* put a marker on the stack */
+        static mut NUMMSG: usize = 0; /* buffers full; reuse oldest buffer */
 
         let mut ii: usize;
         let mut markflag: c_char;
@@ -651,7 +649,7 @@ pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
             *errmsg.offset(0) = 0; /*  no messages in the stack */
         } else if action == PUT_MESG {
             /* add new message to stack */
-            MSGPTR = errmsg;
+            let mut MSGPTR = errmsg;
             while strlen(MSGPTR) != 0 {
                 if NUMMSG == ERRMSGSIZ {
                     TMPBUFF = TXTBUFF[0]; /* buffers full; reuse oldest buffer */
