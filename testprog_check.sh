@@ -1,8 +1,8 @@
 #!/bin/bash
 
-cd src/bin/testprog
+cd examples/testprog
 
-cargo run --bin testprog > rust_testprog.lis
+cargo run --example testprog > rust_testprog.lis
 
 file1="rust_testprog.lis"
 file2="testprog.out"
