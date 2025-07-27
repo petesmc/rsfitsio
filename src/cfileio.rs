@@ -34,7 +34,7 @@ use crate::drvrmem::{
 };
 use crate::fitscore::{ffgisz_safe, ffpmsg_cstr};
 
-#[cfg(feature = "shared_mem")]
+#[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
 use crate::drvrsmem::{
     smem_close, smem_create, smem_flush, smem_getoptions, smem_getversion, smem_init, smem_open,
     smem_read, smem_remove, smem_seek, smem_setoptions, smem_shutdown, smem_size, smem_write,
@@ -4030,7 +4030,7 @@ pub fn fits_init_cfitsio_safer() -> c_int {
 
     /* ==================== SHARED MEMORY DRIVER SECTION ======================= */
 
-    #[cfg(feature = "shared_mem")]
+    #[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
     {
         /* 22--------------------shared memory driver-----------------------*/
         let status = fits_register_driver(
@@ -4050,8 +4050,8 @@ pub fn fits_init_cfitsio_safer() -> c_int {
             smem_size,
             Some(smem_flush),
             smem_seek,
-            Some(smem_read),
-            Some(smem_write),
+            smem_read,
+            smem_write,
         );
 
         if status != 0 {
@@ -7176,7 +7176,9 @@ pub fn ffstmo_safer(sec: c_int, status: &mut c_int) -> c_int {
             return *status;
         }
 
-        fits_net_timeout(sec);
+        unsafe {
+            fits_net_timeout(sec);
+        }
     }
 
     *status
