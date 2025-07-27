@@ -21,6 +21,10 @@ keywords = [
 [lib]
 crate-type = ["lib", "cdylib"]
 
+[[bin]]
+name = "smem"
+required-features = ["shared_mem"]
+
 [[example]]
 name = "cookbook_c"
 test = true

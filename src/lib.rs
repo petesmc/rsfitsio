@@ -32,7 +32,7 @@ pub mod drvrgsiftp;
 pub mod drvrmem;
 pub mod drvrnet;
 
-#[cfg(feature = "shared_mem")]
+#[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
 pub mod drvrsmem;
 
 pub mod editcol;
