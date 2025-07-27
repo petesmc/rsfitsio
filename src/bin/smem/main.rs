@@ -16,7 +16,7 @@ pub fn main() -> ExitCode {
     let mut deletemode: bool = false;
     let mut id: c_int = -1;
     let mut status: c_int = 0;
-    
+
     let args = std::env::args();
     let args: Vec<String> = args.collect();
 
