@@ -1419,6 +1419,10 @@ pub fn ffgkls_safe(
         /* allocate and return a null string */
         let mut v: Vec<c_char> = vec![0; 1];
         v[0] = 0;
+
+        let (p, l, c) = vec_into_raw_parts(v);
+        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+        *value = p;
     } else {
         /* allocate space,  plus 1 for null */
         // HEAP ALLOCATION

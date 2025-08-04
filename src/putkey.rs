@@ -49,7 +49,12 @@ pub unsafe extern "C" fn ffcrim(
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
-        let naxes = slice::from_raw_parts(naxes, naxis as usize);
+
+        let naxes = match naxes.is_null() {
+            true => &[],
+            false => slice::from_raw_parts(naxes, naxis as usize),
+        };
+
         ffcrim_safer(fptr, bitpix, naxis, naxes, status)
     }
 }
@@ -2142,9 +2147,7 @@ pub unsafe extern "C" fn ffpkls(
             return *status;
         }
 
-        fits_make_longstr_key_util(fptr, keyname, value, comm, -1, status);
-
-        *status
+        return ffpkls_safe(fptr, keyname, value, comm, status); // call the safe version
     }
 }
 
@@ -4192,7 +4195,7 @@ pub unsafe extern "C" fn ffgsdt(
 }
 
 /*--------------------------------------------------------------------------*/
-/// his routine is included for backward compatibility with the Fortran FITSIO library.
+/// This routine is included for backward compatibility with the Fortran FITSIO library.
 /// Get current System DaTe (GMT if available)
 pub fn ffgsdt_safe(
     _day: &mut c_int,

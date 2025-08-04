@@ -6847,6 +6847,21 @@ pub(crate) fn ffflushx(fptr: &mut FITSfile, /* I - FITS file pointer            
 
 /*--------------------------------------------------------------------------*/
 /// low level routine to seek to a position in a file.
+/*
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffseek(
+    fptr: *mut FITSfile, /* I - FITS file pointer              */
+    position: LONGLONG,  /* I - byte position to seek to       */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        ffseek_safe(fptr, position)
+    }
+}
+*/
+
+/*--------------------------------------------------------------------------*/
+/// low level routine to seek to a position in a file.
 pub(crate) fn ffseek(
     fptr: &mut FITSfile, /* I - FITS file pointer              */
     position: LONGLONG,  /* I - byte position to seek to       */
@@ -6895,6 +6910,26 @@ pub(crate) fn ffwrite_int(
     }
     *status
 }
+
+/*--------------------------------------------------------------------------*/
+/// low level routine to read bytes from a file.
+/*
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffread(
+    fptr: *mut FITSfile, /* I - FITS file pointer              */
+    nbytes: c_long,      /* I - number of bytes to read        */
+    buffer: *mut c_void, /* O - buffer to read into            */
+    status: *mut c_int,  /* O - error status                   */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let buffer = slice::from_raw_parts_mut(buffer as *mut u8, nbytes as usize);
+
+        ffread_safe(fptr, nbytes, buffer, status)
+    }
+}
+*/
 
 /*--------------------------------------------------------------------------*/
 /// low level routine to read bytes from a file.

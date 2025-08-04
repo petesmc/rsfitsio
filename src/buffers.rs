@@ -482,6 +482,30 @@ pub(crate) fn ffgbyt(
 }
 
 /*--------------------------------------------------------------------------*/
+///   get (read) the requested number of bytes from the file, starting at
+///   the current file position.  This function combines ffmbyt and ffgbyt
+///   for increased efficiency.
+/*
+#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+pub unsafe extern "C" fn ffgbytoff(
+    fptr: *mut fitsfile, /* I - FITS file pointer                   */
+    gsize: c_long,       /* I - size of each group of bytes         */
+    ngroups: c_long,     /* I - number of groups to read            */
+    offset: c_long,      /* I - size of gap between groups (may be < 0) */
+    buffer: *mut c_void, /* I - buffer to be filled                 */
+    status: *mut c_int,  /* IO - error status                       */
+) -> c_int {
+    unsafe {
+        let fptr = fptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let buffer = slice::from_raw_parts_mut(buffer as *mut u8, (ngroups * gsize) as usize);
+
+        ffgbytoff_safe(fptr, gsize, ngroups, offset, buffer, status)
+    }
+}
+*/
+
+/*--------------------------------------------------------------------------*/
 /// get (read) the requested number of bytes from the file, starting at
 /// the current file position.  This function combines ffmbyt and ffgbyt
 /// for increased efficiency.
@@ -548,10 +572,14 @@ pub(crate) fn ffgbytoff(
                 &mut fptr.Fptr.iobuffer[ioptr_index..(ioptr_index + nread as usize)],
             ));
             cptr_index += nread as usize; /* increment buffer pointer */
-            ioptr_index += (offset + nread) as usize; /* increment IO buffer pointer */
+            ioptr_index = ioptr_index
+                .checked_add_signed((offset + nread) as isize)
+                .unwrap(); /* increment IO buffer pointer */
             nspace = IOBUFLEN as c_long - offset - nread; /* amount of space left */
         } else {
-            ioptr_index += (offset + nread) as usize; /* increment IO bufer pointer */
+            ioptr_index = ioptr_index
+                .checked_add_signed((offset + nread) as isize)
+                .unwrap(); /* increment IO buffer pointer */
             nspace -= offset + nread;
         }
 

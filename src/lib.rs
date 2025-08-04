@@ -287,7 +287,11 @@ pub(crate) fn calculate_subsection_length(blc: &[c_long], trc: &[c_long], inc: &
     let len = blc.len();
     let mut acc: usize = 1;
     for ii in 0..len {
-        acc *= ((trc[ii] - blc[ii]) / inc[ii] + 1) as usize; // WARNING: This also could be wrong
+        if blc[ii] < trc[ii] {
+            acc *= ((trc[ii] - blc[ii]) / inc[ii] + 1) as usize; // WARNING: This also could be wrong
+        } else {
+            acc *= ((blc[ii] - trc[ii]) / inc[ii] + 1) as usize;
+        }
     }
     acc
 }
@@ -298,7 +302,11 @@ pub(crate) fn calculate_subsection_length_unit(blc: &[c_long], trc: &[c_long]) -
     let len = blc.len();
     let mut acc: usize = 1;
     for ii in 0..len {
-        acc *= ((trc[ii] - blc[ii]) + 1) as usize; // WARNING: This also could be wrong
+        if blc[ii] < trc[ii] {
+            acc *= ((trc[ii] - blc[ii]) + 1) as usize; // WARNING: This also could be wrong
+        } else {
+            acc *= ((blc[ii] - trc[ii]) + 1) as usize;
+        }
     }
     acc
 }

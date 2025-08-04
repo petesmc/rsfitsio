@@ -6,6 +6,7 @@ Cargo.lock
 *.lis
 checks.json
 /lib
+/libs
 
 speedcc.fit
 testprog.fit

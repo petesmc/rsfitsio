@@ -1084,7 +1084,14 @@ pub fn ffmkky_safe(
             /* name contains special characters? */
             tstatus = -1; /* suppress any error message */
 
-            if fftkey_safe(cast_slice(token.as_bytes()), &mut tstatus) > 0 {
+            // Create a null-terminated version of the token
+            let mut token_buf = [0u8; FLEN_KEYWORD];
+            let token_bytes = token.as_bytes();
+            for (i, &b) in token_bytes.iter().enumerate().take(FLEN_KEYWORD - 1) {
+                token_buf[i] = b;
+            }
+
+            if fftkey_safe(cast_slice(&token_buf), &mut tstatus) > 0 {
                 specialchar = 1;
             }
 
@@ -4090,7 +4097,6 @@ pub unsafe extern "C" fn ffcmps(
     exact: *mut c_int,      /* O - do strings exactly match, or wildcards   */
 ) {
     unsafe {
-        // WARNING: This is not checked in the original code
         let matchi = matchi.as_mut().expect(NULL_MSG);
         let exact = exact.as_mut().expect(NULL_MSG);
 
@@ -12319,4 +12325,30 @@ pub(crate) unsafe fn fits_recalloc(
     _size: usize,
 ) -> *mut c_void {
     todo!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ffmkky_safe() {
+        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+        let mut status: c_int = 0;
+
+        ffmkky_safe(
+            cs!(c"LONG_KEYWORD"),
+            cs!(c"'Lorem ipsum dolor sit amet'"),
+            None,
+            &mut card,
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+
+        let expected = c"HIERARCH LONG_KEYWORD = 'Lorem ipsum dolor sit amet'";
+
+        let card_str = CStr::from_bytes_until_nul(&card).unwrap();
+        assert_eq!(card_str.to_bytes_with_nul(), expected.to_bytes_with_nul());
+    }
 }

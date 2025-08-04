@@ -15,12 +15,15 @@ use crate::fitscore::{
     ffc2s, ffcmrk_safe, ffgmsg_safe, ffiblk, ffmahd_safe, ffmkey, ffmkky_safe, ffpmrk_safe,
     ffpmsg_slice, ffpsvc_safe, fftkey_safe, fits_strncasecmp,
 };
-use crate::getkey::{ffgcnt, ffgcrd_safe, ffgkey_safe, ffmaky_safe};
+use crate::getkey::{
+    ffgcnt, ffgcrd_safe, ffghps_safe, ffgkcsl_safe, ffgkey_safe, ffgrec_safe, ffgskyc_safe,
+    ffmaky_safe,
+};
 use crate::nullable_slice_cstr;
 use crate::putkey::{
     ffd2e, ffd2f, ffi2c, ffl2c, ffpkfc_safe, ffpkfm_safe, ffpkls_safe, ffpkyc_safe, ffpkyd_safe,
     ffpkye_safe, ffpkyf_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe, ffpkym_safe, ffpkys_safe,
-    ffpkyu_safe, ffpkyuj_safe, ffprec_safe, ffr2e, ffr2f, ffs2c, ffu2c,
+    ffpkyu_safe, ffpkyuj_safe, ffprec_safe, ffr2e, ffr2f, ffs2c, ffu2c, fits_make_longstr_key_util,
 };
 use crate::wrappers::*;
 use crate::{KeywordDatatype, fitsio2::*};
@@ -1289,13 +1292,80 @@ pub unsafe extern "C" fn ffmkls(
 ///
 /// This routine is not very efficient, so it should be used sparingly.
 pub fn ffmkls_safe(
-    _fptr: &mut fitsfile,       /* I - FITS file pointer        */
-    _keyname: &[c_char],        /* I - name of keyword to write */
-    _value: &[c_char],          /* I - keyword value            */
-    _incomm: Option<&[c_char]>, /* I - keyword comment          */
-    _status: &mut c_int,        /* IO - error status            */
+    fptr: &mut fitsfile,       /* I - FITS file pointer        */
+    keyname: &[c_char],        /* I - name of keyword to write */
+    value: &[c_char],          /* I - keyword value            */
+    incomm: Option<&[c_char]>, /* I - keyword comment          */
+    status: &mut c_int,        /* IO - error status            */
 ) -> c_int {
-    todo!();
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut comm: Option<Vec<c_char>> = None;
+    let mut nkeys: c_int = 0;
+    let mut keypos: c_int = 0;
+    let mut vlen: c_int = 0;
+    let mut commlen: c_int = 0;
+    let mut tmpvlen: c_int = 0;
+    let mut tmpcommlen: c_int = 0;
+
+    if (*status > 0) {
+        /* inherit input status value if > 0 */
+        return (*status);
+    }
+
+    let incomm_empty_or_continue =
+        incomm.is_none() || incomm.as_ref().map_or(false, |c| c[0] == bb(b'&'));
+
+    /* preserve the old comment string */
+    if incomm_empty_or_continue {
+        ffghps_safe(fptr, Some(&mut nkeys), Some(&mut keypos), status); /* save current position */
+
+        if (ffgkcsl_safe(fptr, keyname, &mut vlen, &mut commlen, status) != 0) {
+            return (*status); /* keyword doesn't exist or is bad format */
+        }
+
+        let mut tmplongval: Vec<c_char> = vec![0; vlen as usize + 1];
+        let mut c: Vec<c_char> = vec![0; commlen as usize + 1];
+
+        ffgskyc_safe(
+            fptr,
+            keyname,
+            1,
+            vlen,
+            commlen,
+            Some(&mut tmplongval),
+            &mut tmpvlen,
+            Some(&mut c),
+            &mut tmpcommlen,
+            status,
+        );
+
+        comm = Some(c);
+
+        /* move back to previous position to ensure that we delete */
+        /* the right keyword in case there are more than one keyword */
+        /* with this same name. */
+        ffgrec_safe(fptr, keypos - 1, Some(&mut card), status);
+    } else {
+        /* copy the input comment string */
+        let incomm_shadow = incomm.as_deref().unwrap();
+        commlen = strlen_safe(cast_slice(incomm_shadow)) as c_int;
+        if (commlen > 0) {
+            let mut c = vec![0; (commlen as usize + 1)];
+            strcpy_safe(&mut c, incomm_shadow);
+            comm = Some(c);
+        }
+    }
+
+    /* delete the old keyword */
+    if (ffdkey_safe(fptr, keyname, status) > 0) {
+        return (*status); /* keyword doesn't exist */
+    }
+
+    ffghps_safe(fptr, Some(&mut nkeys), Some(&mut keypos), status); /* save current position */
+
+    fits_make_longstr_key_util(fptr, keyname, value, comm.as_deref(), keypos, status);
+
+    return (*status);
 }
 
 /*--------------------------------------------------------------------------*/

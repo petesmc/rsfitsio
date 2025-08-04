@@ -1809,7 +1809,7 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
         } else {
             /* not locked */
 
-            // WARNING: This is bad!
+            // WARNING: This is bad! We are just converting a immutable slice to a mutable
             // SAFETY: Absolutely none.
             let f = slice::from_raw_parts_mut(filename.as_ptr() as *mut c_char, filename.len());
 
