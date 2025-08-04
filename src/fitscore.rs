@@ -12348,7 +12348,7 @@ mod tests {
 
         let expected = c"HIERARCH LONG_KEYWORD = 'Lorem ipsum dolor sit amet'";
 
-        let card_str = CStr::from_bytes_until_nul(&card).unwrap();
+        let card_str = CStr::from_bytes_until_nul(cast_slice(&card)).unwrap();
         assert_eq!(card_str.to_bytes_with_nul(), expected.to_bytes_with_nul());
     }
 }
