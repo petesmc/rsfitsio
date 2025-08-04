@@ -1307,9 +1307,9 @@ pub fn ffmkls_safe(
     let mut tmpvlen: c_int = 0;
     let mut tmpcommlen: c_int = 0;
 
-    if (*status > 0) {
+    if *status > 0 {
         /* inherit input status value if > 0 */
-        return (*status);
+        return *status;
     }
 
     let incomm_empty_or_continue =
@@ -1319,8 +1319,8 @@ pub fn ffmkls_safe(
     if incomm_empty_or_continue {
         ffghps_safe(fptr, Some(&mut nkeys), Some(&mut keypos), status); /* save current position */
 
-        if (ffgkcsl_safe(fptr, keyname, &mut vlen, &mut commlen, status) != 0) {
-            return (*status); /* keyword doesn't exist or is bad format */
+        if ffgkcsl_safe(fptr, keyname, &mut vlen, &mut commlen, status) != 0 {
+            return *status; /* keyword doesn't exist or is bad format */
         }
 
         let mut tmplongval: Vec<c_char> = vec![0; vlen as usize + 1];
@@ -1349,23 +1349,23 @@ pub fn ffmkls_safe(
         /* copy the input comment string */
         let incomm_shadow = incomm.as_deref().unwrap();
         commlen = strlen_safe(cast_slice(incomm_shadow)) as c_int;
-        if (commlen > 0) {
-            let mut c = vec![0; (commlen as usize + 1)];
+        if commlen > 0 {
+            let mut c = vec![0; commlen as usize + 1];
             strcpy_safe(&mut c, incomm_shadow);
             comm = Some(c);
         }
     }
 
     /* delete the old keyword */
-    if (ffdkey_safe(fptr, keyname, status) > 0) {
-        return (*status); /* keyword doesn't exist */
+    if ffdkey_safe(fptr, keyname, status) > 0 {
+        return *status; /* keyword doesn't exist */
     }
 
     ffghps_safe(fptr, Some(&mut nkeys), Some(&mut keypos), status); /* save current position */
 
     fits_make_longstr_key_util(fptr, keyname, value, comm.as_deref(), keypos, status);
 
-    return (*status);
+    return *status;
 }
 
 /*--------------------------------------------------------------------------*/
