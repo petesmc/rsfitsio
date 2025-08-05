@@ -35,7 +35,7 @@ SERVICES PROVIDED HEREUNDER."
 
 use core::{slice, str};
 use std::borrow::BorrowMut;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CStr;
 use std::num::{ParseFloatError, ParseIntError};
 use std::sync::{LazyLock, Mutex};
@@ -65,6 +65,77 @@ use crate::{FFLOCK, FFUNLOCK, fitsio::*};
 use crate::{atoi, bb, cs, int_snprintf};
 use crate::{buffers::*, raw_to_slice};
 use crate::{slice_to_str, wrappers::*};
+
+#[derive(Debug, Clone)]
+struct ErrorMessage {
+    content: String,
+    is_marker: bool,
+}
+
+struct ErrorStack {
+    messages: VecDeque<ErrorMessage>
+}
+
+impl ErrorStack {
+    fn new() -> Self {
+        Self {
+            messages: VecDeque::with_capacity(ERRMSGSIZ),
+        }
+    }
+
+    fn push_message(&mut self, message: &str) {
+        let mut remaining = message;
+
+        while !remaining.is_empty(){
+            let chunk_size = std::cmp::min(80, remaining.len());
+            let chunk = &remaining[..chunk_size];
+
+            if self.messages.len() >= ERRMSGSIZ {
+                self.messages.pop_front();
+            }
+
+            self.messages.push_back(ErrorMessage { content: chunk.to_string(), is_marker: false, });
+
+            remaining = &remaining[chunk_size..];
+        }
+    }
+
+    fn push_marker(&mut self) {
+        if self.messages.len() >= ERRMSGSIZ {
+            self.messages.pop_front();
+        }
+        
+        self.messages.push_back(ErrorMessage {
+            content: String::new(),
+            is_marker: true,
+        });
+    }
+    
+    fn pop_message(&mut self) -> Option<String> {
+        while let Some(msg) = self.messages.pop_front() {
+            if !msg.is_marker {
+                return Some(msg.content);
+            }
+        }
+        None
+    }
+    
+    fn clear_all(&mut self) {
+        self.messages.clear();
+    }
+    
+    fn clear_to_marker(&mut self) {
+        while let Some(msg) = self.messages.pop_back() {
+            if msg.is_marker {
+                break;
+            }
+        }
+    }
+    
+    fn clear_newest(&mut self) {
+        self.messages.pop_back();
+    }
+}
 
 pub const ERRMSGSIZ: usize = 25;
 pub const ESMARKER: c_char = 27; /* Escape character is used as error stack marker */
