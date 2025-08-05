@@ -137,6 +137,10 @@ impl ErrorStack {
     }
 }
 
+static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| {
+    Mutex::new(ErrorStack::new())
+});
+
 pub const ERRMSGSIZ: usize = 25;
 pub const ESMARKER: c_char = 27; /* Escape character is used as error stack marker */
 
