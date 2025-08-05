@@ -61,7 +61,7 @@ use crate::imcompress::{TILE_STRUCTS, imcomp_get_compressed_image_par};
 use crate::modkey::{ffdkey_safe, ffmkyj_safe, ffmrec_safe};
 use crate::putkey::ffprec_safe;
 use crate::relibc::header::stdio::{sscanf_ld, sscanf_lf};
-use crate::{fitsio::*};
+use crate::fitsio::*;
 use crate::{atoi, bb, cs, int_snprintf};
 use crate::{buffers::*, raw_to_slice};
 use crate::{slice_to_str, wrappers::*};
@@ -80,9 +80,7 @@ pub const PUT_MARK: c_int = 6; /* add a marker to the stack */
 pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
     LazyLock::new(Default::default);
 
-static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| {
-    Mutex::new(ErrorStack::new())
-});
+static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| Mutex::new(ErrorStack::new()));
 
 /*--------------------------------------------------------------------------*/
 /// return the current version number of the FITSIO software
@@ -462,7 +460,7 @@ struct ErrorMessage {
 }
 
 struct ErrorStack {
-    messages: VecDeque<ErrorMessage>
+    messages: VecDeque<ErrorMessage>,
 }
 
 impl ErrorStack {
@@ -475,7 +473,7 @@ impl ErrorStack {
     fn push_message(&mut self, message: &str) {
         let mut remaining = message;
 
-        while !remaining.is_empty(){
+        while !remaining.is_empty() {
             let chunk_size = std::cmp::min(80, remaining.len());
             let chunk = &remaining[..chunk_size];
 
@@ -483,7 +481,10 @@ impl ErrorStack {
                 self.messages.pop_front();
             }
 
-            self.messages.push_back(ErrorMessage { content: chunk.to_string(), is_marker: false, });
+            self.messages.push_back(ErrorMessage {
+                content: chunk.to_string(),
+                is_marker: false,
+            });
             remaining = &remaining[chunk_size..];
         }
     }
@@ -492,13 +493,13 @@ impl ErrorStack {
         if self.messages.len() >= ERRMSGSIZ {
             self.messages.pop_front();
         }
-        
+
         self.messages.push_back(ErrorMessage {
             content: String::new(),
             is_marker: true,
         });
     }
-    
+
     fn pop_message(&mut self) -> Option<String> {
         while let Some(msg) = self.messages.pop_front() {
             if !msg.is_marker {
@@ -507,11 +508,11 @@ impl ErrorStack {
         }
         None
     }
-    
+
     fn clear_all(&mut self) {
         self.messages.clear();
     }
-    
+
     fn clear_to_marker(&mut self) {
         while let Some(msg) = self.messages.pop_back() {
             if msg.is_marker {
@@ -519,67 +520,11 @@ impl ErrorStack {
             }
         }
     }
-    
+
     fn clear_newest(&mut self) {
         self.messages.pop_back();
     }
 }
-
-pub(crate) unsafe fn ffxmsg_new(action: c_int, errmsg: *mut c_char) {
-    let mut stack = ERROR_STACK.lock().unwrap();
-    
-    match action {
-        DEL_ALL => {
-            stack.clear_all();
-        }
-        DEL_MARK => {
-            stack.clear_to_marker();
-        }
-        DEL_NEWEST => {
-            stack.clear_newest();
-        }
-        GET_MESG => {
-            if let Some(message) = stack.pop_message() {
-                // Safely copy to the provided buffer
-                if !errmsg.is_null() {
-                    let message_bytes = message.as_bytes();
-                    let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
-                    
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            message_bytes.as_ptr() as *const c_char,
-                            errmsg,
-                            copy_len,
-                        );
-                        *errmsg.add(copy_len) = 0; // null terminate
-                    }
-                }
-            } else {
-                if !errmsg.is_null() {
-                    unsafe {
-                        *errmsg = 0; // empty string
-                    }
-                }
-            }
-        }
-        PUT_MESG => {
-            if !errmsg.is_null() {
-                // Convert raw pointer to safe string
-                let c_str = unsafe { CStr::from_ptr(errmsg) };
-                if let Ok(message) = c_str.to_str() {
-                    stack.push_message(message);
-                }
-            }
-        }
-        PUT_MARK => {
-            stack.push_marker();
-        }
-        _ => {
-            // Unknown action, do nothing
-        }
-    }
-}
-
 
 /*--------------------------------------------------------------------------*/
 /// put message on to error stack
@@ -660,17 +605,17 @@ pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
 /// get oldest message from error stack, ignoring markers
 pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
     let mut stack = ERROR_STACK.lock().unwrap();
-    
+
     if let Some(message) = stack.pop_message() {
         // Copy message to buffer
         let message_bytes = message.as_bytes();
         let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
-        
+
         for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
             err_message[i] = byte as c_char;
         }
         err_message[copy_len] = 0; // null terminate
-        
+
         err_message[0] as c_int
     } else {
         err_message[0] = 0;
@@ -726,7 +671,7 @@ pub fn ffcmrk_safe() {
 /// PutMark    6  add a marker to the stack
 pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
     let mut stack = ERROR_STACK.lock().unwrap();
-    
+
     match action {
         DEL_ALL => {
             stack.clear_all();
@@ -743,7 +688,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
                     // Copy message to buffer
                     let message_bytes = message.as_bytes();
                     let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
-                    
+
                     for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
                         err_message[i] = byte as c_char;
                     }
@@ -764,9 +709,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
 
 /*--------------------------------------------------------------------------*/
 /// general routine to get, put, or clear the error message stack.
-/// Use a static array rather than allocating memory as needed for
-/// the error messages because it is likely to be more efficient
-/// and simpler to implement.
+/// Thread-safe implementation using Mutex-protected VecDeque.
 ///
 /// Action Code:
 /// DelAll     1  delete all messages on the error stack
@@ -776,9 +719,57 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
 /// PutMesg    5  add a new message to the stack
 /// PutMark    6  add a marker to the stack
 pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
-    // Use the new safe implementation
-    unsafe {
-        ffxmsg_new(action, errmsg);
+    let mut stack = ERROR_STACK.lock().unwrap();
+
+    match action {
+        DEL_ALL => {
+            stack.clear_all();
+        }
+        DEL_MARK => {
+            stack.clear_to_marker();
+        }
+        DEL_NEWEST => {
+            stack.clear_newest();
+        }
+        GET_MESG => {
+            if let Some(message) = stack.pop_message() {
+                // Safely copy to the provided buffer
+                if !errmsg.is_null() {
+                    let message_bytes = message.as_bytes();
+                    let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
+
+                    unsafe {
+                        ptr::copy_nonoverlapping(
+                            message_bytes.as_ptr() as *const c_char,
+                            errmsg,
+                            copy_len,
+                        );
+                        *errmsg.add(copy_len) = 0; // null terminate
+                    }
+                }
+            } else {
+                if !errmsg.is_null() {
+                    unsafe {
+                        *errmsg = 0; // empty string
+                    }
+                }
+            }
+        }
+        PUT_MESG => {
+            if !errmsg.is_null() {
+                // Convert raw pointer to safe string
+                let c_str = unsafe { CStr::from_ptr(errmsg) };
+                if let Ok(message) = c_str.to_str() {
+                    stack.push_message(message);
+                }
+            }
+        }
+        PUT_MARK => {
+            stack.push_marker();
+        }
+        _ => {
+            // Unknown action, do nothing
+        }
     }
 }
 
@@ -12417,50 +12408,50 @@ mod tests {
     }
 
     #[test]
-    fn test_ffxmsg_new_basic_operations() {
+    fn test_ffxmsg_basic_operations() {
         unsafe {
             // Clear any existing messages first
-            ffxmsg_new(DEL_ALL, ptr::null_mut());
-            
+            ffxmsg(DEL_ALL, ptr::null_mut());
+
             // Test putting a message
             let test_msg = CString::new("Test error message").unwrap();
-            ffxmsg_new(PUT_MESG, test_msg.as_ptr() as *mut c_char);
-            
+            ffxmsg(PUT_MESG, test_msg.as_ptr() as *mut c_char);
+
             // Test getting the message back
             let mut buffer: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-            ffxmsg_new(GET_MESG, buffer.as_mut_ptr());
-            
+            ffxmsg(GET_MESG, buffer.as_mut_ptr());
+
             let result = CStr::from_ptr(buffer.as_ptr()).to_str().unwrap();
             assert_eq!(result, "Test error message");
-            
+
             // Should be empty now
-            ffxmsg_new(GET_MESG, buffer.as_mut_ptr());
+            ffxmsg(GET_MESG, buffer.as_mut_ptr());
             assert_eq!(buffer[0], 0); // Should be empty
         }
     }
 
-    #[test] 
-    fn test_ffxmsg_new_marker_functionality() {
+    #[test]
+    fn test_ffxmsg_marker_functionality() {
         unsafe {
             // Clear any existing messages
-            ffxmsg_new(DEL_ALL, ptr::null_mut());
-            
+            ffxmsg(DEL_ALL, ptr::null_mut());
+
             // Add some messages
             let msg1 = CString::new("Message 1").unwrap();
             let msg2 = CString::new("Message 2").unwrap();
-            
-            ffxmsg_new(PUT_MESG, msg1.as_ptr() as *mut c_char);
-            ffxmsg_new(PUT_MARK, ptr::null_mut()); // Add marker
-            ffxmsg_new(PUT_MESG, msg2.as_ptr() as *mut c_char);
-            
+
+            ffxmsg(PUT_MESG, msg1.as_ptr() as *mut c_char);
+            ffxmsg(PUT_MARK, ptr::null_mut()); // Add marker
+            ffxmsg(PUT_MESG, msg2.as_ptr() as *mut c_char);
+
             // Should get Message 1 first (ignoring marker)
             let mut buffer: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-            ffxmsg_new(GET_MESG, buffer.as_mut_ptr());
+            ffxmsg(GET_MESG, buffer.as_mut_ptr());
             let result = CStr::from_ptr(buffer.as_ptr()).to_str().unwrap();
             assert_eq!(result, "Message 1");
-            
+
             // Should get Message 2 next
-            ffxmsg_new(GET_MESG, buffer.as_mut_ptr());
+            ffxmsg(GET_MESG, buffer.as_mut_ptr());
             let result = CStr::from_ptr(buffer.as_ptr()).to_str().unwrap();
             assert_eq!(result, "Message 2");
         }
