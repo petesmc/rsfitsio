@@ -3,7 +3,6 @@ mod tests {
     
     use crate::{
         c_types::{c_char, c_double, c_int, c_long, c_uint},
-        CString,
         relibc::header::stdio::{
             printf::{CustomVaList, VaArg},
             sscanf_internal,
@@ -11,7 +10,7 @@ mod tests {
     };
 
     
-    use std::ffi::{CStr, c_void};
+    use std::ffi::{CStr, c_void, CString};
 
     // Helper to create null-terminated string from &str
     fn to_c_string(s: &str) -> Vec<c_char> {
