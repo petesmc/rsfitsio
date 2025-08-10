@@ -254,7 +254,9 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
         ii += 1;
     }
 
-    *handle = -1;
+    if *handle == -1 {
+        return TOO_MANY_FILES; // Too many files opened
+    }
 
     /* use the internally allocated memaddr and memsize variables */
     m[ii].memaddrptr = &mut m[ii].memaddr;
@@ -1401,7 +1403,7 @@ pub(crate) fn mem_read_unsafe(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c
 ///  write bytes at the current position in the file
 pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     unsafe {
-        let hdl = hdl as usize;
+        let hdl: usize = hdl.try_into().unwrap();
         let nbytes = nbytes as LONGLONG;
         let mut m = MEM_TABLE.lock().unwrap();
 
@@ -1436,7 +1438,7 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
 
         /* now copy the bytes from the buffer into memory */
         memcpy(
-            *(m[hdl].memaddrptr).add(m[hdl].currentpos as usize) as *mut c_void,
+            (*(m[hdl].memaddrptr)).add(m[hdl].currentpos as usize) as *mut c_void,
             buffer.as_ptr() as *mut c_void,
             nbytes as usize,
         );
