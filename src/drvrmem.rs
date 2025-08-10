@@ -7,12 +7,20 @@
 use core::slice;
 use std::ffi::CStr;
 use std::io::{Read, Seek, SeekFrom, stdin};
+
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
+
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+
 use std::sync::Mutex;
 use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
 use crate::helpers::cfile::CFile;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::zuncompress::zuncompress2mem;
 use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -1143,7 +1151,8 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 /*--------------------------------------------------------------------------*/
 /// lower level routine to uncompress a file into memory.  The file
 /// has already been opened and the memory buffer has been allocated.
-pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
+#[cfg(unix)]
+pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
     filename: &[c_char],
     diskfile: &mut T,
     hdl: c_int,
@@ -1156,21 +1165,34 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
         let mut m = MEM_TABLE.lock().unwrap();
 
         if strstr_safe(filename, cs!(c".Z")).is_some() {
-            todo!();
-            /*
+            let raw_file_handle = unsafe {
+                use libc::fdopen;
+                let fd = diskfile.as_raw_fd();
+
+                fdopen(fd, c"rb".as_ptr() as *const c_char)
+            };
+
             zuncompress2mem(
                 filename,
-                diskfile,
+                raw_file_handle,
                 m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
-                Some(realloc),                    /* reallocation function */
+                Some(realloc),                              /* reallocation function */
                 &mut finalsize,
-                &mut status,  /* returned file size and status*/
+                &mut status, /* returned file size and status*/
             );
-            */
         } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
             #[cfg(feature = "bzip2")]
-            bzip2uncompress2mem(filename, diskfile, hdl, &mut finalsize, &mut status);
+            {
+                let raw_file_handle = unsafe {
+                    use libc::fdopen;
+                    let fd = diskfile.as_raw_fd();
+
+                    fdopen(fd, c"rb".as_ptr() as *const c_char)
+                };
+
+                bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
+            }
         } else {
             uncompress2mem(
                 filename,
@@ -1187,6 +1209,69 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read>(
         m[hdl as usize].fitsfilesize = finalsize as LONGLONG; /* and initial file size  */
         status
     }
+}
+
+/*--------------------------------------------------------------------------*/
+/// lower level routine to uncompress a file into memory.  The file
+/// has already been opened and the memory buffer has been allocated.
+#[cfg(windows)]
+pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
+    filename: &[c_char],
+    diskfile: &mut T,
+    hdl: c_int,
+) -> c_int {
+    let mut finalsize = 0;
+    let mut status = 0;
+    /* uncompress file into memory */
+
+    let mut m = MEM_TABLE.lock().unwrap();
+
+    if strstr_safe(filename, cs!(c".Z")).is_some() {
+        let raw_file_handle = unsafe {
+            use libc::{open_osfhandle, fdopen};
+
+            let handle = diskfile.as_raw_handle();
+            let fd = open_osfhandle(handle as isize, 0);
+            fdopen(fd, c"rb".as_ptr() as *const c_char)
+        };
+
+        zuncompress2mem(
+            filename,
+            raw_file_handle,
+            m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+            m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
+            Some(realloc),                              /* reallocation function */
+            &mut finalsize,
+            &mut status, /* returned file size and status*/
+        );
+    } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
+        #[cfg(feature = "bzip2")]
+        {
+            let raw_file_handle = unsafe {
+                use libc::{open_osfhandle, fdopen};
+
+                let handle = diskfile.as_raw_handle();
+                let fd = open_osfhandle(handle as isize, 0);
+                fdopen(fd, c"rb".as_ptr() as *const c_char)
+            };
+
+            bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
+        }
+    } else {
+        uncompress2mem(
+            filename,
+            diskfile,
+            m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+            m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
+            Some(realloc),                              /* reallocation function */
+            &mut finalsize,
+            &mut status,
+        ); /* returned file size nd status*/
+    }
+
+    m[hdl as usize].currentpos = 0; /* save starting position */
+    m[hdl as usize].fitsfilesize = finalsize as LONGLONG; /* and initial file size  */
+    status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1319,7 +1404,6 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
         let hdl = hdl as usize;
         let nbytes = nbytes as LONGLONG;
         let mut m = MEM_TABLE.lock().unwrap();
-        //let m = &mut memTable;
 
         if (m[hdl].currentpos + nbytes) as usize > *(m[hdl].memsizeptr) {
             if m[hdl].mem_realloc.is_none() {
@@ -1403,7 +1487,7 @@ pub(crate) unsafe fn mem_zuncompress_and_write(hdl: c_int, buffer: &[u8], nbytes
 #[cfg(feature = "bzip2")]
 pub(crate) unsafe fn bzip2uncompress2mem(
     filename: &[c_char],
-    diskfile: &mut FILE,
+    diskfile: *mut FILE,
     hdl: c_int,
     filesize: &mut usize,
     status: &mut c_int,

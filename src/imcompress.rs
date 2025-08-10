@@ -2909,6 +2909,8 @@ unsafe fn imcomp_compress_tile(
             } else if (outfptr.Fptr).compress_type == BZIP2_1 {
                 #[cfg(feature = "bzip2")]
                 {
+                    use libbz2_rs_sys::BZ2_bzBuffToBuffCompress;
+
                     if BYTESWAPPED {
                         let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
@@ -2919,21 +2921,22 @@ unsafe fn imcomp_compress_tile(
                         }
                     }
 
-                    let bzlen: c_uint = clen as c_uint;
+                    let mut bzlen: c_uint = clen as c_uint;
 
                     /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
 
                     /*  bzip2 is not supported in the public release.  This is only for
                     test purposes. */
-                    if (BZ2_bzBuffToBuffCompress(
-                        cbuf,
+                    if BZ2_bzBuffToBuffCompress(
+                        cbuf.as_ptr() as *mut c_char,
                         &mut bzlen,
-                        cast_slice(tiledata),
-                        (tilelen * intlength),
+                        tiledata.as_ptr() as *mut _,
+                        (tilelen * intlength as c_long) as c_uint,
                         9,
                         0,
                         0,
-                    )) {
+                    ) != 0
+                    {
                         ffpmsg_str("bzip2 compression error");
                         *status = DATA_COMPRESSION_ERR;
                         return *status;

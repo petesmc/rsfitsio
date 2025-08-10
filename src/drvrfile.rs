@@ -41,7 +41,6 @@ pub(crate) struct diskdriver {
     last_io_op: c_int,
 }
 
-//pub static mut handleTable: Lazy<Mutex<[diskdriver; NMAXFILES]>> = Lazy::new(|| Mutex::new([diskdriver::default(); NMAXFILES]));
 /* allocate diskfile handle tables */
 pub(crate) static HANDLE_TABLE: Mutex<Vec<diskdriver>> = Mutex::new(Vec::new());
 

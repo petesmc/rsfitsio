@@ -34,14 +34,14 @@ name = "cookbook_rust"
 test = true
 
 [features]
-default = []
+default = ["bzip2"]
 bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
 net_services = []
 
 [dependencies]
 libz-rs-sys = { version = "0.5.1" }
-libbz2-rs-sys = { version = "0.2.1", optional = true}
+libbz2-rs-sys = { version = "0.2.2", optional = true}
 libc="0.2.174"
 bytemuck = "1.23.1"
 tempfile = "3.19"
