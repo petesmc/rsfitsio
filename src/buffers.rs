@@ -1465,8 +1465,6 @@ pub(crate) fn ffpi1b(
 ) -> c_int {
     if incre == 1 {
         /* write all the values at once (contiguous bytes) */
-        dbg!(nvals);
-        dbg!(values.len());
 
         ffpbyt(fptr, nvals as LONGLONG, values, status);
     } else {
