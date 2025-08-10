@@ -8,7 +8,7 @@ mod tests {
         },
     };
     use bytemuck::cast_slice;
-    
+    use libc;
     use std::ffi::CStr;
 
     // Helper to convert string literals to c_char arrays
