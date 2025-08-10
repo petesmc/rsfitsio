@@ -656,6 +656,66 @@ pub mod c_api {
     pub use crate::cfileio::ffchtps as fits_cleanup_https;
     pub use crate::cfileio::ffihtps as fits_init_https;
     pub use crate::cfileio::ffvhtps as fits_verbose_https;
+
+    pub mod unofficial {
+        use crate::c_types::{c_int, c_long, c_void};
+        use crate::fitsio::{FITSfile, LONGLONG};
+        use crate::fitsio::{NULL_MSG, fitsfile};
+
+        /*--------------------------------------------------------------------------*/
+        /// low level routine to read bytes from a file.
+        #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+        unsafe extern "C" fn ffread(
+            fptr: *mut FITSfile, /* I - FITS file pointer              */
+            nbytes: c_long,      /* I - number of bytes to read        */
+            buffer: *mut c_void, /* O - buffer to read into            */
+            status: *mut c_int,  /* O - error status                   */
+        ) -> c_int {
+            unsafe {
+                let fptr = fptr.as_mut().expect(NULL_MSG);
+                let status = status.as_mut().expect(NULL_MSG);
+                let buffer = core::slice::from_raw_parts_mut(buffer as *mut u8, nbytes as usize);
+
+                crate::cfileio::ffread(fptr, nbytes, buffer, status)
+            }
+        }
+
+        /*--------------------------------------------------------------------------*/
+        /// low level routine to seek to a position in a file.
+        #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+        unsafe extern "C" fn ffseek(
+            fptr: *mut FITSfile, /* I - FITS file pointer              */
+            position: LONGLONG,  /* I - byte position to seek to       */
+        ) -> c_int {
+            unsafe {
+                let fptr = fptr.as_mut().expect(NULL_MSG);
+                crate::cfileio::ffseek(fptr, position)
+            }
+        }
+
+        /*--------------------------------------------------------------------------*/
+        /// Get (read) the requested number of bytes from the file, starting at
+        /// the current file position.  This function combines ffmbyt and ffgbyt
+        /// for increased efficiency.
+        #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+        unsafe extern "C" fn ffgbytoff(
+            fptr: *mut fitsfile, /* I - FITS file pointer                   */
+            gsize: c_long,       /* I - size of each group of bytes         */
+            ngroups: c_long,     /* I - number of groups to read            */
+            offset: c_long,      /* I - size of gap between groups (may be < 0) */
+            buffer: *mut c_void, /* I - buffer to be filled                 */
+            status: *mut c_int,  /* IO - error status                       */
+        ) -> c_int {
+            unsafe {
+                let fptr = fptr.as_mut().expect(NULL_MSG);
+                let status = status.as_mut().expect(NULL_MSG);
+                let buffer =
+                    core::slice::from_raw_parts_mut(buffer as *mut u8, (ngroups * gsize) as usize);
+
+                crate::buffers::ffgbytoff(fptr, gsize, ngroups, offset, buffer, status)
+            }
+        }
+    }
 }
 
 #[deny(unsafe_code, unsafe_op_in_unsafe_fn, deprecated)]

@@ -92,7 +92,6 @@ pub fn main() -> ExitCode {
         match buff_reader.read_exact(&mut buffer) {
             Ok(_) => {}
             Err(e) => {
-                dbg!(e);
                 println!("read error");
             }
         }

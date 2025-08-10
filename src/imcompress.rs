@@ -1392,7 +1392,7 @@ pub(crate) fn imcomp_init_table(
     let mut tf0: [c_char; 4] = [0; 4];
     let mut tf1: [c_char; 4] = [0; 4];
     let mut tf2: [c_char; 4] = [0; 4];
-    let tunit: [&[c_char]; 3] = [&[], &[], &[]];
+    let tunit: [&[c_char]; 3] = [&[0], &[0], &[0]];
 
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut actual_tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; /* Actual size to use for tiles */
@@ -4909,17 +4909,18 @@ pub(crate) fn fits_write_compressed_img(
 
     /* cast to double to force alignment on 8-byte addresses */
     let buffersize = ((fptr.Fptr).maxtilelen as usize) * buffpixsiz;
-    let mut u8_buffer: Vec<u8> = Vec::new();
-    if u8_buffer.try_reserve_exact(buffersize).is_err() {
+    let buffersize_f64 = (buffersize + 7) / 8;
+
+    let mut f64_buffer: Vec<f64> = Vec::new();
+    if f64_buffer.try_reserve_exact(buffersize_f64).is_err() {
         ffpmsg_str("Out of memory (fits_write_compress_img)");
         *status = MEMORY_ALLOCATION;
         return *status;
     } else {
-        u8_buffer.resize(buffersize, 0);
+        f64_buffer.resize(buffersize_f64, 0.0);
     }
 
-    /* cast to double to force alignment on 8-byte addresses */
-    let buffer: &mut [f64] = cast_slice_mut(&mut u8_buffer);
+    let buffer: &mut [u8] = cast_slice_mut(&mut f64_buffer);
 
     /* ===================================================================== */
 
@@ -5008,7 +5009,7 @@ pub(crate) fn fits_write_compressed_img(
 
                             if *status == NO_COMPRESSED_TILE {
                                 /* tile doesn't exist, so initialize to zero */
-                                buffer[..pixlen * thistilesize[0] as usize].fill(0.0);
+                                buffer[..pixlen * thistilesize[0] as usize].fill(0);
 
                                 *status = 0;
                             }
