@@ -882,4 +882,15 @@ mod tests {
         assert!(result.is_nan());
         assert_eq!(endptr, 3); // NaN parsed
     }
+
+    #[test]
+    fn test_strtod_safe() {
+        // Write test where input is "(21,21)"
+        let input: &[libc::c_char] = bytemuck::cast_slice(b"(21,21)\0");
+        let mut endp = 0;
+
+        let result = strtod_safe(&input[1..], &mut endp);
+        assert_eq!(result, 21.0);
+        assert_eq!(endp, 2);
+    }
 }

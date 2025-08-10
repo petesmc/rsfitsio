@@ -168,6 +168,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
                                 ((*buffsize as uLong) % (c_uint::MAX as uLong)) as uInt;
                         }
                     } else if let Some(mem_realloc) = mem_realloc {
+                        panic!("Realloc function not implemented for uncompress2mem");
                         *buffptr =
                             mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
                         if (*buffptr).is_null() {
@@ -294,6 +295,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
                 /* Z_BUF_ERROR means need more input data to make progress */
 
                 if let Some(mem_realloc) = mem_realloc {
+                    panic!("Realloc function not implemented for uncompress2mem_from_mem");
                     *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
                     if (*buffptr).is_null() {
                         inflateEnd(&mut d_stream);
@@ -545,7 +547,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
         };
 
         /* Initialize the compression.  The argument (15+16) tells the
-        compressor that we are to use the gzip algorythm.
+        compressor that we are to use the gzip algorithm.
         Also use Z_BEST_SPEED for maximum speed with very minor loss
         in compression factor. */
         err = deflateInit2(
@@ -562,7 +564,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
             return *status;
         }
 
-        c_stream.next_in = inmemptr.as_ptr() as *mut u8; // Yes convert const to mut
+        c_stream.next_in = inmemptr.as_ptr() as *mut u8; // WARNING: Yes convert const to mut....
         c_stream.avail_in = inmemsize as uInt;
 
         c_stream.next_out = *buffptr;
@@ -577,8 +579,8 @@ pub(crate) unsafe fn compress2mem_from_mem(
                 break;
             } else if err == Z_OK {
                 /* need more space in output buffer */
-
                 if let Some(mem_realloc) = mem_realloc {
+                    panic!("Realloc function not implemented for compress2mem_from_mem");
                     *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
                     if (*buffptr).is_null() {
                         deflateEnd(&mut c_stream);

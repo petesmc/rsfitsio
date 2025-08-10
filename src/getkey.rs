@@ -2800,7 +2800,7 @@ pub fn ffgkns_safe(
     ffghps_safe(fptr, Some(&mut nkeys), Some(&mut mkeys), status); /*  get the number of keywords  */
 
     undefinedval = false;
-    for ii in 3..(nkeys as usize) {
+    for ii in 3..=(nkeys as usize) {
         if ffgrec_safe(fptr, ii as c_int, Some(&mut card), status) > 0 {
             /*  get next keyword  */
             return *status;
@@ -3819,14 +3819,18 @@ pub fn ffdtdmll_safe(
             return *status;
         }
 
-        while let Some(mut loc_inner) = loc {
+        let mut loc_inner = 0;
+        while let Some(mut loc_tmp) = loc {
+            loc_inner += loc_tmp;
+
             loc_inner += 1;
 
             /* Read value as a double because the string to 64-bit int function is  */
             /* platform dependent (strtoll, strtol, _atoI64).  This still gives     */
             /* about 48 bits of precision, which is plenty for this purpose.        */
 
-            doublesize = strtod_safe(&tdimstr[loc_inner..], &mut loc_inner);
+            doublesize = strtod_safe(&tdimstr[loc_inner..], &mut loc_tmp);
+            loc_inner += loc_tmp;
             dimsize = (doublesize + 0.1) as LONGLONG;
 
             if *naxis < maxdim {
@@ -4454,19 +4458,13 @@ pub unsafe fn ffghtbll_safer(
             for ii in 0..(maxf as usize) {
                 /* initialize optional keyword values */
                 if !ttype.is_null() {
-                    let ttype = slice::from_raw_parts_mut(
-                        ttype as *mut [c_char; FLEN_VALUE],
-                        maxf as usize,
-                    );
-                    ttype[ii][0] = 0;
+                    let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
+                    (*ttype[ii]) = 0;
                 }
 
                 if !tunit.is_null() {
-                    let tunit = slice::from_raw_parts_mut(
-                        tunit as *mut [c_char; FLEN_VALUE],
-                        maxf as usize,
-                    );
-                    tunit[ii][0] = 0;
+                    let tunit = slice::from_raw_parts_mut(tunit, maxf as usize);
+                    (*tunit[ii]) = 0;
                 }
             }
 
@@ -4900,9 +4898,8 @@ pub unsafe fn ffghbnll_safer(
                 *status = NOT_BTABLE;
                 return *status;
             }
-        } else
-        /* error: 1st keyword of extension != XTENSION */
-        {
+        } else {
+            /* error: 1st keyword of extension != XTENSION */
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,
@@ -4948,27 +4945,21 @@ pub unsafe fn ffghbnll_safer(
             for ii in 0..(maxf as usize) {
                 /* initialize optional keyword values */
                 if !ttype.is_null() {
-                    let ttype = slice::from_raw_parts_mut(
-                        ttype as *mut [c_char; FLEN_VALUE],
-                        maxf as usize,
-                    );
-                    ttype[ii][0] = 0;
+                    let ttype_int = slice::from_raw_parts_mut(ttype, maxf as usize);
+                    (*ttype_int[ii]) = 0;
                 }
 
                 if !tunit.is_null() {
-                    let tunit = slice::from_raw_parts_mut(
-                        tunit as *mut [c_char; FLEN_VALUE],
-                        maxf as usize,
-                    );
-                    tunit[ii][0] = 0;
+                    let tunit = slice::from_raw_parts_mut(tunit, maxf as usize);
+                    (*tunit[ii]) = 0;
                 }
             }
 
             if !ttype.is_null() {
-                let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
+                let ttype_int = slice::from_raw_parts_mut(ttype, maxf as usize);
                 let mut v_ttype = Vec::new();
 
-                for item in ttype {
+                for item in ttype_int {
                     let ttype_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
                     v_ttype.push(ttype_item);
                 }

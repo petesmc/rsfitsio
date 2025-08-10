@@ -482,31 +482,7 @@ pub(crate) fn ffgbyt(
 }
 
 /*--------------------------------------------------------------------------*/
-///   get (read) the requested number of bytes from the file, starting at
-///   the current file position.  This function combines ffmbyt and ffgbyt
-///   for increased efficiency.
-/*
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffgbytoff(
-    fptr: *mut fitsfile, /* I - FITS file pointer                   */
-    gsize: c_long,       /* I - size of each group of bytes         */
-    ngroups: c_long,     /* I - number of groups to read            */
-    offset: c_long,      /* I - size of gap between groups (may be < 0) */
-    buffer: *mut c_void, /* I - buffer to be filled                 */
-    status: *mut c_int,  /* IO - error status                       */
-) -> c_int {
-    unsafe {
-        let fptr = fptr.as_mut().expect(NULL_MSG);
-        let status = status.as_mut().expect(NULL_MSG);
-        let buffer = slice::from_raw_parts_mut(buffer as *mut u8, (ngroups * gsize) as usize);
-
-        ffgbytoff_safe(fptr, gsize, ngroups, offset, buffer, status)
-    }
-}
-*/
-
-/*--------------------------------------------------------------------------*/
-/// get (read) the requested number of bytes from the file, starting at
+/// Get (read) the requested number of bytes from the file, starting at
 /// the current file position.  This function combines ffmbyt and ffgbyt
 /// for increased efficiency.
 pub(crate) fn ffgbytoff(
@@ -1489,6 +1465,9 @@ pub(crate) fn ffpi1b(
 ) -> c_int {
     if incre == 1 {
         /* write all the values at once (contiguous bytes) */
+        dbg!(nvals);
+        dbg!(values.len());
+
         ffpbyt(fptr, nvals as LONGLONG, values, status);
     } else {
         /* have to write each value individually (not contiguous ) */
