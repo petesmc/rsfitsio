@@ -12385,9 +12385,14 @@ pub(crate) unsafe fn fits_recalloc(
 mod tests {
     use super::*;
     use std::ffi::CString;
+    use std::sync::{LazyLock, Mutex};
+
+    // Serialize tests that touch the global ERROR_STACK to avoid cross-test interference on parallel runs.
+    static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn test_ffmkky_safe() {
+        let _g = TEST_LOCK.lock().unwrap();
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         let mut status: c_int = 0;
 
@@ -12410,6 +12415,7 @@ mod tests {
     #[test]
     fn test_ffxmsg_basic_operations() {
         unsafe {
+            let _g = TEST_LOCK.lock().unwrap();
             // Clear any existing messages first
             ffxmsg(DEL_ALL, ptr::null_mut());
 
@@ -12433,6 +12439,7 @@ mod tests {
     #[test]
     fn test_ffxmsg_marker_functionality() {
         unsafe {
+            let _g = TEST_LOCK.lock().unwrap();
             // Clear any existing messages
             ffxmsg(DEL_ALL, ptr::null_mut());
 
