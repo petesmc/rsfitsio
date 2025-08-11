@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-
+    
     use crate::{
         c_types::{c_char, c_double, c_int, c_long, c_uint},
         relibc::header::stdio::{
@@ -9,8 +9,8 @@ mod tests {
         },
     };
 
-    use libc;
-    use std::ffi::{CStr, CString, c_void};
+    
+    use std::ffi::{CStr, c_void, CString};
 
     // Helper to create null-terminated string from &str
     fn to_c_string(s: &str) -> Vec<c_char> {
