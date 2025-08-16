@@ -1342,6 +1342,58 @@ pub(crate) fn ffgclui(
             + (elemnum * (incre / elemincre) as LONGLONG);
 
         match tcode {
+            TSHORT => {
+                ffgi2b(
+                    fptr,
+                    readptr,
+                    ntodo,
+                    incre,
+                    cast_slice_mut(&mut array[next..]),
+                    status,
+                );
+
+
+                fffi2u2_inplace(
+                    cast_slice_mut(&mut array[next..]),
+                    ntodo,
+                    scale,
+                    zero,
+                    nulcheck,
+                    tnull as c_short,
+                    nulval,
+                    if nulcheck == NullCheckType::SetNullArray {
+                        &mut nularray[next..]
+                    } else {
+                        nularray
+                    }, // WARNING: THIS IS A HACK. Should use Options instead
+                    anynul.as_deref_mut(),
+                    status,
+                );
+                
+            }
+             TLONGLONG => {
+                ffgi8b(
+                    fptr,
+                    readptr,
+                    ntodo,
+                    incre,
+                    cast_slice_mut(&mut buffer),
+                    status,
+                );
+                fffi8u2(
+                    cast_slice(&buffer),
+                    ntodo,
+                    scale,
+                    zero,
+                    nulcheck,
+                    tnull,
+                    nulval,
+                    &mut nularray[next..],
+                    anynul.as_deref_mut(),
+                    &mut array[next..],
+                    status,
+                );
+            }
             TBYTE => {
                 ffgi1b(
                     fptr,
@@ -1366,42 +1418,6 @@ pub(crate) fn ffgclui(
                     status,
                 );
             }
-            TSHORT => {
-                ffgi2b(
-                    fptr,
-                    readptr,
-                    ntodo,
-                    incre,
-                    cast_slice_mut(&mut array[next..]),
-                    status,
-                );
-
-                let len = array.len();
-
-                // DANGER using this to allow using same buffer and mutable and immutable
-                // TODO find a better way to do this
-                unsafe {
-                    let ushortBuffer: &[c_ushort] = slice::from_raw_parts(array.as_ptr(), len);
-
-                    fffi2u2(
-                        cast_slice(&ushortBuffer[next..]),
-                        ntodo,
-                        scale,
-                        zero,
-                        nulcheck,
-                        tnull as c_short,
-                        nulval,
-                        if nulcheck == NullCheckType::SetNullArray {
-                            &mut nularray[next..]
-                        } else {
-                            nularray
-                        }, // WARNING: THIS IS A HACK. Should use Options instead
-                        anynul.as_deref_mut(),
-                        &mut array[next..],
-                        status,
-                    );
-                }
-            }
             TLONG => {
                 ffgi4b(
                     fptr,
@@ -1418,29 +1434,6 @@ pub(crate) fn ffgclui(
                     zero,
                     nulcheck,
                     tnull as INT32BIT,
-                    nulval,
-                    &mut nularray[next..],
-                    anynul.as_deref_mut(),
-                    &mut array[next..],
-                    status,
-                );
-            }
-            TLONGLONG => {
-                ffgi8b(
-                    fptr,
-                    readptr,
-                    ntodo,
-                    incre,
-                    cast_slice_mut(&mut buffer),
-                    status,
-                );
-                fffi8u2(
-                    cast_slice(&buffer),
-                    ntodo,
-                    scale,
-                    zero,
-                    nulcheck,
-                    tnull,
                     nulval,
                     &mut nularray[next..],
                     anynul.as_deref_mut(),
@@ -1832,6 +1825,137 @@ pub(crate) fn fffi2u2(
                         output[ii] = c_ushort::MAX;
                     } else {
                         output[ii] = dvalue as _;
+                    }
+                }
+            }
+        }
+    }
+    *status
+}
+
+
+/*--------------------------------------------------------------------------*/
+/// Copy inplace following reading of the input from a FITS file.
+/// Check for null values and do datatype conversion and scaling if required.
+/// The nullcheck code value determines how any null values in the input array
+/// are treated.  A null value is an input pixel that is equal to tnull.  If
+/// nullcheck = 0, then no checking for nulls is performed and any null values
+/// will be transformed just like any other pixel.  If nullcheck = 1, then the
+/// output pixel will be set = nullval if the corresponding input pixel is null.
+/// If nullcheck = 2, then if the pixel is null then the corresponding value of
+/// nullarray will be set to 1; the value of nullarray for non-null pixels
+/// will = 0.  The anynull parameter will be set = 1 if any of the returned
+/// pixels are null, otherwise anynull will be returned with a value = 0;
+pub(crate) fn fffi2u2_inplace(
+    inout: &mut [c_short],        /* IO - array of values to be converted     */
+    ntodo: c_long,            /* I - number of elements in the array     */
+    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
+    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
+    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    /*     1:set null pixels = nullval         */
+    /*     2: if null pixel, set nullarray = 1 */
+    tnull: c_short,              /* I - value of FITS TNULLn keyword if any */
+    nullval: c_ushort,           /* I - set null pixels, if nullcheck = 1   */
+    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
+    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
+    status: &mut c_int,          /* IO - error status                       */
+) -> c_int {
+    let mut dvalue: f64 = 0.0;
+
+    if nullcheck == NullCheckType::None {
+        /* no null checking required */
+
+        if scale == 1.0 && zero == 32768. {
+            /* Instead of adding 32768, it is more efficient */
+            /* to just flip the sign bit with the XOR operator */
+
+            for ii in 0..(ntodo as usize) {
+                inout[ii] = (((inout[ii] as c_ushort) ^ 0x8000)) as c_short;
+            }
+        } else if scale == 1.0 && zero == 0.0 {
+            /* no scaling */
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] < 0 {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = 0;
+                } else {
+                    inout[ii] = inout[ii] as _; /* copy input */
+                }
+            }
+        } else {
+            /* must scale the data */
+            for ii in 0..(ntodo as usize) {
+                dvalue = (inout[ii] as f64) * scale + zero;
+
+                if dvalue < DUSHRT_MIN {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = c_ushort::MIN as c_short;
+                } else if dvalue > DUSHRT_MAX {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = c_ushort::MAX as c_short;
+                } else {
+                    inout[ii] = dvalue as _;
+                }
+            }
+        }
+    } else {
+        /* must check for null values */
+        let anynull = anynull.unwrap();
+
+        if scale == 1.0 && zero == 32768.
+        /* no scaling */
+        {
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] == tnull as c_short {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval as c_short;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else {
+                    inout[ii] = ((inout[ii] as c_ushort) ^ 0x8000) as c_short;
+                }
+            }
+        } else if scale == 1.0 && zero == 0.0 {
+            /* no scaling */
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] == tnull  {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval as c_short;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else if inout[ii] < 0 {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = 0;
+                } else {
+                    inout[ii] = inout[ii] as _; /* copy input */
+                }
+            }
+        } else {
+            /* must scale the data */
+
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] == tnull {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval as c_short;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else {
+                    dvalue = (inout[ii] as f64) * scale + zero;
+
+                    if dvalue < DUSHRT_MIN {
+                        *status = OVERFLOW_ERR;
+                        inout[ii] = c_ushort::MIN as c_short;
+                    } else if dvalue > DUSHRT_MAX {
+                        *status = OVERFLOW_ERR;
+                        inout[ii] = c_ushort::MAX as c_short;
+                    } else {
+                        inout[ii] = dvalue as _;
                     }
                 }
             }
