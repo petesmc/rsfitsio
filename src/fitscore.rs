@@ -52,6 +52,7 @@ use crate::cfileio::{STREAM_DRIVER, ffinit_safer, fftrun, urltype2driver};
 use crate::cfileio::{ffclos_safer, ffurlt_safe};
 use crate::editcol::ffirow_safe;
 use crate::edithdu::ffcopy_safer;
+use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::getkey::{
     ffghsp_safe, ffgky_safe, ffgkyj_safe, ffgkyjj_safe, ffgkyl_safe, ffgkyn_safe, ffgkys_safe,
@@ -61,7 +62,6 @@ use crate::imcompress::{TILE_STRUCTS, imcomp_get_compressed_image_par};
 use crate::modkey::{ffdkey_safe, ffmkyj_safe, ffmrec_safe};
 use crate::putkey::ffprec_safe;
 use crate::relibc::header::stdio::{sscanf_ld, sscanf_lf};
-use crate::fitsio::*;
 use crate::{atoi, bb, cs, int_snprintf};
 use crate::{buffers::*, raw_to_slice};
 use crate::{slice_to_str, wrappers::*};
@@ -539,11 +539,11 @@ pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
 /// put message on to error stack
 pub unsafe fn ffpmsg_safer(err_message: &[c_char]) {
     // Convert c_char slice to string and use the new safe implementation
-    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message)) {
-        if let Ok(message) = c_str.to_str() {
-            let mut stack = ERROR_STACK.lock().unwrap();
-            stack.push_message(message);
-        }
+    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message))
+        && let Ok(message) = c_str.to_str()
+    {
+        let mut stack = ERROR_STACK.lock().unwrap();
+        stack.push_message(message);
     }
 }
 
@@ -556,11 +556,11 @@ pub fn ffpmsg_cstr(err_message: &CStr) {
 
 pub(crate) fn ffpmsg_slice(err_message: &[c_char]) {
     // Convert c_char slice to string
-    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message)) {
-        if let Ok(message) = c_str.to_str() {
-            let mut stack = ERROR_STACK.lock().unwrap();
-            stack.push_message(message);
-        }
+    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message))
+        && let Ok(message) = c_str.to_str()
+    {
+        let mut stack = ERROR_STACK.lock().unwrap();
+        stack.push_message(message);
     }
 }
 
@@ -747,11 +747,9 @@ pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
                         *errmsg.add(copy_len) = 0; // null terminate
                     }
                 }
-            } else {
-                if !errmsg.is_null() {
-                    unsafe {
-                        *errmsg = 0; // empty string
-                    }
+            } else if !errmsg.is_null() {
+                unsafe {
+                    *errmsg = 0; // empty string
                 }
             }
         }

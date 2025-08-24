@@ -2147,7 +2147,7 @@ pub unsafe extern "C" fn ffpkls(
             return *status;
         }
 
-        return ffpkls_safe(fptr, keyname, value, comm, status); // call the safe version
+        ffpkls_safe(fptr, keyname, value, comm, status) // call the safe version
     }
 }
 

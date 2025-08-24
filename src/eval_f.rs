@@ -60,9 +60,9 @@ use crate::{fitsio::*, raw_to_slice};
 use bytemuck::cast_slice;
 use core::ffi::CStr;
 
-pub(crate) struct ffffrw_workdata<'a> {
+pub(crate) struct ffffrw_workdata {
     prownum: Vec<c_long>,
-    lParse: Vec<ParseData<'a>>,
+    lParse: Vec<ParseData>,
 }
 
 /*---------------------------------------------------------------------------*/

@@ -39,6 +39,7 @@ pub mod editcol;
 pub mod eval_defs;
 pub mod eval_f;
 pub mod eval_l;
+pub mod eval_tab;
 pub mod eval_y;
 pub mod fits_hcompress;
 pub mod fits_hdecompress;

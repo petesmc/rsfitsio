@@ -4912,7 +4912,7 @@ pub(crate) fn fits_write_compressed_img(
 
     /* cast to double to force alignment on 8-byte addresses */
     let buffersize = ((fptr.Fptr).maxtilelen as usize) * buffpixsiz;
-    let buffersize_f64 = (buffersize + 7) / 8;
+    let buffersize_f64 = buffersize.div_ceil(8);
 
     let mut f64_buffer: Vec<f64> = Vec::new();
     if f64_buffer.try_reserve_exact(buffersize_f64).is_err() {

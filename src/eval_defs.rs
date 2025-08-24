@@ -12,83 +12,96 @@ pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
-pub struct DataInfo<'a> {
-    name: [c_char; MAXVARNAME as usize + 1],
-    r#type: c_int,
-    nelem: c_long,
-    naxis: c_int,
-    naxes: [c_long; MAXDIMS as usize],
-    undef: &'a c_char,
-    data: &'a c_void,
+pub struct DataInfo {
+    pub name: [c_char; MAXVARNAME as usize + 1],
+    pub dtype: c_int,
+    pub nelem: c_long,
+    pub naxis: c_int,
+    pub naxes: [c_long; MAXDIMS as usize],
+    pub undef: *mut c_char,
+    pub data: *mut c_void,
 }
 
-union data_union {
-    dbl: f64,
-    lng: c_long,
-    log: c_char,
-    str: [c_char; MAX_STRLEN as usize],
-    dblptr: *mut f64,
-    lngptr: *mut c_long,
-    logptr: *mut c_char,
-    strptr: *mut c_char,
-    ptr: *mut c_void,
+#[derive(Copy, Clone)]
+pub union data_union {
+    pub dbl: f64,
+    pub lng: c_long,
+    pub log: c_char,
+    pub astr: [c_char; MAX_STRLEN as usize],
+    pub dblptr: *mut f64,
+    pub lngptr: *mut c_long,
+    pub logptr: *mut c_char,
+    pub strptr: *mut *mut c_char,
+    pub ptr: *mut c_void,
 }
 
-pub struct lval<'a> {
-    nelem: c_long,
-    naxis: c_int,
-    naxes: [c_long; MAXDIMS as usize],
-    undef: &'a c_char,
-    data: data_union,
+impl Default for data_union {
+    fn default() -> Self {
+        data_union {
+            ptr: std::ptr::null_mut(),
+        }
+    }
 }
 
-pub struct Node<'a> {
-    operation: c_int,
-    DoOp: fn(p: ParseData, this: Node) -> c_void,
-    nSubNodes: c_int,
-    SubNodes: [c_int; MAXSUBS as usize],
-    r#type: c_int,
-    value: &'a lval<'a>,
+#[derive(Default, Copy, Clone)]
+pub struct lval {
+    pub nelem: c_long,
+    pub naxis: c_int,
+    pub naxes: [c_long; MAXDIMS as usize],
+    pub undef: *mut c_char,
+    pub data: data_union,
 }
 
-pub struct ParseData<'a> {
-    def_fptr: &'a fitsfile,
-    getData: fn(p: ParseData, dataName: c_char, dataValue: c_void) -> c_int,
-    loadData: fn(
-        p: ParseData,
-        varNum: c_int,
-        fRow: c_long,
-        nRows: c_long,
-        data: c_void,
-        undef: c_char,
-    ) -> c_int,
-    compressed: c_int,
-    timeCol: c_int,
-    parCol: c_int,
-    valCol: c_int,
-    expr: c_char,
-    index: c_int,
-    is_eobuf: c_int,
-    Nodes: &'a Node<'a>,
-    nNodes: c_int,
-    nNodesAlloc: c_int,
-    resultNode: c_int,
-    firstRow: c_long,
-    nRows: c_long,
-    nCols: c_int,
-    nElements: c_long,
-    nAxis: c_int,
-    nAxes: [c_long; MAXDIMS as usize],
-    colData: &'a iteratorCol,
-    varData: &'a DataInfo<'a>,
-    pixFilter: &'a PixelFilter,
-    firstDataRow: c_long,
-    nDataRows: c_long,
-    totalRows: c_long,
-    nPrevDataRows: c_long,
-    datatype: c_int,
-    hdutype: c_int,
-    status: c_int,
+pub struct Node {
+    pub operation: c_int,
+    pub DoOp: Option<unsafe fn(p: *mut ParseData, this: *mut Node)>,
+    pub nSubNodes: c_int,
+    pub SubNodes: [c_int; MAXSUBS as usize],
+    pub ntype: c_int,
+    pub value: lval,
+}
+
+pub struct ParseData {
+    pub def_fptr: *mut fitsfile,
+    pub getData:
+        Option<fn(p: *mut ParseData, dataName: *mut c_char, dataValue: *mut c_void) -> c_int>,
+    pub loadData: Option<
+        fn(
+            p: *mut ParseData,
+            varNum: c_int,
+            fRow: c_long,
+            nRows: c_long,
+            data: *mut c_void,
+            undef: *mut c_char,
+        ) -> c_int,
+    >,
+    pub compressed: c_int,
+    pub timeCol: c_int,
+    pub parCol: c_int,
+    pub valCol: c_int,
+    pub expr: *mut c_char,
+    pub index: c_int,
+    pub is_eobuf: c_int,
+    pub Nodes: *mut Node,
+    pub nNodes: c_int,
+    pub nNodesAlloc: c_int,
+    pub resultNode: c_int,
+    pub firstRow: c_long,
+    pub nRows: c_long,
+    pub nCols: c_int,
+    pub nElements: c_long,
+    pub nAxis: c_int,
+    pub nAxes: [c_long; MAXDIMS as usize],
+    pub colData: *mut iteratorCol, // This is a list
+    pub varData: *mut DataInfo,
+    pub pixFilter: *mut PixelFilter,
+    pub firstDataRow: c_long,
+    pub nDataRows: c_long,
+    pub totalRows: c_long,
+    pub nPrevDataRows: c_long,
+    pub datatype: c_int,
+    pub hdutype: c_int,
+    pub status: c_int,
 }
 
 enum funcOp {
@@ -159,12 +172,12 @@ pub struct ParseStatusVariables<'a> {
 }
 
 pub struct parseInfo<'a> {
-    datatype: c_int,     /* Data type to cast parse results into for user       */
-    dataPtr: &'a c_void, /* Pointer to array of results, NULL if to use iterCol */
-    nullPtr: &'a c_void, /* Pointer to nulval, use zero if NULL                 */
-    maxRows: c_long,     /* Max No. of rows to process, -1=all, 0=1 iteration   */
-    anyNull: c_int,      /* Flag indicating at least 1 undef value encountered  */
-    parseData: &'a ParseData<'a>, /* Pointer to parser configuration */
+    datatype: c_int,           /* Data type to cast parse results into for user       */
+    dataPtr: &'a c_void,       /* Pointer to array of results, NULL if to use iterCol */
+    nullPtr: &'a c_void,       /* Pointer to nulval, use zero if NULL                 */
+    maxRows: c_long,           /* Max No. of rows to process, -1=all, 0=1 iteration   */
+    anyNull: c_int,            /* Flag indicating at least 1 undef value encountered  */
+    parseData: *mut ParseData, /* Pointer to parser configuration */
     parseVariables: ParseStatusVariables<'a>,
 }
 
