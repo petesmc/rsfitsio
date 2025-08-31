@@ -56,7 +56,7 @@ pub(crate) struct HistType<'a> {
     numIterCols: c_int,
     iterCols: &'a mut iteratorCol,
     parsers: &'a mut ParseData,
-    infos: &'a mut parseInfo<'a>,
+    infos: &'a mut parseInfo,
 }
 
 /*

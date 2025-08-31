@@ -8,13 +8,16 @@
     unused_mut
 )]
 
+use std::ffi::CStr;
+
+use bytemuck::cast_slice;
 use libc::{
     __errno_location, FILE, atof, atol, exit, fileno, fprintf, free, fwrite, isatty, malloc,
     memset, realloc, size_t,
 };
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_void};
-use crate::eval_defs::ParseData;
+use crate::eval_defs::{MAXVARNAME, ParseData, yyscan_t};
 use crate::eval_tab::*;
 use crate::wrappers::isdigit_safe;
 use crate::{
@@ -34,7 +37,7 @@ pub type int16_t = __int16_t;
 pub type uint8_t = __uint8_t;
 pub type flex_uint8_t = uint8_t;
 pub type flex_int16_t = int16_t;
-pub type yyscan_t = *mut c_void;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct yy_buffer_state {
@@ -117,8 +120,8 @@ unsafe fn expr_read(mut lParse: *mut ParseData, mut buf: *mut c_char, mut nbytes
 }
 
 pub unsafe fn fits_parser_yyGetVariable(
-    mut lParse: *mut ParseData,
-    mut varName: *mut c_char,
+    lParse: &mut ParseData,
+    varName: &[c_char],
     mut thelval: *mut FITS_PARSER_YYSTYPE,
 ) -> c_int {
     unsafe {
@@ -127,24 +130,24 @@ pub unsafe fn fits_parser_yyGetVariable(
         let mut errMsg: [c_char; 105] = [0; 105];
         varNum = find_variable(lParse, varName);
         if varNum < 0 as c_int {
-            if ((*lParse).getData).is_some() {
-                dtype = ((*lParse).getData).expect("non-null function pointer")(
+            if (lParse.getData).is_some() {
+                dtype = (lParse.getData).expect("non-null function pointer")(
                     lParse,
                     varName,
                     thelval as *mut c_void,
                 );
             } else {
                 dtype = -(1);
-                (*lParse).status = 431 as c_int;
+                lParse.status = 431 as c_int;
                 strcpy(
                     errMsg.as_mut_ptr(),
                     b"Unable to find data: \0" as *const u8 as *const c_char,
                 );
-                strncat(errMsg.as_mut_ptr(), varName, 80);
+                strncat(errMsg.as_mut_ptr(), varName.as_ptr(), MAXVARNAME);
                 ffpmsg_slice(&errMsg);
             }
         } else {
-            match (*((*lParse).varData).offset(varNum as isize)).dtype {
+            match (*(lParse.varData).offset(varNum as isize)).dtype {
                 259 | 260 => {
                     dtype = fits_parser_yytokentype::COLUMN as c_int;
                 }
@@ -159,12 +162,12 @@ pub unsafe fn fits_parser_yyGetVariable(
                 }
                 _ => {
                     dtype = -(1);
-                    (*lParse).status = 431 as c_int;
+                    lParse.status = 431 as c_int;
                     strcpy(
                         errMsg.as_mut_ptr(),
                         b"Bad datatype for data: \0" as *const u8 as *const c_char,
                     );
-                    strncat(errMsg.as_mut_ptr(), varName, 80);
+                    strncat(errMsg.as_mut_ptr(), varName.as_ptr(), 80);
                     ffpmsg_slice(&errMsg);
                 }
             }
@@ -173,19 +176,18 @@ pub unsafe fn fits_parser_yyGetVariable(
         dtype
     }
 }
-unsafe fn find_variable(mut lParse: *mut ParseData, mut varName: *mut c_char) -> c_int {
+unsafe fn find_variable(lParse: &mut ParseData, varName: &[c_char]) -> c_int {
     unsafe {
         let mut i: c_int = 0;
-        if (*lParse).nCols != 0 {
+        if lParse.nCols != 0 {
             i = 0 as c_int;
-            while i < (*lParse).nCols {
+            while i < lParse.nCols {
                 if {
                     let s1 = std::slice::from_raw_parts(
-                        ((*((*lParse).varData).offset(i as isize)).name).as_ptr(),
-                        80,
+                        ((*(lParse.varData).offset(i as isize)).name).as_ptr(),
+                        MAXVARNAME,
                     );
-                    let s2 = std::slice::from_raw_parts(varName, 80);
-                    fits_strncasecmp(s1, s2, 80 as c_int as size_t)
+                    fits_strncasecmp(s1, varName, MAXVARNAME)
                 } == 0
                 {
                     return i;
@@ -829,10 +831,15 @@ pub unsafe fn fits_parser_yylex(
                                             0_i32 as c_char;
                                         (*yyg).yytext_r = ((*(*yyg).yylval_r).astr).as_mut_ptr();
                                     }
+
+                                    let yytext_r_slice = cast_slice(
+                                        CStr::from_ptr((*yyg).yytext_r).to_bytes_with_nul(),
+                                    );
+
                                     result = ((*(*yyg).yyextra_r).getData)
                                         .expect("non-null function pointer")(
-                                        (*yyg).yyextra_r,
-                                        (*yyg).yytext_r,
+                                        &mut *(*yyg).yyextra_r,
+                                        yytext_r_slice,
                                         (*yyg).yylval_r as *mut c_void,
                                     );
                                     return result;
@@ -885,9 +892,13 @@ pub unsafe fn fits_parser_yylex(
                                     (*(*yyg).yylval_r).astr[len_4 as usize] = 0_i32 as c_char;
                                     (*yyg).yytext_r = ((*(*yyg).yylval_r).astr).as_mut_ptr();
                                 }
+
+                                let yytext_r_slice =
+                                    cast_slice(CStr::from_ptr((*yyg).yytext_r).to_bytes_with_nul());
+
                                 dtype = fits_parser_yyGetVariable(
-                                    (*yyg).yyextra_r,
-                                    (*yyg).yytext_r,
+                                    &mut *(*yyg).yyextra_r,
+                                    yytext_r_slice,
                                     (*yyg).yylval_r,
                                 );
                                 return dtype;

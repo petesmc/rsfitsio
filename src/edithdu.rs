@@ -365,16 +365,12 @@ pub unsafe fn ffcphd_safer(
             /* write standard block of self-documentating comments */
             ffprec_safe(
                 outfptr,
-                cs!(
-                    c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"
-                ),
+                cs!(c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"),
                 status,
             );
             ffprec_safe(
                 outfptr,
-                cs!(
-                    c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"
-                ),
+                cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"),
                 status,
             );
 

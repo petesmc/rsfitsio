@@ -1092,6 +1092,24 @@ pub struct iteratorCol {
     pub tdisp: [c_char; 70],
 }
 
+impl Default for iteratorCol {
+    fn default() -> Self {
+        Self {
+            fptr: Default::default(),
+            colnum: Default::default(),
+            colname: [0; 70],
+            datatype: Default::default(),
+            iotype: Default::default(),
+            array: Default::default(),
+            repeat: Default::default(),
+            tlmin: Default::default(),
+            tlmax: Default::default(),
+            tunit: [0; 70],
+            tdisp: [0; 70],
+        }
+    }
+}
+
 pub const InputCol: c_int = 0; /* flag for input only iterator column       */
 pub const InputOutputCol: c_int = 1; /* flag for input and output iterator column */
 pub const OutputCol: c_int = 2; /* flag for output only iterator column      */

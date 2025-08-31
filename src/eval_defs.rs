@@ -6,14 +6,16 @@ use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
 pub const MAXDIMS: c_int = 5;
 pub const MAXSUBS: c_int = 10;
-pub const MAXVARNAME: c_int = 80;
+pub const MAXVARNAME: usize = 80;
 pub const CONST_OP: c_int = -1000;
-pub const P_ERROR: c_int = -1;
+pub const pERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
+pub(crate) type yyscan_t = *mut c_void;
+
 pub struct DataInfo {
-    pub name: [c_char; MAXVARNAME as usize + 1],
+    pub name: [c_char; MAXVARNAME + 1],
     pub dtype: c_int,
     pub nelem: c_long,
     pub naxis: c_int,
@@ -52,22 +54,24 @@ pub struct lval {
     pub data: data_union,
 }
 
+#[derive(Default, Copy, Clone)]
 pub struct Node {
     pub operation: c_int,
-    pub DoOp: Option<unsafe fn(p: *mut ParseData, this: *mut Node)>,
+    pub DoOp: Option<unsafe fn(p: &mut ParseData, this: *mut Node)>,
     pub nSubNodes: c_int,
     pub SubNodes: [c_int; MAXSUBS as usize],
     pub ntype: c_int,
     pub value: lval,
 }
 
+#[derive(Default)]
 pub struct ParseData {
     pub def_fptr: *mut fitsfile,
     pub getData:
-        Option<fn(p: *mut ParseData, dataName: *mut c_char, dataValue: *mut c_void) -> c_int>,
+        Option<fn(p: &mut ParseData, dataName: &[c_char], dataValue: *mut c_void) -> c_int>,
     pub loadData: Option<
         fn(
-            p: *mut ParseData,
+            p: &mut ParseData,
             varNum: c_int,
             fRow: c_long,
             nRows: c_long,
@@ -82,7 +86,7 @@ pub struct ParseData {
     pub expr: *mut c_char,
     pub index: c_int,
     pub is_eobuf: c_int,
-    pub Nodes: *mut Node,
+    pub Nodes: Vec<Node>,
     pub nNodes: c_int,
     pub nNodesAlloc: c_int,
     pub resultNode: c_int,
@@ -102,6 +106,42 @@ pub struct ParseData {
     pub datatype: c_int,
     pub hdutype: c_int,
     pub status: c_int,
+}
+
+impl ParseData {
+    pub(crate) fn reset(&mut self) {
+        // Reset all fields
+        self.def_fptr = Default::default();
+        self.getData = Default::default();
+        self.loadData = Default::default();
+        self.compressed = Default::default();
+        self.timeCol = Default::default();
+        self.parCol = Default::default();
+        self.valCol = Default::default();
+        self.expr = Default::default();
+        self.index = Default::default();
+        self.is_eobuf = Default::default();
+        self.Nodes = Default::default();
+        self.nNodes = Default::default();
+        self.nNodesAlloc = Default::default();
+        self.resultNode = Default::default();
+        self.firstRow = Default::default();
+        self.nRows = Default::default();
+        self.nCols = Default::default();
+        self.nElements = Default::default();
+        self.nAxis = Default::default();
+        self.nAxes = Default::default();
+        self.colData = Default::default();
+        self.varData = Default::default();
+        self.pixFilter = Default::default();
+        self.firstDataRow = Default::default();
+        self.nDataRows = Default::default();
+        self.totalRows = Default::default();
+        self.nPrevDataRows = Default::default();
+        self.datatype = Default::default();
+        self.hdutype = Default::default();
+        self.status = Default::default();
+    }
 }
 
 enum funcOp {
@@ -158,27 +198,29 @@ enum funcOp {
     array_fct,
 }
 
-pub struct ParseStatusVariables<'a> {
+#[derive(Default)]
+pub(crate) struct ParseStatusVariables {
     /* These variables were 'static' in fits_parse_workfn() */
-    Data: &'a c_void,
-    Null: &'a c_void,
-    datasize: c_int,
-    lastRow: c_long,
-    repeat: c_long,
-    resDataSize: c_long,
-    jnull: LONGLONG,
-    userInfo: &'a parseInfo<'a>,
-    zeros: [c_long; 4],
+    pub(crate) Data: *mut c_void,
+    pub(crate) Null: *mut c_void,
+    pub(crate) datasize: c_int,
+    pub(crate) lastRow: c_long,
+    pub(crate) repeat: c_long,
+    pub(crate) resDataSize: c_long,
+    pub(crate) jnull: LONGLONG,
+    pub(crate) userInfo: *mut parseInfo,
+    pub(crate) zeros: [c_long; 4],
 }
 
-pub struct parseInfo<'a> {
-    datatype: c_int,           /* Data type to cast parse results into for user       */
-    dataPtr: &'a c_void,       /* Pointer to array of results, NULL if to use iterCol */
-    nullPtr: &'a c_void,       /* Pointer to nulval, use zero if NULL                 */
-    maxRows: c_long,           /* Max No. of rows to process, -1=all, 0=1 iteration   */
-    anyNull: c_int,            /* Flag indicating at least 1 undef value encountered  */
-    parseData: *mut ParseData, /* Pointer to parser configuration */
-    parseVariables: ParseStatusVariables<'a>,
+#[derive(Default)]
+pub(crate) struct parseInfo {
+    pub(crate) datatype: c_int, /* Data type to cast parse results into for user       */
+    pub(crate) dataPtr: *mut c_void, /* Pointer to array of results, NULL if to use iterCol */
+    pub(crate) nullPtr: *mut c_void, /* Pointer to nulval, use zero if NULL                 */
+    pub(crate) maxRows: c_long, /* Max No. of rows to process, -1=all, 0=1 iteration   */
+    pub(crate) anyNull: c_int,  /* Flag indicating at least 1 undef value encountered  */
+    pub(crate) parseData: *mut ParseData, /* Pointer to parser configuration */
+    pub(crate) parseVariables: ParseStatusVariables,
 }
 
 /* Not sure why this is needed but it is */

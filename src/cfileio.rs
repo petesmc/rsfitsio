@@ -7,7 +7,7 @@
 use core::slice;
 use std::ffi::CStr;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 use std::{cmp, mem, ptr};
 
@@ -1604,10 +1604,10 @@ pub unsafe fn ffopen_safer(
 
                     /* write history records */
                     ffphis_safe(
-                    f,
-                    cs!(c"CFITSIO used the following filtering expression to create this table:"),
-                    status,
-                );
+                        f,
+                        cs!(c"CFITSIO used the following filtering expression to create this table:"),
+                        status,
+                    );
                     ffphis_safe(f, name, status);
                 } /* end of no binspec case */
             } /* end of table HDU case */
@@ -5315,9 +5315,7 @@ pub unsafe fn ffifile2_safer(
             };
         }
 
-        if ptr1.is_some() {
-            let p1: usize = ptr1.unwrap();
-
+        if let Some(p1) = ptr1 {
             /* found the binning string */
             if !binspec.is_null() {
                 if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {

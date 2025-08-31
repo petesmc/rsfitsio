@@ -26,7 +26,7 @@ use crate::{KeywordDatatypeMut, bb, cs};
 use crate::{int_snprintf, wrappers::*};
 
 #[allow(clippy::approx_constant)]
-const MY_PI: f64 = 3.141_592_653_589_793;
+pub(crate) const MY_PI: f64 = 3.141_592_653_589_793;
 const RAD_TO_DEG: f64 = 180.0 / MY_PI;
 
 #[derive(Default, Debug, Copy, Clone)]

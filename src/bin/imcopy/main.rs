@@ -233,9 +233,7 @@ pub fn main() -> ExitCode {
                     if tstatus != 0 {
                         strcpy_safe(
                             &mut card,
-                            cs!(
-                                c"EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"
-                            ),
+                            cs!(c"EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"),
                         );
                         fits_write_record(outfptr.as_mut(), card.as_ptr(), &mut status);
                     }

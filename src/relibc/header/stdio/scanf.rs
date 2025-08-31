@@ -393,9 +393,11 @@ unsafe fn inner_scanf_custom(
                                         Ok(v) => v,
                                         Err(_) => {
                                             // Overflow case - mimic libc behavior
-                                            if $type::MIN == 0 { // unsigned type
+                                            if $type::MIN == 0 {
+                                                // unsigned type
                                                 $type::MAX // wrap around for unsigned
-                                            } else { // signed type
+                                            } else {
+                                                // signed type
                                                 (-1i32) as $type // -1 for signed overflow
                                             }
                                         }
