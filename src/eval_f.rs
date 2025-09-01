@@ -1,5 +1,3 @@
-#![allow(deprecated)]
-
 /************************************************************************/
 /*                                                                      */
 /*                       CFITSIO Lexical Parser                         */
@@ -52,11 +50,10 @@
 /*                                                                      */
 /************************************************************************/
 
-use std::ffi::c_void;
 use std::{cmp, mem, ptr};
 
 use crate::buffers::{ffgbyt, ffgtbb_safe, ffmbyt_safe, ffpbyt, ffptbb_safe};
-use crate::c_types::{c_char, c_int, c_long};
+use crate::c_types::{c_char, c_double, c_int, c_long, c_short, c_uchar, c_void};
 
 use crate::aliases::rust_api::{fits_binary_tform, fits_set_atblnull, fits_set_btblnull};
 use crate::aliases::rust_api::{
@@ -69,18 +66,17 @@ use crate::cfileio::ffimport_file_safer;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
     CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, ParseData, pERROR, parseInfo,
-    yyscan_t,
 };
 use crate::eval_l::{
-    fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart,
+    fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, gtifilt_fct, regfilt_fct};
 use crate::fitscore::{
     ffcmph_safer, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
-    ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk, fits_strcasecmp,
+    ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
 };
-use crate::fitscore::{ffpmsg_slice, ffpmsg_str, ffrdef_safe, fits_recalloc};
+use crate::fitscore::{ffpmsg_slice, ffpmsg_str, ffrdef_safe};
 use crate::fitsio2::{IGNORE_EOF, REPORT_EOF};
 use crate::getcolb::ffgcvb_safe;
 use crate::getcold::{ffgcfd_safe, ffgcvd_safe};
@@ -90,15 +86,14 @@ use crate::getcols::{ffgcfs_safe, ffgcvs_safe};
 use crate::getkey::ffgcrd_safe;
 use crate::getkey::ffgkyj_safe;
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
-use crate::putcol::{ffiter_safe, fits_iter_set_by_num};
+use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
 use crate::region::{SAORegion, fits_free_region};
-use crate::wrappers::{strcat, strcpy, strlen, strlen_safe, strncpy};
+use crate::wrappers::{strcat, strcpy, strlen, strlen_safe, strncpy_safe};
 use crate::{BL, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
-use libc::{c_double, c_uchar, free, malloc, memset, printf, snprintf};
-use std::os::raw::c_short;
+use libc::{free, malloc};
 
 // Constants needed for the function
 const UCHAR_MAX: LONGLONG = 255;
@@ -226,8 +221,7 @@ pub fn fffrow_safe(
         Info.maxRows = nrows;
         Info.parseData = &mut lParse;
 
-        let colData_slice =
-            unsafe { std::slice::from_raw_parts_mut(lParse.colData, lParse.nCols as usize) };
+        let colData_slice = &mut lParse.colData[..];
         if ffiter_safe(
             lParse.nCols,
             colData_slice,
@@ -238,7 +232,7 @@ pub fn fffrow_safe(
             status,
         ) == -1
         {
-            *status = 0; /* -1 indicates exitted without error before end... OK */
+            *status = 0; /* -1 indicates exited without error before end... OK */
         }
 
         if *status != 0 {
@@ -319,7 +313,7 @@ pub fn ffsrow_safe(
     let mut outbyteloc: LONGLONG = 0;
     let mut hsize: LONGLONG = 0;
     let mut freespace: c_long = 0;
-    let mut buffer: *mut c_uchar = std::ptr::null_mut();
+    let mut buffer: Vec<u8> = Vec::new();
     let mut result: c_char = 0;
 
     #[derive(Default)]
@@ -449,7 +443,7 @@ pub fn ffsrow_safe(
             }
             nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
         } else {
-            let col_slice = std::slice::from_raw_parts_mut(lParse.colData, lParse.nCols as usize);
+            let col_slice = &mut lParse.colData[..];
             ffiter_safe(
                 lParse.nCols,
                 col_slice,
@@ -473,17 +467,19 @@ pub fn ffsrow_safe(
             /* Error... Do nothing */
         } else {
             rdlen = inExt.rowLength as c_long;
-            buffer = malloc(
-                (cmp::max(500000, rdlen) as usize * mem::size_of::<c_char>())
-                    .try_into()
-                    .unwrap(),
-            ) as *mut c_uchar;
-            if buffer.is_null() {
+
+            if buffer
+                .try_reserve_exact(cmp::max(500000, rdlen) as usize)
+                .is_err()
+            {
                 FREE!(Info.dataPtr);
                 ffcprs(&mut lParse);
                 *status = MEMORY_ALLOCATION;
                 return *status;
+            } else {
+                buffer.resize(cmp::max(500000, rdlen) as usize, 0);
             }
+
             maxrows = cmp::max(500000 / rdlen, 1);
             nbuff = 0;
             inloc = 1;
@@ -502,16 +498,12 @@ pub fn ffsrow_safe(
 
             loop {
                 if *(Info.dataPtr as *mut c_char).add((inloc - 1) as usize) != 0 {
-                    let buffer_part = std::slice::from_raw_parts_mut(
-                        buffer.add((rdlen * nbuff) as usize),
-                        rdlen as usize,
-                    );
+                    let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
+
                     ffgtbb_safe(infptr, inloc, 1, rdlen, buffer_part, status);
                     nbuff += 1;
                     if nbuff == maxrows {
-                        let buffer_slice =
-                            std::slice::from_raw_parts(buffer, (rdlen * nbuff) as usize);
-                        ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, buffer_slice, status);
+                        ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, &buffer, status);
                         outloc += nbuff;
                         nbuff = 0;
                     }
@@ -523,8 +515,9 @@ pub fn ffsrow_safe(
             }
 
             if nbuff != 0 {
-                let buffer_slice = std::slice::from_raw_parts(buffer, (rdlen * nbuff) as usize);
-                ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, buffer_slice, status);
+                let buffer_part = &buffer[((rdlen * nbuff) as usize)..];
+
+                ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, buffer_part, status);
                 outloc += nbuff;
             }
 
@@ -587,11 +580,9 @@ pub fn ffsrow_safe(
                 while ntodo != 0 && *status == 0 {
                     rdlen = cmp::min(ntodo, 500000) as c_long;
                     ffmbyt_safe(infptr, inbyteloc, REPORT_EOF, status);
-                    let buffer_slice = std::slice::from_raw_parts_mut(buffer, rdlen as usize);
-                    ffgbyt(infptr, rdlen, buffer_slice, status);
+                    ffgbyt(infptr, rdlen, &mut buffer[..rdlen as usize], status);
                     ffmbyt_safe(outfptr, outbyteloc, IGNORE_EOF, status);
-                    let buffer_slice = std::slice::from_raw_parts(buffer, rdlen as usize);
-                    ffpbyt(outfptr, rdlen, buffer_slice, status);
+                    ffpbyt(outfptr, rdlen, &mut buffer[..rdlen as usize], status);
                     inbyteloc += rdlen;
                     outbyteloc += rdlen;
                     ntodo -= rdlen;
@@ -623,8 +614,6 @@ pub fn ffsrow_safe(
                     }
                 }
             } /*  End of HEAP copy  */
-
-            FREE!(buffer);
         }
 
         FREE!(Info.dataPtr);
@@ -735,8 +724,7 @@ pub fn ffcrow_safe(
     Info.maxRows = nelements / nelem1;
     Info.parseData = &mut lParse;
 
-    let colData_slice =
-        unsafe { std::slice::from_raw_parts_mut(lParse.colData, lParse.nCols as usize) };
+    let colData_slice = &mut lParse.colData[..];
     if ffiter_safe(
         lParse.nCols,
         colData_slice,
@@ -829,17 +817,15 @@ pub unsafe extern "C" fn ffcalc_rng(
         raw_to_slice!(expr);
         raw_to_slice!(parName);
         raw_to_slice!(parInfo);
-        unsafe {
-            let infptr = infptr.as_mut().expect(NULL_MSG);
-            let outfptr = outfptr.as_mut().expect(NULL_MSG);
-            let status = status.as_mut().expect(NULL_MSG);
-            let start = start.as_mut().expect(NULL_MSG);
-            let end = end.as_mut().expect(NULL_MSG);
+        let infptr = infptr.as_mut().expect(NULL_MSG);
+        let outfptr = outfptr.as_mut().expect(NULL_MSG);
+        let status = status.as_mut().expect(NULL_MSG);
+        let start = start.as_mut().expect(NULL_MSG);
+        let end = end.as_mut().expect(NULL_MSG);
 
-            ffcalc_rng_safe(
-                infptr, expr, outfptr, parName, parInfo, nRngs, start, end, status,
-            )
-        }
+        ffcalc_rng_safe(
+            infptr, expr, outfptr, parName, parInfo, nRngs, start, end, status,
+        )
     }
 }
 
@@ -880,7 +866,7 @@ pub fn ffcalc_rng_safe(
         let mut width: c_long = 0;
         let col_cnt: c_int;
         let mut colNo: c_int;
-        let result: *mut Node;
+        let result: &mut Node;
         let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         let mut tform: [c_char; 16] = [0; 16];
         let mut nullKwd: [c_char; 9] = [0; 9];
@@ -920,7 +906,7 @@ pub fn ffcalc_rng_safe(
         /*  Case (1): If column exists put it there  */
 
         colNo = 0;
-        ffpmrk(); /* prevent lack of column name from sullying the stack */
+        ffpmrk_safe(); /* prevent lack of column name from sullying the stack */
         ffgcno_safe(outfptr, CASEINSEN as c_int, parName, &mut colNo, status);
         ffcmsg_safe();
         if *status == 0 {
@@ -929,7 +915,7 @@ pub fn ffcalc_rng_safe(
             /* Case (2): Does parName indicate result should be put into keyword */
 
             *status = 0;
-            if parName[0] == b'#' as i8 {
+            if parName[0] == b'#' as c_char {
                 if constant == 0 {
                     ffcprs(&mut lParse);
                     ffpmsg_str("Cannot put tabular result into keyword (ffcalc)");
@@ -1011,10 +997,9 @@ pub fn ffcalc_rng_safe(
                         }
                     }
                     parInfo = &tform;
-                } else if !(parInfo[0] as u8 as char).is_ascii_digit()
-                    && lParse.hdutype == BINARY_TBL
+                } else if !({ parInfo[0] } as char).is_ascii_digit() && lParse.hdutype == BINARY_TBL
                 {
-                    if Info.datatype == TBIT && parInfo[0] == b'B' as i8 {
+                    if Info.datatype == TBIT && parInfo[0] == b'B' as c_char {
                         nelem = (nelem + 7) / 8;
                     }
                     int_snprintf!(
@@ -1022,10 +1007,7 @@ pub fn ffcalc_rng_safe(
                         16,
                         "{}{}",
                         nelem,
-                        std::str::from_utf8(unsafe {
-                            std::slice::from_raw_parts(parInfo.as_ptr() as *const u8, parInfo.len())
-                        })
-                        .unwrap_or("")
+                        std::str::from_utf8(parInfo).unwrap_or("")
                     );
                     parInfo = &tform;
                 }
@@ -1141,13 +1123,14 @@ pub fn ffcalc_rng_safe(
                 return *status;
             }
 
-            fits_iter_set_by_num(
-                lParse.colData.wrapping_add(col_cnt as usize),
+            fits_iter_set_by_num_safe(
+                &mut lParse.colData[col_cnt as usize],
                 outfptr,
                 colNo,
                 0,
                 OutputCol,
             );
+
             lParse.nCols += 1;
 
             for i in 0..nRngs {
@@ -1176,8 +1159,7 @@ pub fn ffcalc_rng_safe(
                     nPerLp = Info.maxRows as c_int;
                 }
 
-                let colData_slice =
-                    std::slice::from_raw_parts_mut(lParse.colData, lParse.nCols as usize);
+                let colData_slice = &mut lParse.colData[..];
                 if ffiter_safe(
                     lParse.nCols,
                     colData_slice,
@@ -1210,7 +1192,7 @@ pub fn ffcalc_rng_safe(
                     ffukyd_safe(
                         outfptr,
                         parName,
-                        unsafe { (*result).value.data.dbl },
+                        unsafe { result.value.data.dbl },
                         15,
                         Some(parInfo),
                         status,
@@ -1220,7 +1202,7 @@ pub fn ffcalc_rng_safe(
                     ffukyj_safe(
                         outfptr,
                         parName,
-                        unsafe { (*result).value.data.lng },
+                        unsafe { result.value.data.lng },
                         Some(parInfo),
                         status,
                     );
@@ -1229,21 +1211,21 @@ pub fn ffcalc_rng_safe(
                     ffukyl_safe(
                         outfptr,
                         parName,
-                        unsafe { (*result).value.data.log } as i32,
+                        unsafe { result.value.data.log } as i32,
                         Some(parInfo),
                         status,
                     );
                 }
                 TBIT | TSTRING => {
                     if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
-                        ffphis_safe(outfptr, unsafe { &(*result).value.data.astr }, status);
+                        ffphis_safe(outfptr, unsafe { &result.value.data.astr }, status);
                     } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
-                        ffpcom_safe(outfptr, unsafe { &(*result).value.data.astr }, status);
+                        ffpcom_safe(outfptr, unsafe { &result.value.data.astr }, status);
                     } else {
                         ffukys_safe(
                             outfptr,
                             parName,
-                            unsafe { &(*result).value.data.astr },
+                            unsafe { &result.value.data.astr },
                             Some(parInfo),
                             status,
                         );
@@ -1331,15 +1313,12 @@ pub(crate) fn ffiprs(
     status: &mut c_int,     /* O - Error status                        */
 ) -> c_int {
     unsafe {
-        let mut result: *mut Node = ptr::null_mut();
         let i: c_int = 0;
         let mut lexpr: c_int = 0;
         let mut tstatus: c_int = 0;
         let mut xaxis: c_int = 0;
         let mut bitpix: c_int = 0;
         let mut xaxes: [c_long; 9] = [0; 9];
-        let mut yylex_scanner: yyscan_t = ptr::null_mut(); /* Used internally by FLEX lexer */
-        let mut pixFilter: *mut PixelFilter = ptr::null_mut();
 
         if *status != 0 {
             return *status;
@@ -1352,9 +1331,8 @@ pub(crate) fn ffiprs(
 
         /*  Initialize the Parser structure  */
 
-        /* Unfortunately we need to preserve the pixFilter value since it
-        is pre-set when ffiprs() is called */
-        pixFilter = lParse.pixFilter;
+        /* Unfortunately we need to preserve the pixFilter value since it is pre-set when ffiprs() is called */
+        let pixFilter: &mut PixelFilter = &mut *lParse.pixFilter;
 
         lParse.reset();
 
@@ -1363,8 +1341,8 @@ pub(crate) fn ffiprs(
         lParse.def_fptr = fptr;
         lParse.compressed = compressed;
         lParse.nCols = 0;
-        lParse.colData = ptr::null_mut();
-        lParse.varData = ptr::null_mut();
+        lParse.colData = Vec::new();
+        lParse.varData = Vec::new();
         lParse.getData = Some(find_column);
         lParse.loadData = Some(load_column);
         lParse.Nodes = Vec::new();
@@ -1412,7 +1390,7 @@ pub(crate) fn ffiprs(
 
         /*  Copy expression into parser... read from file if necessary  */
 
-        if expr[0] == b'@' as i8 {
+        if expr[0] == b'@' as c_char {
             if ffimport_file_safer(&expr[1..], &mut lParse.expr, status) != 0 {
                 return *status;
             }
@@ -1433,10 +1411,12 @@ pub(crate) fn ffiprs(
         /*  Parse the expression, building the Nodes and determing  */
         /*  which columns are needed and what data type is returned  */
 
+        let mut yylex_scanner: Option<Box<yyguts_t>> = None; /* Used internally by FLEX lexer */
+
         fits_parser_yylex_init_extra(lParse, &mut yylex_scanner);
-        fits_parser_yyrestart(ptr::null_mut(), yylex_scanner);
-        *status = fits_parser_yyparse(yylex_scanner, lParse);
-        fits_parser_yylex_destroy(yylex_scanner);
+        fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
+        *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
+        fits_parser_yylex_destroy(yylex_scanner.unwrap());
 
         if *status != 0 {
             *status = PARSE_SYNTAX_ERR;
@@ -1455,33 +1435,31 @@ pub(crate) fn ffiprs(
             return *status;
         }
         if lParse.nCols == 0 {
-            lParse.colData = malloc(size_of::<iteratorCol>()) as *mut iteratorCol;
-            if lParse.colData.is_null() {
+            if lParse.colData.try_reserve_exact(1).is_err() {
                 ffpmsg_str("memory allocation failed (ffiprs)");
                 *status = MEMORY_ALLOCATION;
                 return *status;
+            } else {
+                lParse.colData.resize(1, iteratorCol::default());
             }
-            /* This allows iterator to know value of */
-            /* fptr when no columns are referenced   */
-            memset(lParse.colData as *mut c_void, 0, size_of::<iteratorCol>());
-            unsafe {
-                (*lParse.colData.wrapping_add(0)).fptr = fptr;
-            }
+
+            /* This allows iterator to know value of fptr when no columns are referenced   */
+            (lParse.colData[0]).fptr = fptr;
         }
 
-        result = &mut lParse.Nodes[lParse.resultNode as usize];
+        let result: &mut Node = &mut lParse.Nodes[lParse.resultNode as usize];
 
-        lParse.nAxis = (*result).value.naxis;
+        lParse.nAxis = result.value.naxis;
         *naxis = lParse.nAxis;
-        lParse.nElements = (*result).value.nelem;
+        lParse.nElements = result.value.nelem;
         *nelem = lParse.nElements;
 
         for i in 0..cmp::max(*naxis, maxdim) {
-            lParse.nAxes[i as usize] = (*result).value.naxes[i as usize];
+            lParse.nAxes[i as usize] = result.value.naxes[i as usize];
             naxes[i as usize] = lParse.nAxes[i as usize];
         }
 
-        match (*result).ntype {
+        match result.ntype {
             val if val == fits_parser_yytokentype::BOOLEAN as c_int => *datatype = TLOGICAL,
 
             val if val == fits_parser_yytokentype::LONG as c_int => *datatype = TLONG,
@@ -1502,7 +1480,7 @@ pub(crate) fn ffiprs(
         lParse.datatype = *datatype;
         FREE!(lParse.expr);
 
-        if (*result).operation == CONST_OP {
+        if result.operation == CONST_OP {
             *nelem = -*nelem;
         }
         *status
@@ -1518,51 +1496,41 @@ fn ffcprs(lParse: &mut ParseData) {
         let mut i: c_int = 0;
 
         if lParse.nCols > 0 {
-            FREE!(lParse.colData);
+            lParse.colData.clear();
+
             for col in 0..lParse.nCols {
-                if unsafe { (*lParse.varData.wrapping_add(col as usize)).undef.is_null() } {
+                if lParse.varData[col as usize].undef.is_null() {
                     continue;
                 }
-                if unsafe {
-                    (*lParse.varData.wrapping_add(col as usize)).dtype
-                        == fits_parser_yytokentype::BITSTR as c_int
-                } {
-                    unsafe {
-                        let data_ptr =
-                            (*lParse.varData.wrapping_add(col as usize)).data as *mut *mut c_char;
-                        let mut first_ptr = *data_ptr;
-                        FREE!(first_ptr);
-                    }
+                if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
+                    let data_ptr = lParse.varData[col as usize].data as *mut *mut c_char;
+                    let mut first_ptr = *data_ptr;
+                    FREE!(first_ptr);
                 }
-                free(unsafe { (*lParse.varData.wrapping_add(col as usize)).undef } as *mut c_void);
+                free(lParse.varData[col as usize].undef as *mut c_void);
             }
-            FREE!(lParse.varData);
+            lParse.varData.clear();
             lParse.nCols = 0;
-        } else if !lParse.colData.is_null() {
+        } else if !lParse.colData.is_empty() {
             /* Special case if colData needed to be created with no columns */
-            FREE!(lParse.colData);
+            lParse.colData.clear();
         }
 
         if lParse.nNodes > 0 {
             node = lParse.nNodes;
             while node != 0 {
                 node -= 1;
-                if unsafe { (lParse.Nodes[node as usize]).operation == gtifilt_fct as c_int } {
-                    i = unsafe { lParse.Nodes[node as usize].SubNodes[0] };
-                    if unsafe { !(lParse.Nodes[i as usize]).value.data.ptr.is_null() } {
-                        unsafe {
-                            let mut data_ptr = (lParse.Nodes[i as usize]).value.data.ptr;
-                            FREE!(data_ptr);
-                        }
+                if (lParse.Nodes[node as usize]).operation == gtifilt_fct as c_int {
+                    i = lParse.Nodes[node as usize].SubNodes[0];
+                    if !(lParse.Nodes[i as usize]).value.data.ptr.is_null() {
+                        let mut data_ptr = (lParse.Nodes[i as usize]).value.data.ptr;
+                        FREE!(data_ptr);
                     }
-                } else if unsafe { (lParse.Nodes[node as usize]).operation == regfilt_fct as c_int }
-                {
-                    i = unsafe { (lParse.Nodes[node as usize]).SubNodes[0] };
-                    unsafe {
-                        fits_free_region(Box::from_raw(
-                            (lParse.Nodes[i as usize]).value.data.ptr as *mut SAORegion,
-                        ));
-                    }
+                } else if (lParse.Nodes[node as usize]).operation == regfilt_fct as c_int {
+                    i = (lParse.Nodes[node as usize]).SubNodes[0];
+                    fits_free_region(Box::from_raw(
+                        (lParse.Nodes[i as usize]).value.data.ptr as *mut SAORegion,
+                    ));
                 }
             }
             lParse.nNodes = 0;
@@ -1582,13 +1550,27 @@ fn ffcprs(lParse: &mut ParseData) {
 /// into either an OutputCol or a data pointer supplied in the userPtr
 /// structure.
 extern "C" fn fits_parser_workfn(
-    _totalrows: c_long,         /* I - Total rows to be processed     */
-    _offset: c_long,            /* I - Number of rows skipped at start*/
-    _firstrow: c_long,          /* I - First row of this iteration    */
-    _nrows: c_long,             /* I - Number of rows in this iter    */
-    _nCols: c_int,              /* I - Number of columns in use       */
-    _colData: *mut iteratorCol, /* IO- Column information/data        */
-    _userPtr: *mut c_void,      /* I - Data handling instructions     */
+    totalrows: c_long,         /* I - Total rows to be processed     */
+    offset: c_long,            /* I - Number of rows skipped at start*/
+    firstrow: c_long,          /* I - First row of this iteration    */
+    nrows: c_long,             /* I - Number of rows in this iter    */
+    nCols: c_int,              /* I - Number of columns in use       */
+    colData: *mut iteratorCol, /* IO- Column information/data        */
+    userPtr: *mut c_void,      /* I - Data handling instructions     */
+) -> c_int {
+    let colData = unsafe { std::slice::from_raw_parts_mut(colData, nCols as usize) };
+
+    fits_parser_workfn_safe(totalrows, offset, firstrow, nrows, nCols, colData, userPtr)
+}
+
+fn fits_parser_workfn_safe(
+    totalrows: c_long,           /* I - Total rows to be processed     */
+    offset: c_long,              /* I - Number of rows skipped at start*/
+    firstrow: c_long,            /* I - First row of this iteration    */
+    nrows: c_long,               /* I - Number of rows in this iter    */
+    nCols: c_int,                /* I - Number of columns in use       */
+    colData: &mut [iteratorCol], /* IO- Column information/data        */
+    userPtr: *mut c_void,        /* I - Data handling instructions     */
 ) -> c_int {
     todo!()
 }
@@ -1731,23 +1713,23 @@ pub fn fffrwc_safe(
         parNo = lParse.nCols;
         while parNo > 0 {
             parNo -= 1;
-            let col_data = lParse.colData.wrapping_add(parNo as usize);
-            match (*col_data).datatype {
+            let mut col_data = lParse.colData[parNo as usize];
+            match col_data.datatype {
                 TLONG => {
-                    (*col_data).array =
+                    col_data.array =
                         malloc(((ntimes + 1) as usize) * size_of::<c_long>()) as *mut c_void;
-                    if !(*col_data).array.is_null() {
-                        let array_ptr = (*col_data).array as *mut c_long;
+                    if !col_data.array.is_null() {
+                        let array_ptr = col_data.array as *mut c_long;
                         *array_ptr.wrapping_add(0) = 1234554321;
                     } else {
                         *status = MEMORY_ALLOCATION;
                     }
                 }
                 TDOUBLE => {
-                    (*col_data).array =
+                    col_data.array =
                         malloc(((ntimes + 1) as usize) * size_of::<c_double>()) as *mut c_void;
-                    if !(*col_data).array.is_null() {
-                        let array_ptr = (*col_data).array as *mut c_double;
+                    if !col_data.array.is_null() {
+                        let array_ptr = col_data.array as *mut c_double;
                         *array_ptr.wrapping_add(0) = DOUBLENULLVALUE;
                     } else {
                         *status = MEMORY_ALLOCATION;
@@ -1764,11 +1746,10 @@ pub fn fffrwc_safe(
                     ) == 0
                     {
                         alen += 1;
-                        (*col_data).array =
-                            malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>())
-                                as *mut c_void;
-                        if !(*col_data).array.is_null() {
-                            let str_array = (*col_data).array as *mut *mut c_char;
+                        col_data.array = malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>())
+                            as *mut c_void;
+                        if !col_data.array.is_null() {
+                            let str_array = col_data.array as *mut *mut c_char;
                             let first_str = malloc(((ntimes + 1) * alen) as usize) as *mut c_char;
                             *str_array.wrapping_add(0) = first_str;
                             if !first_str.is_null() {
@@ -1779,7 +1760,7 @@ pub fn fffrwc_safe(
                                 }
                                 *(*str_array.wrapping_add(0)).wrapping_add(0) = 0;
                             } else {
-                                free((*col_data).array);
+                                free(col_data.array);
                                 *status = MEMORY_ALLOCATION;
                             }
                         } else {
@@ -1789,18 +1770,19 @@ pub fn fffrwc_safe(
                 }
                 _ => {}
             }
+
             if *status != 0 {
                 while parNo > 0 {
                     parNo -= 1;
-                    let col_data2 = lParse.colData.wrapping_add(parNo as usize);
-                    if (*col_data2).datatype == TSTRING {
-                        let str_array = (*col_data2).array as *mut *mut c_char;
+                    let col_data2 = lParse.colData[parNo as usize];
+                    if (col_data2).datatype == TSTRING {
+                        let str_array = (col_data2).array as *mut *mut c_char;
                         if !str_array.is_null() {
                             let mut first_str = *str_array.wrapping_add(0);
                             FREE!(first_str);
                         }
                     }
-                    let mut array_ptr = (*col_data2).array;
+                    let mut array_ptr = (col_data2).array;
                     FREE!(array_ptr);
                 }
                 return *status;
@@ -1824,13 +1806,13 @@ pub fn fffrwc_safe(
                 Info.dataPtr = time_status.as_mut_ptr() as *mut c_void;
                 Info.nullPtr = ptr::null_mut();
                 Info.maxRows = ntimes;
-                *status = fits_parser_workfn(
+                *status = fits_parser_workfn_safe(
                     ntimes,
                     0,
                     1,
                     ntimes,
                     lParse.nCols,
-                    lParse.colData,
+                    &mut lParse.colData,
                     (&mut Info) as *mut parseInfo as *mut c_void,
                 );
             }
@@ -1843,15 +1825,15 @@ pub fn fffrwc_safe(
         parNo = lParse.nCols;
         while parNo > 0 {
             parNo -= 1;
-            let col_data = lParse.colData.wrapping_add(parNo as usize);
-            if (*col_data).datatype == TSTRING {
-                let str_array = (*col_data).array as *mut *mut c_char;
+            let col_data = lParse.colData[parNo as usize];
+            if (col_data).datatype == TSTRING {
+                let str_array = (col_data).array as *mut *mut c_char;
                 if !str_array.is_null() {
                     let mut first_str = *str_array.wrapping_add(0);
                     FREE!(first_str);
                 }
             }
-            let mut array_ptr = (*col_data).array;
+            let mut array_ptr = (col_data).array;
             FREE!(array_ptr);
         }
 
@@ -1952,8 +1934,7 @@ pub fn ffffrw_safer(
                 prownum: rownum,
                 lParse: &mut lParse as *mut ParseData,
             };
-            let colData_slice =
-                unsafe { std::slice::from_raw_parts_mut(lParse.colData, lParse.nCols as usize) };
+            let colData_slice = &mut lParse.colData[..];
             if ffiter_safe(
                 (lParse).nCols,
                 colData_slice,
@@ -1995,18 +1976,17 @@ fn fits_parser_set_temporary_col(
         }
 
         /* Set important variables for TemporaryCol where calculated results end up */
-        unsafe {
-            fits_iter_set_by_num(
-                lParse.colData.wrapping_add(col_cnt as usize),
-                ptr::null_mut(),
-                0,
-                TDOUBLE,
-                TemporaryCol,
-            );
-        }
-        unsafe {
-            (*lParse.colData.wrapping_add(col_cnt as usize)).repeat = lParse.nElements;
-        }
+
+        fits_iter_set_by_num_safe(
+            &mut lParse.colData[col_cnt as usize],
+            ptr::null_mut(),
+            0,
+            TDOUBLE,
+            TemporaryCol,
+        );
+
+        (lParse.colData[col_cnt as usize]).repeat = lParse.nElements;
+
         Info.dataPtr = ptr::null_mut();
         Info.nullPtr = nulval;
         Info.maxRows = nrows;
@@ -2082,20 +2062,20 @@ fn fits_uncompress_hkdata(
                 parNo = lParse.nCols;
                 while parNo > 0 {
                     parNo -= 1;
-                    let col_data = lParse.colData.wrapping_add(parNo as usize);
-                    match (*col_data).datatype {
+                    let col_data = lParse.colData[parNo as usize];
+                    match col_data.datatype {
                         TLONG => {
-                            let array = (*col_data).array as *mut c_long;
+                            let array = col_data.array as *mut c_long;
                             *array.wrapping_add(currelem as usize) =
                                 *array.wrapping_add((currelem - 1) as usize);
                         }
                         TDOUBLE => {
-                            let array = (*col_data).array as *mut f64;
+                            let array = col_data.array as *mut f64;
                             *array.wrapping_add(currelem as usize) =
                                 *array.wrapping_add((currelem - 1) as usize);
                         }
                         TSTRING => {
-                            let str_array = (*col_data).array as *mut *mut c_char;
+                            let str_array = col_data.array as *mut *mut c_char;
                             strcpy(
                                 *str_array.wrapping_add(currelem as usize),
                                 *str_array.wrapping_add((currelem - 1) as usize),
@@ -2124,12 +2104,12 @@ fn fits_uncompress_hkdata(
             parNo = lParse.nCols;
             while parNo > 0 {
                 parNo -= 1;
-                let var_data = lParse.varData.wrapping_add(parNo as usize);
+                let var_data = &lParse.varData[parNo as usize];
                 if fits_strcasecmp(
-                    std::slice::from_raw_parts(parName.as_ptr(), strlen(parName.as_ptr())),
+                    std::slice::from_raw_parts(parName.as_ptr(), strlen_safe(&parName)),
                     std::slice::from_raw_parts(
-                        (*var_data).name.as_ptr(),
-                        strlen((*var_data).name.as_ptr()),
+                        (var_data).name.as_ptr(),
+                        strlen_safe(&(var_data).name),
                     ),
                 ) == 0
                 {
@@ -2139,10 +2119,10 @@ fn fits_uncompress_hkdata(
 
             if parNo >= 0 {
                 found[parNo as usize] = 1; /* Flag this parameter as found */
-                let col_data = lParse.colData.wrapping_add(parNo as usize);
-                match (*col_data).datatype {
+                let col_data = lParse.colData[parNo as usize];
+                match col_data.datatype {
                     TLONG => {
-                        let array = (*col_data).array as *mut c_long;
+                        let array = col_data.array as *mut c_long;
                         ffgcvj_safe(
                             fptr,
                             lParse.valCol,
@@ -2159,7 +2139,7 @@ fn fits_uncompress_hkdata(
                         );
                     }
                     TDOUBLE => {
-                        let array = (*col_data).array as *mut f64;
+                        let array = col_data.array as *mut f64;
                         ffgcvd_safe(
                             fptr,
                             lParse.valCol,
@@ -2176,7 +2156,7 @@ fn fits_uncompress_hkdata(
                         );
                     }
                     TSTRING => {
-                        let str_array = (*col_data).array as *mut *mut c_char;
+                        let str_array = col_data.array as *mut *mut c_char;
                         ffgcvs_safe(
                             fptr,
                             lParse.valCol,
@@ -2214,12 +2194,12 @@ fn fits_uncompress_hkdata(
         while parNo > 0 {
             parNo -= 1;
             if found[parNo as usize] == 0 {
-                let var_data = lParse.varData.wrapping_add(parNo as usize);
-                snprintf(
-                    parName.as_mut_ptr(),
+                let var_data = &lParse.varData[parNo as usize];
+                int_snprintf!(
+                    &mut parName,
                     256,
-                    c"Parameter not found: %-30s".as_ptr() as *const c_char,
-                    (*var_data).name.as_ptr(),
+                    "Parameter not found: {:<30}",
+                    str::from_utf8(&(var_data).name).unwrap(),
                 );
                 ffpmsg_slice(&parName);
                 *status = PARSE_SYNTAX_ERR;
@@ -2258,7 +2238,7 @@ pub(crate) fn ffffrw_work_safe(
     userPtr: *mut c_void,
 ) -> c_int {
     unsafe {
-        let result: *mut Node;
+        let result: &mut Node;
         let workData: *mut ffffrw_workdata = userPtr as *mut ffffrw_workdata;
         let lParse: &mut ParseData = &mut *(*workData).lParse;
 
@@ -2266,15 +2246,15 @@ pub(crate) fn ffffrw_work_safe(
 
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if (*result).operation == CONST_OP {
-                if (*result).value.data.log != 0 {
+            if result.operation == CONST_OP {
+                if result.value.data.log != 0 {
                     *((*workData).prownum) = firstrow;
                     return -1;
                 }
             } else {
                 for idx in 0..(nrows as usize) {
-                    if *((*result).value.data.logptr.add(idx)) != 0
-                        && *((*result).value.undef.add(idx)) == 0
+                    if *(result.value.data.logptr.add(idx)) != 0
+                        && *(result.value.undef.add(idx)) == 0
                     {
                         *((*workData).prownum) = firstrow + idx as c_long;
                         return -1;
@@ -2314,10 +2294,10 @@ pub fn fits_pixel_filter_safer(
         let mut nelem: c_long = 0;
         let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
         let mut col_cnt: c_int = 0;
-        let mut result: *mut Node = std::ptr::null_mut();
+        let result: *mut Node = std::ptr::null_mut();
         let mut datatype: c_int = 0;
 
-        let default_tags: [c_char; 2] = ['X' as c_char, 0];
+        let default_tags: [c_char; 2] = [b'X', 0];
         let mut msg: [c_char; 256] = [0; 256];
         let mut write_blank_kwd: c_int = 0; /* write BLANK if any output nulls? */
         let mut lParse: ParseData = ParseData::default();
@@ -2483,12 +2463,7 @@ pub fn fits_pixel_filter_safer(
                 ) != 0
                 {
                     unsafe {
-                        snprintf(
-                            msg.as_mut_ptr(),
-                            256,
-                            c"pixel_filter: unable to read keycard %d".as_ptr() as *const c_char,
-                            i,
-                        );
+                        int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
                     }
                     ffpmsg_slice(&msg);
                     ffcprs(&mut lParse);
@@ -2508,10 +2483,10 @@ pub fn fits_pixel_filter_safer(
                     != 0
                 {
                     unsafe {
-                        snprintf(
-                            msg.as_mut_ptr(),
+                        int_snprintf!(
+                            &mut msg,
                             256,
-                            c"pixel_filter: unable to write keycard [%d]".as_ptr() as *const c_char,
+                            "pixel_filter: unable to write keycard [{}]",
                             *status,
                         );
                     }
@@ -2600,9 +2575,6 @@ pub fn fits_pixel_filter_safer(
         }
 
         if unsafe { *filter.keyword.as_ptr() } == 0 {
-            let mut colIter: *mut iteratorCol = std::ptr::null_mut();
-            let mut varInfo: *mut DataInfo = std::ptr::null_mut();
-
             /*************************************/
             /* Create new iterator Output Column */
             /*************************************/
@@ -2613,16 +2585,16 @@ pub fn fits_pixel_filter_safer(
             }
             lParse.nCols += 1;
 
-            colIter = unsafe { lParse.colData.add(col_cnt as usize) };
-            unsafe { (*colIter).fptr = filter.ofptr };
-            unsafe { (*colIter).iotype = OutputCol };
-            varInfo = unsafe { lParse.varData.add(col_cnt as usize) };
+            let colIter: &mut iteratorCol = &mut lParse.colData[col_cnt as usize];
+            unsafe { colIter.fptr = filter.ofptr };
+            unsafe { colIter.iotype = OutputCol };
+
             set_image_col_types(
-                &mut lParse,
-                unsafe { (*colIter).fptr.as_mut().unwrap() },
+                &mut lParse.status,
+                unsafe { colIter.fptr.as_mut().unwrap() },
                 cs!(c"CREATED"),
                 bitpix,
-                &mut *varInfo,
+                &mut lParse.varData[col_cnt as usize],
                 colIter,
             );
 
@@ -2630,11 +2602,10 @@ pub fn fits_pixel_filter_safer(
             info.parseData = &mut lParse;
 
             if unsafe {
+                let colData_slice = &mut lParse.colData[..];
                 ffiter_safe(
                     lParse.nCols,
-                    unsafe {
-                        std::slice::from_raw_parts_mut((lParse).colData, (lParse).nCols as usize)
-                    },
+                    colData_slice,
                     0,
                     0,
                     fits_parser_workfn,
@@ -2668,27 +2639,26 @@ pub fn fits_pixel_filter_safer(
                 }
             } else if bitpix > 0 {
                 // never used a null
-                if fits_set_imgnull(unsafe { outfptr.as_mut().unwrap() }, -1234554321, status) != 0
-                {
+                if fits_set_imgnull(outfptr.as_mut().unwrap(), -1234554321, status) != 0 {
                     ffpmsg_str("pixel_filter: unable to reset imgnull");
                 }
             }
         } else {
             // Put constant result into keyword
             let par_name = unsafe { &filter.keyword };
-            let par_info: Option<&[i8]> = if filter.comment[0] == 0 {
+            let par_info: Option<&[c_char]> = if filter.comment[0] == 0 {
                 None
             } else {
-                Some(unsafe { &filter.comment })
+                Some(&filter.comment)
             };
 
-            result = &mut lParse.Nodes[lParse.resultNode as usize];
+            let result = &mut lParse.Nodes[lParse.resultNode as usize];
             match info.datatype {
                 TDOUBLE => {
                     ffukyd_safe(
-                        unsafe { outfptr.as_mut().unwrap() },
+                        outfptr.as_mut().unwrap(),
                         par_name,
-                        unsafe { (*result).value.data.dbl },
+                        result.value.data.dbl,
                         15,
                         par_info,
                         status,
@@ -2696,18 +2666,18 @@ pub fn fits_pixel_filter_safer(
                 }
                 TLONG => {
                     ffukyj_safe(
-                        unsafe { outfptr.as_mut().unwrap() },
+                        outfptr.as_mut().unwrap(),
                         par_name,
-                        unsafe { (*result).value.data.lng },
+                        result.value.data.lng,
                         par_info,
                         status,
                     );
                 }
                 TLOGICAL => {
                     ffukyl_safe(
-                        unsafe { outfptr.as_mut().unwrap() },
+                        outfptr.as_mut().unwrap(),
                         par_name,
-                        unsafe { (*result).value.data.log.into() },
+                        result.value.data.log.into(),
                         par_info,
                         status,
                     );
@@ -2715,12 +2685,12 @@ pub fn fits_pixel_filter_safer(
                 TBIT | TSTRING => {
                     let str_val = unsafe {
                         std::slice::from_raw_parts(
-                            (*result).value.data.astr.as_ptr(),
-                            strlen((*result).value.data.astr.as_ptr()),
+                            result.value.data.astr.as_ptr(),
+                            strlen_safe(&result.value.data.astr),
                         )
                     };
                     ffukys_safe(
-                        unsafe { outfptr.as_mut().unwrap() },
+                        outfptr.as_mut().unwrap(),
                         par_name,
                         str_val,
                         par_info,
@@ -2728,14 +2698,13 @@ pub fn fits_pixel_filter_safer(
                     );
                 }
                 _ => {
-                    unsafe {
-                        int_snprintf!(
-                            &mut msg,
-                            256,
-                            "pixel_filter: unexpected constant result type [{}]",
-                            info.datatype,
-                        );
-                    }
+                    int_snprintf!(
+                        &mut msg,
+                        256,
+                        "pixel_filter: unexpected constant result type [{}]",
+                        info.datatype,
+                    );
+
                     ffpmsg_slice(&msg);
                 }
             }
@@ -2747,12 +2716,12 @@ pub fn fits_pixel_filter_safer(
 }
 
 fn set_image_col_types(
-    lParse: &mut ParseData,
+    lParse_status: &mut c_int,
     fptr: &mut fitsfile,
     name: &[c_char],
     bitpix: c_int,
     varInfo: &mut DataInfo,
-    colIter: *mut iteratorCol,
+    colIter: &mut iteratorCol,
 ) -> c_int {
     unsafe {
         let mut istatus: c_int = 0;
@@ -2774,14 +2743,14 @@ fn set_image_col_types(
 
                 if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
                     varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
-                    (*colIter).datatype = TLONG;
+                    colIter.datatype = TLONG;
                 } else {
                     varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
-                    (*colIter).datatype = TDOUBLE;
+                    colIter.datatype = TDOUBLE;
                     if DEBUG_PIXFILTER != 0 {
-                        printf(
-                            c"usefits_parser_yytokentype::DOUBLE as c_int for %s with BSCALE=%g/BZERO=%g\n".as_ptr() as *const c_char,
-                            name,
+                        println!(
+                            "usefits_parser_yytokentype::DOUBLE as c_int for {} with BSCALE={}/BZERO={}",
+                            str::from_utf8(name).unwrap(),
                             tscale,
                             tzero,
                         );
@@ -2790,7 +2759,7 @@ fn set_image_col_types(
             }
             LONGLONG_IMG | FLOAT_IMG | DOUBLE_IMG => {
                 varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
-                (*colIter).datatype = TDOUBLE;
+                colIter.datatype = TDOUBLE;
             }
             _ => {
                 int_snprintf!(
@@ -2800,8 +2769,8 @@ fn set_image_col_types(
                     bitpix
                 );
                 ffpmsg_slice(&temp);
-                lParse.status = PARSE_BAD_TYPE;
-                return lParse.status;
+                *lParse_status = PARSE_BAD_TYPE;
+                return *lParse_status;
             }
         }
         0
@@ -2830,14 +2799,14 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
         let mut tzero: f64 = 0.0;
         let mut tscale: f64 = 1.0;
         let mut istatus: c_int;
-        let varInfo: *mut DataInfo;
-        let colIter: *mut iteratorCol;
+        let varInfo: &mut DataInfo;
+        let colIter: &mut iteratorCol;
 
         if DEBUG_PIXFILTER != 0 {
-            printf(c"find_column(%s)\n".as_ptr() as *const c_char, colName);
+            println!("find_column({})", str::from_utf8(colName).unwrap());
         }
 
-        if colName[0] == b'#' as i8 {
+        if colName[0] == b'#' as c_char {
             return find_keywd(lParse, &colName[1..], itslval);
         }
 
@@ -2867,11 +2836,11 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 }
             }
             if colnum < 0 {
-                snprintf(
-                    temp.as_mut_ptr(),
+                int_snprintf!(
+                    &mut temp,
                     80,
-                    c"find_column: PixelFilter tag %s not found".as_ptr() as *const c_char,
-                    colName,
+                    "find_column: PixelFilter tag {} not found",
+                    str::from_utf8(colName).unwrap()
                 );
                 ffpmsg_slice(&temp);
                 lParse.status = COL_NOT_FOUND;
@@ -2885,8 +2854,8 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
             lParse.status = tstatus;
 
-            varInfo = lParse.varData.wrapping_add(col_cnt as usize);
-            colIter = lParse.colData.wrapping_add(col_cnt as usize);
+            varInfo = &mut lParse.varData[col_cnt as usize];
+            colIter = &mut lParse.colData[col_cnt as usize];
 
             fptr = unsafe {
                 (*lParse.pixFilter)
@@ -2894,18 +2863,21 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     .wrapping_add(colnum as usize)
                     .read()
             };
+
             fits_get_img_param(
                 unsafe { &mut *fptr },
                 MAXDIMS,
                 Some(&mut typecode), /* actually bitpix */
-                Some(unsafe { &mut (*varInfo).naxis }),
-                Some(unsafe { &mut (*varInfo).naxes }),
+                Some(unsafe { &mut varInfo.naxis }),
+                Some(unsafe { &mut varInfo.naxes }),
                 &mut status,
             );
-            (*varInfo).nelem = 1;
+
+            varInfo.nelem = 1;
             ktype = fits_parser_yytokentype::COLUMN as c_int;
+
             if set_image_col_types(
-                lParse,
+                &mut lParse.status,
                 unsafe { &mut *fptr },
                 colName,
                 typecode,
@@ -2915,8 +2887,8 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             {
                 return pERROR;
             }
-            (*colIter).fptr = fptr;
-            (*colIter).iotype = InputCol;
+            colIter.fptr = fptr;
+            colIter.iotype = InputCol;
         } else {
             /* HDU holds a table */
             if lParse.compressed != 0 {
@@ -2960,33 +2932,28 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
             lParse.status = tstatus;
 
-            varInfo = lParse.varData.wrapping_add(col_cnt as usize);
-            colIter = lParse.colData.wrapping_add(col_cnt as usize);
+            varInfo = &mut lParse.varData[col_cnt as usize];
+            colIter = &mut lParse.colData[col_cnt as usize];
 
-            fits_iter_set_by_num(colIter, fptr, colnum, 0, InputCol);
+            fits_iter_set_by_num_safe(colIter, fptr, colnum, 0, InputCol);
         }
 
         /*  Make sure we don't overflow variable name array  */
-        strncpy((*varInfo).name.as_mut_ptr(), colName.as_ptr(), MAXVARNAME);
-        (*varInfo).name[MAXVARNAME] = 0;
+        strncpy_safe(&mut varInfo.name, colName, MAXVARNAME);
+        varInfo.name[MAXVARNAME] = 0;
 
         if lParse.hdutype != IMAGE_HDU {
             match typecode {
                 TBIT => {
-                    (*varInfo).dtype = fits_parser_yytokentype::BITSTR as c_int;
-                    (*colIter).datatype = TBYTE;
+                    varInfo.dtype = fits_parser_yytokentype::BITSTR as c_int;
+                    colIter.datatype = TBYTE;
                     ktype = fits_parser_yytokentype::BITCOL as c_int;
                 }
                 TBYTE | TSHORT | TLONG => {
                     /* The datatype of column with TZERO and TSCALE keywords might be
                        float or double.
                     */
-                    snprintf(
-                        temp.as_mut_ptr(),
-                        80,
-                        c"TZERO%d".as_ptr() as *const c_char,
-                        colnum,
-                    );
+                    int_snprintf!(&mut temp, 80, "TZERO{}", colnum,);
                     istatus = 0;
                     if fits_read_key_dbl(
                         unsafe { &mut *fptr },
@@ -2998,12 +2965,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     {
                         tzero = 0.0;
                     }
-                    snprintf(
-                        temp.as_mut_ptr(),
-                        80,
-                        c"TSCAL%d".as_ptr() as *const c_char,
-                        colnum,
-                    );
+                    int_snprintf!(&mut temp, 80, "TSCAL{}", colnum,);
                     istatus = 0;
                     if fits_read_key_dbl(
                         unsafe { &mut *fptr },
@@ -3016,8 +2978,8 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                         tscale = 1.0;
                     }
                     if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                        (*varInfo).dtype = fits_parser_yytokentype::LONG as c_int;
-                        (*colIter).datatype = TLONG;
+                        varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                        colIter.datatype = TLONG;
                     /*    Reading an unsigned long column as a long can cause overflow errors.
                          Treat the column as a double instead.
                          } else if (tscale == 1.0 &&  tzero == 2147483648.0 ) {
@@ -3025,8 +2987,8 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                              (*colIter).datatype = TULONG;
                     */
                     } else {
-                        (*varInfo).dtype = fits_parser_yytokentype::DOUBLE as c_int;
-                        (*colIter).datatype = TDOUBLE;
+                        varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                        colIter.datatype = TDOUBLE;
                     }
                     ktype = fits_parser_yytokentype::COLUMN as c_int;
                 }
@@ -3036,25 +2998,24 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                   will be to add support for TLONGLONG as a separate datatype.
                 */
                 TLONGLONG | TFLOAT | TDOUBLE => {
-                    (*varInfo).dtype = fits_parser_yytokentype::DOUBLE as c_int;
-                    (*colIter).datatype = TDOUBLE;
+                    varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                    colIter.datatype = TDOUBLE;
                     ktype = fits_parser_yytokentype::COLUMN as c_int;
                 }
                 TLOGICAL => {
-                    (*varInfo).dtype = fits_parser_yytokentype::BOOLEAN as c_int;
-                    (*colIter).datatype = TLOGICAL;
+                    varInfo.dtype = fits_parser_yytokentype::BOOLEAN as c_int;
+                    colIter.datatype = TLOGICAL;
                     ktype = fits_parser_yytokentype::BCOLUMN as c_int;
                 }
                 TSTRING => {
-                    (*varInfo).dtype = fits_parser_yytokentype::STRING as c_int;
-                    (*colIter).datatype = TSTRING;
+                    varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
+                    colIter.datatype = TSTRING;
                     ktype = fits_parser_yytokentype::SCOLUMN as c_int;
                     if width >= MAX_STRLEN.into() {
-                        snprintf(
-                            temp.as_mut_ptr(),
+                        int_snprintf!(
+                            &mut temp,
                             80,
-                            c"column %d is wider than maximum %d characters".as_ptr()
-                                as *const c_char,
+                            "column {} is wider than maximum {} characters",
                             colnum,
                             MAX_STRLEN - 1,
                         );
@@ -3068,11 +3029,10 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 }
                 _ => {
                     if typecode < 0 {
-                        snprintf(
-                            temp.as_mut_ptr(),
+                        int_snprintf!(
+                            &mut temp,
                             80,
-                            c"variable-length array columns are not supported. typecode = %d"
-                                .as_ptr() as *const c_char,
+                            "variable-length array columns are not supported. typecode = {}",
                             typecode,
                         );
                         ffpmsg_slice(&temp);
@@ -3081,15 +3041,15 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     return pERROR;
                 }
             }
-            (*varInfo).nelem = repeat;
-            (*colIter).repeat = 0; /* ffiter() will fill in this value */
+            varInfo.nelem = repeat;
+            colIter.repeat = 0; /* ffiter() will fill in this value */
             if repeat > 1 && typecode != TSTRING {
                 if fits_read_tdim(
                     unsafe { &mut *fptr },
                     colnum,
                     MAXDIMS,
-                    unsafe { &mut (*varInfo).naxis },
-                    unsafe { &mut (*varInfo).naxes },
+                    unsafe { &mut varInfo.naxis },
+                    unsafe { &mut varInfo.naxes },
                     &mut status,
                 ) != 0
                 {
@@ -3097,8 +3057,8 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     return pERROR;
                 }
             } else {
-                (*varInfo).naxis = 1;
-                (*varInfo).naxes[0] = 1;
+                varInfo.naxis = 1;
+                varInfo.naxes[0] = 1;
             }
         }
         lParse.nCols += 1;
@@ -3157,7 +3117,7 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
         /* Read appropriate value type and set to CONST_OP */
         match dtype as u8 {
             b'C' => {
-                // 'C' as i8
+                // 'C' as c_char
                 fits_read_key_str(
                     unsafe { &mut *fptr },
                     keyname,
@@ -3169,7 +3129,7 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
                 strcpy(unsafe { (*thelval).astr.as_mut_ptr() }, keyvalue.as_ptr());
             }
             b'L' => {
-                // 'L' as i8
+                // 'L' as c_char
                 fits_read_key_log(unsafe { &mut *fptr }, keyname, &mut bval, None, &mut status);
                 ktype = fits_parser_yytokentype::BOOLEAN as c_int;
                 unsafe {
@@ -3177,7 +3137,7 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
                 }
             }
             b'I' => {
-                // 'I' as i8
+                // 'I' as c_char
                 fits_read_key_lng(unsafe { &mut *fptr }, keyname, &mut ival, None, &mut status);
                 ktype = fits_parser_yytokentype::LONG as c_int;
                 unsafe {
@@ -3185,7 +3145,7 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
                 }
             }
             b'F' => {
-                // 'F' as i8
+                // 'F' as c_char
                 fits_read_key_dbl(unsafe { &mut *fptr }, keyname, &mut rval, None, &mut status);
                 ktype = fits_parser_yytokentype::DOUBLE as c_int;
                 unsafe {
@@ -3206,54 +3166,29 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
     }
 }
 
-/* Allocates parser iterator column storage for 25 columns *more* than
-nCols */
+/// Allocates parser iterator column storage for 25 columns *more* than nCols
 fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_int) -> c_int {
-    unsafe {
-        if (nCol % 25) == 0 {
-            lParse.colData = fits_recalloc(
-                lParse.colData as *mut c_void,
-                nCol.try_into().unwrap(),
-                (nCol + 25).try_into().unwrap(),
-                size_of::<iteratorCol>(),
-            ) as *mut iteratorCol;
-            lParse.varData = fits_recalloc(
-                lParse.varData as *mut c_void,
-                nCol.try_into().unwrap(),
-                (nCol + 25).try_into().unwrap(),
-                size_of::<DataInfo>(),
-            ) as *mut DataInfo;
+    if (nCol % 25) == 0 {
+        if lParse.colData.try_reserve_exact(25).is_err() {
+            lParse.colData.clear();
+            lParse.varData.clear();
 
-            memset(
-                (lParse.colData as *mut c_void).add(nCol as usize * size_of::<iteratorCol>()),
-                0x00,
-                size_of::<iteratorCol>() * 25,
-            );
-            memset(
-                (lParse.varData as *mut c_void).add(nCol as usize * size_of::<DataInfo>()),
-                0x00,
-                size_of::<DataInfo>() * 25,
-            );
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        }
 
-            if lParse.colData.is_null() || lParse.varData.is_null() {
-                if !lParse.colData.is_null() {
-                    free(lParse.colData as *mut c_void);
-                }
-                if !lParse.varData.is_null() {
-                    free(lParse.varData as *mut c_void);
-                }
-                lParse.colData = ptr::null_mut();
-                lParse.varData = ptr::null_mut();
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            }
+        if lParse.varData.try_reserve_exact(25).is_err() {
+            lParse.colData.clear();
+            lParse.varData.clear();
+
+            *status = MEMORY_ALLOCATION;
+            return *status;
         }
-        unsafe {
-            (*lParse.varData.wrapping_add(nCol as usize)).data = ptr::null_mut();
-            (*lParse.varData.wrapping_add(nCol as usize)).undef = ptr::null_mut();
-        }
-        0
     }
+    (lParse.varData[nCol as usize]).data = ptr::null_mut();
+    (lParse.varData[nCol as usize]).undef = ptr::null_mut();
+
+    0
 }
 
 fn load_column(
@@ -3276,13 +3211,13 @@ fn load_column(
         let mut status: c_int = 0;
         let mut anynul: c_int = 0;
 
-        let var: *mut iteratorCol = lParse.colData.wrapping_add(varNum as usize);
+        let var: &mut iteratorCol = &mut lParse.colData[varNum as usize];
         if lParse.hdutype == IMAGE_HDU {
             /* This test would need to be on a per varNum basis to support
              * cross HDU operations */
             fits_read_imgnull(
-                unsafe { &mut *(*var).fptr },
-                (*var).datatype,
+                unsafe { &mut *var.fptr },
+                var.datatype,
                 fRow,
                 nRows,
                 unsafe { std::slice::from_raw_parts_mut(data as *mut u8, (nRows * 8) as usize) }, // Assuming 8 bytes per element
@@ -3291,24 +3226,22 @@ fn load_column(
                 &mut status,
             );
             if DEBUG_PIXFILTER != 0 {
-                printf(
-                    c"load_column: IMAGE_HDU fRow=%ld, nRows=%ld => %d\n".as_ptr() as *const c_char,
-                    fRow,
-                    nRows,
-                    status,
+                println!(
+                    "load_column: IMAGE_HDU fRow={}, nRows={} => {}",
+                    fRow, nRows, status,
                 );
             }
         } else {
-            nelem = nRows * (*var).repeat;
+            nelem = nRows * var.repeat;
 
-            match (*var).datatype {
+            match var.datatype {
                 TBYTE => {
-                    nbytes = (((*var).repeat + 7) / 8) * nRows;
+                    nbytes = ((var.repeat + 7) / 8) * nRows;
                     bytes = malloc((nbytes as usize) * size_of::<c_char>()) as *mut c_uchar;
 
                     ffgcvb_safe(
-                        unsafe { &mut *(*var).fptr },
-                        (*var).colnum,
+                        unsafe { &mut *var.fptr },
+                        var.colnum,
                         fRow,
                         1,
                         nbytes,
@@ -3318,7 +3251,7 @@ fn load_column(
                         &mut status,
                     );
 
-                    nelem = (*var).repeat;
+                    nelem = var.repeat;
                     bitStrs = data as *mut *mut c_char;
                     for row in 0..nRows {
                         idx = (row) * ((nelem + 7) / 8) + 1;
@@ -3328,12 +3261,12 @@ fn load_column(
                             {
                                 unsafe {
                                     *(*bitStrs.wrapping_add(row as usize))
-                                        .wrapping_add(len as usize) = b'1' as i8;
+                                        .wrapping_add(len as usize) = b'1' as c_char;
                                 }
                             } else {
                                 unsafe {
                                     *(*bitStrs.wrapping_add(row as usize))
-                                        .wrapping_add(len as usize) = b'0' as i8;
+                                        .wrapping_add(len as usize) = b'0' as c_char;
                                 }
                             }
                             if len % 8 == 7 {
@@ -3353,7 +3286,7 @@ fn load_column(
                     let mut string_vec = Vec::new();
                     for i in 0..nRows {
                         let str_ptr = unsafe { *data_ptr_array.wrapping_add(i as usize) };
-                        let str_len = unsafe { strlen(str_ptr as *const c_char) };
+                        let str_len = strlen(str_ptr as *const c_char);
                         let str_slice =
                             unsafe { std::slice::from_raw_parts_mut(str_ptr, str_len + 1) };
                         string_vec.push(str_slice);
@@ -3362,8 +3295,8 @@ fn load_column(
                         unsafe { std::slice::from_raw_parts_mut(undef, nRows as usize) };
 
                     ffgcfs_safe(
-                        unsafe { &mut *(*var).fptr },
-                        (*var).colnum,
+                        unsafe { &mut *var.fptr },
+                        var.colnum,
                         fRow,
                         1,
                         nRows,
@@ -3381,8 +3314,8 @@ fn load_column(
                         unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
 
                     ffgcfl_safe(
-                        unsafe { &mut *(*var).fptr },
-                        (*var).colnum,
+                        unsafe { &mut *var.fptr },
+                        var.colnum,
                         fRow,
                         1,
                         nelem,
@@ -3394,8 +3327,8 @@ fn load_column(
                 }
                 TLONG => {
                     ffgcfj_safe(
-                        &mut *(*var).fptr,
-                        (*var).colnum,
+                        &mut *var.fptr,
+                        var.colnum,
                         fRow,
                         1,
                         nelem,
@@ -3414,8 +3347,8 @@ fn load_column(
                         unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
 
                     ffgcfd_safe(
-                        unsafe { &mut *(*var).fptr },
-                        (*var).colnum,
+                        unsafe { &mut *var.fptr },
+                        var.colnum,
                         fRow,
                         1,
                         nelem,
@@ -3426,11 +3359,11 @@ fn load_column(
                     );
                 }
                 _ => {
-                    snprintf(
-                        msg.as_mut_ptr(),
+                    int_snprintf!(
+                        &mut msg,
                         80,
-                        b"load_column: unexpected datatype %d\0".as_ptr() as *const c_char,
-                        (*var).datatype,
+                        "load_column: unexpected datatype {}",
+                        var.datatype,
                     );
                     ffpmsg_slice(&msg);
                 }

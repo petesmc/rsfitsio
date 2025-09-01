@@ -1066,6 +1066,7 @@ pub struct fitsfile {
 
 /// structure for the iterator function column information
 /// elements required as input to fits_iterate_data:
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct iteratorCol {
     /// pointer to the HDU containing the column

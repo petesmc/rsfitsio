@@ -2,6 +2,7 @@ use std::ffi::c_void;
 
 use crate::c_types::{c_char, c_int, c_long};
 
+use crate::eval_l::yyguts_t;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
 pub const MAXDIMS: c_int = 5;
@@ -12,8 +13,9 @@ pub const pERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
-pub(crate) type yyscan_t = *mut c_void;
+pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
+#[derive(Debug, Copy, Clone)]
 pub struct DataInfo {
     pub name: [c_char; MAXVARNAME + 1],
     pub dtype: c_int,
@@ -96,8 +98,8 @@ pub struct ParseData {
     pub nElements: c_long,
     pub nAxis: c_int,
     pub nAxes: [c_long; MAXDIMS as usize],
-    pub colData: *mut iteratorCol, // This is a list
-    pub varData: *mut DataInfo,
+    pub colData: Vec<iteratorCol>, // This is a list
+    pub varData: Vec<DataInfo>,
     pub pixFilter: *mut PixelFilter,
     pub firstDataRow: c_long,
     pub nDataRows: c_long,
