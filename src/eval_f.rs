@@ -50,7 +50,7 @@
 /*                                                                      */
 /************************************************************************/
 
-use libc::{memcpy, memset};
+use libc::{c_float, memcpy, memset};
 use std::{cmp, ptr};
 
 use crate::buffers::{ffgbyt, ffgtbb_safe, ffmbyt_safe, ffpbyt, ffptbb_safe};
@@ -80,9 +80,12 @@ use crate::fitscore::{
 };
 use crate::fitscore::{ffpmsg_slice, ffpmsg_str, ffrdef_safe};
 use crate::fitsio2::{FSTRCMP, IGNORE_EOF, REPORT_EOF};
-use crate::getcolb::ffgcvb_safe;
+use crate::getcolb::{fffi2i1, fffr4i1, fffr8i1, ffgcvb_safe};
 use crate::getcold::{ffgcfd_safe, ffgcvd_safe};
-use crate::getcolj::{ffgcfj_safe, ffgcvj_safe};
+use crate::getcole::fffr8r4;
+use crate::getcoli::{fffr4i2, fffr8i2};
+use crate::getcolj::{fffr4i4, fffr4i8, fffr8i4, fffr8i8, ffgcfj_safe, ffgcvj_safe};
+use crate::getcolk::{fffr4int, fffr8int};
 use crate::getcoll::ffgcfl_safe;
 use crate::getcols::{ffgcfs_safe, ffgcvs_safe};
 use crate::getkey::ffgkyj_safe;
@@ -92,7 +95,7 @@ use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
 use crate::region::{SAORegion, fits_free_region};
 use crate::wrappers::{strcat, strcpy, strlen, strlen_safe, strncpy_safe};
-use crate::{BL, cs, fitsio::*, int_snprintf, raw_to_slice};
+use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
 use libc::{free, malloc};
@@ -100,6 +103,7 @@ use libc::{free, malloc};
 // Constants needed for the function
 const UCHAR_MAX: LONGLONG = 255;
 const SHRT_MIN: LONGLONG = c_short::MIN as LONGLONG;
+const SHRT_MAX: LONGLONG = c_short::MAX as LONGLONG;
 const INT_MIN: LONGLONG = c_int::MIN as LONGLONG;
 const LONG_MIN: LONGLONG = c_long::MIN as LONGLONG;
 use std::mem::size_of;
@@ -2051,7 +2055,6 @@ fn fits_parser_workfn_safe(
                         FREE!(*(result.value.data.strptr));
                         FREE!(result.value.data.strptr);
                     }
-                    break;
                 }
                 fits_parser_yytokentype::STRING => {
                     if (*(pv.userInfo)).datatype == TSTRING {
@@ -2413,7 +2416,689 @@ fn ffcvtn(
     anynull: &mut c_int,   /* O - Any nulls flagged?                     */
     status: &mut c_int,    /* O - Error status                           */
 ) -> c_int {
-    todo!();
+    unsafe {
+        let i: c_long = 0;
+        let mut dummy_nullarray: [c_char; 0] = [0; 0];
+
+        match outputType {
+            TLOGICAL => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            if (*((input as *const c_uchar).add(i.try_into().unwrap()))) != 0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            }
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            if (*((input as *const c_short).add(i.try_into().unwrap()))) != 0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            }
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            if (*((input as *const c_long).add(i.try_into().unwrap()))) != 0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            }
+                        }
+                    }
+                    TFLOAT => {
+                        for i in 0..ntodo {
+                            if (*((input as *const c_float).add(i.try_into().unwrap()))) != 0.0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            }
+                        }
+                    }
+                    TDOUBLE => {
+                        for i in 0..ntodo {
+                            if (*((input as *const c_double).add(i.try_into().unwrap()))) != 0.0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            }
+                        }
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_uchar);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TBYTE => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap()));
+                        }
+                    }
+                    TSHORT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const c_short,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_uchar,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffi2i1(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            if *((undef).add(i.try_into().unwrap())) != 0 {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                                    *(nulval as *const c_uchar);
+                                *anynull = 1;
+                            } else if *((input as *const c_long).add(i.try_into().unwrap())) < 0 {
+                                *status = OVERFLOW_ERR;
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                                > UCHAR_MAX
+                            {
+                                *status = OVERFLOW_ERR;
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                                    UCHAR_MAX as c_uchar;
+                            } else {
+                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                                    *((input as *const c_long).add(i.try_into().unwrap()))
+                                        as c_uchar;
+                            }
+                        }
+                        return *status;
+                    }
+                    TFLOAT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_uchar,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr4i1(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_uchar,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8i1(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_uchar);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TSHORT => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_short;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap()));
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            if *((undef).add(i.try_into().unwrap())) != 0 {
+                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                    *(nulval as *const c_short);
+                                *anynull = 1;
+                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                                < SHRT_MIN
+                            {
+                                *status = OVERFLOW_ERR;
+                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                    SHRT_MIN as c_short;
+                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                                > SHRT_MAX as c_long
+                            {
+                                *status = OVERFLOW_ERR;
+                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                    SHRT_MAX as c_short;
+                            } else {
+                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                    *((input as *const c_long).add(i.try_into().unwrap()))
+                                        as c_short;
+                            }
+                        }
+                        return *status;
+                    }
+                    TFLOAT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_short,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr4i2(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_short,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8i2(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_short).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_short);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TINT => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_int).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_int;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_int).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap())) as c_int;
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_int).add(i.try_into().unwrap())) =
+                                *((input as *const c_long).add(i.try_into().unwrap())) as c_int;
+                        }
+                    }
+                    TFLOAT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_int,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr4int(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_int,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8int(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_int).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_int);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TLONG => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_long).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_long;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_long).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap())) as c_long;
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_long).add(i.try_into().unwrap())) =
+                                *((input as *const c_long).add(i.try_into().unwrap()));
+                        }
+                    }
+                    TFLOAT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_long,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr4i4(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut c_long,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8i4(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_long).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_long);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TLONGLONG => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as LONGLONG;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap())) as LONGLONG;
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
+                                *((input as *const c_long).add(i.try_into().unwrap()));
+                        }
+                    }
+                    TFLOAT => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut LONGLONG,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr4i8(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut LONGLONG,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8i8(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
+                            *(nulval as *const LONGLONG);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TFLOAT => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_float).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_float;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_float).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap())) as c_float;
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_float).add(i.try_into().unwrap())) =
+                                *((input as *const c_long).add(i.try_into().unwrap())) as c_float;
+                        }
+                    }
+                    TFLOAT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_float).add(i.try_into().unwrap())) =
+                                *((input as *const c_float).add(i.try_into().unwrap()));
+                        }
+                    }
+                    TDOUBLE => {
+                        let input_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                input as *const f64,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        let output_slice = unsafe {
+                            std::slice::from_raw_parts_mut(
+                                output as *mut f32,
+                                ntodo.try_into().unwrap(),
+                            )
+                        };
+
+                        fffr8r4(
+                            input_slice,
+                            ntodo,
+                            1.,
+                            0.,
+                            NullCheckType::None,
+                            0.0,
+                            &mut dummy_nullarray,
+                            None,
+                            output_slice,
+                            status,
+                        );
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_float).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_float);
+                        *anynull = 1;
+                    }
+                }
+            }
+            TDOUBLE => {
+                match inputType {
+                    TLOGICAL | TBYTE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_double).add(i.try_into().unwrap())) =
+                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_double;
+                        }
+                    }
+                    TSHORT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_double).add(i.try_into().unwrap())) =
+                                *((input as *const c_short).add(i.try_into().unwrap())) as c_double;
+                        }
+                    }
+                    TLONG => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_double).add(i.try_into().unwrap())) =
+                                *((input as *const c_long).add(i.try_into().unwrap())) as c_double;
+                        }
+                    }
+                    TFLOAT => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_double).add(i.try_into().unwrap())) =
+                                *((input as *const c_float).add(i.try_into().unwrap())) as c_double;
+                        }
+                    }
+                    TDOUBLE => {
+                        for i in 0..ntodo {
+                            *((output as *mut c_double).add(i.try_into().unwrap())) =
+                                *((input as *const c_double).add(i.try_into().unwrap()))
+                                    as c_double;
+                        }
+                    }
+                    _ => {
+                        *status = BAD_DATATYPE;
+                    }
+                }
+                for i in 0..ntodo {
+                    if *((undef).add(i.try_into().unwrap())) != 0 {
+                        *((output as *mut c_double).add(i.try_into().unwrap())) =
+                            *(nulval as *const c_double);
+                        *anynull = 1;
+                    }
+                }
+            }
+            _ => {
+                *status = BAD_DATATYPE;
+            }
+        }
+
+        *status
+    }
 }
 
 /*---------------------------------------------------------------------------*/
