@@ -378,7 +378,7 @@ fn readtable(filename: &str) {
                 );
             }
 
-            let where_clause = c"Density > 4.0".to_bytes_with_nul();
+            let where_clause = cast_slice(c"Density > 4.0".to_bytes_with_nul());
             let mut n_matched_rows = -1;
             let mut row_status = [0; 6];
             fits_find_rows(

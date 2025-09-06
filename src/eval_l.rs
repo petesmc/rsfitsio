@@ -149,7 +149,7 @@ pub(crate) fn fits_parser_yyGetVariable(
                 thelval as *mut _ as *mut c_void,
             );
         } else {
-            dtype = -(1);
+            dtype = -1;
             lParse.status = 431 as c_int;
             strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
@@ -915,7 +915,7 @@ pub(crate) fn fits_parser_yylex(
                                         [0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
                                         [0 as c_int as usize]
@@ -931,7 +931,7 @@ pub(crate) fn fits_parser_yylex(
                                         ))[0 as c_int as usize]
                                             as c_int
                                     {
-                                        -(1)
+                                        -1
                                     } else if *fname.offset(0 as c_int as isize) as c_int
                                         > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"CIRCLE(\0",
@@ -948,7 +948,7 @@ pub(crate) fn fits_parser_yylex(
                                         ))[0 as c_int as usize]
                                             as c_int
                                     {
-                                        -(1)
+                                        -1
                                     } else if *fname.offset(0 as c_int as isize) as c_int
                                         > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                             b"ELLIPSE(\0",
@@ -965,7 +965,7 @@ pub(crate) fn fits_parser_yylex(
                                         ))[0 as c_int as usize]
                                             as c_int
                                     {
-                                        -(1)
+                                        -1
                                     } else if *fname.offset(0 as c_int as isize) as c_int
                                         > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
                                             b"NEAR(\0",
@@ -982,7 +982,7 @@ pub(crate) fn fits_parser_yylex(
                                         ))[0 as c_int as usize]
                                             as c_int
                                     {
-                                        -(1)
+                                        -1
                                     } else if *fname.offset(0 as c_int as isize) as c_int
                                         > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"ISNULL(\0",
@@ -1001,7 +1001,7 @@ pub(crate) fn fits_parser_yylex(
                                     ))[0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"GTIFILTER(\0",
@@ -1020,7 +1020,7 @@ pub(crate) fn fits_parser_yylex(
                                     ))[0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
                                         b"GTIOVERLAP(\0",
@@ -1039,7 +1039,7 @@ pub(crate) fn fits_parser_yylex(
                                     ))[0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                         b"GTIFIND(\0",
@@ -1058,7 +1058,7 @@ pub(crate) fn fits_parser_yylex(
                                     ))[0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"REGFILTER(\0",
@@ -1077,7 +1077,7 @@ pub(crate) fn fits_parser_yylex(
                                     ))[0 as c_int as usize]
                                         as c_int
                                 {
-                                    -(1)
+                                    -1
                                 } else if *fname.offset(0 as c_int as isize) as c_int
                                     > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                         b"STRSTR(\0",

@@ -894,7 +894,7 @@ fn New_FuncSize(
     n
 }
 
-pub fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
+pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
     unsafe {
         let mut current_block: u64;
         let mut yychar: c_int = 0;
@@ -7339,7 +7339,7 @@ fn New_GTI(
 
         /*  Resolve filename parameter  */
 
-        match *fname.offset(0) {
+        match *fname.offset(0) as u8 {
             0 => {
                 samefile = 1;
                 hdunum = 1;
@@ -7909,9 +7909,12 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
             )
             .try_into()
             .unwrap();
+
+            /*
             if (lParse.Nodes[this_node_idx]).SubNodes[n as usize] < 0 {
                 return -(1);
             }
+            */
         }
         nelem = (nelem as c_long
             + ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[n as usize] as usize])
@@ -7985,9 +7988,12 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
                     )
                     .try_into()
                     .unwrap();
+
+                    /*
                     if (lParse.Nodes[dims]).SubNodes[i as usize] < 0 {
                         return -(1);
                     }
+                    */
                 }
                 naxes[i as usize] = ((lParse.Nodes)
                     [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
@@ -8142,7 +8148,7 @@ fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
     }
 }
 
-pub fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
+pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
     unsafe {
         let mut i: c_int = 0;
         let mut column: c_int = 0;
@@ -10074,7 +10080,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-pub fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
+pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
     unsafe {
         let mut low: c_int = 0;
         let mut high: c_int = 0;
@@ -10151,7 +10157,7 @@ pub fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
     }
 }
 
-pub fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
+pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
     unsafe {
         let mut low: c_int = 0;
         let mut high: c_int = 0;
@@ -13939,7 +13945,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
             if lParse.status == 0 {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
-                    gti = -(1) as c_long;
+                    gti = -1;
                     loop {
                         let fresh202 = elem;
                         elem -= 1;
@@ -14059,7 +14065,7 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
                     let mut toverlap: c_double = 0.0;
-                    gti = -(1) as c_long;
+                    gti = -1;
                     loop {
                         let fresh206 = elem;
                         elem -= 1;
@@ -14242,7 +14248,7 @@ fn Search_GTI(
             }
         }
         if nextGTI >= nGTI {
-            nextGTI = -(1) as c_long;
+            nextGTI = -1;
         }
         if !nextGTI0.is_null() {
             *nextGTI0 = nextGTI;

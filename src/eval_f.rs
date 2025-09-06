@@ -50,6 +50,7 @@
 /*                                                                      */
 /************************************************************************/
 
+use libc::{memcpy, memset};
 use std::{cmp, mem, ptr};
 
 use crate::buffers::{ffgbyt, ffgtbb_safe, ffmbyt_safe, ffpbyt, ffptbb_safe};
@@ -65,7 +66,8 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safer;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData, parseInfo,
+    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
+    ParseStatusVariables, parseInfo,
 };
 use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
@@ -83,8 +85,8 @@ use crate::getcold::{ffgcfd_safe, ffgcvd_safe};
 use crate::getcolj::{ffgcfj_safe, ffgcvj_safe};
 use crate::getcoll::ffgcfl_safe;
 use crate::getcols::{ffgcfs_safe, ffgcvs_safe};
-use crate::getkey::ffgcrd_safe;
 use crate::getkey::ffgkyj_safe;
+use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
@@ -418,8 +420,7 @@ pub fn ffsrow_safe(
         /*  Fill out Info data for parser  */
         /***********************************/
 
-        Info.dataPtr =
-            malloc((inExt.numRows + 1) as usize * mem::size_of::<c_char>()) as *mut c_void;
+        Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>()) as *mut c_void;
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = inExt.numRows as c_long;
         Info.parseData = &mut lParse as *mut ParseData;
@@ -997,7 +998,8 @@ pub fn ffcalc_rng_safe(
                         }
                     }
                     parInfo = &tform;
-                } else if !({ parInfo[0] } as char).is_ascii_digit() && lParse.hdutype == BINARY_TBL
+                } else if !((parInfo[0] as u8) as char).is_ascii_digit()
+                    && lParse.hdutype == BINARY_TBL
                 {
                     if Info.datatype == TBIT && parInfo[0] == b'B' as c_char {
                         nelem = (nelem + 7) / 8;
@@ -1007,7 +1009,7 @@ pub fn ffcalc_rng_safe(
                         16,
                         "{}{}",
                         nelem,
-                        std::str::from_utf8(parInfo).unwrap_or("")
+                        std::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
                     );
                     parInfo = &tform;
                 }
@@ -1398,7 +1400,7 @@ pub(crate) fn ffiprs(
         } else {
             lexpr = strlen_safe(expr) as c_int;
             lParse.expr =
-                malloc(((2 + lexpr as usize) * mem::size_of::<c_char>()) as usize) as *mut c_char;
+                malloc(((2 + lexpr as usize) * size_of::<c_char>()) as usize) as *mut c_char;
             strcpy(lParse.expr, expr.as_ptr());
         }
         strcat(
@@ -1563,16 +1565,652 @@ extern "C" fn fits_parser_workfn(
     fits_parser_workfn_safe(totalrows, offset, firstrow, nrows, nCols, colData, userPtr)
 }
 
+/*---------------------------------------------------------------------------*/
+/// Iterator work function which calls the parser and copies the results
+/// into either an OutputCol or a data pointer supplied in the userPtr
+/// structure.
 fn fits_parser_workfn_safe(
     totalrows: c_long,           /* I - Total rows to be processed     */
     offset: c_long,              /* I - Number of rows skipped at start*/
-    firstrow: c_long,            /* I - First row of this iteration    */
-    nrows: c_long,               /* I - Number of rows in this iter    */
+    mut firstrow: c_long,        /* I - First row of this iteration    */
+    mut nrows: c_long,           /* I - Number of rows in this iter    */
     nCols: c_int,                /* I - Number of columns in use       */
     colData: &mut [iteratorCol], /* IO- Column information/data        */
     userPtr: *mut c_void,        /* I - Data handling instructions     */
 ) -> c_int {
-    todo!()
+    unsafe {
+        let mut status: c_int = 0;
+        let mut constant: c_int = 0;
+        let mut anyNullThisTime: c_int = 0;
+        let mut jj: c_long = 0;
+        let mut kk: c_long = 0;
+        let mut idx: c_long = 0;
+        let mut remain: c_long = 0;
+        let mut ntodo: c_long = 0;
+        let mut result: &mut Node;
+        let mut outcol: &mut iteratorCol;
+        let mut lParse: &mut ParseData = unsafe {
+            (userPtr as *mut parseInfo)
+                .as_mut()
+                .unwrap()
+                .parseData
+                .as_mut()
+                .unwrap()
+        };
+        let pv: &mut ParseStatusVariables =
+            unsafe { &mut (userPtr as *mut parseInfo).as_mut().unwrap().parseVariables };
+        let Data0: *mut c_void;
+
+        /* declare variables static to preserve their values between calls */
+        let mut zeros: [c_long; 4] = [0, 0, 0, 0];
+
+        if (DEBUG_PIXFILTER != 0) {
+            println!(
+                "fits_parser_workfn(total={}, offset={}, first={}, rows={}, cols={})",
+                totalrows, offset, firstrow, nrows, nCols
+            );
+        }
+        /*--------------------------------------------------------*/
+        /*  Initialization procedures: execute on the first call  */
+        /*--------------------------------------------------------*/
+        outcol = &mut colData[(nCols - 1) as usize];
+        if (firstrow == offset + 1) {
+            (pv.userInfo) = userPtr as *mut parseInfo;
+            (*(pv.userInfo)).anyNull = 0;
+
+            /* Unfortunately there are two copies of the iterator columns,
+            one inside the parser and one outside maintained by the
+            higher level.  (This could happen if the histogramming
+            routines are binning multiple columns, and so there are
+            multiple parsers being managed at one time.) Upon the first
+            call we make sure they match */
+            for jj in 0..(nCols as usize) {
+                lParse.colData[jj].repeat = colData[jj].repeat;
+            }
+
+            outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
+
+            if ((*(pv.userInfo)).maxRows > 0) {
+                (*(pv.userInfo)).maxRows = cmp::min(totalrows, (*(pv.userInfo)).maxRows);
+            } else if ((*(pv.userInfo)).maxRows < 0) {
+                (*(pv.userInfo)).maxRows = totalrows;
+            } else {
+                (*(pv.userInfo)).maxRows = nrows;
+            }
+
+            (pv.lastRow) = firstrow + (*(pv.userInfo)).maxRows - 1;
+
+            /* dataPtr == NULL indicates an iterator-derived column, which
+            means that the first value will be a null value and the remaining
+            values will be the where the outputs are placed */
+            if ((*(pv.userInfo)).dataPtr.is_null()) {
+                if (outcol.iotype == InputCol) {
+                    ffpmsg_str("Output column for parser results not found!");
+                    return (PARSE_NO_OUTPUT);
+                }
+                /* Data gets set later */
+                (pv.Null) = outcol.array;
+                (*(pv.userInfo)).datatype = outcol.datatype;
+
+                /* Check for a TNULL/BLANK keyword for output column/image */
+
+                status = 0;
+                (pv.jnull) = 0;
+                if (lParse.hdutype == IMAGE_HDU) {
+                    if (*(lParse.pixFilter)).blank != 0 {
+                        (pv.jnull) = (*(lParse.pixFilter)).blank as LONGLONG;
+                    }
+                } else {
+                    if (outcol.iotype != TemporaryCol) {
+                        let mut jj_tmp: c_int = 0;
+                        ffgknjj_safe(
+                            outcol.fptr.as_mut().unwrap(),
+                            cs!(c"TNULL"),
+                            outcol.colnum,
+                            1,
+                            &mut [(pv.jnull)],
+                            &mut jj_tmp,
+                            &mut status,
+                        );
+                        jj = jj_tmp as c_long;
+                    }
+
+                    if (status == BAD_INTKEY || outcol.iotype == TemporaryCol) {
+                        /*  Probably ASCII table with text TNULL keyword  */
+                        match ((*(pv.userInfo)).datatype) {
+                            TSHORT => {
+                                (pv.jnull) = SHRT_MIN as LONGLONG;
+                            }
+                            TINT => {
+                                (pv.jnull) = INT_MIN as LONGLONG;
+                            }
+                            TLONG => {
+                                (pv.jnull) = LONG_MIN as LONGLONG;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                (pv.repeat) = outcol.repeat;
+                /*
+                          if (DEBUG_PIXFILTER)
+                            printf("fits_parser_workfn: using null value %ld\n", (pv.jnull));
+                */
+            } else {
+                /* This clause applies if the user is passing user-allocated
+                data arrays, which is where the data will be placed.  This
+                means they should also be passing null values */
+                (pv.Data) = (*(pv.userInfo)).dataPtr;
+                (pv.Null) = if !(*(pv.userInfo)).nullPtr.is_null() {
+                    (*(pv.userInfo)).nullPtr
+                } else {
+                    zeros.as_ptr() as *mut c_void
+                };
+                (pv.repeat) = lParse.Nodes[lParse.resultNode as usize].value.nelem;
+            }
+
+            /* Determine the size of each element of the returned result */
+
+            match ((*(pv.userInfo)).datatype) {
+                TBIT | TLOGICAL | TBYTE => {
+                    (pv.datasize) = size_of::<c_char>() as c_int;
+                }
+                TSHORT => {
+                    (pv.datasize) = size_of::<c_short>() as c_int;
+                }
+                TINT => {
+                    (pv.datasize) = size_of::<c_int>() as c_int;
+                }
+                TLONG => {
+                    (pv.datasize) = size_of::<c_long>() as c_int;
+                }
+                TLONGLONG => {
+                    (pv.datasize) = size_of::<LONGLONG>() as c_int;
+                }
+                TFLOAT => {
+                    (pv.datasize) = size_of::<f32>() as c_int;
+                }
+                TDOUBLE => {
+                    (pv.datasize) = size_of::<f64>() as c_int;
+                }
+                TSTRING => {
+                    (pv.datasize) = size_of::<*mut c_char>() as c_int;
+                }
+                _ => {}
+            }
+
+            /* Determine the size of each element of the calculated result */
+            /*   (only matters for numeric/logical data)                   */
+
+            match (lParse.Nodes[lParse.resultNode as usize].ntype) {
+                BOOLEAN => {
+                    (pv.resDataSize) = size_of::<c_char>() as c_long;
+                }
+                LONG => {
+                    (pv.resDataSize) = size_of::<c_long>() as c_long;
+                }
+                DOUBLE => {
+                    (pv.resDataSize) = size_of::<f64>() as c_long;
+                }
+            }
+        }
+
+        /*-------------------------------------------*/
+        /*  Main loop: process all the rows of data  */
+        /*-------------------------------------------*/
+
+        /*  If writing to output column, set first element to appropriate  */
+        /*  null value.  If no NULLs encounter, zero out before returning. */
+        /*
+                  if (DEBUG_PIXFILTER)
+                    printf("fits_parser_workfn: using null value %ld\n", (pv.jnull));
+        */
+
+        if ((*(pv.userInfo)).dataPtr.is_null()) {
+            /* First, reset Data pointer to start of output array, plus 1
+            because the 0th element is the null value (cute undocumented
+            feature of the iterator!) */
+            (pv.Data) =
+                (outcol.array as *mut c_char).add(pv.datasize.try_into().unwrap()) as *mut c_void;
+
+            /* A TemporaryCol with null value specified explicitly */
+            if (outcol.iotype == TemporaryCol && !(*(pv.userInfo)).nullPtr.is_null()) {
+                pv.Null = (*(pv.userInfo)).nullPtr;
+            } else {
+                /* ... or an OutputCol or TemporaryCol with no explicit null */
+                match ((*(pv.userInfo)).datatype) {
+                    TLOGICAL => {
+                        *(pv.Null as *mut c_char) = b'U' as c_char;
+                    }
+                    TBYTE => {
+                        *(pv.Null as *mut c_char) = (pv.jnull) as (c_char);
+                    }
+                    TSHORT => {
+                        *(pv.Null as *mut c_short) = (pv.jnull) as (c_short);
+                    }
+                    TINT => {
+                        *(pv.Null as *mut c_int) = (pv.jnull) as (c_int);
+                    }
+                    TLONG => {
+                        *(pv.Null as *mut c_long) = (pv.jnull) as (c_long);
+                    }
+                    TLONGLONG => {
+                        *(pv.Null as *mut LONGLONG) = (pv.jnull) as (LONGLONG);
+                    }
+                    TFLOAT => {
+                        *(pv.Null as *mut f32) = FLOATNULLVALUE;
+                    }
+                    TDOUBLE => {
+                        *(pv.Null as *mut f64) = DOUBLENULLVALUE;
+                    }
+                    TSTRING => {
+                        (**(pv.Null as *mut *mut c_char)) = 1;
+                        *(*(pv.Null as *mut *mut c_char)).add(1) = 0;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        /* Alter nrows in case calling routine didn't want to do all rows */
+
+        Data0 = pv.Data; /* Record starting point */
+        nrows = cmp::min(nrows, (pv.lastRow) - firstrow + 1);
+
+        Setup_DataArrays(lParse, nCols, colData, firstrow, nrows);
+
+        /* Parser allocates arrays for each column and calculation it performs. */
+        /* Limit number of rows processed during each pass to reduce memory     */
+        /* requirements... In most cases, iterator will limit rows to less      */
+        /* than 10000 rows per iteration, so this is really only relevant for    */
+        /* hk-compressed files which must be decompressed in memory and sent    */
+        /* whole to fits_parser_workfn in a single iteration.                           */
+
+        remain = nrows;
+        while (remain != 0) {
+            ntodo = cmp::min(remain, 10000);
+            Evaluate_Parser(lParse, firstrow, ntodo);
+            if (lParse.status != 0) {
+                break;
+            }
+
+            firstrow += ntodo;
+            remain -= ntodo;
+
+            /*  Copy results into data array  */
+
+            result = &mut lParse.Nodes[lParse.resultNode as usize];
+            if (result.operation == CONST_OP) {
+                constant = 1;
+            }
+
+            match (result.ntype.into()) {
+                fits_parser_yytokentype::BOOLEAN
+                | fits_parser_yytokentype::LONG
+                | fits_parser_yytokentype::DOUBLE => {
+                    if (constant != 0) {
+                        let mut undef: c_char = 0;
+                        for kk in 0..ntodo {
+                            for jj in 0..pv.repeat {
+                                ffcvtn(
+                                    lParse.datatype,
+                                    &(result.value.data) as *const _ as *const c_void,
+                                    &undef,
+                                    result.value.nelem, /* 1 */
+                                    (*(pv.userInfo)).datatype,
+                                    (pv.Null),
+                                    (pv.Data as *mut c_char).add(
+                                        ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
+                                            .try_into()
+                                            .unwrap(),
+                                    ) as *mut c_void,
+                                    &mut anyNullThisTime,
+                                    &mut lParse.status,
+                                );
+                            }
+                        }
+                    } else {
+                        if ((pv.repeat) == result.value.nelem) {
+                            ffcvtn(
+                                lParse.datatype,
+                                result.value.data.ptr,
+                                result.value.undef,
+                                result.value.nelem * ntodo,
+                                (*(pv.userInfo)).datatype,
+                                (pv.Null),
+                                (pv.Data),
+                                &mut anyNullThisTime,
+                                &mut lParse.status,
+                            );
+                        } else if (result.value.nelem == 1) {
+                            for kk in 0..ntodo {
+                                for jj in 0..pv.repeat {
+                                    ffcvtn(
+                                        lParse.datatype,
+                                        (result.value.data.ptr as *mut c_char)
+                                            .add((kk * (pv.resDataSize)).try_into().unwrap())
+                                            as *const c_void,
+                                        (result.value.undef as *mut c_char)
+                                            .add(kk.try_into().unwrap()),
+                                        1,
+                                        (*(pv.userInfo)).datatype,
+                                        (pv.Null),
+                                        (pv.Data as *mut c_char).add(
+                                            ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
+                                                .try_into()
+                                                .unwrap(),
+                                        ) as *mut c_void,
+                                        &mut anyNullThisTime,
+                                        &mut lParse.status,
+                                    );
+                                }
+                            }
+                        } else {
+                            let mut nCopy: c_int =
+                                cmp::min((pv.repeat), result.value.nelem) as c_int;
+                            for kk in 0..ntodo {
+                                ffcvtn(
+                                    lParse.datatype,
+                                    (result.value.data.ptr as *const c_char).add(
+                                        (kk * result.value.nelem * (pv.resDataSize))
+                                            .try_into()
+                                            .unwrap(),
+                                    ) as *const c_void,
+                                    (result.value.undef as *mut c_char)
+                                        .add((kk * result.value.nelem).try_into().unwrap()),
+                                    nCopy as c_long,
+                                    (*(pv.userInfo)).datatype,
+                                    (pv.Null),
+                                    (pv.Data as *mut c_char).add(
+                                        ((kk * (pv.repeat)) * (pv.datasize as c_long))
+                                            .try_into()
+                                            .unwrap(),
+                                    ) as *mut c_void,
+                                    &mut anyNullThisTime,
+                                    &mut lParse.status,
+                                );
+                                if (nCopy as c_long) < (pv.repeat) {
+                                    memset(
+                                        (pv.Data as *mut c_char).add(
+                                            ((kk * (pv.repeat) + nCopy as c_long)
+                                                * (pv.datasize as c_long))
+                                                .try_into()
+                                                .unwrap(),
+                                        ) as *mut c_void,
+                                        0,
+                                        (((pv.repeat) - nCopy as c_long) * (pv.datasize as c_long))
+                                            as usize,
+                                    );
+                                }
+                            }
+                        }
+                        if (result.operation > 0) {
+                            FREE!(result.value.data.ptr);
+                        }
+                    }
+                    if (lParse.status == OVERFLOW_ERR) {
+                        lParse.status = NUM_OVERFLOW;
+                        ffpmsg_str(
+                            "Numerical overflow while converting expression to necessary datatype",
+                        );
+                    }
+                }
+
+                fits_parser_yytokentype::BITSTR => {
+                    match ((*(pv.userInfo)).datatype) {
+                        TBYTE => {
+                            idx = -1;
+                            for kk in 0..(ntodo) {
+                                for jj in 0..result.value.nelem {
+                                    if (jj % 8 == 0) {
+                                        idx += 1;
+                                        *((pv.Data as *mut c_char).add(idx.try_into().unwrap())) =
+                                            0;
+                                    }
+                                    if (constant != 0) {
+                                        if (result.value.data.astr[jj as usize] == b'1' as c_char) {
+                                            *((pv.Data as *mut c_uchar)
+                                                .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
+                                        }
+                                    } else {
+                                        if *(*(result
+                                            .value
+                                            .data
+                                            .strptr
+                                            .add(kk.try_into().unwrap())))
+                                        .add(jj.try_into().unwrap())
+                                            == b'1' as c_char
+                                        {
+                                            *((pv.Data as *mut c_uchar)
+                                                .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        TBIT | TLOGICAL => {
+                            if (constant != 0) {
+                                for kk in 0..ntodo {
+                                    for jj in 0..result.value.nelem {
+                                        let r = if (result.value.data.astr
+                                            [<i64 as TryInto<usize>>::try_into(jj).unwrap()])
+                                            == b'1' as c_char
+                                        {
+                                            1
+                                        } else {
+                                            0
+                                        };
+                                        *((pv.Data as *mut c_char).add(
+                                            (jj + kk * result.value.nelem).try_into().unwrap(),
+                                        )) = r;
+                                    }
+                                }
+                            } else {
+                                for kk in 0..ntodo {
+                                    for jj in 0..result.value.nelem {
+                                        let r = if ((*(*(result
+                                            .value
+                                            .data
+                                            .strptr
+                                            .add(kk.try_into().unwrap())))
+                                        .add(jj.try_into().unwrap()))
+                                            == b'1' as c_char)
+                                        {
+                                            1
+                                        } else {
+                                            0
+                                        };
+                                        *((pv.Data as *mut c_char).add(
+                                            (jj + kk * result.value.nelem).try_into().unwrap(),
+                                        )) = r;
+                                    }
+                                }
+                            }
+                        }
+                        TSTRING => {
+                            if (constant != 0) {
+                                for jj in 0..ntodo {
+                                    strcpy(
+                                        *((pv.Data as *mut *mut c_char)
+                                            .add(jj.try_into().unwrap())),
+                                        result.value.data.astr.as_ptr(),
+                                    );
+                                }
+                            } else {
+                                for jj in 0..ntodo {
+                                    strcpy(
+                                        *((pv.Data as *mut *mut c_char)
+                                            .add(jj.try_into().unwrap())),
+                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            ffpmsg_str("Cannot convert bit expression to desired type.");
+                            lParse.status = PARSE_BAD_TYPE;
+                        }
+                    }
+                    if (result.operation > 0) {
+                        FREE!(*(result.value.data.strptr));
+                        FREE!(result.value.data.strptr);
+                    }
+                    break;
+                }
+                fits_parser_yytokentype::STRING => {
+                    if ((*(pv.userInfo)).datatype == TSTRING) {
+                        if (constant != 0) {
+                            for jj in 0..ntodo {
+                                strcpy(
+                                    *((pv.Data as *mut *mut c_char).add(jj.try_into().unwrap())),
+                                    result.value.data.astr.as_ptr(),
+                                );
+                            }
+                        } else {
+                            for jj in 0..ntodo {
+                                if *(result.value.undef.add(jj.try_into().unwrap())) != 0 {
+                                    anyNullThisTime = 1;
+                                    strcpy(
+                                        *((pv.Data as *mut *mut c_char)
+                                            .add(jj.try_into().unwrap())),
+                                        *(pv.Null as *mut *mut c_char),
+                                    );
+                                } else {
+                                    strcpy(
+                                        *((pv.Data as *mut *mut c_char)
+                                            .add(jj.try_into().unwrap())),
+                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        ffpmsg_str("Cannot convert string expression to desired type.");
+                        lParse.status = PARSE_BAD_TYPE;
+                    }
+                    if (result.operation > 0) {
+                        FREE!(*(result.value.data.strptr));
+                        FREE!(result.value.data.strptr);
+                    }
+                }
+                _ => {}
+            }
+
+            if (lParse.status != 0) {
+                break;
+            }
+
+            /*  Increment Data to point to where the next block should go  */
+
+            if (result.ntype == fits_parser_yytokentype::BITSTR as c_int
+                && (*(pv.userInfo)).datatype == TBYTE)
+            {
+                (pv.Data) = (pv.Data as *mut c_char).add(
+                    ((pv.datasize as c_long) * ((result.value.nelem + 7) / 8) * ntodo)
+                        .try_into()
+                        .unwrap(),
+                ) as *mut c_void;
+            } else if (result.ntype == fits_parser_yytokentype::STRING as c_int) {
+                (pv.Data) = (pv.Data as *mut c_char)
+                    .add(((pv.datasize as c_long) * ntodo).try_into().unwrap())
+                    as *mut c_void;
+            } else {
+                (pv.Data) = (pv.Data as *mut c_char).add(
+                    ((pv.datasize as c_long) * ntodo * (pv.repeat))
+                        .try_into()
+                        .unwrap(),
+                ) as *mut c_void;
+            }
+        }
+
+        /* If a TemporaryCol output is used, we want to inform the caller
+        what the null value is expected to be */
+        outcol = &mut colData[(nCols - 1) as usize]; // Re-bind 
+
+        if (pv.Null != outcol.array
+            && (Data0)
+                == (outcol.array as *mut c_char).add((pv.datasize).try_into().unwrap())
+                    as *mut c_void)
+        {
+            if ((*(pv.userInfo)).datatype == TSTRING) {
+                memcpy(
+                    outcol.array,
+                    (*(pv.Null as *mut *mut c_char)) as *mut c_void,
+                    2,
+                );
+            } else {
+                memcpy(outcol.array, (pv.Null), (pv.datasize.try_into().unwrap()));
+            }
+        }
+
+        /* If no NULLs encountered during this pass, set Null value to */
+        /* zero to make the writing of the output column data faster   */
+
+        if (anyNullThisTime != 0) {
+            (*(pv.userInfo)).anyNull = 1;
+        } else if (pv.Null == outcol.array) {
+            if ((*(pv.userInfo)).datatype == TSTRING) {
+                memcpy(
+                    (*(pv.Null as *mut *mut c_char)) as *mut c_void,
+                    zeros.as_mut_ptr() as *mut c_void,
+                    2,
+                );
+            } else {
+                memcpy(
+                    (pv.Null),
+                    zeros.as_mut_ptr() as *mut c_void,
+                    (pv.datasize).try_into().unwrap(),
+                );
+            }
+        }
+
+        /*-------------------------------------------------------*/
+        /*  Clean up procedures:  after processing all the rows  */
+        /*-------------------------------------------------------*/
+
+        /*  if the calling routine specified that only a limited number    */
+        /*  of rows in the table should be processed, return a value of -1 */
+        /*  once all the rows have been done, if no other error occurred.  */
+
+        if (lParse.hdutype != IMAGE_HDU && firstrow - 1 == (pv.lastRow)) {
+            if (lParse.status == 0 && (*(pv.userInfo)).maxRows < totalrows) {
+                return (-1);
+            }
+        }
+
+        return (lParse.status); /* return successful status */
+    }
+}
+
+/***********************************************************************/
+/// Setup the varData array in gParse to contain the fits column data.
+/// Then, allocate and initialize the necessary UNDEF arrays for each
+/// column used by the parser.
+fn Setup_DataArrays(
+    lParse: &mut ParseData,
+    nCols: c_int,
+    cols: &[iteratorCol],
+    fRow: c_long,
+    nRows: c_long,
+) {
+    todo!();
+}
+
+/*--------------------------------------------------------------------------*/
+/// Convert an array of any input data type to an array of any output
+/// data type, using an array of UNDEF flags to assign nulvals to
+fn ffcvtn(
+    inputType: c_int,      /* I - Data type of input array               */
+    input: *const c_void,  /* I - Input array of type inputType          */
+    undef: *const c_char,  /* I - Array of flags indicating UNDEF elems  */
+    ntodo: c_long,         /* I - Number of elements to process          */
+    outputType: c_int,     /* I - Data type of output array              */
+    nulval: *const c_void, /* I - Ptr to value to use for UNDEF elements */
+    output: *mut c_void,   /* O - Output array of type outputType        */
+    anynull: &mut c_int,   /* O - Any nulls flagged?                     */
+    status: &mut c_int,    /* O - Error status                           */
+) -> c_int {
+    todo!();
 }
 
 /*---------------------------------------------------------------------------*/
@@ -2199,7 +2837,7 @@ fn fits_uncompress_hkdata(
                     &mut parName,
                     256,
                     "Parameter not found: {:<30}",
-                    str::from_utf8(&(var_data).name).unwrap(),
+                    str::from_utf8(cast_slice(&(var_data).name)).unwrap(),
                 );
                 ffpmsg_slice(&parName);
                 *status = PARSE_SYNTAX_ERR;
@@ -2297,7 +2935,7 @@ pub fn fits_pixel_filter_safer(
         let result: *mut Node = std::ptr::null_mut();
         let mut datatype: c_int = 0;
 
-        let default_tags: [c_char; 2] = [b'X', 0];
+        let default_tags: [c_char; 2] = [b'X' as c_char, 0];
         let mut msg: [c_char; 256] = [0; 256];
         let mut write_blank_kwd: c_int = 0; /* write BLANK if any output nulls? */
         let mut lParse: ParseData = ParseData::default();
@@ -2750,7 +3388,7 @@ fn set_image_col_types(
                     if DEBUG_PIXFILTER != 0 {
                         println!(
                             "usefits_parser_yytokentype::DOUBLE as c_int for {} with BSCALE={}/BZERO={}",
-                            str::from_utf8(name).unwrap(),
+                            str::from_utf8(cast_slice(name)).unwrap(),
                             tscale,
                             tzero,
                         );
@@ -2803,7 +3441,10 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
         let colIter: &mut iteratorCol;
 
         if DEBUG_PIXFILTER != 0 {
-            println!("find_column({})", str::from_utf8(colName).unwrap());
+            println!(
+                "find_column({})",
+                str::from_utf8(cast_slice(colName)).unwrap()
+            );
         }
 
         if colName[0] == b'#' as c_char {
@@ -2840,7 +3481,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     &mut temp,
                     80,
                     "find_column: PixelFilter tag {} not found",
-                    str::from_utf8(colName).unwrap()
+                    str::from_utf8(cast_slice(colName)).unwrap()
                 );
                 ffpmsg_slice(&temp);
                 lParse.status = COL_NOT_FOUND;
