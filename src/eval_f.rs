@@ -65,7 +65,7 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safer;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, ParseData, pERROR, parseInfo,
+    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData, parseInfo,
 };
 use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
@@ -1493,7 +1493,7 @@ fn ffcprs(lParse: &mut ParseData) {
     unsafe {
         let col: c_int = 0;
         let mut node: c_int = 0;
-        let mut i: c_int = 0;
+        let mut i: usize = 0;
 
         if lParse.nCols > 0 {
             lParse.colData.clear();
@@ -1522,14 +1522,14 @@ fn ffcprs(lParse: &mut ParseData) {
                 node -= 1;
                 if (lParse.Nodes[node as usize]).operation == gtifilt_fct as c_int {
                     i = lParse.Nodes[node as usize].SubNodes[0];
-                    if !(lParse.Nodes[i as usize]).value.data.ptr.is_null() {
-                        let mut data_ptr = (lParse.Nodes[i as usize]).value.data.ptr;
+                    if !(lParse.Nodes[i]).value.data.ptr.is_null() {
+                        let mut data_ptr = (lParse.Nodes[i]).value.data.ptr;
                         FREE!(data_ptr);
                     }
                 } else if (lParse.Nodes[node as usize]).operation == regfilt_fct as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     fits_free_region(Box::from_raw(
-                        (lParse.Nodes[i as usize]).value.data.ptr as *mut SAORegion,
+                        (lParse.Nodes[i]).value.data.ptr as *mut SAORegion,
                     ));
                 }
             }
@@ -2362,7 +2362,7 @@ pub fn fits_pixel_filter_safer(
                 }
                 TSTRING => {
                     rtype = "STRING";
-                    *status = pERROR;
+                    *status = P_ERROR;
                     ffpmsg_str("pixel_filter: cannot have string image");
                 }
                 TBIT => {
@@ -2373,7 +2373,7 @@ pub fn fits_pixel_filter_safer(
                 }
                 _ => {
                     rtype = "UNKNOWN?!";
-                    *status = pERROR;
+                    *status = P_ERROR;
                     ffpmsg_str("pixel_filter: unexpected result datatype");
                 }
             }
@@ -2529,7 +2529,7 @@ pub fn fits_pixel_filter_safer(
                     );
                 }
                 ffpmsg_slice(&msg);
-                *status = pERROR;
+                *status = P_ERROR;
                 ffcprs(&mut lParse);
                 return *status;
             }
@@ -2820,7 +2820,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             if lParse.pixFilter.is_null() {
                 lParse.status = COL_NOT_FOUND;
                 ffpmsg_str("find_column: IMAGE_HDU but no PixelFilter");
-                return pERROR;
+                return P_ERROR;
             }
 
             colnum = -1;
@@ -2844,13 +2844,13 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 );
                 ffpmsg_slice(&temp);
                 lParse.status = COL_NOT_FOUND;
-                return pERROR;
+                return P_ERROR;
             }
 
             let mut tstatus = 0;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
-                return pERROR;
+                return P_ERROR;
             }
             lParse.status = tstatus;
 
@@ -2885,7 +2885,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 colIter,
             ) != 0
             {
-                return pERROR;
+                return P_ERROR;
             }
             colIter.fptr = fptr;
             colIter.iotype = InputCol;
@@ -2903,13 +2903,13 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             {
                 if status == COL_NOT_FOUND {
                     ktype = find_keywd(lParse, colName, itslval);
-                    if ktype != pERROR {
+                    if ktype != P_ERROR {
                         ffcmsg_safe();
                     }
                     return ktype;
                 }
                 lParse.status = status;
-                return pERROR;
+                return P_ERROR;
             }
 
             if fits_get_coltype(
@@ -2922,13 +2922,13 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             ) != 0
             {
                 lParse.status = status;
-                return pERROR;
+                return P_ERROR;
             }
 
             let mut tstatus = 0;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
-                return pERROR;
+                return P_ERROR;
             }
             lParse.status = tstatus;
 
@@ -3021,7 +3021,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                         );
                         ffpmsg_slice(&temp);
                         lParse.status = PARSE_LRG_VECTOR;
-                        return pERROR;
+                        return P_ERROR;
                     }
                     if lParse.hdutype == ASCII_TBL {
                         repeat = width;
@@ -3038,7 +3038,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                         ffpmsg_slice(&temp);
                     }
                     lParse.status = PARSE_BAD_TYPE;
-                    return pERROR;
+                    return P_ERROR;
                 }
             }
             varInfo.nelem = repeat;
@@ -3054,7 +3054,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 ) != 0
                 {
                     lParse.status = status;
-                    return pERROR;
+                    return P_ERROR;
                 }
             } else {
                 varInfo.naxis = 1;
@@ -3106,12 +3106,12 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
                 ffpmsg_slice(&keyvalue);
             }
             lParse.status = status;
-            return pERROR;
+            return P_ERROR;
         }
 
         if fits_get_keytype(&keyvalue, &mut dtype, &mut status) != 0 {
             lParse.status = status;
-            return pERROR;
+            return P_ERROR;
         }
 
         /* Read appropriate value type and set to CONST_OP */
@@ -3153,13 +3153,13 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
                 }
             }
             _ => {
-                ktype = pERROR;
+                ktype = P_ERROR;
             }
         }
 
         if status != 0 {
             lParse.status = status;
-            return pERROR;
+            return P_ERROR;
         }
 
         ktype
@@ -3371,7 +3371,7 @@ fn load_column(
         }
         if status != 0 {
             lParse.status = status;
-            return pERROR;
+            return P_ERROR;
         }
 
         0

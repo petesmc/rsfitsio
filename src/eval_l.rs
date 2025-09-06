@@ -1,21 +1,25 @@
+#![deny(dead_code)]
+
 use errno::{Errno, set_errno};
 
 use std::ffi::CStr;
+use std::process::exit;
 
 use bytemuck::cast_slice;
 use libc::{
-    __errno_location, ENOMEM, FILE, atof, atol, exit, fileno, fprintf, free, fwrite, isatty,
-    malloc, memset, realloc, size_t,
+    __errno_location, ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, malloc, memset,
+    realloc, size_t,
 };
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_void};
-use crate::eval_defs::{MAXVARNAME, ParseData};
+use crate::eval_defs::{MAXVARNAME, P_ERROR, ParseData};
+use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::helpers::boxed::box_try_new;
 use crate::wrappers::{isdigit_safe, strcpy_safe, strncat_safe};
 use crate::{cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
-    stderr, stdin, stdout,
+    stdin, stdout,
     wrappers::{strcat, strcmp, strcpy, strlen, strncat, strncpy, toupper},
 };
 
@@ -131,81 +135,67 @@ fn expr_read(lParse: &mut ParseData, buf: *mut c_char, nbytes: c_int) -> c_int {
 pub(crate) fn fits_parser_yyGetVariable(
     lParse: &mut ParseData,
     varName: &[c_char],
-    thelval: *mut FITS_PARSER_YYSTYPE,
+    thelval: &mut FITS_PARSER_YYSTYPE,
 ) -> c_int {
-    unsafe {
-        let mut varNum: c_int = 0;
-        let mut dtype: c_int = 0;
-        let mut errMsg: [c_char; 105] = [0; 105];
-        varNum = find_variable(lParse, varName);
-        if varNum < 0 as c_int {
-            if (lParse.getData).is_some() {
-                dtype = (lParse.getData).expect("non-null function pointer")(
-                    lParse,
-                    varName,
-                    thelval as *mut c_void,
-                );
-            } else {
-                dtype = -(1);
-                lParse.status = 431 as c_int;
-                strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
+    let varNum: c_int = find_variable(lParse, varName);
+    let mut dtype: c_int = 0;
+    let mut errMsg: [c_char; 105] = [0; 105];
+
+    if varNum < 0 as c_int {
+        if (lParse.getData).is_some() {
+            dtype = (lParse.getData).expect("non-null function pointer")(
+                lParse,
+                varName,
+                thelval as *mut _ as *mut c_void,
+            );
+        } else {
+            dtype = -(1);
+            lParse.status = 431 as c_int;
+            strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
+            strncat_safe(&mut errMsg, varName, MAXVARNAME);
+            ffpmsg_slice(&errMsg);
+        }
+    } else {
+        /*  Convert variable type into expression type  */
+        match ((lParse.varData)[varNum as usize]).dtype.into() {
+            fits_parser_yytokentype::LONG | fits_parser_yytokentype::DOUBLE => {
+                dtype = fits_parser_yytokentype::COLUMN as c_int;
+            }
+            fits_parser_yytokentype::BOOLEAN => {
+                dtype = fits_parser_yytokentype::BCOLUMN as c_int;
+            }
+            fits_parser_yytokentype::STRING => {
+                dtype = fits_parser_yytokentype::SCOLUMN as c_int;
+            }
+            fits_parser_yytokentype::BITSTR => {
+                dtype = fits_parser_yytokentype::BITCOL as c_int;
+            }
+            _ => {
+                dtype = P_ERROR;
+                lParse.status = PARSE_SYNTAX_ERR;
+                strcpy_safe(&mut errMsg, cs!(c"Bad datatype for data: "));
                 strncat_safe(&mut errMsg, varName, MAXVARNAME);
                 ffpmsg_slice(&errMsg);
             }
-        } else {
-            match ((lParse.varData)[varNum as usize]).dtype {
-                259 | 260 => {
-                    dtype = fits_parser_yytokentype::COLUMN as c_int;
-                }
-                258 => {
-                    dtype = fits_parser_yytokentype::BCOLUMN as c_int;
-                }
-                261 => {
-                    dtype = fits_parser_yytokentype::SCOLUMN as c_int;
-                }
-                262 => {
-                    dtype = fits_parser_yytokentype::BITCOL as c_int;
-                }
-                _ => {
-                    dtype = -(1);
-                    lParse.status = 431 as c_int;
-                    strcpy(
-                        errMsg.as_mut_ptr(),
-                        b"Bad datatype for data: \0" as *const u8 as *const c_char,
-                    );
-                    strncat(errMsg.as_mut_ptr(), varName.as_ptr(), 80);
-                    ffpmsg_slice(&errMsg);
-                }
-            }
-            (*thelval).lng = varNum as c_long;
         }
-        dtype
+
+        thelval.lng = varNum as c_long;
     }
+    dtype
 }
+
 fn find_variable(lParse: &mut ParseData, varName: &[c_char]) -> c_int {
-    unsafe {
-        let mut i: c_int = 0;
-        if lParse.nCols != 0 {
-            i = 0 as c_int;
-            while i < lParse.nCols {
-                if {
-                    let s1 = std::slice::from_raw_parts(
-                        (((lParse.varData)[i as usize]).name).as_ptr(),
-                        MAXVARNAME,
-                    );
-                    fits_strncasecmp(s1, varName, MAXVARNAME)
-                } == 0
-                {
-                    return i;
-                }
-                i += 1;
-                i;
+    if lParse.nCols != 0 {
+        for i in 0..lParse.nCols {
+            if fits_strncasecmp(&((lParse.varData)[i as usize]).name, varName, MAXVARNAME) == 0 {
+                return i;
             }
         }
-        -(1)
     }
+    -1
 }
-static mut YY_ACCEPT: [flex_int16_t; 174] = [
+
+static YY_ACCEPT: [flex_int16_t; 174] = [
     0, 0, 0, 31, 29, 1, 28, 18, 29, 29, 29, 29, 29, 29, 29, 10, 8, 8, 24, 29, 23, 13, 13, 13, 13,
     9, 13, 13, 13, 13, 13, 17, 13, 13, 13, 13, 13, 13, 13, 29, 1, 22, 0, 12, 0, 11, 0, 13, 20, 0,
     0, 0, 0, 0, 0, 0, 17, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 8, 0, 0, 0, 0, 26,
@@ -214,7 +204,7 @@ static mut YY_ACCEPT: [flex_int16_t; 174] = [
     0, 0, 0, 10, 5, 6, 7, 14, 13, 23, 24, 13, 13, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18, 0, 0,
     15, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0,
 ];
-static mut YY_EC: [YY_CHAR; 256] = [
+static YY_EC: [YY_CHAR; 256] = [
     0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     2, 4, 5, 6, 7, 1, 8, 9, 10, 11, 12, 13, 1, 13, 14, 1, 15, 16, 17, 17, 17, 17, 17, 17, 18, 18,
     1, 1, 19, 20, 21, 1, 1, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 31, 32, 31, 33, 34, 31, 35, 36,
@@ -225,11 +215,11 @@ static mut YY_EC: [YY_CHAR; 256] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 ];
-static mut YY_META: [YY_CHAR; 59] = [
+static YY_META: [YY_CHAR; 59] = [
     0, 1, 1, 2, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4, 1, 1, 1, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5,
     5, 5, 5, 5, 5, 5, 5, 5, 1, 1, 5, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 1,
 ];
-static mut YY_BASE: [flex_int16_t; 182] = [
+static YY_BASE: [flex_int16_t; 182] = [
     0, 0, 0, 412, 413, 409, 413, 390, 404, 401, 400, 398, 396, 34, 392, 70, 114, 16, 383, 46, 382,
     29, 84, 359, 28, 358, 52, 157, 64, 91, 128, 358, 0, 40, 27, 69, 92, 100, 171, 340, 395, 413,
     391, 413, 388, 387, 386, 413, 413, 383, 357, 358, 356, 336, 337, 335, 413, 139, 190, 352, 349,
@@ -241,7 +231,7 @@ static mut YY_BASE: [flex_int16_t; 182] = [
     213, 208, 197, 413, 166, 160, 413, 128, 122, 150, 154, 105, 101, 96, 413, 84, 413, 351, 354,
     359, 364, 366, 368, 373, 89,
 ];
-static mut YY_DEF: [flex_int16_t; 182] = [
+static YY_DEF: [flex_int16_t; 182] = [
     0, 173, 1, 173, 173, 173, 173, 173, 174, 175, 176, 173, 177, 173, 173, 173, 173, 16, 173, 173,
     173, 178, 178, 178, 178, 178, 178, 178, 178, 178, 178, 173, 179, 178, 178, 178, 178, 178, 178,
     173, 173, 173, 174, 173, 180, 175, 176, 173, 173, 177, 173, 173, 173, 173, 173, 173, 173, 173,
@@ -253,7 +243,7 @@ static mut YY_DEF: [flex_int16_t; 182] = [
     173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173,
     173, 0, 173, 173, 173, 173, 173, 173, 173, 173,
 ];
-static mut YY_NXT: [flex_int16_t; 472] = [
+static YY_NXT: [flex_int16_t; 472] = [
     0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 4, 14, 4, 15, 16, 17, 17, 17, 18, 19, 20, 21, 22, 23, 23,
     24, 25, 26, 27, 23, 23, 28, 29, 30, 23, 23, 25, 23, 23, 4, 31, 32, 33, 22, 23, 34, 25, 35, 23,
     36, 37, 38, 23, 23, 25, 23, 23, 39, 50, 173, 51, 83, 86, 52, 79, 80, 81, 173, 84, 84, 84, 136,
@@ -278,7 +268,7 @@ static mut YY_NXT: [flex_int16_t; 472] = [
     173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173, 173,
     173,
 ];
-static mut YY_CHK: [flex_int16_t; 472] = [
+static YY_CHK: [flex_int16_t; 472] = [
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 13, 17, 13,
     21, 24, 13, 19, 19, 19, 17, 34, 24, 21, 75, 17, 75, 75, 75, 75, 26, 13, 34, 13, 33, 13, 15, 15,
@@ -304,7 +294,7 @@ static mut YY_CHK: [flex_int16_t; 472] = [
 ];
 
 pub(crate) fn fits_parser_yylex(
-    yylval_param: *mut FITS_PARSER_YYSTYPE,
+    yylval_param: &mut FITS_PARSER_YYSTYPE,
     yyscanner: &mut yyguts_t,
 ) -> c_int {
     unsafe {
@@ -367,7 +357,6 @@ pub(crate) fn fits_parser_yylex(
                         [(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
                         as yy_state_type;
                     yy_cp = yy_cp.offset(1);
-                    yy_cp;
                     if YY_BASE[yy_current_state as usize] as c_int == 413 as c_int {
                         break;
                     }
@@ -402,7 +391,6 @@ pub(crate) fn fits_parser_yylex(
                                     == ' ' as i32
                                 {
                                     len -= 1;
-                                    len;
                                 }
                                 len -= 1;
                                 strncpy(
@@ -442,7 +430,6 @@ pub(crate) fn fits_parser_yylex(
                                         == ' ' as i32
                                     {
                                         len_0 -= 1;
-                                        len_0;
                                     }
                                     len_0 -= 1;
                                     strncpy(
@@ -513,7 +500,6 @@ pub(crate) fn fits_parser_yylex(
                                         _ => {}
                                     }
                                     len_0 += 1;
-                                    len_0;
                                 }
                                 strcpy(
                                     ((*yyscanner.yylval_r).astr).as_mut_ptr(),
@@ -550,7 +536,6 @@ pub(crate) fn fits_parser_yylex(
                                         == ' ' as i32
                                     {
                                         len_1 -= 1;
-                                        len_1;
                                     }
                                     len_1 -= 1;
                                     strncpy(
@@ -669,12 +654,8 @@ pub(crate) fn fits_parser_yylex(
                                         _ => {}
                                     }
                                     len_1 += 1;
-                                    len_1;
                                 }
-                                strcpy(
-                                    ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                    bitstring_0.as_mut_ptr(),
-                                );
+                                strcpy_safe(&mut ((*yyscanner.yylval_r).astr), &bitstring_0);
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             5 => {
@@ -686,7 +667,6 @@ pub(crate) fn fits_parser_yylex(
                                     constval = constval << 1
                                         | (*p as c_int == '1' as i32) as c_int as c_long;
                                     p = p.offset(1);
-                                    p;
                                 }
                                 (*yyscanner.yylval_r).lng = constval;
                                 return fits_parser_yytokentype::LONG as c_int;
@@ -700,7 +680,6 @@ pub(crate) fn fits_parser_yylex(
                                     constval_0 = constval_0 << 3 as c_int
                                         | (*p_0 as c_int - '0' as i32) as c_long;
                                     p_0 = p_0.offset(1);
-                                    p_0;
                                 }
                                 (*yyscanner.yylval_r).lng = constval_0;
                                 return fits_parser_yytokentype::LONG as c_int;
@@ -718,7 +697,6 @@ pub(crate) fn fits_parser_yylex(
                                     };
                                     constval_1 = constval_1 << 4 as c_int | v as c_long;
                                     p_1 = p_1.offset(1);
-                                    p_1;
                                 }
                                 (*yyscanner.yylval_r).lng = constval_1;
                                 return fits_parser_yytokentype::LONG as c_int;
@@ -909,7 +887,7 @@ pub(crate) fn fits_parser_yylex(
                                 dtype = fits_parser_yyGetVariable(
                                     &mut *yyscanner.yyextra_r,
                                     yytext_r_slice,
-                                    yyscanner.yylval_r,
+                                    yyscanner.yylval_r.as_mut().unwrap(),
                                 );
                                 return dtype;
                             }
@@ -931,7 +909,6 @@ pub(crate) fn fits_parser_yylex(
                                         break;
                                     }
                                     len_5 += 1;
-                                    len_5;
                                 }
                                 if (if (*fname.offset(0 as c_int as isize) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
@@ -1235,10 +1212,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             _ => {
                                 yy_fatal_error(
-                                    b"fatal flex scanner internal error--no action found\0"
-                                        as *const u8
-                                        as *const c_char,
-                                    yyscanner,
+                                    "fatal flex scanner internal error--no action found",
                                 );
                             }
                         }
@@ -1259,6 +1233,7 @@ pub(crate) fn fits_parser_yylex(
         }
     }
 }
+
 fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
     unsafe {
         let mut dest: *mut c_char =
@@ -1271,11 +1246,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             > &mut *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
                 .offset((yyscanner.yy_n_chars + 1) as isize) as *mut c_char
         {
-            yy_fatal_error(
-                b"fatal flex scanner internal error--end of buffer missed\0" as *const u8
-                    as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
         if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_fill_buffer
             == 0 as c_int
@@ -1299,7 +1270,6 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             dest = dest.offset(1);
             *fresh6 = *fresh5;
             i += 1;
-            i;
         }
         if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buffer_status
             == 2 as c_int
@@ -1332,11 +1302,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                     (*b).yy_ch_buf = std::ptr::null_mut::<c_char>();
                 }
                 if ((*b).yy_ch_buf).is_null() {
-                    yy_fatal_error(
-                        b"fatal error - scanner input buffer overflow\0" as *const u8
-                            as *const c_char,
-                        yyscanner,
-                    );
+                    yy_fatal_error("fatal error - scanner input buffer overflow");
                 }
                 yyscanner.yy_c_buf_p =
                     &mut *((*b).yy_ch_buf).offset(yy_c_buf_p_offset as isize) as *mut c_char;
@@ -1355,10 +1321,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                 num_to_read,
             );
             if yyscanner.yy_n_chars < 0 as c_int {
-                yy_fatal_error(
-                    b"read() in flex scanner failed\0" as *const u8 as *const c_char,
-                    yyscanner,
-                );
+                yy_fatal_error("read() in flex scanner failed");
             }
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars =
                 yyscanner.yy_n_chars;
@@ -1390,11 +1353,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             if ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
                 .is_null()
             {
-                yy_fatal_error(
-                    b"out of dynamic memory in yy_get_next_buffer()\0" as *const u8
-                        as *const c_char,
-                    yyscanner,
-                );
+                yy_fatal_error("out of dynamic memory in yy_get_next_buffer()");
             }
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_size =
                 new_size_0 - 2 as c_int;
@@ -1441,42 +1400,39 @@ fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
                 [(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
                 as yy_state_type;
             yy_cp = yy_cp.offset(1);
-            yy_cp;
         }
         yy_current_state
     }
 }
+
 fn yy_try_NUL_trans(
     mut yy_current_state: yy_state_type,
     yyscanner: &mut yyguts_t,
 ) -> yy_state_type {
-    unsafe {
-        let mut yy_is_jam: c_int = 0;
+    let mut yy_is_jam: c_int = 0;
 
-        let yy_cp: *mut c_char = yyscanner.yy_c_buf_p;
-        let mut yy_c: YY_CHAR = 1 as YY_CHAR;
-        if YY_ACCEPT[yy_current_state as usize] != 0 {
-            yyscanner.yy_last_accepting_state = yy_current_state;
-            yyscanner.yy_last_accepting_cpos = yy_cp;
+    let yy_cp: *mut c_char = yyscanner.yy_c_buf_p;
+    let mut yy_c: YY_CHAR = 1 as YY_CHAR;
+    if YY_ACCEPT[yy_current_state as usize] != 0 {
+        yyscanner.yy_last_accepting_state = yy_current_state;
+        yyscanner.yy_last_accepting_cpos = yy_cp;
+    }
+    while YY_CHK[(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize] as c_int
+        != yy_current_state
+    {
+        yy_current_state = YY_DEF[yy_current_state as usize] as c_int;
+        if yy_current_state >= 174 as c_int {
+            yy_c = YY_META[yy_c as usize];
         }
-        while YY_CHK[(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
-            as c_int
-            != yy_current_state
-        {
-            yy_current_state = YY_DEF[yy_current_state as usize] as c_int;
-            if yy_current_state >= 174 as c_int {
-                yy_c = YY_META[yy_c as usize];
-            }
-        }
-        yy_current_state = YY_NXT
-            [(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
-            as yy_state_type;
-        yy_is_jam = (yy_current_state == 173 as c_int) as c_int;
-        if yy_is_jam != 0 {
-            0 as c_int
-        } else {
-            yy_current_state
-        }
+    }
+    yy_current_state = YY_NXT
+        [(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
+        as yy_state_type;
+    yy_is_jam = (yy_current_state == 173 as c_int) as c_int;
+    if yy_is_jam != 0 {
+        0 as c_int
+    } else {
+        yy_current_state
     }
 }
 
@@ -1506,6 +1462,7 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
     }
 }
 
+/*
 pub(crate) fn fits_parser_yy_switch_to_buffer(
     new_buffer: YY_BUFFER_STATE,
     yyscanner: &mut yyguts_t,
@@ -1540,6 +1497,8 @@ pub(crate) fn fits_parser_yy_switch_to_buffer(
         yyscanner.yy_did_buffer_switch_on_eof = 1;
     }
 }
+*/
+
 fn fits_parser_yy_load_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
         yyscanner.yy_n_chars =
@@ -1566,19 +1525,13 @@ pub(crate) fn fits_parser_yy_create_buffer(
                 .unwrap(),
         ) as YY_BUFFER_STATE;
         if b.is_null() {
-            yy_fatal_error(
-                b"out of dynamic memory in yy_create_buffer()\0" as *const u8 as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("out of dynamic memory in yy_create_buffer()");
         }
         (*b).yy_buf_size = size;
         (*b).yy_ch_buf =
             fits_parser_yyalloc(((*b).yy_buf_size + 2 as c_int) as yy_size_t) as *mut c_char;
         if ((*b).yy_ch_buf).is_null() {
-            yy_fatal_error(
-                b"out of dynamic memory in yy_create_buffer()\0" as *const u8 as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("out of dynamic memory in yy_create_buffer()");
         }
         (*b).yy_is_our_buffer = 1;
         fits_parser_yy_init_buffer(b, file, yyscanner);
@@ -1605,6 +1558,7 @@ pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut y
         fits_parser_yyfree(b as *mut c_void);
     }
 }
+
 fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
         let oerrno: c_int = *__errno_location();
@@ -1650,6 +1604,7 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: YY_BUFFER_STATE, yyscanner: &mut yy
     }
 }
 
+/*
 pub(crate) fn fits_parser_yypush_buffer_state(
     new_buffer: YY_BUFFER_STATE,
     yyscanner: &mut yyguts_t,
@@ -1689,6 +1644,7 @@ pub(crate) fn fits_parser_yypush_buffer_state(
         yyscanner.yy_did_buffer_switch_on_eof = 1;
     }
 }
+*/
 
 pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
@@ -1742,11 +1698,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
                 ),
             ) as *mut *mut yy_buffer_state;
             if (yyscanner.yy_buffer_stack).is_null() {
-                yy_fatal_error(
-                    b"out of dynamic memory in yyensure_buffer_stack()\0" as *const u8
-                        as *const c_char,
-                    yyscanner,
-                );
+                yy_fatal_error("out of dynamic memory in yyensure_buffer_stack()");
             }
             memset(
                 yyscanner.yy_buffer_stack as *mut c_void,
@@ -1767,11 +1719,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
                 num_to_alloc.wrapping_mul(::core::mem::size_of::<*mut yy_buffer_state>()),
             ) as *mut *mut yy_buffer_state;
             if (yyscanner.yy_buffer_stack).is_null() {
-                yy_fatal_error(
-                    b"out of dynamic memory in yyensure_buffer_stack()\0" as *const u8
-                        as *const c_char,
-                    yyscanner,
-                );
+                yy_fatal_error("out of dynamic memory in yyensure_buffer_stack()");
             }
             memset(
                 (yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_max) as *mut c_void,
@@ -1783,6 +1731,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
     }
 }
 
+/*
 pub(crate) fn fits_parser_yy_scan_buffer(
     base: *mut c_char,
     size: yy_size_t,
@@ -1802,10 +1751,7 @@ pub(crate) fn fits_parser_yy_scan_buffer(
                 .unwrap(),
         ) as YY_BUFFER_STATE;
         if b.is_null() {
-            yy_fatal_error(
-                b"out of dynamic memory in yy_scan_buffer()\0" as *const u8 as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("out of dynamic memory in yy_scan_buffer()");
         }
         (*b).yy_buf_size = size.wrapping_sub(2 as c_int as yy_size_t) as c_int;
         (*b).yy_ch_buf = base;
@@ -1821,14 +1767,18 @@ pub(crate) fn fits_parser_yy_scan_buffer(
         b
     }
 }
+*/
 
+/*
 pub(crate) fn fits_parser_yy_scan_string(
     yystr: *const c_char,
     yyscanner: &mut yyguts_t,
 ) -> YY_BUFFER_STATE {
     unsafe { fits_parser_yy_scan_bytes(yystr, strlen(yystr) as c_int, yyscanner) }
 }
+*/
 
+/*
 pub(crate) fn fits_parser_yy_scan_bytes(
     yybytes: *const c_char,
     mut _yybytes_len: c_int,
@@ -1843,8 +1793,7 @@ pub(crate) fn fits_parser_yy_scan_bytes(
         buf = fits_parser_yyalloc(n) as *mut c_char;
         if buf.is_null() {
             yy_fatal_error(
-                b"out of dynamic memory in yy_scan_bytes()\0" as *const u8 as *const c_char,
-                yyscanner,
+                "out of dynamic memory in yy_scan_bytes()"
             );
         }
         i = 0 as c_int;
@@ -1859,24 +1808,23 @@ pub(crate) fn fits_parser_yy_scan_bytes(
         b = fits_parser_yy_scan_buffer(buf, n, yyscanner);
         if b.is_null() {
             yy_fatal_error(
-                b"bad buffer in yy_scan_bytes()\0" as *const u8 as *const c_char,
-                yyscanner,
+                "bad buffer in yy_scan_bytes()"
             );
         }
         (*b).yy_is_our_buffer = 1;
         b
     }
 }
+*/
 
 const YY_EXIT_FAILURE: c_int = 2;
 
-fn yy_fatal_error(msg: *const c_char, yyscanner: &mut yyguts_t) -> ! {
-    unsafe {
-        fprintf(stderr, c"%s\n".as_ptr(), msg);
-        exit(YY_EXIT_FAILURE);
-    }
+fn yy_fatal_error(msg: &str) -> ! {
+    eprintln!("{}", msg);
+    exit(YY_EXIT_FAILURE);
 }
 
+/*
 pub(crate) fn fits_parser_yyget_lineno(yyscanner: &mut yyguts_t) -> c_int {
     unsafe {
         if if !(yyscanner.yy_buffer_stack).is_null() {
@@ -1891,7 +1839,9 @@ pub(crate) fn fits_parser_yyget_lineno(yyscanner: &mut yyguts_t) -> c_int {
         (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_lineno
     }
 }
+*/
 
+/*
 pub(crate) fn fits_parser_yyget_column(yyscanner: &mut yyguts_t) -> c_int {
     unsafe {
         if if !(yyscanner.yy_buffer_stack).is_null() {
@@ -1906,22 +1856,30 @@ pub(crate) fn fits_parser_yyget_column(yyscanner: &mut yyguts_t) -> c_int {
         (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_column
     }
 }
-
+*/
+/*
 pub(crate) fn fits_parser_yyget_in(yyscanner: &mut yyguts_t) -> *mut FILE {
-    unsafe { yyscanner.yyin_r }
+    yyscanner.yyin_r
 }
+ */
 
-pub(crate) fn fits_parser_yyget_out(yyscanner: &mut yyguts_t) -> *mut FILE {
-    unsafe { yyscanner.yyout_r }
+/*
+ pub(crate) fn fits_parser_yyget_out(yyscanner: &mut yyguts_t) -> *mut FILE {
+    yyscanner.yyout_r
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyget_leng(yyscanner: &mut yyguts_t) -> c_int {
-    unsafe { yyscanner.yyleng_r }
+    yyscanner.yyleng_r
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyget_text(yyscanner: &mut yyguts_t) -> *mut c_char {
-    unsafe { yyscanner.yytext_r }
+    yyscanner.yytext_r
 }
+ */
 
 /** Set the user-defined data. This data is never touched by the scanner.
  * @param user_defined The data to be associated with this scanner.
@@ -1931,6 +1889,7 @@ pub(crate) fn fits_parser_yyset_extra(user_defined: &mut ParseData, yyscanner: &
     yyscanner.yyextra_r = user_defined;
 }
 
+/*
 pub(crate) fn fits_parser_yyset_lineno(mut _line_number: c_int, yyscanner: &mut yyguts_t) {
     unsafe {
         if if !(yyscanner.yy_buffer_stack).is_null() {
@@ -1940,16 +1899,15 @@ pub(crate) fn fits_parser_yyset_lineno(mut _line_number: c_int, yyscanner: &mut 
         }
         .is_null()
         {
-            yy_fatal_error(
-                b"yyset_lineno called with no buffer\0" as *const u8 as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("yyset_lineno called with no buffer");
         }
         (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_lineno =
             _line_number;
     }
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyset_column(mut _column_no: c_int, yyscanner: &mut yyguts_t) {
     unsafe {
         if if !(yyscanner.yy_buffer_stack).is_null() {
@@ -1959,51 +1917,54 @@ pub(crate) fn fits_parser_yyset_column(mut _column_no: c_int, yyscanner: &mut yy
         }
         .is_null()
         {
-            yy_fatal_error(
-                b"yyset_column called with no buffer\0" as *const u8 as *const c_char,
-                yyscanner,
-            );
+            yy_fatal_error("yyset_column called with no buffer");
         }
         (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_column =
             _column_no;
     }
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyset_in(mut _in_str: *mut FILE, yyscanner: &mut yyguts_t) {
-    unsafe {
-        yyscanner.yyin_r = _in_str;
-    }
+    yyscanner.yyin_r = _in_str;
 }
+*/
 
+/*
 pub(crate) fn fits_parser_yyset_out(mut _out_str: *mut FILE, yyscanner: &mut yyguts_t) {
-    unsafe {
-        yyscanner.yyout_r = _out_str;
-    }
+    yyscanner.yyout_r = _out_str;
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyget_debug(yyscanner: &mut yyguts_t) -> c_int {
-    unsafe { yyscanner.yy_flex_debug_r }
+    yyscanner.yy_flex_debug_r
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyset_debug(mut _bdebug: c_int, yyscanner: &mut yyguts_t) {
-    unsafe {
-        yyscanner.yy_flex_debug_r = _bdebug;
-    }
+    yyscanner.yy_flex_debug_r = _bdebug;
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyget_lval(yyscanner: &mut yyguts_t) -> *mut FITS_PARSER_YYSTYPE {
-    unsafe { yyscanner.yylval_r }
+    yyscanner.yylval_r
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yyset_lval(
     yylval_param: *mut FITS_PARSER_YYSTYPE,
     yyscanner: &mut yyguts_t,
 ) {
-    unsafe {
-        yyscanner.yylval_r = yylval_param;
-    }
+    yyscanner.yylval_r = yylval_param;
 }
+ */
 
+/*
 pub(crate) fn fits_parser_yylex_init(ptr_yy_globals: &mut Option<Box<yyguts_t>>) -> c_int {
     let b = box_try_new(yyguts_t::default());
 
@@ -2016,6 +1977,7 @@ pub(crate) fn fits_parser_yylex_init(ptr_yy_globals: &mut Option<Box<yyguts_t>>)
 
     yy_init_globals(ptr_yy_globals.as_deref_mut().unwrap())
 }
+ */
 
 /* yylex_init_extra has the same functionality as yylex_init, but follows the
  * convention of taking the scanner as the last argument. Note however, that
@@ -2028,43 +1990,39 @@ pub(crate) fn fits_parser_yylex_init_extra(
     yy_user_defined: &mut ParseData,
     ptr_yy_globals: &mut Option<Box<yyguts_t>>,
 ) -> c_int {
-    unsafe {
-        let mut dummy_yyguts = yyguts_t::default();
+    let mut dummy_yyguts = yyguts_t::default();
 
-        fits_parser_yyset_extra(yy_user_defined, &mut dummy_yyguts);
+    fits_parser_yyset_extra(yy_user_defined, &mut dummy_yyguts);
 
-        let b = box_try_new(yyguts_t::default());
+    let b = box_try_new(yyguts_t::default());
 
-        if b.is_err() {
-            set_errno(Errno(ENOMEM));
-            return 1;
-        }
-
-        let mut b = b.unwrap();
-
-        fits_parser_yyset_extra(yy_user_defined, &mut b);
-
-        *ptr_yy_globals = Some(b);
-
-        yy_init_globals(ptr_yy_globals.as_deref_mut().unwrap())
+    if b.is_err() {
+        set_errno(Errno(ENOMEM));
+        return 1;
     }
+
+    let mut b = b.unwrap();
+
+    fits_parser_yyset_extra(yy_user_defined, &mut b);
+
+    *ptr_yy_globals = Some(b);
+
+    yy_init_globals(ptr_yy_globals.as_deref_mut().unwrap())
 }
 
 fn yy_init_globals(yyscanner: &mut yyguts_t) -> c_int {
-    unsafe {
-        yyscanner.yy_buffer_stack = std::ptr::null_mut::<YY_BUFFER_STATE>();
-        yyscanner.yy_buffer_stack_top = 0 as c_int as size_t;
-        yyscanner.yy_buffer_stack_max = 0 as c_int as size_t;
-        yyscanner.yy_c_buf_p = std::ptr::null_mut::<c_char>();
-        yyscanner.yy_init = 0 as c_int;
-        yyscanner.yy_start = 0 as c_int;
-        yyscanner.yy_start_stack_ptr = 0 as c_int;
-        yyscanner.yy_start_stack_depth = 0 as c_int;
-        yyscanner.yy_start_stack = std::ptr::null_mut::<c_int>();
-        yyscanner.yyin_r = std::ptr::null_mut::<FILE>();
-        yyscanner.yyout_r = std::ptr::null_mut::<FILE>();
-        0 as c_int
-    }
+    yyscanner.yy_buffer_stack = std::ptr::null_mut::<YY_BUFFER_STATE>();
+    yyscanner.yy_buffer_stack_top = 0 as c_int as size_t;
+    yyscanner.yy_buffer_stack_max = 0 as c_int as size_t;
+    yyscanner.yy_c_buf_p = std::ptr::null_mut::<c_char>();
+    yyscanner.yy_init = 0 as c_int;
+    yyscanner.yy_start = 0 as c_int;
+    yyscanner.yy_start_stack_ptr = 0 as c_int;
+    yyscanner.yy_start_stack_depth = 0 as c_int;
+    yyscanner.yy_start_stack = std::ptr::null_mut::<c_int>();
+    yyscanner.yyin_r = std::ptr::null_mut::<FILE>();
+    yyscanner.yyout_r = std::ptr::null_mut::<FILE>();
+    0 as c_int
 }
 
 pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {

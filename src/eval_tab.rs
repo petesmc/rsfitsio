@@ -46,6 +46,53 @@ pub(crate) enum fits_parser_yytokentype {
     DIFF = 292,                /* DIFF  */
 }
 
+impl From<c_int> for fits_parser_yytokentype {
+    fn from(value: c_int) -> Self {
+        match value {
+            -2 => Self::FITS_PARSER_YYEMPTY,
+            0 => Self::FITS_PARSER_YYEOF,
+            256 => Self::FITS_PARSER_YYerror,
+            257 => Self::FITS_PARSER_YYUNDEF,
+            258 => Self::BOOLEAN,
+            259 => Self::LONG,
+            260 => Self::DOUBLE,
+            261 => Self::STRING,
+            262 => Self::BITSTR,
+            263 => Self::FUNCTION,
+            264 => Self::BFUNCTION,
+            265 => Self::IFUNCTION,
+            266 => Self::GTIFILTER,
+            267 => Self::GTIOVERLAP,
+            268 => Self::GTIFIND,
+            269 => Self::REGFILTER,
+            270 => Self::COLUMN,
+            271 => Self::BCOLUMN,
+            272 => Self::SCOLUMN,
+            273 => Self::BITCOL,
+            274 => Self::ROWREF,
+            275 => Self::NULLREF,
+            276 => Self::SNULLREF,
+            277 => Self::OR,
+            278 => Self::AND,
+            279 => Self::EQ,
+            280 => Self::NE,
+            281 => Self::GT,
+            282 => Self::LT,
+            283 => Self::LTE,
+            284 => Self::GTE,
+            285 => Self::XOR,
+            286 => Self::POWER,
+            287 => Self::NOT,
+            288 => Self::INTCAST,
+            289 => Self::FLTCAST,
+            290 => Self::UMINUS,
+            291 => Self::ACCUM,
+            292 => Self::DIFF,
+            _ => panic!(),
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub(crate) union FITS_PARSER_YYSTYPE {
     pub(crate) Node: c_int,                         /* Index of Node */

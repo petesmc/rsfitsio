@@ -9,7 +9,7 @@ pub const MAXDIMS: c_int = 5;
 pub const MAXSUBS: c_int = 10;
 pub const MAXVARNAME: usize = 80;
 pub const CONST_OP: c_int = -1000;
-pub const pERROR: c_int = -1;
+pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
@@ -59,9 +59,9 @@ pub struct lval {
 #[derive(Default, Copy, Clone)]
 pub struct Node {
     pub operation: c_int,
-    pub DoOp: Option<unsafe fn(p: &mut ParseData, this: *mut Node)>,
+    pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
     pub nSubNodes: c_int,
-    pub SubNodes: [c_int; MAXSUBS as usize],
+    pub SubNodes: [usize; MAXSUBS as usize],
     pub ntype: c_int,
     pub value: lval,
 }

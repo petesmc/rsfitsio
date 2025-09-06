@@ -17,3 +17,4 @@
 - [X] Mark all extern functions as deprecated so that we can detect usage
 - [ ] Feature "bzip2" doesn't work
 - [X] Feature "shared_mem" doesn't work
+- [ ] fits_parser_yytokentype refactor to enum
