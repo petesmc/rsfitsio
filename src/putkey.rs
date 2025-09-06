@@ -3889,7 +3889,7 @@ pub fn ffptdm_safe(
 
         int_snprintf!(&mut value, 80, "{}", naxes[ii]);
         /* This will either be followed by a ',' or ')'. */
-        if strlen_safe(&mut tdimstr) + strlen_safe(&value) + 1 > FLEN_VALUE - 1 {
+        if strlen_safe(&tdimstr) + strlen_safe(&value) + 1 > FLEN_VALUE - 1 {
             ffpmsg_str("TDIM string too long (ffptdm)");
             *status = BAD_TDIM;
             return *status;

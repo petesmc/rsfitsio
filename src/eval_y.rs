@@ -500,20 +500,18 @@ fn Alloc_Node(lParse: &mut ParseData) -> c_int {
             lParse
                 .Nodes
                 .resize(lParse.nNodesAlloc as usize, Node::default());
+        } else if lParse
+            .Nodes
+            .try_reserve_exact(lParse.nNodesAlloc as usize)
+            .is_err()
+        {
+            lParse.status = MEMORY_ALLOCATION;
+            return -(1);
         } else {
-            if lParse
+            lParse.nNodesAlloc *= 2;
+            lParse
                 .Nodes
-                .try_reserve_exact(lParse.nNodesAlloc as usize)
-                .is_err()
-            {
-                lParse.status = MEMORY_ALLOCATION;
-                return -(1);
-            } else {
-                lParse.nNodesAlloc *= 2;
-                lParse
-                    .Nodes
-                    .resize(lParse.nNodesAlloc as usize, Node::default());
-            }
+                .resize(lParse.nNodesAlloc as usize, Node::default());
         }
     }
 

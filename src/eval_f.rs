@@ -51,7 +51,7 @@
 /************************************************************************/
 
 use libc::{memcpy, memset};
-use std::{cmp, mem, ptr};
+use std::{cmp, ptr};
 
 use crate::buffers::{ffgbyt, ffgtbb_safe, ffmbyt_safe, ffpbyt, ffptbb_safe};
 use crate::c_types::{c_char, c_double, c_int, c_long, c_short, c_uchar, c_void};
@@ -79,7 +79,7 @@ use crate::fitscore::{
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
 };
 use crate::fitscore::{ffpmsg_slice, ffpmsg_str, ffrdef_safe};
-use crate::fitsio2::{IGNORE_EOF, REPORT_EOF};
+use crate::fitsio2::{FSTRCMP, IGNORE_EOF, REPORT_EOF};
 use crate::getcolb::ffgcvb_safe;
 use crate::getcold::{ffgcfd_safe, ffgcvd_safe};
 use crate::getcolj::{ffgcfj_safe, ffgcvj_safe};
@@ -583,7 +583,7 @@ pub fn ffsrow_safe(
                     ffmbyt_safe(infptr, inbyteloc, REPORT_EOF, status);
                     ffgbyt(infptr, rdlen, &mut buffer[..rdlen as usize], status);
                     ffmbyt_safe(outfptr, outbyteloc, IGNORE_EOF, status);
-                    ffpbyt(outfptr, rdlen, &mut buffer[..rdlen as usize], status);
+                    ffpbyt(outfptr, rdlen, &buffer[..rdlen as usize], status);
                     inbyteloc += rdlen;
                     outbyteloc += rdlen;
                     ntodo -= rdlen;
@@ -1583,13 +1583,13 @@ fn fits_parser_workfn_safe(
         let mut constant: c_int = 0;
         let mut anyNullThisTime: c_int = 0;
         let mut jj: c_long = 0;
-        let mut kk: c_long = 0;
+        let kk: c_long = 0;
         let mut idx: c_long = 0;
         let mut remain: c_long = 0;
         let mut ntodo: c_long = 0;
         let mut result: &mut Node;
         let mut outcol: &mut iteratorCol;
-        let mut lParse: &mut ParseData = unsafe {
+        let lParse: &mut ParseData = unsafe {
             (userPtr as *mut parseInfo)
                 .as_mut()
                 .unwrap()
@@ -1599,12 +1599,11 @@ fn fits_parser_workfn_safe(
         };
         let pv: &mut ParseStatusVariables =
             unsafe { &mut (userPtr as *mut parseInfo).as_mut().unwrap().parseVariables };
-        let Data0: *mut c_void;
 
         /* declare variables static to preserve their values between calls */
         let mut zeros: [c_long; 4] = [0, 0, 0, 0];
 
-        if (DEBUG_PIXFILTER != 0) {
+        if DEBUG_PIXFILTER != 0 {
             println!(
                 "fits_parser_workfn(total={}, offset={}, first={}, rows={}, cols={})",
                 totalrows, offset, firstrow, nrows, nCols
@@ -1614,7 +1613,7 @@ fn fits_parser_workfn_safe(
         /*  Initialization procedures: execute on the first call  */
         /*--------------------------------------------------------*/
         outcol = &mut colData[(nCols - 1) as usize];
-        if (firstrow == offset + 1) {
+        if firstrow == offset + 1 {
             (pv.userInfo) = userPtr as *mut parseInfo;
             (*(pv.userInfo)).anyNull = 0;
 
@@ -1630,9 +1629,9 @@ fn fits_parser_workfn_safe(
 
             outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
 
-            if ((*(pv.userInfo)).maxRows > 0) {
+            if (*(pv.userInfo)).maxRows > 0 {
                 (*(pv.userInfo)).maxRows = cmp::min(totalrows, (*(pv.userInfo)).maxRows);
-            } else if ((*(pv.userInfo)).maxRows < 0) {
+            } else if (*(pv.userInfo)).maxRows < 0 {
                 (*(pv.userInfo)).maxRows = totalrows;
             } else {
                 (*(pv.userInfo)).maxRows = nrows;
@@ -1643,10 +1642,10 @@ fn fits_parser_workfn_safe(
             /* dataPtr == NULL indicates an iterator-derived column, which
             means that the first value will be a null value and the remaining
             values will be the where the outputs are placed */
-            if ((*(pv.userInfo)).dataPtr.is_null()) {
-                if (outcol.iotype == InputCol) {
+            if (*(pv.userInfo)).dataPtr.is_null() {
+                if outcol.iotype == InputCol {
                     ffpmsg_str("Output column for parser results not found!");
-                    return (PARSE_NO_OUTPUT);
+                    return PARSE_NO_OUTPUT;
                 }
                 /* Data gets set later */
                 (pv.Null) = outcol.array;
@@ -1656,12 +1655,12 @@ fn fits_parser_workfn_safe(
 
                 status = 0;
                 (pv.jnull) = 0;
-                if (lParse.hdutype == IMAGE_HDU) {
+                if lParse.hdutype == IMAGE_HDU {
                     if (*(lParse.pixFilter)).blank != 0 {
                         (pv.jnull) = (*(lParse.pixFilter)).blank as LONGLONG;
                     }
                 } else {
-                    if (outcol.iotype != TemporaryCol) {
+                    if outcol.iotype != TemporaryCol {
                         let mut jj_tmp: c_int = 0;
                         ffgknjj_safe(
                             outcol.fptr.as_mut().unwrap(),
@@ -1675,9 +1674,9 @@ fn fits_parser_workfn_safe(
                         jj = jj_tmp as c_long;
                     }
 
-                    if (status == BAD_INTKEY || outcol.iotype == TemporaryCol) {
+                    if status == BAD_INTKEY || outcol.iotype == TemporaryCol {
                         /*  Probably ASCII table with text TNULL keyword  */
-                        match ((*(pv.userInfo)).datatype) {
+                        match (*(pv.userInfo)).datatype {
                             TSHORT => {
                                 (pv.jnull) = SHRT_MIN as LONGLONG;
                             }
@@ -1711,7 +1710,7 @@ fn fits_parser_workfn_safe(
 
             /* Determine the size of each element of the returned result */
 
-            match ((*(pv.userInfo)).datatype) {
+            match (*(pv.userInfo)).datatype {
                 TBIT | TLOGICAL | TBYTE => {
                     (pv.datasize) = size_of::<c_char>() as c_int;
                 }
@@ -1742,7 +1741,7 @@ fn fits_parser_workfn_safe(
             /* Determine the size of each element of the calculated result */
             /*   (only matters for numeric/logical data)                   */
 
-            match (lParse.Nodes[lParse.resultNode as usize].ntype) {
+            match lParse.Nodes[lParse.resultNode as usize].ntype {
                 BOOLEAN => {
                     (pv.resDataSize) = size_of::<c_char>() as c_long;
                 }
@@ -1766,7 +1765,7 @@ fn fits_parser_workfn_safe(
                     printf("fits_parser_workfn: using null value %ld\n", (pv.jnull));
         */
 
-        if ((*(pv.userInfo)).dataPtr.is_null()) {
+        if (*(pv.userInfo)).dataPtr.is_null() {
             /* First, reset Data pointer to start of output array, plus 1
             because the 0th element is the null value (cute undocumented
             feature of the iterator!) */
@@ -1774,28 +1773,28 @@ fn fits_parser_workfn_safe(
                 (outcol.array as *mut c_char).add(pv.datasize.try_into().unwrap()) as *mut c_void;
 
             /* A TemporaryCol with null value specified explicitly */
-            if (outcol.iotype == TemporaryCol && !(*(pv.userInfo)).nullPtr.is_null()) {
+            if outcol.iotype == TemporaryCol && !(*(pv.userInfo)).nullPtr.is_null() {
                 pv.Null = (*(pv.userInfo)).nullPtr;
             } else {
                 /* ... or an OutputCol or TemporaryCol with no explicit null */
-                match ((*(pv.userInfo)).datatype) {
+                match (*(pv.userInfo)).datatype {
                     TLOGICAL => {
                         *(pv.Null as *mut c_char) = b'U' as c_char;
                     }
                     TBYTE => {
-                        *(pv.Null as *mut c_char) = (pv.jnull) as (c_char);
+                        *(pv.Null as *mut c_char) = (pv.jnull) as c_char;
                     }
                     TSHORT => {
-                        *(pv.Null as *mut c_short) = (pv.jnull) as (c_short);
+                        *(pv.Null as *mut c_short) = (pv.jnull) as c_short;
                     }
                     TINT => {
-                        *(pv.Null as *mut c_int) = (pv.jnull) as (c_int);
+                        *(pv.Null as *mut c_int) = (pv.jnull) as c_int;
                     }
                     TLONG => {
-                        *(pv.Null as *mut c_long) = (pv.jnull) as (c_long);
+                        *(pv.Null as *mut c_long) = (pv.jnull) as c_long;
                     }
                     TLONGLONG => {
-                        *(pv.Null as *mut LONGLONG) = (pv.jnull) as (LONGLONG);
+                        *(pv.Null as *mut LONGLONG) = (pv.jnull) as LONGLONG;
                     }
                     TFLOAT => {
                         *(pv.Null as *mut f32) = FLOATNULLVALUE;
@@ -1814,7 +1813,7 @@ fn fits_parser_workfn_safe(
 
         /* Alter nrows in case calling routine didn't want to do all rows */
 
-        Data0 = pv.Data; /* Record starting point */
+        let Data0: *mut c_void = pv.Data; /* Record starting point */
         nrows = cmp::min(nrows, (pv.lastRow) - firstrow + 1);
 
         Setup_DataArrays(lParse, nCols, colData, firstrow, nrows);
@@ -1827,10 +1826,10 @@ fn fits_parser_workfn_safe(
         /* whole to fits_parser_workfn in a single iteration.                           */
 
         remain = nrows;
-        while (remain != 0) {
+        while remain != 0 {
             ntodo = cmp::min(remain, 10000);
             Evaluate_Parser(lParse, firstrow, ntodo);
-            if (lParse.status != 0) {
+            if lParse.status != 0 {
                 break;
             }
 
@@ -1840,16 +1839,16 @@ fn fits_parser_workfn_safe(
             /*  Copy results into data array  */
 
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if (result.operation == CONST_OP) {
+            if result.operation == CONST_OP {
                 constant = 1;
             }
 
-            match (result.ntype.into()) {
+            match result.ntype.into() {
                 fits_parser_yytokentype::BOOLEAN
                 | fits_parser_yytokentype::LONG
                 | fits_parser_yytokentype::DOUBLE => {
-                    if (constant != 0) {
-                        let mut undef: c_char = 0;
+                    if constant != 0 {
+                        let undef: c_char = 0;
                         for kk in 0..ntodo {
                             for jj in 0..pv.repeat {
                                 ffcvtn(
@@ -1858,7 +1857,7 @@ fn fits_parser_workfn_safe(
                                     &undef,
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
-                                    (pv.Null),
+                                    pv.Null,
                                     (pv.Data as *mut c_char).add(
                                         ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
                                             .try_into()
@@ -1870,19 +1869,19 @@ fn fits_parser_workfn_safe(
                             }
                         }
                     } else {
-                        if ((pv.repeat) == result.value.nelem) {
+                        if (pv.repeat) == result.value.nelem {
                             ffcvtn(
                                 lParse.datatype,
                                 result.value.data.ptr,
                                 result.value.undef,
                                 result.value.nelem * ntodo,
                                 (*(pv.userInfo)).datatype,
-                                (pv.Null),
-                                (pv.Data),
+                                pv.Null,
+                                pv.Data,
                                 &mut anyNullThisTime,
                                 &mut lParse.status,
                             );
-                        } else if (result.value.nelem == 1) {
+                        } else if result.value.nelem == 1 {
                             for kk in 0..ntodo {
                                 for jj in 0..pv.repeat {
                                     ffcvtn(
@@ -1894,7 +1893,7 @@ fn fits_parser_workfn_safe(
                                             .add(kk.try_into().unwrap()),
                                         1,
                                         (*(pv.userInfo)).datatype,
-                                        (pv.Null),
+                                        pv.Null,
                                         (pv.Data as *mut c_char).add(
                                             ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
                                                 .try_into()
@@ -1906,8 +1905,7 @@ fn fits_parser_workfn_safe(
                                 }
                             }
                         } else {
-                            let mut nCopy: c_int =
-                                cmp::min((pv.repeat), result.value.nelem) as c_int;
+                            let nCopy: c_int = cmp::min(pv.repeat, result.value.nelem) as c_int;
                             for kk in 0..ntodo {
                                 ffcvtn(
                                     lParse.datatype,
@@ -1920,7 +1918,7 @@ fn fits_parser_workfn_safe(
                                         .add((kk * result.value.nelem).try_into().unwrap()),
                                     nCopy as c_long,
                                     (*(pv.userInfo)).datatype,
-                                    (pv.Null),
+                                    pv.Null,
                                     (pv.Data as *mut c_char).add(
                                         ((kk * (pv.repeat)) * (pv.datasize as c_long))
                                             .try_into()
@@ -1944,11 +1942,11 @@ fn fits_parser_workfn_safe(
                                 }
                             }
                         }
-                        if (result.operation > 0) {
+                        if result.operation > 0 {
                             FREE!(result.value.data.ptr);
                         }
                     }
-                    if (lParse.status == OVERFLOW_ERR) {
+                    if lParse.status == OVERFLOW_ERR {
                         lParse.status = NUM_OVERFLOW;
                         ffpmsg_str(
                             "Numerical overflow while converting expression to necessary datatype",
@@ -1957,39 +1955,37 @@ fn fits_parser_workfn_safe(
                 }
 
                 fits_parser_yytokentype::BITSTR => {
-                    match ((*(pv.userInfo)).datatype) {
+                    match (*(pv.userInfo)).datatype {
                         TBYTE => {
                             idx = -1;
                             for kk in 0..(ntodo) {
                                 for jj in 0..result.value.nelem {
-                                    if (jj % 8 == 0) {
+                                    if jj % 8 == 0 {
                                         idx += 1;
                                         *((pv.Data as *mut c_char).add(idx.try_into().unwrap())) =
                                             0;
                                     }
-                                    if (constant != 0) {
-                                        if (result.value.data.astr[jj as usize] == b'1' as c_char) {
+                                    if constant != 0 {
+                                        if result.value.data.astr[jj as usize] == b'1' as c_char {
                                             *((pv.Data as *mut c_uchar)
                                                 .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
                                         }
-                                    } else {
-                                        if *(*(result
-                                            .value
-                                            .data
-                                            .strptr
-                                            .add(kk.try_into().unwrap())))
-                                        .add(jj.try_into().unwrap())
-                                            == b'1' as c_char
-                                        {
-                                            *((pv.Data as *mut c_uchar)
-                                                .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
-                                        }
+                                    } else if *(*(result
+                                        .value
+                                        .data
+                                        .strptr
+                                        .add(kk.try_into().unwrap())))
+                                    .add(jj.try_into().unwrap())
+                                        == b'1' as c_char
+                                    {
+                                        *((pv.Data as *mut c_uchar)
+                                            .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
                                     }
                                 }
                             }
                         }
                         TBIT | TLOGICAL => {
-                            if (constant != 0) {
+                            if constant != 0 {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
                                         let r = if (result.value.data.astr
@@ -2008,13 +2004,13 @@ fn fits_parser_workfn_safe(
                             } else {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
-                                        let r = if ((*(*(result
+                                        let r = if (*(*(result
                                             .value
                                             .data
                                             .strptr
                                             .add(kk.try_into().unwrap())))
                                         .add(jj.try_into().unwrap()))
-                                            == b'1' as c_char)
+                                            == b'1' as c_char
                                         {
                                             1
                                         } else {
@@ -2028,7 +2024,7 @@ fn fits_parser_workfn_safe(
                             }
                         }
                         TSTRING => {
-                            if (constant != 0) {
+                            if constant != 0 {
                                 for jj in 0..ntodo {
                                     strcpy(
                                         *((pv.Data as *mut *mut c_char)
@@ -2051,15 +2047,15 @@ fn fits_parser_workfn_safe(
                             lParse.status = PARSE_BAD_TYPE;
                         }
                     }
-                    if (result.operation > 0) {
+                    if result.operation > 0 {
                         FREE!(*(result.value.data.strptr));
                         FREE!(result.value.data.strptr);
                     }
                     break;
                 }
                 fits_parser_yytokentype::STRING => {
-                    if ((*(pv.userInfo)).datatype == TSTRING) {
-                        if (constant != 0) {
+                    if (*(pv.userInfo)).datatype == TSTRING {
+                        if constant != 0 {
                             for jj in 0..ntodo {
                                 strcpy(
                                     *((pv.Data as *mut *mut c_char).add(jj.try_into().unwrap())),
@@ -2088,7 +2084,7 @@ fn fits_parser_workfn_safe(
                         ffpmsg_str("Cannot convert string expression to desired type.");
                         lParse.status = PARSE_BAD_TYPE;
                     }
-                    if (result.operation > 0) {
+                    if result.operation > 0 {
                         FREE!(*(result.value.data.strptr));
                         FREE!(result.value.data.strptr);
                     }
@@ -2096,21 +2092,21 @@ fn fits_parser_workfn_safe(
                 _ => {}
             }
 
-            if (lParse.status != 0) {
+            if lParse.status != 0 {
                 break;
             }
 
             /*  Increment Data to point to where the next block should go  */
 
-            if (result.ntype == fits_parser_yytokentype::BITSTR as c_int
-                && (*(pv.userInfo)).datatype == TBYTE)
+            if result.ntype == fits_parser_yytokentype::BITSTR as c_int
+                && (*(pv.userInfo)).datatype == TBYTE
             {
                 (pv.Data) = (pv.Data as *mut c_char).add(
                     ((pv.datasize as c_long) * ((result.value.nelem + 7) / 8) * ntodo)
                         .try_into()
                         .unwrap(),
                 ) as *mut c_void;
-            } else if (result.ntype == fits_parser_yytokentype::STRING as c_int) {
+            } else if result.ntype == fits_parser_yytokentype::STRING as c_int {
                 (pv.Data) = (pv.Data as *mut c_char)
                     .add(((pv.datasize as c_long) * ntodo).try_into().unwrap())
                     as *mut c_void;
@@ -2127,29 +2123,29 @@ fn fits_parser_workfn_safe(
         what the null value is expected to be */
         outcol = &mut colData[(nCols - 1) as usize]; // Re-bind 
 
-        if (pv.Null != outcol.array
+        if pv.Null != outcol.array
             && (Data0)
                 == (outcol.array as *mut c_char).add((pv.datasize).try_into().unwrap())
-                    as *mut c_void)
+                    as *mut c_void
         {
-            if ((*(pv.userInfo)).datatype == TSTRING) {
+            if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
                     outcol.array,
                     (*(pv.Null as *mut *mut c_char)) as *mut c_void,
                     2,
                 );
             } else {
-                memcpy(outcol.array, (pv.Null), (pv.datasize.try_into().unwrap()));
+                memcpy(outcol.array, pv.Null, pv.datasize.try_into().unwrap());
             }
         }
 
         /* If no NULLs encountered during this pass, set Null value to */
         /* zero to make the writing of the output column data faster   */
 
-        if (anyNullThisTime != 0) {
+        if anyNullThisTime != 0 {
             (*(pv.userInfo)).anyNull = 1;
-        } else if (pv.Null == outcol.array) {
-            if ((*(pv.userInfo)).datatype == TSTRING) {
+        } else if pv.Null == outcol.array {
+            if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
                     (*(pv.Null as *mut *mut c_char)) as *mut c_void,
                     zeros.as_mut_ptr() as *mut c_void,
@@ -2157,7 +2153,7 @@ fn fits_parser_workfn_safe(
                 );
             } else {
                 memcpy(
-                    (pv.Null),
+                    pv.Null,
                     zeros.as_mut_ptr() as *mut c_void,
                     (pv.datasize).try_into().unwrap(),
                 );
@@ -2172,13 +2168,15 @@ fn fits_parser_workfn_safe(
         /*  of rows in the table should be processed, return a value of -1 */
         /*  once all the rows have been done, if no other error occurred.  */
 
-        if (lParse.hdutype != IMAGE_HDU && firstrow - 1 == (pv.lastRow)) {
-            if (lParse.status == 0 && (*(pv.userInfo)).maxRows < totalrows) {
-                return (-1);
-            }
+        if lParse.hdutype != IMAGE_HDU
+            && firstrow - 1 == (pv.lastRow)
+            && lParse.status == 0
+            && (*(pv.userInfo)).maxRows < totalrows
+        {
+            return -1;
         }
 
-        return (lParse.status); /* return successful status */
+        lParse.status /* return successful status */
     }
 }
 
@@ -2189,11 +2187,216 @@ fn fits_parser_workfn_safe(
 fn Setup_DataArrays(
     lParse: &mut ParseData,
     nCols: c_int,
-    cols: &[iteratorCol],
+    cols: &mut [iteratorCol],
     fRow: c_long,
     nRows: c_long,
 ) {
-    todo!();
+    unsafe {
+        let i: c_int = 0;
+        let mut nelem: c_long = 0;
+        let mut len: c_long = 0;
+        let mut row: c_long = 0;
+        let mut idx: c_long = 0;
+
+        let mut bitStrs: *mut *mut c_char = std::ptr::null_mut();
+        let mut sptr: *mut *mut c_char = std::ptr::null_mut();
+        let mut barray: *mut c_char = std::ptr::null_mut();
+        let mut iarray: *mut c_long = std::ptr::null_mut();
+        let mut rarray: *mut c_double = std::ptr::null_mut();
+        let mut msg: [c_char; 80] = [0; 80];
+        let mut do_realloc: c_int = 0;
+
+        lParse.firstDataRow = fRow;
+        lParse.nDataRows = nRows;
+        /* Only perform reallocations if the number of rows changed */
+        if lParse.nPrevDataRows != nRows {
+            do_realloc = 1;
+        }
+
+        /*  Resize and fill in UNDEF arrays for each column  */
+        for i in 0..nCols as usize {
+            let icol: &mut iteratorCol = &mut cols[i];
+            let varData = &mut lParse.varData[i];
+
+            if icol.iotype == OutputCol || icol.iotype == TemporaryCol {
+                continue;
+            }
+
+            nelem = varData.nelem;
+            len = nelem * nRows;
+
+            match varData.dtype.into() {
+                fits_parser_yytokentype::BITSTR => {
+                    /* No need for UNDEF array, but must make string DATA array */
+                    len = (nelem + 1) * nRows; /* Count '\0' */
+                    bitStrs = varData.data as *mut *mut c_char;
+                    if do_realloc != 0 {
+                        if !bitStrs.is_null() {
+                            FREE!(*bitStrs);
+                        }
+                        free(bitStrs as *mut c_void);
+                        bitStrs =
+                            malloc(nRows as usize * size_of::<*mut c_char>()) as *mut *mut c_char;
+                        if bitStrs.is_null() {
+                            varData.undef = ptr::null_mut();
+                            varData.data = ptr::null_mut();
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                        *bitStrs = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        if (*bitStrs).is_null() {
+                            free(bitStrs as *mut c_void);
+                            varData.undef = ptr::null_mut();
+                            varData.data = ptr::null_mut();
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                    }
+
+                    for row in 0..nRows as usize {
+                        *bitStrs.add(row) =
+                            (*bitStrs.add(0)).add((row as c_long * (nelem + 1)) as usize);
+                        idx = (row as c_long) * ((nelem + 7) / 8) + 1;
+                        for len in 0..nelem as usize {
+                            if (*(icol.array as *mut c_char).add(idx as usize)
+                                & (1 << (7 - (len % 8))))
+                                != 0
+                            {
+                                *(*bitStrs.add(row)).add(len) = b'1' as c_char;
+                            } else {
+                                *(*bitStrs.add(row)).add(len) = b'0' as c_char;
+                            }
+                            if len % 8 == 7 {
+                                idx += 1;
+                            }
+                        }
+                        *(*bitStrs.add(row)).add(len as usize) = 0;
+                    }
+                    varData.undef = bitStrs as *mut c_char;
+                    varData.data = bitStrs as *mut c_void;
+                }
+
+                fits_parser_yytokentype::STRING => {
+                    sptr = icol.array as *mut *mut c_char;
+                    if do_realloc != 0 {
+                        if !varData.undef.is_null() {
+                            free(varData.undef as *mut c_void);
+                        }
+                        varData.undef = malloc(nRows as usize * size_of::<c_char>()) as *mut c_char;
+                        if varData.undef.is_null() {
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                    }
+                    row = nRows;
+                    while row > 0 {
+                        row -= 1;
+                        *varData.undef.add(row as usize) = (**sptr != 0
+                            && FSTRCMP(
+                                cast_slice(CStr::from_ptr(*sptr.add(0)).to_bytes_with_nul()),
+                                cast_slice(
+                                    CStr::from_ptr(*sptr.add((row + 1) as usize))
+                                        .to_bytes_with_nul(),
+                                ),
+                            ) == 0)
+                            as c_char;
+                    }
+                    varData.data = sptr.add(1) as *mut c_void;
+                }
+
+                fits_parser_yytokentype::BOOLEAN => {
+                    barray = icol.array as *mut c_char;
+                    if do_realloc != 0 {
+                        if !varData.undef.is_null() {
+                            free(varData.undef as *mut c_void);
+                        }
+                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        if varData.undef.is_null() {
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                    }
+                    while len > 0 {
+                        len -= 1;
+                        *varData.undef.add(len as usize) = (*barray.add(0) != 0
+                            && *barray.add(0) == *barray.add((len + 1) as usize))
+                            as c_char;
+                    }
+                    varData.data = barray.add(1) as *mut c_void;
+                }
+
+                fits_parser_yytokentype::LONG => {
+                    iarray = icol.array as *mut c_long;
+                    if do_realloc != 0 {
+                        if !varData.undef.is_null() {
+                            free(varData.undef as *mut c_void);
+                        }
+                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        if varData.undef.is_null() {
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                    }
+                    while len > 0 {
+                        len -= 1;
+                        *varData.undef.add(len as usize) = (*iarray.add(0) != 0
+                            && *iarray.add(0) == *iarray.add((len + 1) as usize))
+                            as c_char;
+                    }
+                    varData.data = iarray.add(1) as *mut c_void;
+                }
+
+                fits_parser_yytokentype::DOUBLE => {
+                    rarray = icol.array as *mut c_double;
+                    if do_realloc != 0 {
+                        if !varData.undef.is_null() {
+                            free(varData.undef as *mut c_void);
+                        }
+                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        if varData.undef.is_null() {
+                            lParse.status = MEMORY_ALLOCATION;
+                            break;
+                        }
+                    }
+                    while len > 0 {
+                        len -= 1;
+                        *varData.undef.add(len as usize) = (*rarray.add(0) != 0.0
+                            && *rarray.add(0) == *rarray.add((len + 1) as usize))
+                            as c_char;
+                    }
+                    varData.data = rarray.add(1) as *mut c_void;
+                }
+
+                _ => {
+                    int_snprintf!(
+                        &mut msg,
+                        80,
+                        "SetupDataArrays, unhandled type {}\n",
+                        varData.dtype
+                    );
+                    ffpmsg_slice(&msg);
+                }
+            }
+
+            if lParse.status != 0 {
+                /*  Deallocate NULL arrays of previous columns */
+                let mut j = i;
+                while j > 0 {
+                    j -= 1;
+                    let varData = &mut lParse.varData[j];
+                    if varData.dtype == fits_parser_yytokentype::BITSTR as c_int {
+                        FREE!(*(varData.data as *mut *mut c_char).add(0));
+                    }
+                    FREE!(varData.undef);
+                    varData.undef = ptr::null_mut();
+                }
+                lParse.nPrevDataRows = 0;
+                return;
+            }
+        }
+
+        lParse.nPrevDataRows = nRows;
+    }
 }
 
 /*--------------------------------------------------------------------------*/

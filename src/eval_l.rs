@@ -395,7 +395,7 @@ pub(crate) fn fits_parser_yylex(
                                 len -= 1;
                                 strncpy(
                                     ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                    &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                    &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                     len as usize,
                                 );
                                 (*yyscanner.yylval_r).astr[len as usize] = 0 as c_char;
@@ -416,7 +416,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg.as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(0 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(0 as c_int as isize),
                                         20,
                                     );
                                     strcat(
@@ -434,7 +434,7 @@ pub(crate) fn fits_parser_yylex(
                                     len_0 -= 1;
                                     strncpy(
                                         tmpstring.as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                         len_0 as usize,
                                     );
                                 }
@@ -522,7 +522,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg_0.as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(0 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(0 as c_int as isize),
                                         20,
                                     );
                                     strcat(
@@ -540,7 +540,7 @@ pub(crate) fn fits_parser_yylex(
                                     len_1 -= 1;
                                     strncpy(
                                         tmpstring_0.as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                         len_1 as usize,
                                     );
                                 }
@@ -810,7 +810,7 @@ pub(crate) fn fits_parser_yylex(
                                             ((*yyscanner.yylval_r).astr)
                                                 .as_mut_ptr()
                                                 .offset(1 as c_int as isize),
-                                            &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
+                                            &*(yyscanner.yytext_r).offset(2 as c_int as isize),
                                             len_2 as usize,
                                         );
                                         (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] =
@@ -845,7 +845,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg_1.as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                         20,
                                     );
                                     strcat(
@@ -857,7 +857,7 @@ pub(crate) fn fits_parser_yylex(
                                 } else {
                                     strncpy(
                                         ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                         len_3 as usize,
                                     );
                                 }
@@ -873,7 +873,7 @@ pub(crate) fn fits_parser_yylex(
                                     len_4 = (strlen(yyscanner.yytext_r)).wrapping_sub(2) as c_int;
                                     strncpy(
                                         ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                        &mut *(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
                                         len_4 as usize,
                                     );
                                     (*yyscanner.yylval_r).astr[len_4 as usize] = 0 as c_char;
