@@ -26,6 +26,20 @@ pub struct DataInfo {
     pub data: *mut c_void,
 }
 
+impl Default for DataInfo {
+    fn default() -> Self {
+        DataInfo {
+            name: [0; MAXVARNAME + 1],
+            dtype: 0,
+            nelem: 0,
+            naxis: 0,
+            naxes: [0; MAXDIMS as usize],
+            undef: std::ptr::null_mut(),
+            data: std::ptr::null_mut(),
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub union data_union {
     pub dbl: f64,

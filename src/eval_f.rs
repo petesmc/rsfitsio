@@ -1332,7 +1332,7 @@ pub(crate) fn ffiprs(
         /*  Initialize the Parser structure  */
 
         /* Unfortunately we need to preserve the pixFilter value since it is pre-set when ffiprs() is called */
-        let pixFilter: &mut PixelFilter = &mut *lParse.pixFilter;
+        let pixFilter: *mut PixelFilter = lParse.pixFilter;
 
         lParse.reset();
 
@@ -3169,20 +3169,30 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
 /// Allocates parser iterator column storage for 25 columns *more* than nCols
 fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_int) -> c_int {
     if (nCol % 25) == 0 {
+        let existing_len = lParse.colData.len();
         if lParse.colData.try_reserve_exact(25).is_err() {
             lParse.colData.clear();
             lParse.varData.clear();
 
             *status = MEMORY_ALLOCATION;
             return *status;
+        } else {
+            lParse
+                .colData
+                .resize(existing_len + 25, iteratorCol::default());
         }
 
+        let existing_len = lParse.varData.len();
         if lParse.varData.try_reserve_exact(25).is_err() {
             lParse.colData.clear();
             lParse.varData.clear();
 
             *status = MEMORY_ALLOCATION;
             return *status;
+        } else {
+            lParse
+                .varData
+                .resize(existing_len + 25, DataInfo::default());
         }
     }
     (lParse.varData[nCol as usize]).data = ptr::null_mut();

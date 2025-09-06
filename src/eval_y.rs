@@ -494,18 +494,26 @@ static YYR2: [yytype_int8; 136] = [
 fn Alloc_Node(lParse: &mut ParseData) -> c_int {
     // If number of nodes == number allocated, then realloc
     if lParse.nNodes == lParse.nNodesAlloc {
-        if lParse
-            .Nodes
-            .try_reserve_exact(lParse.nNodesAlloc as usize)
-            .is_err()
-        {
-            lParse.status = MEMORY_ALLOCATION;
-            return -(1);
-        } else {
-            lParse.nNodesAlloc *= 2;
+        if lParse.nNodesAlloc == 0 {
+            lParse.nNodesAlloc = 100;
+            lParse.Nodes = Vec::with_capacity(lParse.nNodesAlloc as usize);
             lParse
                 .Nodes
                 .resize(lParse.nNodesAlloc as usize, Node::default());
+        } else {
+            if lParse
+                .Nodes
+                .try_reserve_exact(lParse.nNodesAlloc as usize)
+                .is_err()
+            {
+                lParse.status = MEMORY_ALLOCATION;
+                return -(1);
+            } else {
+                lParse.nNodesAlloc *= 2;
+                lParse
+                    .Nodes
+                    .resize(lParse.nNodesAlloc as usize, Node::default());
+            }
         }
     }
 
