@@ -1230,7 +1230,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
 
     if strstr_safe(filename, cs!(c".Z")).is_some() {
         let raw_file_handle = unsafe {
-            use libc::{open_osfhandle, fdopen};
+            use libc::{fdopen, open_osfhandle};
 
             let handle = diskfile.as_raw_handle();
             let fd = open_osfhandle(handle as isize, 0);
@@ -1250,7 +1250,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
         #[cfg(feature = "bzip2")]
         {
             let raw_file_handle = unsafe {
-                use libc::{open_osfhandle, fdopen};
+                use libc::{fdopen, open_osfhandle};
 
                 let handle = diskfile.as_raw_handle();
                 let fd = open_osfhandle(handle as isize, 0);
@@ -1540,25 +1540,23 @@ pub(crate) unsafe fn bzip2uncompress2mem(
                     return;
                 }
                 total_read += nread as usize;
-            } else {
-                if bzerror == BZ_IO_ERROR {
-                    strcpy_safe(&mut errormsg, cs!(c"failed to read bzip2 file: I/O error"));
-                } else if bzerror == BZ_UNEXPECTED_EOF {
-                    strcpy_safe(
-                        &mut errormsg,
-                        cs!(c"failed to read bzip2 file: unexpected end-of-file"),
-                    );
-                } else if bzerror == BZ_DATA_ERROR {
-                    strcpy_safe(
-                        &mut errormsg,
-                        cs!(c"failed to read bzip2 file: data integrity error"),
-                    );
-                } else if bzerror == BZ_MEM_ERROR {
-                    strcpy_safe(
-                        &mut errormsg,
-                        cs!(c"failed to read bzip2 file: insufficient memory"),
-                    );
-                }
+            } else if bzerror == BZ_IO_ERROR {
+                strcpy_safe(&mut errormsg, cs!(c"failed to read bzip2 file: I/O error"));
+            } else if bzerror == BZ_UNEXPECTED_EOF {
+                strcpy_safe(
+                    &mut errormsg,
+                    cs!(c"failed to read bzip2 file: unexpected end-of-file"),
+                );
+            } else if bzerror == BZ_DATA_ERROR {
+                strcpy_safe(
+                    &mut errormsg,
+                    cs!(c"failed to read bzip2 file: data integrity error"),
+                );
+            } else if bzerror == BZ_MEM_ERROR {
+                strcpy_safe(
+                    &mut errormsg,
+                    cs!(c"failed to read bzip2 file: insufficient memory"),
+                );
             }
         }
         BZ2_bzReadClose(&mut bzerror, b);

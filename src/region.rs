@@ -26,20 +26,20 @@ use crate::{KeywordDatatypeMut, bb, cs};
 use crate::{int_snprintf, wrappers::*};
 
 #[allow(clippy::approx_constant)]
-const MY_PI: f64 = 3.141_592_653_589_793;
+pub(crate) const MY_PI: f64 = 3.141_592_653_589_793;
 const RAD_TO_DEG: f64 = 180.0 / MY_PI;
 
 #[derive(Default, Debug, Copy, Clone)]
 pub(crate) struct WCSdata {
-    exists: bool,
-    xrefval: f64,
-    yrefval: f64,
-    xrefpix: f64,
-    yrefpix: f64,
-    xinc: f64,
-    yinc: f64,
-    rot: f64,
-    dtype: [c_char; 5],
+    pub(crate) exists: bool,
+    pub(crate) xrefval: f64,
+    pub(crate) yrefval: f64,
+    pub(crate) xrefpix: f64,
+    pub(crate) yrefpix: f64,
+    pub(crate) xinc: f64,
+    pub(crate) yinc: f64,
+    pub(crate) rot: f64,
+    pub(crate) dtype: [c_char; 5],
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
@@ -73,19 +73,19 @@ enum CoordFmt {
 
 #[derive(Default, Debug, Clone)]
 pub(crate) struct RgnShape {
-    sign: c_char,     /*  Include or exclude?        */
-    shape: ShapeType, /*  Shape of this region       */
-    comp: c_int,      /*  Component number for this region */
+    pub(crate) sign: c_char,     /*  Include or exclude?        */
+    pub(crate) shape: ShapeType, /*  Shape of this region       */
+    pub(crate) comp: c_int,      /*  Component number for this region */
 
     /*  bounding box    */
-    xmin: f64,
-    xmax: f64,
-    ymin: f64,
-    ymax: f64,
+    pub(crate) xmin: f64,
+    pub(crate) xmax: f64,
+    pub(crate) ymin: f64,
+    pub(crate) ymax: f64,
 
     /*  Parameters - In pixels     */
-    genericParams: RgnShapeGeneric,
-    polyParams: RgnShapePolygon,
+    pub(crate) genericParams: RgnShapeGeneric,
+    pub(crate) polyParams: RgnShapePolygon,
 }
 
 #[derive(Default, Debug, Clone, Copy)]

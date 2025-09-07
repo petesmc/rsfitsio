@@ -1313,7 +1313,7 @@ pub fn ffmkls_safe(
     }
 
     let incomm_empty_or_continue =
-        incomm.is_none() || incomm.as_ref().map_or(false, |c| c[0] == bb(b'&'));
+        incomm.is_none() || incomm.as_ref().is_some_and(|c| c[0] == bb(b'&'));
 
     /* preserve the old comment string */
     if incomm_empty_or_continue {
@@ -1347,7 +1347,7 @@ pub fn ffmkls_safe(
         ffgrec_safe(fptr, keypos - 1, Some(&mut card), status);
     } else {
         /* copy the input comment string */
-        let incomm_shadow = incomm.as_deref().unwrap();
+        let incomm_shadow = incomm.unwrap();
         commlen = strlen_safe(cast_slice(incomm_shadow)) as c_int;
         if commlen > 0 {
             let mut c = vec![0; commlen as usize + 1];
@@ -1365,7 +1365,7 @@ pub fn ffmkls_safe(
 
     fits_make_longstr_key_util(fptr, keyname, value, comm.as_deref(), keypos, status);
 
-    return *status;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

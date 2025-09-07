@@ -19,7 +19,7 @@ use rsfitsio::putcol::{
 */
 pub fn main() -> ExitCode {
     let mut fptr: Option<Box<fitsfile>> = None;
-    let mut cols: [iteratorCol; 3] = unsafe { std::mem::zeroed() }; /* structure used by the iterator function */
+    let mut cols: [iteratorCol; 3] = Default::default(); /* structure used by the iterator function */
     let n_cols: c_int = 1; /* number of columns */
     let rows_per_loop: c_long = 0; /* use default optimum number of rows */
     let offset: c_long = 0; /* process all the rows */

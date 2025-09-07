@@ -1066,6 +1066,7 @@ pub struct fitsfile {
 
 /// structure for the iterator function column information
 /// elements required as input to fits_iterate_data:
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct iteratorCol {
     /// pointer to the HDU containing the column
@@ -1090,6 +1091,24 @@ pub struct iteratorCol {
     pub tunit: [c_char; 70],
     /// suggested display format
     pub tdisp: [c_char; 70],
+}
+
+impl Default for iteratorCol {
+    fn default() -> Self {
+        Self {
+            fptr: Default::default(),
+            colnum: Default::default(),
+            colname: [0; 70],
+            datatype: Default::default(),
+            iotype: Default::default(),
+            array: Default::default(),
+            repeat: Default::default(),
+            tlmin: Default::default(),
+            tlmax: Default::default(),
+            tunit: [0; 70],
+            tdisp: [0; 70],
+        }
+    }
 }
 
 pub const InputCol: c_int = 0; /* flag for input only iterator column       */

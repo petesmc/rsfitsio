@@ -1991,7 +1991,7 @@ pub unsafe extern "C" fn fits_iter_set_by_num(
 /// set all the parameters for an iterator column, by column number
 pub fn fits_iter_set_by_num_safe(
     col: &mut iteratorCol, /* I - iterator col structure */
-    fptr: &mut fitsfile,   /* I - FITS file pointer                      */
+    fptr: *mut fitsfile,   /* I - FITS file pointer                      */
     colnum: c_int,         /* I - column number                          */
     datatype: c_int,       /* I - column datatype                        */
     iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */

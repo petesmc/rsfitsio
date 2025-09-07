@@ -36,7 +36,7 @@ static YBINSIZE: c_long = 32;
 
 pub fn main() -> ExitCode {
     let mut fptr: Option<Box<fitsfile>> = None;
-    let mut cols: [iteratorCol; 1] = unsafe { std::mem::zeroed() };
+    let mut cols: [iteratorCol; 1] = Default::default();
     let n_cols: c_int = 1; /* number of columns */
     let mut status: c_int = 0;
     let n_per_loop: c_long = -1; /* force whole array to be passed at one time */
@@ -126,7 +126,7 @@ extern "C" fn writehisto(
     _user_pointer: *mut std::os::raw::c_void,
 ) -> c_int {
     let mut tblptr: Option<Box<fitsfile>> = None;
-    let mut cols: [iteratorCol; 2] = unsafe { std::mem::zeroed() };
+    let mut cols: [iteratorCol; 2] = Default::default();
     let n_cols: c_int = 2; /* number of columns */
     let mut status: c_int = 0;
     let rows_per_loop: c_long = 0; /* take default number of rows per iteration */
