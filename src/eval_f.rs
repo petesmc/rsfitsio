@@ -2125,11 +2125,15 @@ fn fits_parser_workfn_safe(
 
         /* If a TemporaryCol output is used, we want to inform the caller
         what the null value is expected to be */
-        
+
         // WARNING - THIS IS DANGEROUS. If nCols = 0, points to invalid memory.
         // In the case of the where expr = "#ROW > 2" there are no columns.
-        outcol = colData.as_mut_ptr().offset((nCols - 1) as isize).as_mut().unwrap(); 
-        // outcol = &mut colData[(nCols - 1) as usize]; // Re-bind 
+        outcol = colData
+            .as_mut_ptr()
+            .offset((nCols - 1) as isize)
+            .as_mut()
+            .unwrap();
+        // outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
 
         if pv.Null != outcol.array
             && (Data0)

@@ -40,7 +40,7 @@ impl Default for DataInfo {
     }
 }
 
-#[derive( Copy, Clone)]
+#[derive(Copy, Clone)]
 pub union data_union {
     pub dbl: f64,
     pub lng: c_long,
@@ -55,7 +55,7 @@ pub union data_union {
 
 impl std::fmt::Debug for data_union {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng } )
+        write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng })
     }
 }
 
