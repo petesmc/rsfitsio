@@ -4,7 +4,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use libc::{c_char, c_float, c_int, c_long, c_ushort};
 
 use rsfitsio::aliases::rust_api::*;
-use rsfitsio::fitsio::{ASCII_TBL, LONGLONG, TUSHORT, USHORT_IMG};
+use rsfitsio::fitsio::{ASCII_TBL, KEY_NO_EXIST, LONGLONG, TUSHORT, USHORT_IMG};
 use rsfitsio::fitsio::{BINARY_TBL, FLEN_VALUE, READONLY, READWRITE, TFLOAT, TLONG, fitsfile};
 use rsfitsio::helpers::testhelpers::with_temp_file;
 use rsfitsio::{KeywordDatatype, NullValue};
@@ -378,9 +378,26 @@ fn readtable(filename: &str) {
                 );
             }
 
-            let where_clause = cast_slice(c"Density > 4.0".to_bytes_with_nul());
+            let where_clause = cast_slice(c"D > 3".to_bytes_with_nul());
             let mut n_matched_rows = -1;
             let mut row_status = [0; 6];
+
+            // Try to query an invalid row.
+            fits_find_rows(
+                fptr_box,
+                where_clause,
+                1,
+                6,
+                &mut n_matched_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, KEY_NO_EXIST);
+            assert_eq!(n_matched_rows, -1);
+
+            // Try a valid query: Planet = Earth
+            status = 0;
+            let where_clause = cast_slice(c"Planet == \"Earth\"".to_bytes_with_nul());
             fits_find_rows(
                 fptr_box,
                 where_clause,
@@ -391,7 +408,27 @@ fn readtable(filename: &str) {
                 &mut status,
             );
             assert_eq!(status, 0);
-            assert_eq!(n_matched_rows, 3);
+            assert_eq!(n_matched_rows, 1);
+
+            let where_clause = cast_slice(c"Diameter > 0".to_bytes_with_nul());
+            let mut n_matched_rows = -1;
+            fits_find_rows(
+                fptr_box,
+                where_clause,
+                1,
+                6,
+                &mut n_matched_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_matched_rows, 6);
+
+
+            // FAILURES:
+            // #ROW > 3
+
+            
         }
     }
 

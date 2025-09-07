@@ -40,7 +40,7 @@ impl Default for DataInfo {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive( Copy, Clone)]
 pub union data_union {
     pub dbl: f64,
     pub lng: c_long,
@@ -53,6 +53,12 @@ pub union data_union {
     pub ptr: *mut c_void,
 }
 
+impl std::fmt::Debug for data_union {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng } )
+    }
+}
+
 impl Default for data_union {
     fn default() -> Self {
         data_union {
@@ -61,7 +67,7 @@ impl Default for data_union {
     }
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct lval {
     pub nelem: c_long,
     pub naxis: c_int,
@@ -70,7 +76,7 @@ pub struct lval {
     pub data: data_union,
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct Node {
     pub operation: c_int,
     pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
