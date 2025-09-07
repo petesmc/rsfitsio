@@ -2,8 +2,8 @@ use std::ffi::CStr;
 use std::rc::Rc;
 use std::{cmp, ptr};
 
-use bytemuck::cast_slice;
-use libc::{calloc, free, malloc, memcpy, sprintf, time, time_t};
+use bytemuck::{cast_slice, cast_slice_mut};
+use libc::{calloc, free, malloc, memcpy, time, time_t};
 
 // Math function wrappers
 fn sqrt(x: f64) -> f64 {
@@ -80,7 +80,7 @@ use crate::simplerng::{
 use crate::wcssub::ffgtcs_safer;
 use crate::wrappers::strncpy_safe;
 use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
-use crate::{atoi, cs};
+use crate::{atoi, cs, int_snprintf};
 
 pub type yy_state_t = yytype_int16;
 pub type yytype_int16 = c_short;
@@ -8065,10 +8065,10 @@ fn New_GTI(
                     && Op as c_uint == gtiover_fct as c_int as c_uint
                 {
                     let mut errmsg: [c_char; 120] = [0; 120];
-                    sprintf(
-                        errmsg.as_mut_ptr(),
-                        b"Input GTI must be time-ordered for GTIOVERLAP (row %ld)\0" as *const u8
-                            as *const c_char,
+                    int_snprintf!(
+                        &mut errmsg,
+                        120,
+                        "Input GTI must be time-ordered for GTIOVERLAP (row {})",
                         i + 1,
                     );
                     fits_parser_yyerror(lParse, &errmsg);

@@ -387,7 +387,7 @@ pub fn ffsrow_safe(
             ffcprs(&mut lParse);
             return *status;
         }
-        inExt.rowLength = (infptr.Fptr).rowlength as c_long;
+        inExt.rowLength = (infptr.Fptr).rowlength as LONGLONG;
         inExt.numRows = (infptr.Fptr).numrows;
         inExt.heapSize = (infptr.Fptr).heapsize;
         if inExt.numRows == 0 {
@@ -406,7 +406,7 @@ pub fn ffsrow_safe(
             ffcprs(&mut lParse);
             return *status;
         }
-        outExt.rowLength = (outfptr.Fptr).rowlength as c_long;
+        outExt.rowLength = (outfptr.Fptr).rowlength as LONGLONG;
         outExt.numRows = (outfptr.Fptr).numrows;
         if outExt.numRows == 0 {
             (outfptr.Fptr).heapsize = 0;
@@ -497,7 +497,7 @@ pub fn ffsrow_safe(
             } else {
                 outloc = (outExt.numRows + 1) as c_long;
                 if outloc > 1 {
-                    ffirow_safe(outfptr, outExt.numRows, nGood, status);
+                    ffirow_safe(outfptr, outExt.numRows, nGood as LONGLONG, status);
                 }
             }
 
@@ -505,16 +505,30 @@ pub fn ffsrow_safe(
                 if *(Info.dataPtr as *mut c_char).add((inloc - 1) as usize) != 0 {
                     let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
 
-                    ffgtbb_safe(infptr, inloc, 1, rdlen, buffer_part, status);
+                    ffgtbb_safe(
+                        infptr,
+                        inloc as LONGLONG,
+                        1,
+                        rdlen as LONGLONG,
+                        buffer_part,
+                        status,
+                    );
                     nbuff += 1;
                     if nbuff == maxrows {
-                        ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, &buffer, status);
+                        ffptbb_safe(
+                            outfptr,
+                            outloc as LONGLONG,
+                            1,
+                            (rdlen * nbuff) as LONGLONG,
+                            &buffer,
+                            status,
+                        );
                         outloc += nbuff;
                         nbuff = 0;
                     }
                 }
                 inloc += 1;
-                if *status != 0 || inloc > inExt.numRows {
+                if *status != 0 || (inloc as LONGLONG) > inExt.numRows {
                     break;
                 }
             }
@@ -522,13 +536,25 @@ pub fn ffsrow_safe(
             if nbuff != 0 {
                 let buffer_part = &buffer[((rdlen * nbuff) as usize)..];
 
-                ffptbb_safe(outfptr, outloc, 1, rdlen * nbuff, buffer_part, status);
+                ffptbb_safe(
+                    outfptr,
+                    outloc as LONGLONG,
+                    1,
+                    (rdlen * nbuff) as LONGLONG,
+                    buffer_part,
+                    status,
+                );
                 outloc += nbuff;
             }
 
             if std::ptr::eq(infptr, outfptr) {
-                if outloc <= inExt.numRows {
-                    ffdrow_safe(infptr, outloc, inExt.numRows - outloc + 1, status);
+                if (outloc as LONGLONG) <= inExt.numRows {
+                    ffdrow_safe(
+                        infptr,
+                        outloc as LONGLONG,
+                        inExt.numRows - outloc as LONGLONG + 1,
+                        status,
+                    );
                 }
             } else if inExt.heapSize != 0 && nGood != 0 {
                 /* Copy heap, if it exists and at least one row copied */
@@ -551,9 +577,9 @@ pub fn ffsrow_safe(
                 freespace = ((((hsize + (BL!() - 1)) / BL!()) * BL!()) - hsize) as c_long;
                 ntodo = inExt.heapSize;
 
-                if (freespace - ntodo) < 0 {
+                if (freespace as LONGLONG - ntodo) < 0 {
                     /* not enough existing space? */
-                    ntodo = (ntodo - freespace + (BL!() - 1)) / BL!(); /* number of blocks  */
+                    ntodo = (ntodo - (freespace as LONGLONG) + (BL!() - 1)) / BL!(); /* number of blocks  */
                     ffiblk(outfptr, ntodo as c_long, 1, status); /* insert the blocks */
                 }
                 ffukyj_safe(
@@ -585,12 +611,22 @@ pub fn ffsrow_safe(
                 while ntodo != 0 && *status == 0 {
                     rdlen = cmp::min(ntodo, 500000) as c_long;
                     ffmbyt_safe(infptr, inbyteloc, REPORT_EOF, status);
-                    ffgbyt(infptr, rdlen, &mut buffer[..rdlen as usize], status);
+                    ffgbyt(
+                        infptr,
+                        rdlen as LONGLONG,
+                        &mut buffer[..rdlen as usize],
+                        status,
+                    );
                     ffmbyt_safe(outfptr, outbyteloc, IGNORE_EOF, status);
-                    ffpbyt(outfptr, rdlen, &buffer[..rdlen as usize], status);
-                    inbyteloc += rdlen;
-                    outbyteloc += rdlen;
-                    ntodo -= rdlen;
+                    ffpbyt(
+                        outfptr,
+                        rdlen as LONGLONG,
+                        &buffer[..rdlen as usize],
+                        status,
+                    );
+                    inbyteloc += rdlen as LONGLONG;
+                    outbyteloc += rdlen as LONGLONG;
+                    ntodo -= rdlen as LONGLONG;
                 }
 
                 /***********************************************************/
@@ -603,7 +639,7 @@ pub fn ffsrow_safe(
                     let mut offset: LONGLONG = 0;
                     for i in 1..=(outfptr.Fptr).tfield {
                         if (*(outfptr.Fptr).tableptr.add((i - 1) as usize)).tdatatype < 0 {
-                            for j in (outExt.numRows + 1)..=(outExt.numRows + nGood) {
+                            for j in (outExt.numRows + 1)..=(outExt.numRows + nGood as LONGLONG) {
                                 ffgdesll_safe(
                                     outfptr,
                                     i,
@@ -1208,7 +1244,7 @@ pub fn ffcalc_rng_safe(
                     ffukyj_safe(
                         outfptr,
                         parName,
-                        unsafe { result.value.data.lng },
+                        unsafe { result.value.data.lng } as LONGLONG,
                         Some(parInfo),
                         status,
                     );
@@ -1994,7 +2030,7 @@ fn fits_parser_workfn_safe(
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
                                         let r = if (result.value.data.astr
-                                            [<i64 as TryInto<usize>>::try_into(jj).unwrap()])
+                                            [jj as usize])
                                             == b'1' as c_char
                                         {
                                             1
@@ -2536,7 +2572,7 @@ fn ffcvtn(
                                 *status = OVERFLOW_ERR;
                                 *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
                             } else if *((input as *const c_long).add(i.try_into().unwrap()))
-                                > UCHAR_MAX
+                                > UCHAR_MAX as c_long
                             {
                                 *status = OVERFLOW_ERR;
                                 *((output as *mut c_uchar).add(i.try_into().unwrap())) =
@@ -2639,7 +2675,7 @@ fn ffcvtn(
                                     *(nulval as *const c_short);
                                 *anynull = 1;
                             } else if *((input as *const c_long).add(i.try_into().unwrap()))
-                                < SHRT_MIN
+                                < SHRT_MIN as c_long
                             {
                                 *status = OVERFLOW_ERR;
                                 *((output as *mut c_short).add(i.try_into().unwrap())) =
@@ -2919,7 +2955,7 @@ fn ffcvtn(
                     TLONG => {
                         for i in 0..ntodo {
                             *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap()));
+                                *((input as *const c_long).add(i.try_into().unwrap())) as LONGLONG;
                         }
                     }
                     TFLOAT => {
@@ -3570,7 +3606,7 @@ fn fits_uncompress_hkdata(
             if ffgcvd_safe(
                 fptr,
                 lParse.timeCol,
-                row,
+                row as LONGLONG,
                 1,
                 1,
                 0.0,
@@ -3624,7 +3660,7 @@ fn fits_uncompress_hkdata(
             if ffgcvs_safe(
                 fptr,
                 lParse.parCol,
-                row,
+                row as LONGLONG,
                 1,
                 1,
                 Some(cs!(c"")),
@@ -3661,7 +3697,7 @@ fn fits_uncompress_hkdata(
                         ffgcvj_safe(
                             fptr,
                             lParse.valCol,
-                            row,
+                            row as LONGLONG,
                             1,
                             1,
                             *array.wrapping_add(0),
@@ -3678,7 +3714,7 @@ fn fits_uncompress_hkdata(
                         ffgcvd_safe(
                             fptr,
                             lParse.valCol,
-                            row,
+                            row as LONGLONG,
                             1,
                             1,
                             *array.wrapping_add(0),
@@ -3695,7 +3731,7 @@ fn fits_uncompress_hkdata(
                         ffgcvs_safe(
                             fptr,
                             lParse.valCol,
-                            row,
+                            row as LONGLONG,
                             1,
                             1,
                             Some(std::slice::from_raw_parts(
@@ -4093,7 +4129,7 @@ pub fn fits_pixel_filter_safer(
                         if std::mem::size_of::<c_long>() == 8 && std::mem::size_of::<c_int>() == 4 {
                             null_val = INT_MIN as c_long;
                         } else {
-                            null_val = LONG_MIN;
+                            null_val = LONG_MIN as c_long;
                         }
                     } else {
                         println!("unhandled positive output BITPIX {}", bitpix);
@@ -4103,7 +4139,11 @@ pub fn fits_pixel_filter_safer(
                 filter.blank = null_val;
             }
 
-            fits_set_imgnull(unsafe { outfptr.as_mut().unwrap() }, filter.blank, status);
+            fits_set_imgnull(
+                unsafe { outfptr.as_mut().unwrap() },
+                filter.blank as LONGLONG,
+                status,
+            );
             if debug_pixfilter != 0 {
                 println!("using blank {}", null_val);
             }
@@ -4160,7 +4200,7 @@ pub fn fits_pixel_filter_safer(
                     fits_update_key_lng(
                         unsafe { outfptr.as_mut().unwrap() },
                         unsafe { cs!(c"BLANK") },
-                        filter.blank,
+                        filter.blank as LONGLONG,
                         Some(unsafe { cs!(c"NULL pixel value") }),
                         status,
                     );
@@ -4203,7 +4243,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyj_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.lng,
+                        result.value.data.lng as LONGLONG,
                         par_info,
                         status,
                     );
@@ -4766,8 +4806,8 @@ fn load_column(
             fits_read_imgnull(
                 unsafe { &mut *var.fptr },
                 var.datatype,
-                fRow,
-                nRows,
+                fRow as LONGLONG,
+                nRows as LONGLONG,
                 unsafe { std::slice::from_raw_parts_mut(data as *mut u8, (nRows * 8) as usize) }, // Assuming 8 bytes per element
                 unsafe { std::slice::from_raw_parts_mut(undef, nRows as usize) },
                 Some(&mut anynul),
@@ -4790,9 +4830,9 @@ fn load_column(
                     ffgcvb_safe(
                         unsafe { &mut *var.fptr },
                         var.colnum,
-                        fRow,
+                        fRow as LONGLONG,
                         1,
-                        nbytes,
+                        nbytes as LONGLONG,
                         0,
                         unsafe { std::slice::from_raw_parts_mut(bytes, nbytes as usize) },
                         Some(&mut anynul),
@@ -4845,9 +4885,9 @@ fn load_column(
                     ffgcfs_safe(
                         unsafe { &mut *var.fptr },
                         var.colnum,
-                        fRow,
+                        fRow as LONGLONG,
                         1,
-                        nRows,
+                        nRows as LONGLONG,
                         &mut string_vec,
                         undef_slice,
                         Some(&mut anynul),
@@ -4864,9 +4904,9 @@ fn load_column(
                     ffgcfl_safe(
                         unsafe { &mut *var.fptr },
                         var.colnum,
-                        fRow,
+                        fRow as LONGLONG,
                         1,
-                        nelem,
+                        nelem as LONGLONG,
                         data_slice,
                         undef_slice,
                         Some(&mut anynul),
@@ -4877,9 +4917,9 @@ fn load_column(
                     ffgcfj_safe(
                         &mut *var.fptr,
                         var.colnum,
-                        fRow,
+                        fRow as LONGLONG,
                         1,
-                        nelem,
+                        nelem as LONGLONG,
                         unsafe {
                             std::slice::from_raw_parts_mut(data as *mut c_long, nelem as usize)
                         },
@@ -4897,9 +4937,9 @@ fn load_column(
                     ffgcfd_safe(
                         unsafe { &mut *var.fptr },
                         var.colnum,
-                        fRow,
+                        fRow as LONGLONG,
                         1,
-                        nelem,
+                        nelem as LONGLONG,
                         data_slice,
                         undef_slice,
                         Some(&mut anynul),

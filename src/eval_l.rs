@@ -1,14 +1,13 @@
 #![deny(dead_code)]
 
-use errno::{Errno, set_errno};
+use errno::{Errno, errno, set_errno};
 
 use std::ffi::CStr;
 use std::process::exit;
 
 use bytemuck::cast_slice;
 use libc::{
-    __errno_location, ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, malloc, memset,
-    realloc, size_t,
+    ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, malloc, memset, realloc, size_t,
 };
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_void};
@@ -16,10 +15,9 @@ use crate::eval_defs::{MAXVARNAME, P_ERROR, ParseData};
 use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::helpers::boxed::box_try_new;
 use crate::wrappers::{isdigit_safe, strcpy_safe, strncat_safe};
-use crate::{cs, eval_tab::*};
+use crate::{STDIN, STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
-    stdin, stdout,
     wrappers::{strcat, strcmp, strcpy, strlen, strncat, strncpy, toupper},
 };
 
@@ -313,10 +311,10 @@ pub(crate) fn fits_parser_yylex(
                 yyscanner.yy_start = 1;
             }
             if (yyscanner.yyin_r).is_null() {
-                yyscanner.yyin_r = stdin;
+                yyscanner.yyin_r = STDIN!();
             }
             if (yyscanner.yyout_r).is_null() {
-                yyscanner.yyout_r = stdout;
+                yyscanner.yyout_r = STDOUT!();
             }
             if if !(yyscanner.yy_buffer_stack).is_null() {
                 *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
@@ -1561,7 +1559,7 @@ pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut y
 
 fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
-        let oerrno: c_int = *__errno_location();
+        let oerrno = errno().0;
 
         fits_parser_yy_flush_buffer(b, yyscanner);
         (*b).yy_input_file = file;
