@@ -1616,7 +1616,7 @@ fn fits_parser_workfn_safe(
         /*--------------------------------------------------------*/
         /*  Initialization procedures: execute on the first call  */
         /*--------------------------------------------------------*/
-        outcol = &mut colData[(nCols - 1) as usize];
+
         if firstrow == offset + 1 {
             (pv.userInfo) = userPtr as *mut parseInfo;
             (*(pv.userInfo)).anyNull = 0;
@@ -1630,8 +1630,6 @@ fn fits_parser_workfn_safe(
             for jj in 0..(nCols as usize) {
                 lParse.colData[jj].repeat = colData[jj].repeat;
             }
-
-            outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
 
             if (*(pv.userInfo)).maxRows > 0 {
                 (*(pv.userInfo)).maxRows = cmp::min(totalrows, (*(pv.userInfo)).maxRows);
@@ -1647,6 +1645,7 @@ fn fits_parser_workfn_safe(
             means that the first value will be a null value and the remaining
             values will be the where the outputs are placed */
             if (*(pv.userInfo)).dataPtr.is_null() {
+                outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
                 if outcol.iotype == InputCol {
                     ffpmsg_str("Output column for parser results not found!");
                     return PARSE_NO_OUTPUT;
@@ -1770,6 +1769,8 @@ fn fits_parser_workfn_safe(
         */
 
         if (*(pv.userInfo)).dataPtr.is_null() {
+            outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
+
             /* First, reset Data pointer to start of output array, plus 1
             because the 0th element is the null value (cute undocumented
             feature of the iterator!) */
@@ -2124,7 +2125,11 @@ fn fits_parser_workfn_safe(
 
         /* If a TemporaryCol output is used, we want to inform the caller
         what the null value is expected to be */
-        outcol = &mut colData[(nCols - 1) as usize]; // Re-bind 
+        
+        // WARNING - THIS IS DANGEROUS. If nCols = 0, points to invalid memory.
+        // In the case of the where expr = "#ROW > 2" there are no columns.
+        outcol = colData.as_mut_ptr().offset((nCols - 1) as isize).as_mut().unwrap(); 
+        // outcol = &mut colData[(nCols - 1) as usize]; // Re-bind 
 
         if pv.Null != outcol.array
             && (Data0)

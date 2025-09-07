@@ -378,6 +378,7 @@ fn readtable(filename: &str) {
                 );
             }
 
+            
             let where_clause = cast_slice(c"D > 3".to_bytes_with_nul());
             let mut n_matched_rows = -1;
             let mut row_status = [0; 6];
@@ -409,9 +410,11 @@ fn readtable(filename: &str) {
             );
             assert_eq!(status, 0);
             assert_eq!(n_matched_rows, 1);
+            
 
-            let where_clause = cast_slice(c"Diameter > 0".to_bytes_with_nul());
+            let where_clause = cast_slice(c"(DENSITY > 3.0) && (DIAMETER > 10000)".to_bytes_with_nul());
             let mut n_matched_rows = -1;
+            let mut row_status = [0; 6];
             fits_find_rows(
                 fptr_box,
                 where_clause,
@@ -422,11 +425,38 @@ fn readtable(filename: &str) {
                 &mut status,
             );
             assert_eq!(status, 0);
-            assert_eq!(n_matched_rows, 6);
+            assert_eq!(n_matched_rows, 2);
 
+            let where_clause = cast_slice(c"(DENSITY > 3.0) && (DIAMETER > 10000) && (Planet == \"Earth\")".to_bytes_with_nul());
+            let mut n_matched_rows = -1;
+            let mut row_status = [0; 6];
+            fits_find_rows(
+                fptr_box,
+                where_clause,
+                1,
+                6,
+                &mut n_matched_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_matched_rows, 1);
 
-            // FAILURES:
-            // #ROW > 3
+        
+            let where_clause = cast_slice(c"#ROW > 2".to_bytes_with_nul());
+            let mut n_matched_rows = -1;
+            let mut row_status = [0; 6];
+            fits_find_rows(
+                fptr_box,
+                where_clause,
+                1,
+                6,
+                &mut n_matched_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_matched_rows, 4);
 
             
         }
