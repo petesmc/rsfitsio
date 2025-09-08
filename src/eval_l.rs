@@ -148,7 +148,7 @@ pub(crate) fn fits_parser_yyGetVariable(
             );
         } else {
             dtype = -1;
-            lParse.status = 431 as c_int;
+            lParse.status = PARSE_SYNTAX_ERR;
             strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
             ffpmsg_slice(&errMsg);
@@ -1559,7 +1559,7 @@ pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut y
 
 fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
-        let oerrno = errno().0;
+        let oerrno: c_int = errno().0;
 
         fits_parser_yy_flush_buffer(b, yyscanner);
         (*b).yy_input_file = file;

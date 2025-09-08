@@ -458,6 +458,25 @@ fn readtable(filename: &str) {
             );
             assert_eq!(status, 0);
             assert_eq!(n_matched_rows, 4);
+
+            // Intense query
+            let where_clause = cast_slice(
+                c"((DENSITY > 3.0) || ((int) DENSITY >= 4) .or. (DENSITY < 2.0)  .OR. (DENSITY <= 1.0) || (DENSITY == #PI) || (DENSITY > #E) || (DENSITY != #DEG)) && ((DIAMETER > 10000) .and. (DIAMETER >= 12000) || (DIAMETER < 7000)  || (DIAMETER <= 5000) || (DIAMETER == 6542) .AND. (DIAMETER != 3210) || !((Planet == \"Earth\") && (Planet != \"Mars\"))) || ((float) DIAMETER > 14.0)"
+                    .to_bytes_with_nul(),
+            );
+            let mut n_matched_rows = -1;
+            let mut row_status = [0; 6];
+            fits_find_rows(
+                fptr_box,
+                where_clause,
+                1,
+                6,
+                &mut n_matched_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_matched_rows, 6);
         }
     }
 
