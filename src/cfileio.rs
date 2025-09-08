@@ -2480,11 +2480,11 @@ pub(crate) unsafe fn ffedit_columns(
         let mut slen: c_int = 0;
         let mut colnum: c_int = -1;
         let mut testnum: c_int = 0;
-        let mut deletecol: c_int = 0 as c_int;
-        let mut savecol: c_int = 0 as c_int;
-        let mut numcols: c_int = 0 as c_int;
+        let mut deletecol: c_int = 0;
+        let mut savecol: c_int = 0;
+        let mut numcols: c_int = 0;
 
-        let mut tstatus: c_int = 0 as c_int;
+        let mut tstatus: c_int = 0;
 
         let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
         let mut colname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -3649,14 +3649,14 @@ pub unsafe fn ffinit_safer(
 ) -> c_int {
     unsafe {
         let mut driver: c_int = 0;
-        let mut clobber: c_int = 0 as c_int;
+        let mut clobber: c_int = 0;
 
         let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
         let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut tmplfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut compspec: [c_char; 80] = [0; 80];
         let mut handle: c_int = 0;
-        let mut create_disk_file: c_int = 0 as c_int;
+        let mut create_disk_file: c_int = 0;
 
         /* initialize null file pointer */
         let f_tmp = fptr.take();

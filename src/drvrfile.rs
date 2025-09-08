@@ -498,14 +498,12 @@ pub(crate) fn file_close(handle: c_int) -> c_int {
                 // return WRITE_ERROR;
             }
         }
-        None => {
-        }
+        None => {}
     }
 
     (h[handle as usize]).fileptr = None; // Implicitly drop the file
 
     0
-
 }
 
 /*--------------------------------------------------------------------------*/
