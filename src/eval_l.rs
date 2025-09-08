@@ -49,6 +49,9 @@ pub struct yy_buffer_state {
     pub yy_fill_buffer: c_int,
     pub yy_buffer_status: c_int,
 }
+
+const YY_BUF_SIZE: usize = 16384;
+
 pub type YY_BUFFER_STATE = *mut yy_buffer_state;
 
 pub type yy_size_t = size_t;
@@ -139,7 +142,7 @@ pub(crate) fn fits_parser_yyGetVariable(
     let mut dtype: c_int = 0;
     let mut errMsg: [c_char; 105] = [0; 105];
 
-    if varNum < 0 as c_int {
+    if varNum < 0 {
         if (lParse.getData).is_some() {
             dtype = (lParse.getData).expect("non-null function pointer")(
                 lParse,
@@ -148,7 +151,7 @@ pub(crate) fn fits_parser_yyGetVariable(
             );
         } else {
             dtype = -1;
-            lParse.status = PARSE_SYNTAX_ERR;
+            lParse.status = 431 as c_int;
             strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
             ffpmsg_slice(&errMsg);
@@ -325,7 +328,8 @@ pub(crate) fn fits_parser_yylex(
             {
                 fits_parser_yyensure_buffer_stack(yyscanner);
                 let fresh2 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-                *fresh2 = fits_parser_yy_create_buffer(yyscanner.yyin_r, 16384 as c_int, yyscanner);
+                *fresh2 =
+                    fits_parser_yy_create_buffer(yyscanner.yyin_r, YY_BUF_SIZE as c_int, yyscanner);
             }
             fits_parser_yy_load_buffer_state(yyscanner);
         }
@@ -361,7 +365,7 @@ pub(crate) fn fits_parser_yylex(
                 }
                 '_yy_find_action: loop {
                     yy_act = YY_ACCEPT[yy_current_state as usize] as c_int;
-                    if yy_act == 0 as c_int {
+                    if yy_act == 0 {
                         yy_cp = yyscanner.yy_last_accepting_cpos;
                         yy_current_state = yyscanner.yy_last_accepting_state;
                         yy_act = YY_ACCEPT[yy_current_state as usize] as c_int;
@@ -369,7 +373,7 @@ pub(crate) fn fits_parser_yylex(
                     yyscanner.yytext_r = yy_bp;
                     yyscanner.yyleng_r = yy_cp.offset_from(yy_bp) as c_long as c_int;
                     yyscanner.yy_hold_char = *yy_cp;
-                    *yy_cp = 0 as c_char;
+                    *yy_cp = 0;
                     yyscanner.yy_c_buf_p = yy_cp;
                     loop {
                         match yy_act {
@@ -393,10 +397,10 @@ pub(crate) fn fits_parser_yylex(
                                 len -= 1;
                                 strncpy(
                                     ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                    &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                    &*(yyscanner.yytext_r).offset(1),
                                     len as usize,
                                 );
-                                (*yyscanner.yylval_r).astr[len as usize] = 0 as c_char;
+                                (*yyscanner.yylval_r).astr[len as usize] = 0;
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             3 => {
@@ -414,7 +418,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg.as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(0 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
                                     strcat(
@@ -422,7 +426,7 @@ pub(crate) fn fits_parser_yylex(
                                         b"...'\0" as *const u8 as *const c_char,
                                     );
                                     ffpmsg_slice(&errMsg);
-                                    len_0 = 0 as c_int;
+                                    len_0 = 0;
                                 } else {
                                     while *(yyscanner.yytext_r).offset(len_0 as isize) as c_int
                                         == ' ' as i32
@@ -432,13 +436,13 @@ pub(crate) fn fits_parser_yylex(
                                     len_0 -= 1;
                                     strncpy(
                                         tmpstring.as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1),
                                         len_0 as usize,
                                     );
                                 }
-                                tmpstring[len_0 as usize] = 0 as c_char;
-                                bitstring[0 as c_int as usize] = 0 as c_char;
-                                len_0 = 0 as c_int;
+                                tmpstring[len_0 as usize] = 0;
+                                bitstring[0] = 0;
+                                len_0 = 0;
                                 while tmpstring[len_0 as usize] as c_int != 0 {
                                     match tmpstring[len_0 as usize] as c_int {
                                         48 => {
@@ -520,7 +524,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg_0.as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(0 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
                                     strcat(
@@ -528,7 +532,7 @@ pub(crate) fn fits_parser_yylex(
                                         b"...'\0" as *const u8 as *const c_char,
                                     );
                                     ffpmsg_slice(&errMsg_0);
-                                    len_1 = 0 as c_int;
+                                    len_1 = 0;
                                 } else {
                                     while *(yyscanner.yytext_r).offset(len_1 as isize) as c_int
                                         == ' ' as i32
@@ -538,13 +542,13 @@ pub(crate) fn fits_parser_yylex(
                                     len_1 -= 1;
                                     strncpy(
                                         tmpstring_0.as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1),
                                         len_1 as usize,
                                     );
                                 }
-                                tmpstring_0[len_1 as usize] = 0 as c_char;
-                                bitstring_0[0 as c_int as usize] = 0 as c_char;
-                                len_1 = 0 as c_int;
+                                tmpstring_0[len_1 as usize] = 0;
+                                bitstring_0[0] = 0;
+                                len_1 = 0;
                                 while tmpstring_0[len_1 as usize] as c_int != 0 {
                                     match tmpstring_0[len_1 as usize] as c_int {
                                         48 => {
@@ -657,7 +661,7 @@ pub(crate) fn fits_parser_yylex(
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             5 => {
-                                let mut constval: c_long = 0 as c_int as c_long;
+                                let mut constval: c_long = 0;
                                 let mut p: *mut c_char = std::ptr::null_mut::<c_char>();
                                 p = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
@@ -670,7 +674,7 @@ pub(crate) fn fits_parser_yylex(
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             6 => {
-                                let mut constval_0: c_long = 0 as c_int as c_long;
+                                let mut constval_0: c_long = 0;
                                 let mut p_0: *mut c_char = std::ptr::null_mut::<c_char>();
                                 p_0 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
@@ -683,7 +687,7 @@ pub(crate) fn fits_parser_yylex(
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             7 => {
-                                let mut constval_1: c_long = 0 as c_int as c_long;
+                                let mut constval_1: c_long = 0;
                                 let mut p_1: *mut c_char = std::ptr::null_mut::<c_char>();
                                 p_1 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
@@ -704,14 +708,12 @@ pub(crate) fn fits_parser_yylex(
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             9 => {
-                                if *(yyscanner.yytext_r).offset(0 as c_int as isize) as c_int
-                                    == 't' as i32
-                                    || *(yyscanner.yytext_r).offset(0 as c_int as isize) as c_int
-                                        == 'T' as i32
+                                if *(yyscanner.yytext_r).offset(0) as c_int == 't' as i32
+                                    || *(yyscanner.yytext_r).offset(0) as c_int == 'T' as i32
                                 {
-                                    (*yyscanner.yylval_r).log = 1 as c_char;
+                                    (*yyscanner.yylval_r).log = 1;
                                 } else {
-                                    (*yyscanner.yylval_r).log = 0 as c_int as c_char;
+                                    (*yyscanner.yylval_r).log = 0;
                                 }
                                 return fits_parser_yytokentype::BOOLEAN as c_int;
                             }
@@ -797,22 +799,16 @@ pub(crate) fn fits_parser_yylex(
                                 } else {
                                     let mut len_2: c_int = 0;
                                     let mut result: c_int = 0;
-                                    if *(yyscanner.yytext_r).offset(1 as c_int as isize) as c_int
-                                        == '$' as i32
-                                    {
+                                    if *(yyscanner.yytext_r).offset(1) as c_int == '$' as i32 {
                                         len_2 =
                                             (strlen(yyscanner.yytext_r)).wrapping_sub(3) as c_int;
-                                        (*yyscanner.yylval_r).astr[0 as c_int as usize] =
-                                            '#' as i32 as c_char;
+                                        (*yyscanner.yylval_r).astr[0] = '#' as i32 as c_char;
                                         strncpy(
-                                            ((*yyscanner.yylval_r).astr)
-                                                .as_mut_ptr()
-                                                .offset(1 as c_int as isize),
+                                            ((*yyscanner.yylval_r).astr).as_mut_ptr().offset(1),
                                             &*(yyscanner.yytext_r).offset(2 as c_int as isize),
                                             len_2 as usize,
                                         );
-                                        (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] =
-                                            0 as c_char;
+                                        (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] = 0;
                                         yyscanner.yytext_r =
                                             ((*yyscanner.yylval_r).astr).as_mut_ptr();
                                     }
@@ -843,7 +839,7 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strncat(
                                         errMsg_1.as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1),
                                         20,
                                     );
                                     strcat(
@@ -851,30 +847,28 @@ pub(crate) fn fits_parser_yylex(
                                         b"...'\0" as *const u8 as *const c_char,
                                     );
                                     ffpmsg_slice(&errMsg_1);
-                                    len_3 = 0 as c_int;
+                                    len_3 = 0;
                                 } else {
                                     strncpy(
                                         ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1),
                                         len_3 as usize,
                                     );
                                 }
-                                (*yyscanner.yylval_r).astr[len_3 as usize] = 0 as c_char;
+                                (*yyscanner.yylval_r).astr[len_3 as usize] = 0;
                                 return fits_parser_yytokentype::STRING as c_int;
                             }
                             13 => {
                                 let mut len_4: c_int = 0;
                                 let mut dtype: c_int = 0;
-                                if *(yyscanner.yytext_r).offset(0 as c_int as isize) as c_int
-                                    == '$' as i32
-                                {
+                                if *(yyscanner.yytext_r).offset(0) as c_int == '$' as i32 {
                                     len_4 = (strlen(yyscanner.yytext_r)).wrapping_sub(2) as c_int;
                                     strncpy(
                                         ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                        &*(yyscanner.yytext_r).offset(1 as c_int as isize),
+                                        &*(yyscanner.yytext_r).offset(1),
                                         len_4 as usize,
                                     );
-                                    (*yyscanner.yylval_r).astr[len_4 as usize] = 0 as c_char;
+                                    (*yyscanner.yylval_r).astr[len_4 as usize] = 0;
                                     yyscanner.yytext_r = ((*yyscanner.yylval_r).astr).as_mut_ptr();
                                 }
 
@@ -891,10 +885,8 @@ pub(crate) fn fits_parser_yylex(
                             }
                             14 => {
                                 let mut fname: *mut c_char = std::ptr::null_mut::<c_char>();
-                                let mut len_5: c_int = 0 as c_int;
-                                fname = &mut *((*yyscanner.yylval_r).astr)
-                                    .as_mut_ptr()
-                                    .offset(0 as c_int as isize)
+                                let mut len_5: c_int = 0;
+                                fname = &mut *((*yyscanner.yylval_r).astr).as_mut_ptr().offset(0)
                                     as *mut c_char;
                                 loop {
                                     let fresh3 = &mut *fname.offset(len_5 as isize);
@@ -908,184 +900,164 @@ pub(crate) fn fits_parser_yylex(
                                     }
                                     len_5 += 1;
                                 }
-                                if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0 as c_int as usize]
-                                        as c_int
+                                        [0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0 as c_int as usize]
-                                        as c_int
+                                        [0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"BOX(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
-                                    || (if (*fname.offset(0 as c_int as isize) as c_int)
+                                }) == 0
+                                    || (if (*fname.offset(0) as c_int)
                                         < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"CIRCLE(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         -1
-                                    } else if *fname.offset(0 as c_int as isize) as c_int
+                                    } else if *fname.offset(0) as c_int
                                         > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"CIRCLE(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(fname, b"CIRCLE(\0" as *const u8 as *const c_char)
-                                    }) == 0 as c_int
-                                    || (if (*fname.offset(0 as c_int as isize) as c_int)
+                                    }) == 0
+                                    || (if (*fname.offset(0) as c_int)
                                         < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                             b"ELLIPSE(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         -1
-                                    } else if *fname.offset(0 as c_int as isize) as c_int
+                                    } else if *fname.offset(0) as c_int
                                         > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                             b"ELLIPSE(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(fname, b"ELLIPSE(\0" as *const u8 as *const c_char)
-                                    }) == 0 as c_int
-                                    || (if (*fname.offset(0 as c_int as isize) as c_int)
+                                    }) == 0
+                                    || (if (*fname.offset(0) as c_int)
                                         < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
                                             b"NEAR(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         -1
-                                    } else if *fname.offset(0 as c_int as isize) as c_int
+                                    } else if *fname.offset(0) as c_int
                                         > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
                                             b"NEAR(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(fname, b"NEAR(\0" as *const u8 as *const c_char)
-                                    }) == 0 as c_int
-                                    || (if (*fname.offset(0 as c_int as isize) as c_int)
+                                    }) == 0
+                                    || (if (*fname.offset(0) as c_int)
                                         < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"ISNULL(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         -1
-                                    } else if *fname.offset(0 as c_int as isize) as c_int
+                                    } else if *fname.offset(0) as c_int
                                         > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                             b"ISNULL(\0",
-                                        ))[0 as c_int as usize]
-                                            as c_int
+                                        ))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(fname, b"ISNULL(\0" as *const u8 as *const c_char)
-                                    }) == 0 as c_int
+                                    }) == 0
                                 {
                                     return fits_parser_yytokentype::BFUNCTION as c_int;
-                                } else if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                } else if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"GTIFILTER(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"GTIFILTER(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"GTIFILTER(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
+                                }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIFILTER as c_int;
-                                } else if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                } else if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
                                         b"GTIOVERLAP(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
                                         b"GTIOVERLAP(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"GTIOVERLAP(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
+                                }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIOVERLAP as c_int;
-                                } else if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                } else if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                         b"GTIFIND(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
                                         b"GTIFIND(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"GTIFIND(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
+                                }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIFIND as c_int;
-                                } else if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                } else if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"REGFILTER(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
                                         b"REGFILTER(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"REGFILTER(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
+                                }) == 0
                                 {
                                     return fits_parser_yytokentype::REGFILTER as c_int;
-                                } else if (if (*fname.offset(0 as c_int as isize) as c_int)
+                                } else if (if (*fname.offset(0) as c_int)
                                     < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                         b"STRSTR(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     -1
-                                } else if *fname.offset(0 as c_int as isize) as c_int
+                                } else if *fname.offset(0) as c_int
                                     > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
                                         b"STRSTR(\0",
-                                    ))[0 as c_int as usize]
-                                        as c_int
+                                    ))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(fname, b"STRSTR(\0" as *const u8 as *const c_char)
-                                }) == 0 as c_int
+                                }) == 0
                                 {
                                     return fits_parser_yytokentype::IFUNCTION as c_int;
                                 } else {
@@ -1107,7 +1079,7 @@ pub(crate) fn fits_parser_yylex(
                             27 => return fits_parser_yytokentype::XOR as c_int,
                             28 => return '\n' as i32,
                             29 => {
-                                return *(yyscanner.yytext_r).offset(0 as c_int as isize) as c_int;
+                                return *(yyscanner.yytext_r).offset(0) as c_int;
                             }
                             30 => {
                                 fwrite(
@@ -1119,7 +1091,7 @@ pub(crate) fn fits_parser_yylex(
                                 0;
                                 break '_yy_match;
                             }
-                            32 => return 0 as c_int,
+                            32 => return 0,
                             31 => {
                                 yy_amount_of_matched_text =
                                     yy_cp.offset_from(yyscanner.yytext_r) as c_long as c_int - 1;
@@ -1127,7 +1099,7 @@ pub(crate) fn fits_parser_yylex(
                                 if (**(yyscanner.yy_buffer_stack)
                                     .add(yyscanner.yy_buffer_stack_top))
                                 .yy_buffer_status
-                                    == 0 as c_int
+                                    == 0
                                 {
                                     yyscanner.yy_n_chars = (**(yyscanner.yy_buffer_stack)
                                         .add(yyscanner.yy_buffer_stack_top))
@@ -1152,7 +1124,7 @@ pub(crate) fn fits_parser_yylex(
                                         .offset(yy_amount_of_matched_text as isize);
                                     yy_current_state = yy_get_previous_state(yyscanner);
                                     yy_next_state = yy_try_NUL_trans(yy_current_state, yyscanner);
-                                    yy_bp = (yyscanner.yytext_r).offset(0 as c_int as isize);
+                                    yy_bp = (yyscanner.yytext_r).offset(0);
                                     if yy_next_state != 0 {
                                         current_block = 2606663910910355487;
                                         break;
@@ -1163,13 +1135,12 @@ pub(crate) fn fits_parser_yylex(
                                 } else {
                                     match yy_get_next_buffer(yyscanner) {
                                         1 => {
-                                            yyscanner.yy_did_buffer_switch_on_eof = 0 as c_int;
+                                            yyscanner.yy_did_buffer_switch_on_eof = 0;
                                             if fits_parser_yywrap() != 0 {
-                                                yyscanner.yy_c_buf_p = (yyscanner.yytext_r)
-                                                    .offset(0 as c_int as isize);
-                                                yy_act = 31 as c_int
-                                                    + (yyscanner.yy_start - 1) / 2 as c_int
-                                                    + 1;
+                                                yyscanner.yy_c_buf_p =
+                                                    (yyscanner.yytext_r).offset(0);
+                                                yy_act =
+                                                    31 as c_int + (yyscanner.yy_start - 1) / 2 + 1;
                                             } else {
                                                 if yyscanner.yy_did_buffer_switch_on_eof == 0 {
                                                     fits_parser_yyrestart(
@@ -1185,8 +1156,7 @@ pub(crate) fn fits_parser_yylex(
                                                 .offset(yy_amount_of_matched_text as isize);
                                             yy_current_state = yy_get_previous_state(yyscanner);
                                             yy_cp = yyscanner.yy_c_buf_p;
-                                            yy_bp =
-                                                (yyscanner.yytext_r).offset(0 as c_int as isize);
+                                            yy_bp = (yyscanner.yytext_r).offset(0);
                                             break '_yy_find_action;
                                         }
                                         2 => {
@@ -1198,8 +1168,7 @@ pub(crate) fn fits_parser_yylex(
                                                 as *mut c_char;
                                             yy_current_state = yy_get_previous_state(yyscanner);
                                             yy_cp = yyscanner.yy_c_buf_p;
-                                            yy_bp =
-                                                (yyscanner.yytext_r).offset(0 as c_int as isize);
+                                            yy_bp = (yyscanner.yytext_r).offset(0);
                                             continue '_yy_find_action;
                                         }
                                         _ => {
@@ -1246,13 +1215,8 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
         {
             yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
-        if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_fill_buffer
-            == 0 as c_int
-        {
-            if (yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long
-                - 0 as c_int as c_long
-                == 1
-            {
+        if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_fill_buffer == 0 {
+            if (yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long - 0 == 1 {
                 return 1;
             } else {
                 return 2;
@@ -1260,7 +1224,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
         }
         number_to_move =
             ((yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long - 1) as c_int;
-        i = 0 as c_int;
+        i = 0;
         while i < number_to_move {
             let fresh5 = source;
             source = source.offset(1);
@@ -1269,10 +1233,9 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             *fresh6 = *fresh5;
             i += 1;
         }
-        if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buffer_status
-            == 2 as c_int
+        if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buffer_status == 2
         {
-            yyscanner.yy_n_chars = 0 as c_int;
+            yyscanner.yy_n_chars = 0;
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars =
                 yyscanner.yy_n_chars;
         } else {
@@ -1280,21 +1243,21 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                 (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_size
                     - number_to_move
                     - 1;
-            while num_to_read <= 0 as c_int {
+            while num_to_read <= 0 {
                 let b: YY_BUFFER_STATE =
                     *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
                 let yy_c_buf_p_offset: c_int =
                     (yyscanner.yy_c_buf_p).offset_from((*b).yy_ch_buf) as c_long as c_int;
                 if (*b).yy_is_our_buffer != 0 {
-                    let new_size: c_int = (*b).yy_buf_size * 2 as c_int;
-                    if new_size <= 0 as c_int {
+                    let new_size: c_int = (*b).yy_buf_size * 2;
+                    if new_size <= 0 {
                         (*b).yy_buf_size += (*b).yy_buf_size / 8 as c_int;
                     } else {
-                        (*b).yy_buf_size *= 2 as c_int;
+                        (*b).yy_buf_size *= 2;
                     }
                     (*b).yy_ch_buf = fits_parser_yyrealloc(
                         (*b).yy_ch_buf as *mut c_void,
-                        ((*b).yy_buf_size + 2 as c_int) as yy_size_t,
+                        ((*b).yy_buf_size + 2) as yy_size_t,
                     ) as *mut c_char;
                 } else {
                     (*b).yy_ch_buf = std::ptr::null_mut::<c_char>();
@@ -1318,23 +1281,23 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                     .offset(number_to_move as isize) as *mut c_char,
                 num_to_read,
             );
-            if yyscanner.yy_n_chars < 0 as c_int {
+            if yyscanner.yy_n_chars < 0 {
                 yy_fatal_error("read() in flex scanner failed");
             }
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars =
                 yyscanner.yy_n_chars;
         }
-        if yyscanner.yy_n_chars == 0 as c_int {
-            if number_to_move == 0 as c_int {
+        if yyscanner.yy_n_chars == 0 {
+            if number_to_move == 0 {
                 ret_val = 1;
                 fits_parser_yyrestart(yyscanner.yyin_r, yyscanner);
             } else {
-                ret_val = 2 as c_int;
+                ret_val = 2;
                 (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
-                    .yy_buffer_status = 2 as c_int;
+                    .yy_buffer_status = 2;
             }
         } else {
-            ret_val = 0 as c_int;
+            ret_val = 0;
         }
         if yyscanner.yy_n_chars + number_to_move
             > (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_size
@@ -1354,16 +1317,16 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                 yy_fatal_error("out of dynamic memory in yy_get_next_buffer()");
             }
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_size =
-                new_size_0 - 2 as c_int;
+                new_size_0 - 2;
         }
         yyscanner.yy_n_chars += number_to_move;
         *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-            .offset(yyscanner.yy_n_chars as isize) = 0 as c_int as c_char;
+            .offset(yyscanner.yy_n_chars as isize) = 0;
         *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-            .offset((yyscanner.yy_n_chars + 1) as isize) = 0 as c_int as c_char;
+            .offset((yyscanner.yy_n_chars + 1) as isize) = 0;
         yyscanner.yytext_r =
             &mut *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-                .offset(0 as c_int as isize) as *mut c_char;
+                .offset(0) as *mut c_char;
         ret_val
     }
 }
@@ -1374,7 +1337,7 @@ fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
         let mut yy_cp: *mut c_char = std::ptr::null_mut::<c_char>();
 
         yy_current_state = yyscanner.yy_start;
-        yy_cp = (yyscanner.yytext_r).offset(0 as c_int as isize);
+        yy_cp = (yyscanner.yytext_r).offset(0);
         while yy_cp < yyscanner.yy_c_buf_p {
             let mut yy_c: YY_CHAR = (if *yy_cp as c_int != 0 {
                 YY_EC[*yy_cp as YY_CHAR as usize] as c_int
@@ -1410,7 +1373,7 @@ fn yy_try_NUL_trans(
     let mut yy_is_jam: c_int = 0;
 
     let yy_cp: *mut c_char = yyscanner.yy_c_buf_p;
-    let mut yy_c: YY_CHAR = 1 as YY_CHAR;
+    let mut yy_c: YY_CHAR = 1;
     if YY_ACCEPT[yy_current_state as usize] != 0 {
         yyscanner.yy_last_accepting_state = yy_current_state;
         yyscanner.yy_last_accepting_cpos = yy_cp;
@@ -1427,11 +1390,7 @@ fn yy_try_NUL_trans(
         [(YY_BASE[yy_current_state as usize] as c_int + yy_c as c_int) as usize]
         as yy_state_type;
     yy_is_jam = (yy_current_state == 173 as c_int) as c_int;
-    if yy_is_jam != 0 {
-        0 as c_int
-    } else {
-        yy_current_state
-    }
+    if yy_is_jam != 0 { 0 } else { yy_current_state }
 }
 
 pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yyguts_t) {
@@ -1444,8 +1403,10 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
         .is_null()
         {
             fits_parser_yyensure_buffer_stack(yyscanner);
+
             let fresh8 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-            *fresh8 = fits_parser_yy_create_buffer(yyscanner.yyin_r, 16384 as c_int, yyscanner);
+            *fresh8 =
+                fits_parser_yy_create_buffer(yyscanner.yyin_r, YY_BUF_SIZE as c_int, yyscanner);
         }
         fits_parser_yy_init_buffer(
             if !(yyscanner.yy_buffer_stack).is_null() {
@@ -1510,6 +1471,11 @@ fn fits_parser_yy_load_buffer_state(yyscanner: &mut yyguts_t) {
     }
 }
 
+/// Allocate and initialize an input buffer state.
+/// @param file A readable stream.
+/// @param size The character buffer size in bytes. When in doubt, use @c YY_BUF_SIZE.
+/// @param yyscanner The scanner object.
+/// @return the allocated buffer state.
 pub(crate) fn fits_parser_yy_create_buffer(
     file: *mut FILE,
     size: c_int,
@@ -1526,8 +1492,12 @@ pub(crate) fn fits_parser_yy_create_buffer(
             yy_fatal_error("out of dynamic memory in yy_create_buffer()");
         }
         (*b).yy_buf_size = size;
-        (*b).yy_ch_buf =
-            fits_parser_yyalloc(((*b).yy_buf_size + 2 as c_int) as yy_size_t) as *mut c_char;
+
+        /* yy_ch_buf has to be 2 characters longer than the size given because
+         * we need to put in 2 end-of-buffer characters.
+         */
+
+        (*b).yy_ch_buf = fits_parser_yyalloc(((*b).yy_buf_size + 2) as yy_size_t) as *mut c_char;
         if ((*b).yy_ch_buf).is_null() {
             yy_fatal_error("out of dynamic memory in yy_create_buffer()");
         }
@@ -1559,7 +1529,7 @@ pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut y
 
 fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
-        let oerrno: c_int = errno().0;
+        let oerrno = errno().0;
 
         fits_parser_yy_flush_buffer(b, yyscanner);
         (*b).yy_input_file = file;
@@ -1570,12 +1540,12 @@ fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &m
             0 as YY_BUFFER_STATE
         }) {
             (*b).yy_bs_lineno = 1;
-            (*b).yy_bs_column = 0 as c_int;
+            (*b).yy_bs_column = 0;
         }
         (*b).yy_is_interactive = if !file.is_null() {
-            (isatty(fileno(file)) > 0 as c_int) as c_int
+            (isatty(fileno(file)) > 0) as c_int
         } else {
-            0 as c_int
+            0
         };
         set_errno(Errno(oerrno));
     }
@@ -1586,12 +1556,12 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: YY_BUFFER_STATE, yyscanner: &mut yy
         if b.is_null() {
             return;
         }
-        (*b).yy_n_chars = 0 as c_int;
-        *((*b).yy_ch_buf).offset(0 as c_int as isize) = 0 as c_int as c_char;
-        *((*b).yy_ch_buf).offset(1 as c_int as isize) = 0 as c_int as c_char;
-        (*b).yy_buf_pos = &mut *((*b).yy_ch_buf).offset(0 as c_int as isize) as *mut c_char;
+        (*b).yy_n_chars = 0;
+        *((*b).yy_ch_buf).offset(0) = 0;
+        *((*b).yy_ch_buf).offset(1) = 0;
+        (*b).yy_buf_pos = &mut *((*b).yy_ch_buf).offset(0) as *mut c_char;
         (*b).yy_at_bol = 1;
-        (*b).yy_buffer_status = 0 as c_int;
+        (*b).yy_buffer_status = 0;
         if b == (if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
@@ -1665,7 +1635,7 @@ pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
         );
         let fresh14 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
         *fresh14 = 0 as YY_BUFFER_STATE;
-        if yyscanner.yy_buffer_stack_top > 0 as c_int as size_t {
+        if yyscanner.yy_buffer_stack_top > 0 {
             yyscanner.yy_buffer_stack_top = (yyscanner.yy_buffer_stack_top).wrapping_sub(1);
             yyscanner.yy_buffer_stack_top;
         }
@@ -1687,7 +1657,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
         let mut num_to_alloc: yy_size_t = 0;
 
         if (yyscanner.yy_buffer_stack).is_null() {
-            num_to_alloc = 1 as yy_size_t;
+            num_to_alloc = 1;
             yyscanner.yy_buffer_stack = fits_parser_yyalloc(
                 num_to_alloc.wrapping_mul(
                     (::core::mem::size_of::<*mut yy_buffer_state>() as c_ulong)
@@ -1700,11 +1670,11 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
             }
             memset(
                 yyscanner.yy_buffer_stack as *mut c_void,
-                0 as c_int,
+                0,
                 num_to_alloc.wrapping_mul(::core::mem::size_of::<*mut yy_buffer_state>()),
             );
             yyscanner.yy_buffer_stack_max = num_to_alloc;
-            yyscanner.yy_buffer_stack_top = 0 as c_int as size_t;
+            yyscanner.yy_buffer_stack_top = 0;
             return;
         }
         if yyscanner.yy_buffer_stack_top
@@ -1721,7 +1691,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
             }
             memset(
                 (yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_max) as *mut c_void,
-                0 as c_int,
+                0,
                 grow_size.wrapping_mul(::core::mem::size_of::<*mut yy_buffer_state>()),
             );
             yyscanner.yy_buffer_stack_max = num_to_alloc;
@@ -1737,9 +1707,9 @@ pub(crate) fn fits_parser_yy_scan_buffer(
 ) -> YY_BUFFER_STATE {
     unsafe {
         let mut b: YY_BUFFER_STATE = std::ptr::null_mut::<yy_buffer_state>();
-        if size < 2 as c_int as yy_size_t
-            || *base.add(size.wrapping_sub(2 as c_int as yy_size_t)) as c_int != 0 as c_int
-            || *base.add(size.wrapping_sub(1 as c_int as yy_size_t)) as c_int != 0 as c_int
+        if size < 2 as yy_size_t
+            || *base.add(size.wrapping_sub(2 as c_int as yy_size_t)) as c_int != 0
+            || *base.add(size.wrapping_sub(1 as c_int as yy_size_t)) as c_int != 0
         {
             return 0 as YY_BUFFER_STATE;
         }
@@ -1754,13 +1724,13 @@ pub(crate) fn fits_parser_yy_scan_buffer(
         (*b).yy_buf_size = size.wrapping_sub(2 as c_int as yy_size_t) as c_int;
         (*b).yy_ch_buf = base;
         (*b).yy_buf_pos = (*b).yy_ch_buf;
-        (*b).yy_is_our_buffer = 0 as c_int;
+        (*b).yy_is_our_buffer = 0;
         (*b).yy_input_file = std::ptr::null_mut::<FILE>();
         (*b).yy_n_chars = (*b).yy_buf_size;
-        (*b).yy_is_interactive = 0 as c_int;
+        (*b).yy_is_interactive = 0;
         (*b).yy_at_bol = 1;
-        (*b).yy_fill_buffer = 0 as c_int;
-        (*b).yy_buffer_status = 0 as c_int;
+        (*b).yy_fill_buffer = 0;
+        (*b).yy_buffer_status = 0;
         fits_parser_yy_switch_to_buffer(b, yyscanner);
         b
     }
@@ -1787,21 +1757,21 @@ pub(crate) fn fits_parser_yy_scan_bytes(
         let mut buf: *mut c_char = std::ptr::null_mut::<c_char>();
         let mut n: yy_size_t = 0;
         let mut i: c_int = 0;
-        n = (_yybytes_len + 2 as c_int) as yy_size_t;
+        n = (_yybytes_len + 2) as yy_size_t;
         buf = fits_parser_yyalloc(n) as *mut c_char;
         if buf.is_null() {
             yy_fatal_error(
                 "out of dynamic memory in yy_scan_bytes()"
             );
         }
-        i = 0 as c_int;
+        i = 0;
         while i < _yybytes_len {
             *buf.offset(i as isize) = *yybytes.offset(i as isize);
             i += 1;
             i;
         }
         let fresh15 = &mut *buf.offset((_yybytes_len + 1) as isize);
-        *fresh15 = 0 as c_int as c_char;
+        *fresh15 = 0;
         *buf.offset(_yybytes_len as isize) = *fresh15;
         b = fits_parser_yy_scan_buffer(buf, n, yyscanner);
         if b.is_null() {
@@ -2010,17 +1980,17 @@ pub(crate) fn fits_parser_yylex_init_extra(
 
 fn yy_init_globals(yyscanner: &mut yyguts_t) -> c_int {
     yyscanner.yy_buffer_stack = std::ptr::null_mut::<YY_BUFFER_STATE>();
-    yyscanner.yy_buffer_stack_top = 0 as c_int as size_t;
-    yyscanner.yy_buffer_stack_max = 0 as c_int as size_t;
+    yyscanner.yy_buffer_stack_top = 0;
+    yyscanner.yy_buffer_stack_max = 0;
     yyscanner.yy_c_buf_p = std::ptr::null_mut::<c_char>();
-    yyscanner.yy_init = 0 as c_int;
-    yyscanner.yy_start = 0 as c_int;
-    yyscanner.yy_start_stack_ptr = 0 as c_int;
-    yyscanner.yy_start_stack_depth = 0 as c_int;
+    yyscanner.yy_init = 0;
+    yyscanner.yy_start = 0;
+    yyscanner.yy_start_stack_ptr = 0;
+    yyscanner.yy_start_stack_depth = 0;
     yyscanner.yy_start_stack = std::ptr::null_mut::<c_int>();
     yyscanner.yyin_r = std::ptr::null_mut::<FILE>();
     yyscanner.yyout_r = std::ptr::null_mut::<FILE>();
-    0 as c_int
+    0
 }
 
 pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
@@ -2051,7 +2021,7 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
         yyscanner.yy_start_stack = std::ptr::null_mut::<c_int>();
         yy_init_globals(&mut yyscanner);
 
-        0 as c_int
+        0
     }
 }
 

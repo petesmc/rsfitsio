@@ -5928,7 +5928,7 @@ pub(crate) fn fits_read_compressed_img(
     let mut irow: c_long = 0;
     let mut ndim: c_int = 0;
     let mut pixlen: usize = 0;
-    let mut tilenul: c_int = 0 as c_int;
+    let mut tilenul: c_int = 0;
     let mut testnullval: f64 = 0.0;
 
     let mut buffer: Vec<u8> = Vec::new();

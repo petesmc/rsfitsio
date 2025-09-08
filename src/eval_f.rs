@@ -2030,8 +2030,7 @@ fn fits_parser_workfn_safe(
                             if constant != 0 {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
-                                        let r = if (result.value.data.astr
-                                            [jj as usize])
+                                        let r = if (result.value.data.astr[jj as usize])
                                             == b'1' as c_char
                                         {
                                             1

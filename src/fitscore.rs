@@ -4185,8 +4185,8 @@ pub fn ffcmps_safe(
     let mut t1;
     let mut s1;
     let mut wildsearch = false;
-    let mut tsave: c_int = 0 as c_int;
-    let mut ssave: c_int = 0 as c_int;
+    let mut tsave: c_int = 0;
+    let mut ssave: c_int = 0;
     let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut col: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
