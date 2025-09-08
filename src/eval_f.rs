@@ -50,6 +50,7 @@
 /*                                                                      */
 /************************************************************************/
 
+use core::slice;
 use libc::{c_float, memcpy, memset};
 use std::{cmp, ptr};
 
@@ -820,11 +821,19 @@ pub fn ffcalc_safe(
     parInfo: &[c_char],     /* I - Extra information on parameter       */
     status: &mut c_int,     /* O - Error status                         */
 ) -> c_int {
-    let mut start: c_long = 1;
-    let mut end: c_long = LONG_MAX;
+    let start: c_long = 1;
+    let end: c_long = LONG_MAX;
 
     ffcalc_rng_safe(
-        infptr, expr, outfptr, parName, parInfo, 1, &mut start, &mut end, status,
+        infptr,
+        expr,
+        outfptr,
+        parName,
+        parInfo,
+        1,
+        &[start],
+        &[end],
+        status,
     )
 }
 
@@ -850,8 +859,8 @@ pub unsafe extern "C" fn ffcalc_rng(
     parName: *const c_char, /* I - Name of output parameter         */
     parInfo: *const c_char, /* I - Extra information on parameter   */
     nRngs: c_int,           /* I - Row range info                   */
-    start: *mut c_long,     /* I - Row range info                   */
-    end: *mut c_long,       /* I - Row range info                   */
+    start: *const c_long,   /* I - Row range info                   */
+    end: *const c_long,     /* I - Row range info                   */
     status: *mut c_int,     /* O - Error status                     */
 ) -> c_int {
     unsafe {
@@ -861,8 +870,8 @@ pub unsafe extern "C" fn ffcalc_rng(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
-        let start = start.as_mut().expect(NULL_MSG);
-        let end = end.as_mut().expect(NULL_MSG);
+        let start = slice::from_raw_parts(start, nRngs as usize);
+        let end = slice::from_raw_parts(end, nRngs as usize);
 
         ffcalc_rng_safe(
             infptr, expr, outfptr, parName, parInfo, nRngs, start, end, status,
@@ -891,8 +900,8 @@ pub fn ffcalc_rng_safe(
     parName: &[c_char],     /* I - Name of output parameter         */
     parInfo: &[c_char],     /* I - Extra information on parameter   */
     nRngs: c_int,           /* I - Row range info                   */
-    start: &mut c_long,     /* I - Row range info                   */
-    end: &mut c_long,       /* I - Row range info                   */
+    start: &[c_long],       /* I - Row range info                   */
+    end: &[c_long],         /* I - Row range info                   */
     status: &mut c_int,     /* O - Error status                     */
 ) -> c_int {
     unsafe {
@@ -1177,11 +1186,7 @@ pub fn ffcalc_rng_safe(
 
             for i in 0..nRngs {
                 Info.dataPtr = std::ptr::null_mut();
-                let start_slice =
-                    unsafe { std::slice::from_raw_parts(start as *const c_long, nRngs as usize) };
-                let end_slice =
-                    unsafe { std::slice::from_raw_parts(end as *const c_long, nRngs as usize) };
-                Info.maxRows = end_slice[i as usize] - start_slice[i as usize] + 1;
+                Info.maxRows = end[i as usize] - start[i as usize] + 1;
 
                 /*
                    If there is only 1 range, and it includes all the rows,
@@ -1191,11 +1196,7 @@ pub fn ffcalc_rng_safe(
                    Otherwise, set nPerLp to the number of rows in this range.
                 */
 
-                if (Info.maxRows >= 10)
-                    && (nRngs == 1)
-                    && (start_slice[0] == 1)
-                    && (end_slice[0] == totaln)
-                {
+                if (Info.maxRows >= 10) && (nRngs == 1) && (start[0] == 1) && (end[0] == totaln) {
                     nPerLp = 0;
                 } else {
                     nPerLp = Info.maxRows as c_int;
@@ -1205,7 +1206,7 @@ pub fn ffcalc_rng_safe(
                 if ffiter_safe(
                     lParse.nCols,
                     colData_slice,
-                    start_slice[i as usize] - 1,
+                    start[i as usize] - 1,
                     nPerLp as c_long,
                     fits_parser_workfn,
                     &Info as *const _ as *mut c_void,
