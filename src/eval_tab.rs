@@ -101,3 +101,9 @@ pub(crate) union FITS_PARSER_YYSTYPE {
     pub(crate) log: c_char,                         /* logical value */
     pub(crate) astr: [c_char; MAX_STRLEN as usize], /* string value  */
 }
+
+impl Default for FITS_PARSER_YYSTYPE {
+    fn default() -> Self {
+        Self { Node: 0 }
+    }
+}

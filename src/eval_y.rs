@@ -5,60 +5,12 @@ use std::{cmp, ptr};
 use bytemuck::{cast_slice, cast_slice_mut};
 use libc::{calloc, free, malloc, memcpy, time, time_t};
 
-// Math function wrappers
-fn sqrt(x: f64) -> f64 {
-    x.sqrt()
-}
-fn sin(x: f64) -> f64 {
-    x.sin()
-}
-fn cos(x: f64) -> f64 {
-    x.cos()
-}
-fn ceil(x: f64) -> f64 {
-    x.ceil()
-}
-fn floor(x: f64) -> f64 {
-    x.floor()
-}
-fn fabs(x: f64) -> f64 {
-    x.abs()
-}
-fn acos(x: f64) -> f64 {
-    x.acos()
-}
-fn asin(x: f64) -> f64 {
-    x.asin()
-}
-fn atan(x: f64) -> f64 {
-    x.atan()
-}
 fn atan2(y: f64, x: f64) -> f64 {
     y.atan2(x)
 }
-fn cosh(x: f64) -> f64 {
-    x.cosh()
-}
-fn exp(x: f64) -> f64 {
-    x.exp()
-}
-fn log(x: f64) -> f64 {
-    x.ln()
-}
-fn log10(x: f64) -> f64 {
-    x.log10()
-}
+
 fn pow(x: f64, y: f64) -> f64 {
     x.powf(y)
-}
-fn sinh(x: f64) -> f64 {
-    x.sinh()
-}
-fn tan(x: f64) -> f64 {
-    x.tan()
-}
-fn tanh(x: f64) -> f64 {
-    x.tanh()
 }
 
 use crate::c_types::{
@@ -8081,7 +8033,7 @@ fn New_GTI(
                 if timeSpan == 0.0 {
                     timeSpan = 1.0;
                 }
-                if fabs(dt / timeSpan) > 1e-12f64 {
+                if (dt / timeSpan).abs() > 1e-12f64 {
                     i = 0;
                     while (i as c_long) < nrows {
                         *startptr.offset(i as isize) += dt;
@@ -10295,7 +10247,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             match (lParse.Nodes[this_node_idx]).operation {
                 126 => {
                     (lParse.Nodes[this_node_idx]).value.data.log =
-                        if fabs(val1 - val2) < 1.0e-7f64 { 1 } else { 0 };
+                        if (val1 - val2).abs() < 1.0e-7f64 {
+                            1
+                        } else {
+                            0
+                        };
                 }
                 279 => {
                     (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
@@ -10446,8 +10402,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     match (lParse.Nodes[this_node_idx]).operation {
                         126 => {
                             *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                .offset(elem as isize) =
-                                if fabs(val1 - val2) < 1.0e-7f64 { 1 } else { 0 };
+                                .offset(elem as isize) = if (val1 - val2).abs() < 1.0e-7f64 {
+                                1
+                            } else {
+                                0
+                            };
                         }
                         279 => {
                             *((lParse.Nodes[this_node_idx]).value.data.logptr)
@@ -10917,15 +10876,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 1004 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sin(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).sin();
                     current_block_139 = 7627602990488000394;
                 }
                 1005 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cos(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).cos();
                     current_block_139 = 7627602990488000394;
                 }
                 1006 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).tan();
                     current_block_139 = 7627602990488000394;
                 }
                 1007 => {
@@ -10933,7 +10892,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = asin(dval);
+                        (lParse.Nodes[this_node_idx]).value.data.dbl = (dval).asin();
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10942,28 +10901,28 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = acos(dval);
+                        (lParse.Nodes[this_node_idx]).value.data.dbl = (dval).acos();
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1009 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = atan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).atan();
                     current_block_139 = 7627602990488000394;
                 }
                 1010 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sinh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).sinh();
                     current_block_139 = 7627602990488000394;
                 }
                 1011 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cosh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).cosh();
                     current_block_139 = 7627602990488000394;
                 }
                 1012 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tanh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).tanh();
                     current_block_139 = 7627602990488000394;
                 }
                 1013 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = exp(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).exp();
                     current_block_139 = 7627602990488000394;
                 }
                 1014 => {
@@ -10971,7 +10930,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log(dval);
+                        (lParse.Nodes[this_node_idx]).value.data.dbl = (dval).ln();
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10980,7 +10939,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log10(dval);
+                        (lParse.Nodes[this_node_idx]).value.data.dbl = (dval).log10();
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10989,20 +10948,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = sqrt(dval);
+                        (lParse.Nodes[this_node_idx]).value.data.dbl = (dval).sqrt();
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1019 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = ceil(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).ceil();
                     current_block_139 = 7627602990488000394;
                 }
                 1020 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = (pVals[0].data.dbl).floor();
                     current_block_139 = 7627602990488000394;
                 }
                 1021 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl + 0.5);
+                    (lParse.Nodes[this_node_idx]).value.data.dbl =
+                        (pVals[0].data.dbl + 0.5).floor();
                     current_block_139 = 7627602990488000394;
                 }
                 1018 => {
@@ -11738,7 +11698,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(row as isize) = sqrt(sum2);
+                                        .offset(row as isize) = (sum2).sqrt();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
@@ -11805,7 +11765,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(row as isize) = sqrt(sum2_0);
+                                        .offset(row as isize) = (sum2_0).sqrt();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
@@ -12304,8 +12264,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if *fresh104 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
                                 .offset(elem as isize) =
-                                sin(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize));
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .sin();
                         }
                     },
                     1005 => loop {
@@ -12321,8 +12282,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if *fresh106 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
                                 .offset(elem as isize) =
-                                cos(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize));
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .cos();
                         }
                     },
                     1006 => loop {
@@ -12338,8 +12300,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if *fresh108 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
                                 .offset(elem as isize) =
-                                tan(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize));
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .tan();
                         }
                     },
                     1007 => loop {
@@ -12362,7 +12325,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                    .offset(elem as isize) = asin(dval);
+                                    .offset(elem as isize) = (dval).asin();
                             }
                         }
                     },
@@ -12386,7 +12349,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                    .offset(elem as isize) = acos(dval);
+                                    .offset(elem as isize) = (dval).acos();
                             }
                         }
                     },
@@ -12404,7 +12367,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
                                 .offset(elem as isize);
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = atan(dval);
+                                .offset(elem as isize) = (dval).atan();
                         }
                     },
                     1010 => loop {
@@ -12419,10 +12382,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh116 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = sinh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize),
-                            );
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .sinh();
                         }
                     },
                     1011 => loop {
@@ -12437,10 +12400,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh118 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = cosh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize),
-                            );
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .cosh();
                         }
                     },
                     1012 => loop {
@@ -12455,10 +12418,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh120 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = tanh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize),
-                            );
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .tanh();
                         }
                     },
                     1013 => loop {
@@ -12475,7 +12438,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
                                 .offset(elem as isize);
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = exp(dval);
+                                .offset(elem as isize) = (dval).exp();
                         }
                     },
                     1014 => loop {
@@ -12498,7 +12461,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                    .offset(elem as isize) = log(dval);
+                                    .offset(elem as isize) = (dval).ln();
                             }
                         }
                     },
@@ -12522,7 +12485,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                    .offset(elem as isize) = log10(dval);
+                                    .offset(elem as isize) = (dval).log10();
                             }
                         }
                     },
@@ -12546,7 +12509,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                    .offset(elem as isize) = sqrt(dval);
+                                    .offset(elem as isize) = (dval).sqrt();
                             }
                         }
                     },
@@ -12562,10 +12525,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh130 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = ceil(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize),
-                            );
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .ceil();
                         }
                     },
                     1020 => loop {
@@ -12580,10 +12543,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh132 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                    .offset(elem as isize),
-                            );
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    .offset(elem as isize))
+                                .floor();
                         }
                     },
                     1021 => loop {
@@ -12598,11 +12561,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh134 == 0 {
                             *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                .offset(elem as isize) =
+                                (*((lParse.Nodes[theParams[0]]).value.data.dblptr)
                                     .offset(elem as isize)
-                                    + 0.5,
-                            );
+                                    + 0.5)
+                                    .floor();
                         }
                     },
                     1018 => loop {
