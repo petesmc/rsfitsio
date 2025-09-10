@@ -5,6 +5,8 @@ use std::{cmp, ptr};
 use bytemuck::{cast_slice, cast_slice_mut};
 use libc::{calloc, free, malloc, memcpy, time, time_t};
 
+const APPROX: f64 = 1.0e-7;
+
 // Math function wrappers
 fn sqrt(x: f64) -> f64 {
     x.sqrt()
@@ -10285,17 +10287,19 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         } else {
             val1 = (lParse.Nodes[that1_idx]).value.data.dbl;
         }
+
         vector2 = ((lParse.Nodes[that2_idx]).operation != CONST_OP) as c_int;
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
-        if vector1 == 0 && vector2 == 0 {
+        
+        if vector1 == 0 && vector2 == 0 { /*  Result is a constant  */
             match (lParse.Nodes[this_node_idx]).operation {
                 126 => {
                     (lParse.Nodes[this_node_idx]).value.data.log =
-                        if fabs(val1 - val2) < 1.0e-7f64 { 1 } else { 0 };
+                        if fabs(val1 - val2) < APPROX { 1 } else { 0 };
                 }
                 279 => {
                     (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
@@ -10358,18 +10362,21 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             let mut undef: c_long = 0;
             let mut previous: c_double = 0.0;
             let mut curr: c_double = 0.0;
+        
             rows = lParse.nRows;
             nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
+
             Allocate_Ptrs(lParse, this_node_idx);
+
             if lParse.status == 0 {
                 previous = (lParse.Nodes[that2_idx]).value.data.dbl;
-                undef = *(lParse.Nodes[that2_idx]).value.undef as c_long;
+                undef = (lParse.Nodes[that2_idx]).value.undef as c_long;
                 if (lParse.Nodes[this_node_idx]).operation
                     == fits_parser_yytokentype::ACCUM as c_int
                 {
-                    i = 0;
-                    while i < elem {
+                    /* Cumulative sum of this chunk */
+                    for i in 0..elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
                             curr =
                                 *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(i as isize);
@@ -10378,7 +10385,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
-                        i += 1;
+                     
                     }
                 } else {
                     i = 0;
@@ -10447,7 +10454,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         126 => {
                             *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                 .offset(elem as isize) =
-                                if fabs(val1 - val2) < 1.0e-7f64 { 1 } else { 0 };
+                                if fabs(val1 - val2) < APPROX { 1 } else { 0 };
                         }
                         279 => {
                             *((lParse.Nodes[this_node_idx]).value.data.logptr)
@@ -12443,7 +12450,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1012 => loop {
+                    tanh_fct => loop {
                         let fresh119 = elem;
                         elem -= 1;
                         if fresh119 == 0 {
@@ -15643,7 +15650,7 @@ fn cstrmid(
     src_len: c_int,
     pos: c_int,
 ) -> c_int {
-    let dest_str = unsafe { std::slice::from_raw_parts_mut(dest_str, (dest_len) as usize) };
+    let dest_str = unsafe { std::slice::from_raw_parts_mut(dest_str, (dest_len) as usize + 1) }; // +1 for null terminate
     let dest_len = dest_len as usize;
     let mut src_len = src_len as usize;
 
@@ -15654,7 +15661,7 @@ fn cstrmid(
         src_len = unsafe { strlen(src_str) };
     } /* .. if constant */
 
-    let src_str = unsafe { std::slice::from_raw_parts(src_str, src_len) };
+    let src_str = unsafe { std::slice::from_raw_parts(src_str, src_len + 1) };
 
     /* Fill destination with blanks */
     if pos < 0 {
