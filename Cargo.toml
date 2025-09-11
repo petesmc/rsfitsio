@@ -33,6 +33,10 @@ test = true
 name = "cookbook_rust"
 test = true
 
+[[example]]
+name = "cookbook_expanded_rust"
+test = true
+
 [features]
 default = ["bzip2"]
 bzip2 = ["dep:libbz2-rs-sys"]
