@@ -105,7 +105,7 @@ pub struct ParseData {
     pub timeCol: c_int,
     pub parCol: c_int,
     pub valCol: c_int,
-    pub expr: *mut c_char,
+    pub expr: Option<Box<[u8]>>,
     pub index: c_int,
     pub is_eobuf: c_int,
     pub Nodes: Vec<Node>,
