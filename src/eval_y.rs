@@ -8048,10 +8048,13 @@ fn New_GTI(
                 i = nrows as c_int;
                 loop {
                     /* the following are failure conditions for GTI ordering */
-                    i -= 1;
+
                     if i == 0 {
+                        i -= 1;
                         break;
                     }
+                    i -= 1;
+
                     if !(*startptr.offset(i as isize) > *stopptr.offset(i as isize) /* START{j} > STOP{j} */
                         || *startptr.offset(i as isize) < *stopptr.offset((i - 1) as isize))
                     /* START{j} < STOP{j-1} */
@@ -8679,6 +8682,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
         i = ((lParse.Nodes)[thisNode as usize]).nSubNodes;
         loop {
             if i == 0 {
+                i -= 1;
                 break;
             }
 
@@ -10294,8 +10298,9 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         } else {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
-        
-        if vector1 == 0 && vector2 == 0 { /*  Result is a constant  */
+
+        if vector1 == 0 && vector2 == 0 {
+            /*  Result is a constant  */
             match (lParse.Nodes[this_node_idx]).operation {
                 126 => {
                     (lParse.Nodes[this_node_idx]).value.data.log =
@@ -10362,7 +10367,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             let mut undef: c_long = 0;
             let mut previous: c_double = 0.0;
             let mut curr: c_double = 0.0;
-        
+
             rows = lParse.nRows;
             nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
@@ -10385,7 +10390,6 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
-                     
                     }
                 } else {
                     i = 0;
@@ -13958,10 +13962,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
 fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut theVar: &mut Node;
-        let mut theDims: [usize; 5] = [0; 5];
-        let mut isConst: [c_int; 5] = [0; 5];
+        let mut theDims: [usize; MAXDIMS as usize] = [0; MAXDIMS as usize];
+        let mut isConst: [c_int; MAXDIMS as usize] = [0; MAXDIMS as usize];
         let mut allConst: c_int = 0;
-        let mut dimVals: [c_long; 5] = [0; 5];
+        let mut dimVals: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
         let mut i: c_int = 0;
         let mut nDims: c_int = 0;
         let mut row: c_long = 0;
@@ -13975,6 +13979,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
 
         loop {
             if i == 0 {
+                i -= 1;
                 break;
             }
             i -= 1;
@@ -14008,6 +14013,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 i = nDims;
                 loop {
                     if i == 0 {
+                        i -= 1;
                         break;
                     }
                     i -= 1;

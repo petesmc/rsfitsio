@@ -66,7 +66,7 @@ void writeimage( void )
     unsigned short *array[200];
 
     /* initialize FITS image parameters */
-    char filename[] = "atestfil.fit";             /* name for new FITS file */
+    char filename[] = "cetestfil.fit";             /* name for new FITS file */
     int bitpix   =  USHORT_IMG; /* 16-bit unsigned short pixel values       */
     long naxis    =   2;  /* 2-dimensional image                            */    
     long naxes[2] = { 300, 200 };   /* image is 300 pixels wide by 200 rows */
@@ -140,7 +140,7 @@ void writeascii ( void )
     int tfields = 3;       /* table will have 3 columns */
     long nrows  = 6;       /* table will have 6 rows    */
 
-    char filename[] = "atestfil.fit";           /* name for new FITS file */
+    char filename[] = "cetestfil.fit";           /* name for new FITS file */
     char extname[] = "PLANETS_ASCII";             /* extension name */
 
     /* define the name, datatype, and physical units for the 3 columns */
@@ -196,7 +196,7 @@ void writebintable ( void )
     int tfields   = 14;      /* table will have 14 columns */
     long nrows    = 6;       /* table will have 6 rows    */
 
-    char filename[] = "atestfil.fit";           /* name for new FITS file */
+    char filename[] = "cetestfil.fit";           /* name for new FITS file */
     char extname[] = "PLANETS_Binary";          /* extension name */
 
     /* define the name, datatype, and physical units for all columns */
@@ -401,7 +401,7 @@ void copyhdu( void)
     fitsfile *infptr;      /* pointer to the FITS file, defined in fitsio.h */
     fitsfile *outfptr;                 /* pointer to the new FITS file      */
 
-    char infilename[]  = "atestfil.fit";  /* name for existing FITS file   */
+    char infilename[]  = "cetestfil.fit";  /* name for existing FITS file   */
     char outfilename[] = "btestfil.fit";  /* name for new FITS file        */
 
     int status, morekeys, hdutype;
@@ -450,7 +450,7 @@ void selectrows( void )
     long naxes[2], frow, felem, noutrows, irow;
     float nullval, density[6];
 
-    char infilename[]  = "atestfil.fit";  /* name for existing FITS file   */
+    char infilename[]  = "cetestfil.fit";  /* name for existing FITS file   */
     char outfilename[] = "btestfil.fit";  /* name for new FITS file        */
 
     status = 0;
@@ -534,7 +534,7 @@ void readheader ( void )
     fitsfile *fptr;       /* pointer to the FITS file, defined in fitsio.h */
 
     int status, nkeys, keypos, hdutype, ii, jj;
-    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "cetestfil.fit";     /* name of existing FITS file   */
     char card[FLEN_CARD];   /* standard string lengths defined in fitsioc.h */
 
     status = 0;
@@ -582,7 +582,7 @@ void readimage( void )
 
 #define buffsize 1000
     float datamin, datamax, nullval, buffer[buffsize];
-    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "cetestfil.fit";     /* name of existing FITS file   */
 
     status = 0;
 
@@ -646,7 +646,7 @@ void read_ascii_table( void )
     float floatnull, den[6];
     char strnull[10], *name[6], *ttype[3]; 
 
-    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "cetestfil.fit";     /* name of existing FITS file   */
 
     status = 0;
 
@@ -732,7 +732,7 @@ void read_binary_table( void )
     float temps[6][4];        /* 4E - Vector of 4 floats */
     double coords[6][2];      /* 2D - Vector of 2 doubles */
 
-    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "cetestfil.fit";     /* name of existing FITS file   */
 
     status = 0;
 
@@ -922,6 +922,22 @@ void read_binary_table( void )
     printf("• 3I (Vector): Moon counts [major,minor,tiny]\n");
     printf("• 4E (Vector): Temperature stats [min,max,mean,stddev]\n");
     printf("• 2D (Vector): Coordinates [lat,lon]\n");
+
+     char where_clause[] = "(Flags & 0x01) >= 0";
+        long n_matched_rows = -1;
+        char row_status[6] = {0};
+        fits_find_rows(
+            fptr,
+            where_clause,
+            1,
+            6,
+            &n_matched_rows,
+            (char *) row_status,
+            &status
+        );
+
+        printf("\nNumber of matched rows: %ld\n", n_matched_rows);
+        printf("Status: %d\n", status);
 
     for (ii = 0; ii < 6; ii++)      /* free the memory for the string column */
         free( name[ii] );

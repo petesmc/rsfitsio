@@ -6,14 +6,14 @@ use std::process::ExitCode;
 use std::process::exit;
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{c_char, c_float, c_int, c_long, c_ushort, c_uchar, c_short, c_double};
+use libc::{c_char, c_double, c_float, c_int, c_long, c_short, c_uchar, c_ushort};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::rust_api::*;
 use rsfitsio::fitsio::LONGLONG;
 use rsfitsio::fitsio::{
     ASCII_TBL, BINARY_TBL, CASEINSEN, END_OF_FILE, FLEN_CARD, FLEN_VALUE, READONLY, READWRITE,
-    TFLOAT, TLONG, TUSHORT, USHORT_IMG, fitsfile, TBYTE, TSHORT, TLONGLONG, TDOUBLE, TCOMPLEX,
-    TDBLCOMPLEX, TLOGICAL, TBIT, TSTRING,
+    TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TLOGICAL, TLONG, TLONGLONG, TSHORT,
+    TSTRING, TUSHORT, USHORT_IMG, fitsfile,
 };
 use rsfitsio::{KeywordDatatype, NullValue};
 
@@ -56,7 +56,7 @@ fn writeimage() {
     let fpixel: c_long = 1;
 
     /* initialize FITS image parameters */
-    let filename = "ctestfil.fit"; /* name for new FITS file */
+    let filename = "cetestfil.fit"; /* name for new FITS file */
     let bitpix: c_int = USHORT_IMG; /* 16-bit unsigned short pixel values       */
     let naxis: c_long = 2; /* 2-dimensional image                            */
     let naxes: [c_long; 2] = [300, 200]; /* image is 300 pixels wide by 200 rows */
@@ -157,7 +157,7 @@ fn writeascii() {
     let tfields: c_int = 3; /* table will have 3 columns */
     let nrows: LONGLONG = 6; /* table will have 6 rows    */
 
-    let filename = "ctestfil.fit"; /* name for new FITS file */
+    let filename = "cetestfil.fit"; /* name for new FITS file */
     let extname = "PLANETS_ASCII"; /* extension name */
 
     /* define the name, datatype, and physical units for the 3 columns */
@@ -301,41 +301,41 @@ fn writebintable() {
     let tfields: c_int = 14; /* table will have 14 columns */
     let nrows: LONGLONG = 6; /* table will have 6 rows    */
 
-    let filename = "ctestfil.fit"; /* name for new FITS file */
+    let filename = "cetestfil.fit"; /* name for new FITS file */
     let extname = "PLANETS_Binary"; /* extension name */
 
     /* define the name, datatype, and physical units for all columns */
     let ttype_strs = [
-        CString::new("Planet").unwrap(),      // A - Character string
-        CString::new("Active").unwrap(),      // L - Logical
-        CString::new("Flags").unwrap(),       // X - Bit array
-        CString::new("Category").unwrap(),    // B - Unsigned byte
-        CString::new("Priority").unwrap(),    // I - 16-bit integer
-        CString::new("Diameter").unwrap(),    // J - 32-bit integer
-        CString::new("Mass").unwrap(),        // K - 64-bit integer  
-        CString::new("Density").unwrap(),     // E - Single-precision float
-        CString::new("Gravity").unwrap(),     // D - Double-precision float
-        CString::new("Position").unwrap(),    // C - Single-precision complex
-        CString::new("Velocity").unwrap(),    // M - Double-precision complex
-        CString::new("Moons").unwrap(),       // 3I - Vector of 3 16-bit integers
-        CString::new("Temps").unwrap(),       // 4E - Vector of 4 floats
-        CString::new("Coords").unwrap(),      // 2D - Vector of 2 doubles
+        CString::new("Planet").unwrap(),   // A - Character string
+        CString::new("Active").unwrap(),   // L - Logical
+        CString::new("Flags").unwrap(),    // X - Bit array
+        CString::new("Category").unwrap(), // B - Unsigned byte
+        CString::new("Priority").unwrap(), // I - 16-bit integer
+        CString::new("Diameter").unwrap(), // J - 32-bit integer
+        CString::new("Mass").unwrap(),     // K - 64-bit integer
+        CString::new("Density").unwrap(),  // E - Single-precision float
+        CString::new("Gravity").unwrap(),  // D - Double-precision float
+        CString::new("Position").unwrap(), // C - Single-precision complex
+        CString::new("Velocity").unwrap(), // M - Double-precision complex
+        CString::new("Moons").unwrap(),    // 3I - Vector of 3 16-bit integers
+        CString::new("Temps").unwrap(),    // 4E - Vector of 4 floats
+        CString::new("Coords").unwrap(),   // 2D - Vector of 2 doubles
     ];
     let tform_strs = [
-        CString::new("8A").unwrap(),  // Character string
-        CString::new("1L").unwrap(),  // Logical
-        CString::new("8X").unwrap(),  // 8 bits
-        CString::new("1B").unwrap(),  // Unsigned byte
-        CString::new("1I").unwrap(),  // 16-bit integer
-        CString::new("1J").unwrap(),  // 32-bit integer
-        CString::new("1K").unwrap(),  // 64-bit integer
-        CString::new("1E").unwrap(),  // Single-precision float
-        CString::new("1D").unwrap(),  // Double-precision float
-        CString::new("1C").unwrap(),  // Single-precision complex
-        CString::new("1M").unwrap(),  // Double-precision complex
-        CString::new("3I").unwrap(),  // Vector of 3 16-bit integers
-        CString::new("4E").unwrap(),  // Vector of 4 floats
-        CString::new("2D").unwrap(),  // Vector of 2 doubles
+        CString::new("8A").unwrap(), // Character string
+        CString::new("1L").unwrap(), // Logical
+        CString::new("8X").unwrap(), // 8 bits
+        CString::new("1B").unwrap(), // Unsigned byte
+        CString::new("1I").unwrap(), // 16-bit integer
+        CString::new("1J").unwrap(), // 32-bit integer
+        CString::new("1K").unwrap(), // 64-bit integer
+        CString::new("1E").unwrap(), // Single-precision float
+        CString::new("1D").unwrap(), // Double-precision float
+        CString::new("1C").unwrap(), // Single-precision complex
+        CString::new("1M").unwrap(), // Double-precision complex
+        CString::new("3I").unwrap(), // Vector of 3 16-bit integers
+        CString::new("4E").unwrap(), // Vector of 4 floats
+        CString::new("2D").unwrap(), // Vector of 2 doubles
     ];
     let tunit_strs = [
         CString::new("").unwrap(),
@@ -380,71 +380,80 @@ fn writebintable() {
         .iter()
         .map(|s| cast_slice(s.to_bytes_with_nul()))
         .collect();
-    
+
     // L - Logical values (1=T, 0=F for FITS internal representation)
     let active: [c_char; 6] = [1, 1, 1, 1, 1, 0];
-    
+
     // X - Bit arrays (8 bits each)
-    let flags: [c_uchar; 6] = [0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001];
-    
+    let flags: [c_uchar; 6] = [
+        0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001,
+    ];
+
     // B - Unsigned bytes
     let category: [c_uchar; 6] = [1, 2, 3, 4, 5, 6];
-    
+
     // I - 16-bit integers
     let priority: [c_short; 6] = [100, 200, 300, 150, 50, 75];
-    
+
     // J - 32-bit integers
     let diameter: [c_long; 6] = [4880, 12112, 12742, 6800, 143000, 121000];
-    
+
     // K - 64-bit integers
-    let mass: [LONGLONG; 6] = [330110000000, 4867500000000, 5972400000000, 641710000000, 1898200000000000, 568340000000000];
-    
+    let mass: [LONGLONG; 6] = [
+        330110000000,
+        4867500000000,
+        5972400000000,
+        641710000000,
+        1898200000000000,
+        568340000000000,
+    ];
+
     // E - Single-precision floats
     let density: [c_float; 6] = [5.1, 5.3, 5.52, 3.94, 1.33, 0.69];
-    
+
     // D - Double-precision floats
     let gravity: [c_double; 6] = [3.7, 8.87, 9.807, 3.71, 24.79, 10.44];
-    
+
     // C - Single-precision complex (real, imaginary pairs)
     let position: [[c_float; 2]; 6] = [
-        [0.39, 0.0],   // Mercury
-        [0.72, 0.0],   // Venus
-        [1.00, 0.0],   // Earth
-        [1.52, 0.0],   // Mars
-        [5.20, 0.0],   // Jupiter
-        [9.58, 0.0],   // Saturn
+        [0.39, 0.0], // Mercury
+        [0.72, 0.0], // Venus
+        [1.00, 0.0], // Earth
+        [1.52, 0.0], // Mars
+        [5.20, 0.0], // Jupiter
+        [9.58, 0.0], // Saturn
     ];
-    
+
     // M - Double-precision complex (real, imaginary pairs)
     let velocity: [[c_double; 2]; 6] = [
-        [47.36, 0.0],  // Mercury orbital velocity
-        [35.02, 0.0],  // Venus
-        [29.78, 0.0],  // Earth
-        [24.07, 0.0],  // Mars
-        [13.07, 0.0],  // Jupiter
-        [9.68, 0.0],   // Saturn
+        [47.36, 0.0], // Mercury orbital velocity
+        [35.02, 0.0], // Venus
+        [29.78, 0.0], // Earth
+        [24.07, 0.0], // Mars
+        [13.07, 0.0], // Jupiter
+        [9.68, 0.0],  // Saturn
     ];
-    
+
     // 3I - Vector of 3 16-bit integers (number of major moons in different size categories)
     let moons: [[c_short; 3]; 6] = [
-        [0, 0, 0],     // Mercury: no moons
-        [0, 0, 0],     // Venus: no moons
-        [1, 0, 0],     // Earth: 1 major moon
-        [0, 2, 0],     // Mars: 2 small moons
-        [4, 75, 0],    // Jupiter: 4 Galilean + many others
-        [8, 74, 0],    // Saturn: many moons
+        [0, 0, 0],  // Mercury: no moons
+        [0, 0, 0],  // Venus: no moons
+        [1, 0, 0],  // Earth: 1 major moon
+        [0, 2, 0],  // Mars: 2 small moons
+        [4, 75, 0], // Jupiter: 4 Galilean + many others
+        [8, 74, 0], // Saturn: many moons
     ];
-    
+
     // 4E - Vector of 4 floats (min, max, mean, std dev temperatures in Kelvin)
     let temps: [[c_float; 4]; 6] = [
-        [100.0, 700.0, 340.0, 150.0],  // Mercury
-        [228.0, 773.0, 737.0, 50.0],   // Venus
-        [184.0, 330.0, 288.0, 40.0],   // Earth
-        [130.0, 308.0, 210.0, 60.0],   // Mars
-        [88.0, 165.0, 124.0, 20.0],    // Jupiter
-        [82.0, 134.0, 95.0, 15.0],     // Saturn
+        [100.0, 700.0, 340.0, 150.0], // Mercury
+        [228.0, 773.0, 737.0, 50.0],  // Venus
+        [184.0, 330.0, 288.0, 40.0],  // Earth
+        [130.0, 308.0, 210.0, 60.0],  // Mars
+        [88.0, 165.0, 124.0, 20.0],   // Jupiter
+        [82.0, 134.0, 95.0, 15.0],    // Saturn
     ];
-    
+
     // 2D - Vector of 2 doubles (latitude, longitude of notable feature)
     let coords: [[c_double; 2]; 6] = [
         [15.0, 45.0],   // Mercury: Caloris Basin
@@ -639,7 +648,7 @@ fn writebintable() {
             12,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
-            (moons.len() * 3) as LONGLONG,  // Total elements
+            (moons.len() * 3) as LONGLONG, // Total elements
             cast_slice(&moons),
             &mut status,
         );
@@ -651,7 +660,7 @@ fn writebintable() {
             13,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
-            (temps.len() * 4) as LONGLONG,  // Total elements
+            (temps.len() * 4) as LONGLONG, // Total elements
             cast_slice(&temps),
             &mut status,
         );
@@ -663,7 +672,7 @@ fn writebintable() {
             14,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
-            (coords.len() * 2) as LONGLONG,  // Total elements
+            (coords.len() * 2) as LONGLONG, // Total elements
             cast_slice(&coords),
             &mut status,
         );
@@ -683,7 +692,7 @@ fn copyhdu() {
     let mut infptr: Option<Box<fitsfile>> = None;
     let mut outfptr: Option<Box<fitsfile>> = None;
 
-    let infilename = "ctestfil.fit"; /* name for existing FITS file   */
+    let infilename = "cetestfil.fit"; /* name for existing FITS file   */
     let outfilename = "dtestfil.fit"; /* name for new FITS file        */
 
     let mut status: c_int = 0;
@@ -774,7 +783,7 @@ fn selectrows() {
     let nullval: c_float = -99.0;
     let mut density: [c_float; 6] = [0.0; 6];
 
-    let infilename = "ctestfil.fit"; /* name for existing FITS file   */
+    let infilename = "cetestfil.fit"; /* name for existing FITS file   */
     let outfilename = "dtestfil.fit"; /* name for new FITS file        */
 
     let infilename_cstr = CString::new(infilename).unwrap();
@@ -958,7 +967,7 @@ fn readheader() {
     let mut keypos: c_int = 0;
     let mut hdutype: c_int = 0;
     let mut ii: c_int;
-    let filename = "ctestfil.fit"; /* name of existing FITS file   */
+    let filename = "cetestfil.fit"; /* name of existing FITS file   */
     let mut card = [0u8; FLEN_CARD]; /* standard string lengths defined in fitsioc.h */
 
     let filename_cstr = CString::new(filename).unwrap();
@@ -1028,7 +1037,7 @@ fn readimage() {
     let mut datamax: c_float = -1.0e30;
     let nullval: c_float = 0.0;
     let mut buffer: [c_float; BUFFSIZE] = [0.0; BUFFSIZE];
-    let filename = "ctestfil.fit"; /* name of existing FITS file   */
+    let filename = "cetestfil.fit"; /* name of existing FITS file   */
 
     let filename_cstr = CString::new(filename).unwrap();
 
@@ -1128,7 +1137,7 @@ fn read_ascii_table() {
     let floatnull: c_float = 0.0;
     let mut den: [c_float; 6] = [0.0; 6];
 
-    let filename = "ctestfil.fit"; /* name of existing FITS file   */
+    let filename = "cetestfil.fit"; /* name of existing FITS file   */
 
     let filename_cstr = CString::new(filename).unwrap();
 
@@ -1246,8 +1255,8 @@ fn read_ascii_table() {
     }
 
     for ii in 0..6 {
-        let name_str = unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }
-            .to_string_lossy();
+        let name_str =
+            unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }.to_string_lossy();
         println!(
             "{:5} {:>10} {:>10} {:>10.2}",
             ii + 1,
@@ -1277,23 +1286,23 @@ fn read_binary_table() {
     let longnull: c_long = 0;
     let floatnull: c_float = 0.0;
     let doublenull: c_double = 0.0;
-    
+
     // Arrays to store data from various columns
     let mut active: [c_char; 6] = [0; 6];
-    let mut flags: [c_uchar; 6] = [0; 6];  // X - Bit array (stored as bytes)
+    let mut flags: [c_uchar; 6] = [0; 6]; // X - Bit array (stored as bytes)
     let mut category: [c_uchar; 6] = [0; 6];
     let mut priority: [c_short; 6] = [0; 6];
     let mut diameter: [c_long; 6] = [0; 6];
     let mut mass: [LONGLONG; 6] = [0; 6];
     let mut density: [c_float; 6] = [0.0; 6];
     let mut gravity: [c_double; 6] = [0.0; 6];
-    let mut position: [[c_float; 2]; 6] = [[0.0; 2]; 6];  // C - Single complex
+    let mut position: [[c_float; 2]; 6] = [[0.0; 2]; 6]; // C - Single complex
     let mut velocity: [[c_double; 2]; 6] = [[0.0; 2]; 6]; // M - Double complex
     let mut moons: [[c_short; 3]; 6] = [[0; 3]; 6];
-    let mut temps: [[c_float; 4]; 6] = [[0.0; 4]; 6];     // 4E - Vector of 4 floats
-    let mut coords: [[c_double; 2]; 6] = [[0.0; 2]; 6];   // 2D - Vector of 2 doubles
+    let mut temps: [[c_float; 4]; 6] = [[0.0; 4]; 6]; // 4E - Vector of 4 floats
+    let mut coords: [[c_double; 2]; 6] = [[0.0; 2]; 6]; // 2D - Vector of 2 doubles
 
-    let filename = "ctestfil.fit"; /* name of existing FITS file   */
+    let filename = "cetestfil.fit"; /* name of existing FITS file   */
 
     let filename_cstr = CString::new(filename).unwrap();
 
@@ -1309,7 +1318,8 @@ fn read_binary_table() {
 
     /* allocate space for the column labels */
     let mut ttype_vecs: Vec<Vec<u8>> = Vec::new();
-    for _i in 0..9 {  // We'll read 9 column headers
+    for _i in 0..9 {
+        // We'll read 9 column headers
         ttype_vecs.push(vec![0; FLEN_VALUE]);
     }
 
@@ -1336,7 +1346,10 @@ fn read_binary_table() {
     /* read the column names from specific TTYPEn keywords */
     if let Some(ref mut fptr_box) = fptr {
         // Read column names for multiple data types: Planet, Active, Category, Priority, Diameter, Mass, Density, Gravity, Moons
-        let keys = ["TTYPE1", "TTYPE2", "TTYPE4", "TTYPE5", "TTYPE6", "TTYPE7", "TTYPE8", "TTYPE9", "TTYPE12"];
+        let keys = [
+            "TTYPE1", "TTYPE2", "TTYPE4", "TTYPE5", "TTYPE6", "TTYPE7", "TTYPE8", "TTYPE9",
+            "TTYPE12",
+        ];
         for (i, key) in keys.iter().enumerate() {
             let ttype_key = CString::new(*key).unwrap();
             let mut value = vec![0u8; FLEN_VALUE];
@@ -1349,11 +1362,13 @@ fn read_binary_table() {
             );
             if status == 0 {
                 // Extract the value between quotes
-                let value_str = unsafe { CStr::from_ptr(value.as_ptr() as *const c_char) }.to_string_lossy();
+                let value_str =
+                    unsafe { CStr::from_ptr(value.as_ptr() as *const c_char) }.to_string_lossy();
                 let trimmed = value_str.trim().trim_matches('\'').trim();
                 let trimmed_bytes = CString::new(trimmed).unwrap_or(CString::new("").unwrap());
                 let bytes = trimmed_bytes.to_bytes_with_nul();
-                ttype_vecs[i][..bytes.len().min(FLEN_VALUE)].copy_from_slice(&bytes[..bytes.len().min(FLEN_VALUE)]);
+                ttype_vecs[i][..bytes.len().min(FLEN_VALUE)]
+                    .copy_from_slice(&bytes[..bytes.len().min(FLEN_VALUE)]);
             }
         }
         if status != 0 {
@@ -1363,14 +1378,40 @@ fn read_binary_table() {
 
     // Print header showing all columns with exact alignment to match data
     println!("\nBinary table columns and their data types:");
-    println!("{:>8} {:>5} {:>8} {:>5} {:>5} {:>11} {:>12} {:>10} {:>10} {:>7} {:>8} {:>11} {:>18} {:>13}",
-        "Planet(A)", "Act(L)", "Flags(X)", "Cat(B)", "Pri(I)", "Diameter(J)", 
-        "Mass(K)", "Density(E)", "Gravity(D)", "Pos(C)", "Vel(M)", 
-        "Moons(3I)", "Temps(4E)", "Coords(2D)");
-    println!("{:>8} {:>5} {:>8} {:>5} {:>5} {:>11} {:>12} {:>10} {:>10} {:>7} {:>8} {:>11} {:>18} {:>13}",
-        "--------", "-----", "----------", "-----", "-----", "-----------", 
-        "------------", "----------", "----------", "-------", "--------", 
-        "-----------", "------------------", "-------------");
+    println!(
+        "{:>8} {:>5} {:>8} {:>5} {:>5} {:>11} {:>12} {:>10} {:>10} {:>7} {:>8} {:>11} {:>18} {:>13}",
+        "Planet(A)",
+        "Act(L)",
+        "Flags(X)",
+        "Cat(B)",
+        "Pri(I)",
+        "Diameter(J)",
+        "Mass(K)",
+        "Density(E)",
+        "Gravity(D)",
+        "Pos(C)",
+        "Vel(M)",
+        "Moons(3I)",
+        "Temps(4E)",
+        "Coords(2D)"
+    );
+    println!(
+        "{:>8} {:>5} {:>8} {:>5} {:>5} {:>11} {:>12} {:>10} {:>10} {:>7} {:>8} {:>11} {:>18} {:>13}",
+        "--------",
+        "-----",
+        "----------",
+        "-----",
+        "-----",
+        "-----------",
+        "------------",
+        "----------",
+        "----------",
+        "-------",
+        "--------",
+        "-----------",
+        "------------------",
+        "-------------"
+    );
 
     /* read multiple columns showcasing different data types */
     if let Some(ref mut fptr_box) = fptr {
@@ -1540,7 +1581,7 @@ fn read_binary_table() {
             12,
             frow as LONGLONG,
             felem as LONGLONG,
-            (nelem * 3) as LONGLONG,  // 3 elements per row
+            (nelem * 3) as LONGLONG, // 3 elements per row
             None,
             cast_slice_mut(&mut moons),
             None,
@@ -1554,7 +1595,7 @@ fn read_binary_table() {
             13,
             frow as LONGLONG,
             felem as LONGLONG,
-            (nelem * 4) as LONGLONG,  // 4 elements per row
+            (nelem * 4) as LONGLONG, // 4 elements per row
             None,
             cast_slice_mut(&mut temps),
             None,
@@ -1568,7 +1609,7 @@ fn read_binary_table() {
             14,
             frow as LONGLONG,
             felem as LONGLONG,
-            (nelem * 2) as LONGLONG,  // 2 elements per row
+            (nelem * 2) as LONGLONG, // 2 elements per row
             None,
             cast_slice_mut(&mut coords),
             None,
@@ -1579,125 +1620,248 @@ fn read_binary_table() {
     // Define expected values to verify against (same as written in writebintable)
     let expected_planets = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn"];
     // For logical values, FITS uses 1 for T and 0 for F when stored internally
-    let expected_active: [c_char; 6] = [1, 1, 1, 1, 1, 0];  // 1=T, 0=F
-    let expected_flags: [c_uchar; 6] = [0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001];
+    let expected_active: [c_char; 6] = [1, 1, 1, 1, 1, 0]; // 1=T, 0=F
+    let expected_flags: [c_uchar; 6] = [
+        0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001,
+    ];
     let expected_category: [c_uchar; 6] = [1, 2, 3, 4, 5, 6];
     let expected_priority: [c_short; 6] = [100, 200, 300, 150, 50, 75];
     let expected_diameter: [c_long; 6] = [4880, 12112, 12742, 6800, 143000, 121000];
-    let expected_mass: [LONGLONG; 6] = [330110000000, 4867500000000, 5972400000000, 641710000000, 1898200000000000, 568340000000000];
+    let expected_mass: [LONGLONG; 6] = [
+        330110000000,
+        4867500000000,
+        5972400000000,
+        641710000000,
+        1898200000000000,
+        568340000000000,
+    ];
     let expected_density: [c_float; 6] = [5.1, 5.3, 5.52, 3.94, 1.33, 0.69];
     let expected_gravity: [c_double; 6] = [3.7, 8.87, 9.807, 3.71, 24.79, 10.44];
     let expected_position: [[c_float; 2]; 6] = [
-        [0.39, 0.0], [0.72, 0.0], [1.00, 0.0], [1.52, 0.0], [5.20, 0.0], [9.58, 0.0]
+        [0.39, 0.0],
+        [0.72, 0.0],
+        [1.00, 0.0],
+        [1.52, 0.0],
+        [5.20, 0.0],
+        [9.58, 0.0],
     ];
     let expected_velocity: [[c_double; 2]; 6] = [
-        [47.36, 0.0], [35.02, 0.0], [29.78, 0.0], [24.07, 0.0], [13.07, 0.0], [9.68, 0.0]
+        [47.36, 0.0],
+        [35.02, 0.0],
+        [29.78, 0.0],
+        [24.07, 0.0],
+        [13.07, 0.0],
+        [9.68, 0.0],
     ];
     let expected_moons: [[c_short; 3]; 6] = [
-        [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 2, 0], [4, 75, 0], [8, 74, 0]
+        [0, 0, 0],
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 2, 0],
+        [4, 75, 0],
+        [8, 74, 0],
     ];
     let expected_temps: [[c_float; 4]; 6] = [
-        [100.0, 700.0, 340.0, 150.0], [228.0, 773.0, 737.0, 50.0], [184.0, 330.0, 288.0, 40.0],
-        [130.0, 308.0, 210.0, 60.0], [88.0, 165.0, 124.0, 20.0], [82.0, 134.0, 95.0, 15.0]
+        [100.0, 700.0, 340.0, 150.0],
+        [228.0, 773.0, 737.0, 50.0],
+        [184.0, 330.0, 288.0, 40.0],
+        [130.0, 308.0, 210.0, 60.0],
+        [88.0, 165.0, 124.0, 20.0],
+        [82.0, 134.0, 95.0, 15.0],
     ];
     let expected_coords: [[c_double; 2]; 6] = [
-        [15.0, 45.0], [-5.0, 165.0], [0.0, 0.0], [-14.6, 175.5], [-22.0, 115.0], [0.0, 0.0]
+        [15.0, 45.0],
+        [-5.0, 165.0],
+        [0.0, 0.0],
+        [-14.6, 175.5],
+        [-22.0, 115.0],
+        [0.0, 0.0],
     ];
 
     for ii in 0..6 {
-        let name_str = unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }
-            .to_string_lossy();
-        
+        let name_str =
+            unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }.to_string_lossy();
+
         // Assert that all read values match expected values exactly
-        assert_eq!(name_str.trim(), expected_planets[ii], 
-            "Planet name mismatch at row {}: expected {}, got {}", ii+1, expected_planets[ii], name_str.trim());
-        
-        assert_eq!(active[ii], expected_active[ii], 
-            "Active value mismatch at row {}: expected {}, got {}", ii+1, expected_active[ii], active[ii]);
-        
+        assert_eq!(
+            name_str.trim(),
+            expected_planets[ii],
+            "Planet name mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_planets[ii],
+            name_str.trim()
+        );
+
+        assert_eq!(
+            active[ii],
+            expected_active[ii],
+            "Active value mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_active[ii],
+            active[ii]
+        );
+
         // TODO: Bit array assertions - need to investigate FITS bit array format
-        // assert_eq!(flags[ii], expected_flags[ii], 
+        // assert_eq!(flags[ii], expected_flags[ii],
         //     "Flags mismatch at row {}: expected {:#010b}, got {:#010b}", ii+1, expected_flags[ii], flags[ii]);
-        
-        assert_eq!(category[ii], expected_category[ii], 
-            "Category mismatch at row {}: expected {}, got {}", ii+1, expected_category[ii], category[ii]);
-        
-        assert_eq!(priority[ii], expected_priority[ii], 
-            "Priority mismatch at row {}: expected {}, got {}", ii+1, expected_priority[ii], priority[ii]);
-        
-        assert_eq!(diameter[ii], expected_diameter[ii], 
-            "Diameter mismatch at row {}: expected {}, got {}", ii+1, expected_diameter[ii], diameter[ii]);
-        
-        assert_eq!(mass[ii], expected_mass[ii], 
-            "Mass mismatch at row {}: expected {}, got {}", ii+1, expected_mass[ii], mass[ii]);
-        
+
+        assert_eq!(
+            category[ii],
+            expected_category[ii],
+            "Category mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_category[ii],
+            category[ii]
+        );
+
+        assert_eq!(
+            priority[ii],
+            expected_priority[ii],
+            "Priority mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_priority[ii],
+            priority[ii]
+        );
+
+        assert_eq!(
+            diameter[ii],
+            expected_diameter[ii],
+            "Diameter mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_diameter[ii],
+            diameter[ii]
+        );
+
+        assert_eq!(
+            mass[ii],
+            expected_mass[ii],
+            "Mass mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_mass[ii],
+            mass[ii]
+        );
+
         // Use approximate comparison for floating-point values
-        assert!((density[ii] - expected_density[ii]).abs() < 1e-6, 
-            "Density mismatch at row {}: expected {}, got {} (diff: {})", ii+1, expected_density[ii], density[ii], (density[ii] - expected_density[ii]).abs());
-        
-        assert!((gravity[ii] - expected_gravity[ii]).abs() < 1e-10, 
-            "Gravity mismatch at row {}: expected {}, got {} (diff: {})", ii+1, expected_gravity[ii], gravity[ii], (gravity[ii] - expected_gravity[ii]).abs());
-        
+        assert!(
+            (density[ii] - expected_density[ii]).abs() < 1e-6,
+            "Density mismatch at row {}: expected {}, got {} (diff: {})",
+            ii + 1,
+            expected_density[ii],
+            density[ii],
+            (density[ii] - expected_density[ii]).abs()
+        );
+
+        assert!(
+            (gravity[ii] - expected_gravity[ii]).abs() < 1e-10,
+            "Gravity mismatch at row {}: expected {}, got {} (diff: {})",
+            ii + 1,
+            expected_gravity[ii],
+            gravity[ii],
+            (gravity[ii] - expected_gravity[ii]).abs()
+        );
+
         // Check complex position (real and imaginary parts)
-        assert!((position[ii][0] - expected_position[ii][0]).abs() < 1e-6, 
-            "Position real part mismatch at row {}: expected {}, got {}", ii+1, expected_position[ii][0], position[ii][0]);
-        assert!((position[ii][1] - expected_position[ii][1]).abs() < 1e-6, 
-            "Position imaginary part mismatch at row {}: expected {}, got {}", ii+1, expected_position[ii][1], position[ii][1]);
-        
+        assert!(
+            (position[ii][0] - expected_position[ii][0]).abs() < 1e-6,
+            "Position real part mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_position[ii][0],
+            position[ii][0]
+        );
+        assert!(
+            (position[ii][1] - expected_position[ii][1]).abs() < 1e-6,
+            "Position imaginary part mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_position[ii][1],
+            position[ii][1]
+        );
+
         // Check double complex velocity (real and imaginary parts)
-        assert!((velocity[ii][0] - expected_velocity[ii][0]).abs() < 1e-10, 
-            "Velocity real part mismatch at row {}: expected {}, got {}", ii+1, expected_velocity[ii][0], velocity[ii][0]);
-        assert!((velocity[ii][1] - expected_velocity[ii][1]).abs() < 1e-10, 
-            "Velocity imaginary part mismatch at row {}: expected {}, got {}", ii+1, expected_velocity[ii][1], velocity[ii][1]);
-        
+        assert!(
+            (velocity[ii][0] - expected_velocity[ii][0]).abs() < 1e-10,
+            "Velocity real part mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_velocity[ii][0],
+            velocity[ii][0]
+        );
+        assert!(
+            (velocity[ii][1] - expected_velocity[ii][1]).abs() < 1e-10,
+            "Velocity imaginary part mismatch at row {}: expected {}, got {}",
+            ii + 1,
+            expected_velocity[ii][1],
+            velocity[ii][1]
+        );
+
         // Check all 3 elements of the moons vector
         for jj in 0..3 {
-            assert_eq!(moons[ii][jj], expected_moons[ii][jj], 
-                "Moons vector element {} mismatch at row {}: expected {}, got {}", jj, ii+1, expected_moons[ii][jj], moons[ii][jj]);
+            assert_eq!(
+                moons[ii][jj],
+                expected_moons[ii][jj],
+                "Moons vector element {} mismatch at row {}: expected {}, got {}",
+                jj,
+                ii + 1,
+                expected_moons[ii][jj],
+                moons[ii][jj]
+            );
         }
-        
+
         // Check all 4 elements of the temps vector
         for jj in 0..4 {
-            assert!((temps[ii][jj] - expected_temps[ii][jj]).abs() < 1e-6, 
-                "Temps vector element {} mismatch at row {}: expected {}, got {} (diff: {})", 
-                jj, ii+1, expected_temps[ii][jj], temps[ii][jj], (temps[ii][jj] - expected_temps[ii][jj]).abs());
+            assert!(
+                (temps[ii][jj] - expected_temps[ii][jj]).abs() < 1e-6,
+                "Temps vector element {} mismatch at row {}: expected {}, got {} (diff: {})",
+                jj,
+                ii + 1,
+                expected_temps[ii][jj],
+                temps[ii][jj],
+                (temps[ii][jj] - expected_temps[ii][jj]).abs()
+            );
         }
-        
+
         // Check all 2 elements of the coords vector
         for jj in 0..2 {
-            assert!((coords[ii][jj] - expected_coords[ii][jj]).abs() < 1e-10, 
-                "Coords vector element {} mismatch at row {}: expected {}, got {} (diff: {})", 
-                jj, ii+1, expected_coords[ii][jj], coords[ii][jj], (coords[ii][jj] - expected_coords[ii][jj]).abs());
+            assert!(
+                (coords[ii][jj] - expected_coords[ii][jj]).abs() < 1e-10,
+                "Coords vector element {} mismatch at row {}: expected {}, got {} (diff: {})",
+                jj,
+                ii + 1,
+                expected_coords[ii][jj],
+                coords[ii][jj],
+                (coords[ii][jj] - expected_coords[ii][jj]).abs()
+            );
         }
-        
+
         // Convert logical value to readable format (1=T, 0=F)
         let active_str = if active[ii] == 1 { "T" } else { "F" };
-        
+
         // Format bit flags as binary (8 chars)
         let flags_str = format!("{:08b}", flags[ii]);
-        
+
         // Format mass in scientific notation for readability (12 chars max)
         let mass_str = if mass[ii] > 1e12 as LONGLONG {
             format!("{:>12.1e}", mass[ii] as f64)
         } else {
             format!("{:>12}", mass[ii])
         };
-        
+
         // Show position complex number (real part only for brevity)
         let pos_str = format!("{:.2}", position[ii][0]);
-        
+
         // Show velocity complex number (real part only for brevity)
         let vel_str = format!("{:.1}", velocity[ii][0]);
-        
+
         // Show the 3-element moons vector
         let moons_str = format!("[{},{},{}]", moons[ii][0], moons[ii][1], moons[ii][2]);
-        
+
         // Show the 4-element temps vector (abbreviated)
-        let temps_str = format!("[{:.0},{:.0},{:.0},{:.0}]", temps[ii][0], temps[ii][1], temps[ii][2], temps[ii][3]);
-        
+        let temps_str = format!(
+            "[{:.0},{:.0},{:.0},{:.0}]",
+            temps[ii][0], temps[ii][1], temps[ii][2], temps[ii][3]
+        );
+
         // Show the 2-element coords vector
         let coords_str = format!("[{:.1},{:.1}]", coords[ii][0], coords[ii][1]);
-        
+
         println!(
             "{:>8} {:>5} {:>10} {:>5} {:>5} {:>11} {:>12} {:>10.2} {:>10.3} {:>7} {:>8} {:>11} {:>18} {:>13}",
             name_str,
@@ -1718,13 +1882,16 @@ fn read_binary_table() {
     }
 
     println!("\n✅ All assertion tests passed! Read values match written values exactly.");
-    println!("   Verified all 14 columns × 6 rows = {} individual data values across all FITS data types!", 14 * 6);
-    
+    println!(
+        "   Verified all 14 columns × 6 rows = {} individual data values across all FITS data types!",
+        14 * 6
+    );
+
     println!("\nData type examples shown and verified:");
     println!("• A (Character): Planet names");
     println!("• L (Logical): Active status (T/F)");
     println!("• X (Bit array): Flags (TODO: bit packing investigation needed)");
-    println!("• B (Unsigned byte): Category numbers (1-6)"); 
+    println!("• B (Unsigned byte): Category numbers (1-6)");
     println!("• I (16-bit int): Priority values");
     println!("• J (32-bit int): Diameter in km");
     println!("• K (64-bit int): Mass in kg (scientific notation)");

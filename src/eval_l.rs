@@ -1216,7 +1216,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
         if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_fill_buffer == 0 {
-            if (yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long - 0 == 1 {
+            if ((yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long) == 1 {
                 return 1;
             } else {
                 return 2;

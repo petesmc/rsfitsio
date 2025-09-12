@@ -491,14 +491,11 @@ pub(crate) fn file_close(handle: c_int) -> c_int {
     //let mut h = handleTable.lock().unwrap();
     let mut h = HANDLE_TABLE.lock().unwrap();
 
-    match &mut h[handle as usize].fileptr {
-        Some(f) => {
-            let e = f.sync_all();
-            if e.is_err() {
-                // return WRITE_ERROR;
-            }
+    if let Some(f) = &mut h[handle as usize].fileptr {
+        let e = f.sync_all();
+        if e.is_err() {
+            // return WRITE_ERROR;
         }
-        None => {}
     }
 
     (h[handle as usize]).fileptr = None; // Implicitly drop the file

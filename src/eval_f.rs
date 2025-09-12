@@ -1490,14 +1490,14 @@ pub(crate) fn ffiprs(
             (lParse.colData[0]).fptr = fptr;
         }
 
-        let result: &mut Node = &mut lParse.Nodes[lParse.resultNode as usize];
+        let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
 
         lParse.nAxis = result.value.naxis;
         *naxis = lParse.nAxis;
         lParse.nElements = result.value.nelem;
         *nelem = lParse.nElements;
 
-        for i in 0..cmp::max(*naxis, maxdim) {
+        for i in 0..cmp::min(*naxis, maxdim) {
             lParse.nAxes[i as usize] = result.value.naxes[i as usize];
             naxes[i as usize] = lParse.nAxes[i as usize];
         }

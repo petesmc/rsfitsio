@@ -18,6 +18,13 @@ fn get_filename() -> String {
     filename.to_string()
 }
 
+fn get_expanded_filename() -> String {
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("test_files/test_table_read_expanded.fits");
+    let filename = d.to_str().unwrap();
+    filename.to_string()
+}
+
 fn readtable(filename: &str, query: &str, expected_rows: usize) {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
