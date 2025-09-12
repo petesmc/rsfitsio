@@ -1370,9 +1370,9 @@ fn test_read_table_where_mega_complex_all_operators() {
                   (((DIAMETER >= 5000) || (DENSITY <= 4.0)) && \
                   ((DIAMETER => 10000) || (DENSITY =< 2.0))) .AND. \
                   (((0b1010 .EQ. 10) .AND. (0xFF .eq. 255)) .OR. \
-                  ((DIAMETER ^ 2) > (DIAMETER * DIAMETER - 1000))) .AND. \
+                  ((DIAMETER ^ 2) > (DIAMETER / 10))) .AND. \
                   ((((DENSITY + 1.0 - 1.0) ~ DENSITY) .AND. \
-                  ((DIAMETER * 2 / 2) .eq. DIAMETER)) .OR. \
+                  ((DIAMETER / 2 * 2) .eq. DIAMETER)) .OR. \
                   ((-DENSITY < 0.0) .AND. (+DIAMETER > 0))) .AND. \
                   (((DIAMETER > DENSITY * 1000) .OR. \
                   ((DIAMETER / 1000.0) > DENSITY)) .AND. \
