@@ -6114,24 +6114,3 @@ pub fn ffcnvthdr2str_safer(
 
     *status
 }
-
-/*--------------------------------------------------------------------------*/
-/// Free a keyword long string that was allocated by CFITSIO
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fffkls(
-    value: *mut c_char, /* I - pointer to string to free */
-    status: *mut c_int, /* IO - error status */
-) -> c_int {
-    unsafe {
-        let status = status.as_mut().expect("Null status pointer");
-        fffkls_safer(value, status)
-    }
-}
-
-/// Free a keyword long string that was allocated by CFITSIO
-pub fn fffkls_safer(
-    value: *mut c_char,  /* I - pointer to string to free */
-    _status: &mut c_int, /* IO - error status */
-) -> c_int {
-    todo!("fffkls: Free keyword long string at address {:p}", value)
-}

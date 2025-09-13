@@ -415,7 +415,6 @@ pub mod c_api {
 
     pub use crate::cfileio::fits_copy_image_section as ffcpimg;
     // Not part of external API
-    // pub use 	fits_comp_img as fits_compress_img;
     // pub use 	fits_decomp_img as fits_decompress_img;
 
     pub use crate::getcol::ffgcf as fits_read_colnull;

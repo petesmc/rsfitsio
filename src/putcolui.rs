@@ -853,8 +853,22 @@ pub fn ffpclui_safe(
                     }
                 } else {
                     /* can't write to string column, so fall thru to default: */
-                    todo!("Don't handle this correctly");
-                    break;
+                    /*  error trap  */
+                    int_snprintf!(
+                        &mut message,
+                        FLEN_ERRMSG,
+                        "Cannot write numbers to column {} which has format {}",
+                        colnum,
+                        slice_to_str!(&tform),
+                    );
+                    ffpmsg_slice(&message);
+                    if hdutype == ASCII_TBL {
+                        *status = BAD_ATABLE_FORMAT;
+                        return *status;
+                    } else {
+                        *status = BAD_BTABLE_FORMAT;
+                        return *status;
+                    }
                 }
             }
             _ => {
