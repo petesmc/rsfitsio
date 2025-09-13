@@ -113,18 +113,33 @@ pub(crate) fn fits_parser_yywrap() -> c_int {
 fn expr_read(lParse: &mut ParseData, buf: *mut c_char, nbytes: c_int) -> c_int {
     unsafe {
         let mut n: c_int = 0;
-        if lParse.is_eobuf == 0 {
+        if lParse.is_eobuf == 0
+            && let Some(ref expr_data) = lParse.expr
+        {
             loop {
                 let fresh0 = lParse.index;
                 lParse.index += 1;
                 let fresh1 = n;
                 n += 1;
-                *buf.offset(fresh1 as isize) = *(lParse.expr).offset(fresh0 as isize);
-                if !(n < nbytes && *(lParse.expr).offset(lParse.index as isize) as c_int != 0) {
+
+                // Safely access the byte array
+                if (fresh0 as usize) < expr_data.len() {
+                    *buf.offset(fresh1 as isize) = expr_data[fresh0 as usize] as c_char;
+                } else {
+                    break;
+                }
+
+                // Check if we've reached the end
+                if !(n < nbytes
+                    && (lParse.index as usize) < expr_data.len()
+                    && expr_data[lParse.index as usize] != 0)
+                {
                     break;
                 }
             }
-            if *(lParse.expr).offset(lParse.index as isize) as c_int == 0 {
+
+            // Check if we've reached null terminator
+            if (lParse.index as usize) < expr_data.len() && expr_data[lParse.index as usize] == 0 {
                 lParse.is_eobuf = 1;
             }
         }
@@ -1216,7 +1231,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
         if (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_fill_buffer == 0 {
-            if (yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long - 0 == 1 {
+            if ((yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long) == 1 {
                 return 1;
             } else {
                 return 2;

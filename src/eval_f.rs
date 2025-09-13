@@ -1434,20 +1434,30 @@ pub(crate) fn ffiprs(
         /*  Copy expression into parser... read from file if necessary  */
 
         if expr[0] == b'@' as c_char {
-            if ffimport_file_safer(&expr[1..], &mut lParse.expr, status) != 0 {
+            // Handle file import case
+            let mut temp_ptr: *mut c_char = std::ptr::null_mut();
+            if ffimport_file_safer(&expr[1..], &mut temp_ptr, status) != 0 {
                 return *status;
             }
-            lexpr = strlen(lParse.expr) as c_int;
+            if !temp_ptr.is_null() {
+                lexpr = strlen(temp_ptr) as c_int;
+                // Convert C string to Vec<u8> and then to Box<[u8]>
+                let lexpr_cstr = CStr::from_ptr(temp_ptr);
+                let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
+                lParse.expr = Some(vec.into_boxed_slice());
+                free(temp_ptr as *mut libc::c_void); // Don't forget to free
+            }
         } else {
             lexpr = strlen_safe(expr) as c_int;
-            lParse.expr =
-                malloc(((2 + lexpr as usize) * size_of::<c_char>()) as usize) as *mut c_char;
-            strcpy(lParse.expr, expr.as_ptr());
+            // Create a new boxed slice with the expression
+            let mut vec = Vec::with_capacity((lexpr + 2) as usize);
+            for i in 0..lexpr {
+                vec.push(expr[i as usize] as u8);
+            }
+            vec.push(b'\n');
+            vec.push(0);
+            lParse.expr = Some(vec.into_boxed_slice());
         }
-        strcat(
-            (lParse.expr as *mut c_char).wrapping_add(lexpr as usize),
-            c"\n".as_ptr(),
-        );
         lParse.index = 0;
         lParse.is_eobuf = 0;
 
@@ -1490,14 +1500,14 @@ pub(crate) fn ffiprs(
             (lParse.colData[0]).fptr = fptr;
         }
 
-        let result: &mut Node = &mut lParse.Nodes[lParse.resultNode as usize];
+        let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
 
         lParse.nAxis = result.value.naxis;
         *naxis = lParse.nAxis;
         lParse.nElements = result.value.nelem;
         *nelem = lParse.nElements;
 
-        for i in 0..cmp::max(*naxis, maxdim) {
+        for i in 0..cmp::min(*naxis, maxdim) {
             lParse.nAxes[i as usize] = result.value.naxes[i as usize];
             naxes[i as usize] = lParse.nAxes[i as usize];
         }
@@ -1521,7 +1531,7 @@ pub(crate) fn ffiprs(
             }
         }
         lParse.datatype = *datatype;
-        FREE!(lParse.expr);
+        lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
 
         if result.operation == CONST_OP {
             *nelem = -*nelem;

@@ -7,12 +7,13 @@ Cargo.lock
 checks.json
 /lib
 /libs
-
+/docs
 speedcc.fit
 testprog.fit
 atestfil.fit
 btestfil.fit
 ctestfil.fit
+cetestfil.fit
 dtestfil.fit
 histoimg.fit
 /c/testprog.fit
@@ -26,3 +27,4 @@ histoimg.fit
 
 CLAUDE.md
 .mcp.json
+/.claude

@@ -37,19 +37,18 @@ int main()
 
 **************************************************************************/
 
-   writeimage();
-   writeascii();
-   writebintable();
-   copyhdu();
-   selectrows();
+    writeimage();
+    writeascii();
+    writebintable();
+    copyhdu();
+    selectrows();
     readheader();
     readimage();
-   readtable();
+    readtable();
 
-     printf("\nAll the cfitsio cookbook routines ran successfully.\n");
+    printf("\nAll the cfitsio cookbook routines ran successfully.\n");
     return(0);
 }
-
 /*--------------------------------------------------------------------------*/
 void writeimage( void )
 
@@ -63,7 +62,7 @@ void writeimage( void )
     unsigned short *array[200];
 
     /* initialize FITS image parameters */
-    char filename[] = "~/rsfitsio/resources/atestfil.fit";             /* name for new FITS file */
+    char filename[] = "atestfil.fit";             /* name for new FITS file */
     int bitpix   =  USHORT_IMG; /* 16-bit unsigned short pixel values       */
     long naxis    =   2;  /* 2-dimensional image                            */    
     long naxes[2] = { 300, 200 };   /* image is 300 pixels wide by 200 rows */
@@ -80,7 +79,7 @@ void writeimage( void )
 
     status = 0;         /* initialize status before calling fitsio routines */
 
-    if (ffinit(&fptr, filename, &status)) /* create new FITS file */
+    if (fits_create_file(&fptr, filename, &status)) /* create new FITS file */
          printerror( status );           /* call printerror if error occurs */
 
     /* write the required keywords for the primary array image.     */
@@ -91,7 +90,7 @@ void writeimage( void )
     /* and BZERO keywords will be automatically written by cfitsio  */
     /* in this case.                                                */
 
-    if ( ffcrim(fptr,  bitpix, naxis, naxes, &status) )
+    if ( fits_create_img(fptr,  bitpix, naxis, naxes, &status) )
          printerror( status );          
 
     /* initialize the values in the image with a linear ramp function */
@@ -123,7 +122,6 @@ void writeimage( void )
 
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void writeascii ( void )
 
@@ -138,7 +136,7 @@ void writeascii ( void )
     int tfields = 3;       /* table will have 3 columns */
     long nrows  = 6;       /* table will have 6 rows    */
 
-    char filename[] = "~/rsfitsio/resources/atestfil.fit";           /* name for new FITS file */
+    char filename[] = "atestfil.fit";           /* name for new FITS file */
     char extname[] = "PLANETS_ASCII";             /* extension name */
 
     /* define the name, datatype, and physical units for the 3 columns */
@@ -180,7 +178,6 @@ void writeascii ( void )
          printerror( status );
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void writebintable ( void )
 
@@ -195,7 +192,7 @@ void writebintable ( void )
     int tfields   = 3;       /* table will have 3 columns */
     long nrows    = 6;       /* table will have 6 rows    */
 
-    char filename[] = "~/rsfitsio/resources/atestfil.fit";           /* name for new FITS file */
+    char filename[] = "atestfil.fit";           /* name for new FITS file */
     char extname[] = "PLANETS_Binary";           /* extension name */
 
     /* define the name, datatype, and physical units for the 3 columns */
@@ -240,7 +237,6 @@ void writebintable ( void )
          printerror( status );
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void copyhdu( void)
 {
@@ -250,8 +246,8 @@ void copyhdu( void)
     fitsfile *infptr;      /* pointer to the FITS file, defined in fitsio.h */
     fitsfile *outfptr;                 /* pointer to the new FITS file      */
 
-    char infilename[]  = "~/rsfitsio/resources/atestfil.fit";  /* name for existing FITS file   */
-    char outfilename[] = "~/rsfitsio/resources/btestfil.fit";  /* name for new FITS file        */
+    char infilename[]  = "atestfil.fit";  /* name for existing FITS file   */
+    char outfilename[] = "btestfil.fit";  /* name for new FITS file        */
 
     int status, morekeys, hdutype;
 
@@ -263,29 +259,28 @@ void copyhdu( void)
     if ( fits_open_file(&infptr, infilename, READONLY, &status) ) 
          printerror( status );
 
-    if (ffinit(&outfptr, outfilename, &status)) /*create FITS file*/
+    if (fits_create_file(&outfptr, outfilename, &status)) /*create FITS file*/
          printerror( status );           /* call printerror if error occurs */
 
     /* copy the primary array from the input file to the output file */
     morekeys = 0;     /* don't reserve space for additional keywords */
-    if ( ffcopy(infptr, outfptr, morekeys, &status) )
+    if ( fits_copy_hdu(infptr, outfptr, morekeys, &status) )
          printerror( status );
 
     /* move to the 3rd HDU in the input file */
-    if ( ffmahd(infptr, 3, &hdutype, &status) )
+    if ( fits_movabs_hdu(infptr, 3, &hdutype, &status) )
          printerror( status );
 
     /* copy 3rd HDU from the input file to the output file (to 2nd HDU) */
-    if ( ffcopy(infptr, outfptr, morekeys, &status) )
+    if ( fits_copy_hdu(infptr, outfptr, morekeys, &status) )
          printerror( status );
 
-    if (ffclos(outfptr, &status) ||
-        ffclos(infptr, &status)) /* close files */
+    if (fits_close_file(outfptr, &status) ||
+        fits_close_file(infptr, &status)) /* close files */
          printerror( status );
 
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void selectrows( void )
 
@@ -300,8 +295,8 @@ void selectrows( void )
     long naxes[2], frow, felem, noutrows, irow;
     float nullval, density[6];
 
-    char infilename[]  = "~/rsfitsio/resources/atestfil.fit";  /* name for existing FITS file   */
-    char outfilename[] = "~/rsfitsio/resources/btestfil.fit";  /* name for new FITS file        */
+    char infilename[]  = "atestfil.fit";  /* name for existing FITS file   */
+    char outfilename[] = "btestfil.fit";  /* name for new FITS file        */
 
     status = 0;
 
@@ -370,9 +365,10 @@ void selectrows( void )
     if (fits_close_file(outfptr, &status) || fits_close_file(infptr, &status))
         printerror( status );
 
+    free(buffer);
+        
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void readheader ( void )
 
@@ -383,7 +379,7 @@ void readheader ( void )
     fitsfile *fptr;       /* pointer to the FITS file, defined in fitsio.h */
 
     int status, nkeys, keypos, hdutype, ii, jj;
-    char filename[]  = "~/rsfitsio/resources/atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
     char card[FLEN_CARD];   /* standard string lengths defined in fitsioc.h */
 
     status = 0;
@@ -418,7 +414,6 @@ void readheader ( void )
 
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void readimage( void )
 
@@ -432,15 +427,15 @@ void readimage( void )
 
 #define buffsize 1000
     float datamin, datamax, nullval, buffer[buffsize];
-    char filename[]  = "~/rsfitsio/resources/atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
 
     status = 0;
 
-    if ( ffopentest(CFITSIO_SONAME, &fptr, filename, READONLY, &status) )
+    if ( fits_open_file(&fptr, filename, READONLY, &status) )
          printerror( status );
 
     /* read the NAXIS1 and NAXIS2 keyword to get image size */
-    if ( ffgknj(fptr, "NAXIS", 1, 2, naxes, &nfound, &status) )
+    if ( fits_read_keys_lng(fptr, "NAXIS", 1, 2, naxes, &nfound, &status) )
          printerror( status );
 
     npixels  = naxes[0] * naxes[1];         /* number of pixels in the image */
@@ -461,7 +456,7 @@ void readimage( void )
       /* float array.   Cfitsio automatically performs the datatype      */
       /* conversion in cases like this.                                  */
 
-      if ( ffgpv(fptr, TFLOAT, fpixel, nbuffer, &nullval,
+      if ( fits_read_img(fptr, TFLOAT, fpixel, nbuffer, &nullval,
                   buffer, &anynull, &status) )
            printerror( status );
 
@@ -478,12 +473,11 @@ void readimage( void )
 
     printf("\nMin and max image pixels =  %.0f, %.0f\n", datamin, datamax);
 
-    if ( ffclos(fptr, &status) )
+    if ( fits_close_file(fptr, &status) )
          printerror( status );
 
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void readtable( void )
 
@@ -497,7 +491,7 @@ void readtable( void )
     float floatnull, den[6];
     char strnull[10], *name[6], *ttype[3]; 
 
-    char filename[]  = "~/rsfitsio/resources/atestfil.fit";     /* name of existing FITS file   */
+    char filename[]  = "atestfil.fit";     /* name of existing FITS file   */
 
     status = 0;
 
@@ -546,8 +540,9 @@ void readtable( void )
       fits_read_col(fptr, TFLOAT, 3, frow, felem, nelem, &floatnull, den,
                     &anynull, &status);
 
-      for (ii = 0; ii < 6; ii++)
-        printf("%5d %10s %10ld %10.2f\n", ii + 1, name[ii], dia[ii], den[ii]);
+      for (ii = 0; ii < 6; ii++){
+        printf("%5d %10s %10ld %10.2f\n", ii + 1, name[ii], dia[ii], den[ii]);}
+
     }
 
     for (ii = 0; ii < 3; ii++)      /* free the memory for the column labels */
@@ -561,7 +556,6 @@ void readtable( void )
 
     return;
 }
-
 /*--------------------------------------------------------------------------*/
 void printerror( int status)
 {
