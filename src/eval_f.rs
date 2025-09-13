@@ -425,7 +425,7 @@ pub fn ffsrow_safe(
         /*  Fill out Info data for parser  */
         /***********************************/
 
-        Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>()) as *mut c_void;
+        Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>());
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = inExt.numRows as c_long;
         Info.parseData = &mut lParse as *mut ParseData;
@@ -3297,8 +3297,7 @@ pub fn fffrwc_safe(
             let mut col_data = lParse.colData[parNo as usize];
             match col_data.datatype {
                 TLONG => {
-                    col_data.array =
-                        malloc(((ntimes + 1) as usize) * size_of::<c_long>()) as *mut c_void;
+                    col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_long>());
                     if !col_data.array.is_null() {
                         let array_ptr = col_data.array as *mut c_long;
                         *array_ptr.wrapping_add(0) = 1234554321;
@@ -3307,8 +3306,7 @@ pub fn fffrwc_safe(
                     }
                 }
                 TDOUBLE => {
-                    col_data.array =
-                        malloc(((ntimes + 1) as usize) * size_of::<c_double>()) as *mut c_void;
+                    col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_double>());
                     if !col_data.array.is_null() {
                         let array_ptr = col_data.array as *mut c_double;
                         *array_ptr.wrapping_add(0) = DOUBLENULLVALUE;
@@ -3327,8 +3325,7 @@ pub fn fffrwc_safe(
                     ) == 0
                     {
                         alen += 1;
-                        col_data.array = malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>())
-                            as *mut c_void;
+                        col_data.array = malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>());
                         if !col_data.array.is_null() {
                             let str_array = col_data.array as *mut *mut c_char;
                             let first_str = malloc(((ntimes + 1) * alen) as usize) as *mut c_char;

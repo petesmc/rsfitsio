@@ -3138,8 +3138,7 @@ pub fn ffiter_safe(
 
                 match cols[jj].datatype {
                     TBYTE => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3156,8 +3155,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TSBYTE => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3174,8 +3172,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TSHORT => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_short>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_short>());
                         col[jj].nullsize = size_of::<c_short>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3192,8 +3189,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TUSHORT => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_ushort>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_ushort>());
                         col[jj].nullsize = size_of::<c_ushort>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3210,8 +3206,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TINT => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_int>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_int>());
                         col[jj].nullsize = size_of::<c_int>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3228,8 +3223,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TUINT => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_uint>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_uint>());
                         col[jj].nullsize = size_of::<c_uint>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3246,8 +3240,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TLONG => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_long>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_long>());
                         col[jj].nullsize = size_of::<c_long>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3262,8 +3255,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TULONG => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_ulong>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_ulong>());
                         col[jj].nullsize = size_of::<c_ulong>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3283,8 +3275,7 @@ pub fn ffiter_safe(
                         }
                     }
                     TFLOAT => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<f32>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<f32>());
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3299,14 +3290,12 @@ pub fn ffiter_safe(
                         }
                     }
                     TCOMPLEX => {
-                        cols[jj].array =
-                            calloc(((ntodo * 2) + 1) as usize, size_of::<f32>()) as *mut c_void;
+                        cols[jj].array = calloc(((ntodo * 2) + 1) as usize, size_of::<f32>());
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
                         col[jj].null = ColNullValue::FloatNull(FLOATNULLVALUE); /* special value */
                     }
                     TDOUBLE => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<f64>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<f64>());
                         col[jj].nullsize = size_of::<f64>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3391,16 +3380,14 @@ pub fn ffiter_safe(
                     }
 
                     TLOGICAL => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<c_char>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         /* use value = 2 to flag null values in logical columns */
                         col[jj].null = ColNullValue::UCharNull(2);
                     }
                     TLONGLONG => {
-                        cols[jj].array =
-                            calloc((ntodo + 1) as usize, size_of::<LONGLONG>()) as *mut c_void;
+                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<LONGLONG>());
                         col[jj].nullsize = size_of::<LONGLONG>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE

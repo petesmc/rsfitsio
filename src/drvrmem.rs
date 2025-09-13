@@ -1068,7 +1068,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         ffimem_safer(
             &mut fptr,
-            m[*hdl as usize].memaddrptr as *mut *mut _ as *mut *mut c_void,
+            m[*hdl as usize].memaddrptr as *mut *mut c_void,
             &mut filesize,
             0,
             None,
