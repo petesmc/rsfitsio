@@ -13,11 +13,11 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::c_types::*;
 use crate::fitscore::{
     ffc2s, ffcmrk_safe, ffgmsg_safe, ffiblk, ffmahd_safe, ffmkey, ffmkky_safe, ffpmrk_safe,
-    ffpmsg_slice, ffpsvc_safe, fftkey_safe, fits_strncasecmp,
+    ffpmsg_slice, ffpmsg_str, ffpsvc_safe, fftkey_safe, fits_strncasecmp,
 };
 use crate::getkey::{
     ffgcnt, ffgcrd_safe, ffghps_safe, ffgkcsl_safe, ffgkey_safe, ffgrec_safe, ffgskyc_safe,
-    ffmaky_safe,
+    ffgstr_safe, ffmaky_safe,
 };
 use crate::nullable_slice_cstr;
 use crate::putkey::{
@@ -1821,14 +1821,55 @@ pub unsafe extern "C" fn ffmkfc(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkfc_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f32; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut oldcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut oldcomm), status) > 0 {
+        return *status; /* get old comment */
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffr2f(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkfc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffr2f(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkfc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    if comm.is_none() || (comm.is_some() && comm.unwrap()[0] == bb(b'&')) {
+        /* preserve the current comment string */
+        ffmkky_safe(keyname, &valstring, Some(&oldcomm), &mut card, status);
+    } else {
+        ffmkky_safe(keyname, &valstring, comm, &mut card, status);
+    }
+
+    ffmkey(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1855,14 +1896,55 @@ pub unsafe extern "C" fn ffmkyc(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkyc_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f32; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut oldcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut oldcomm), status) > 0 {
+        return *status; /* get old comment */
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffr2e(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkyc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffr2e(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkyc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    if comm.is_none() || (comm.is_some() && comm.unwrap()[0] == bb(b'&')) {
+        /* preserve the current comment string */
+        ffmkky_safe(keyname, &valstring, Some(&oldcomm), &mut card, status);
+    } else {
+        ffmkky_safe(keyname, &valstring, comm, &mut card, status);
+    }
+
+    ffmkey(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1889,14 +1971,55 @@ pub unsafe extern "C" fn ffmkfm(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkfm_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f64; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut oldcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut oldcomm), status) > 0 {
+        return *status; /* get old comment */
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffd2f(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkfm)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffd2f(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkfm)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    if comm.is_none() || (comm.is_some() && comm.unwrap()[0] == bb(b'&')) {
+        /* preserve the current comment string */
+        ffmkky_safe(keyname, &valstring, Some(&oldcomm), &mut card, status);
+    } else {
+        ffmkky_safe(keyname, &valstring, comm, &mut card, status);
+    }
+
+    ffmkey(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1923,14 +2046,55 @@ pub unsafe extern "C" fn ffmkym(
 
 /*--------------------------------------------------------------------------*/
 pub fn ffmkym_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f64; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut oldcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if ffgkey_safe(fptr, keyname, &mut valstring, Some(&mut oldcomm), status) > 0 {
+        return *status; /* get old comment */
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffd2e(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkym)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffd2e(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffmkym)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    if comm.is_none() || (comm.is_some() && comm.unwrap()[0] == bb(b'&')) {
+        /* preserve the current comment string */
+        ffmkky_safe(keyname, &valstring, Some(&oldcomm), &mut card, status);
+    } else {
+        ffmkky_safe(keyname, &valstring, comm, &mut card, status);
+    }
+
+    ffmkey(fptr, &card, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2057,13 +2221,107 @@ pub unsafe extern "C" fn ffikls(
 /// This routine also supports simple string keywords which are less than
 /// 69 characters in length.
 pub fn ffikls_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    _keyname: &[c_char],      /* I - name of keyword to write */
-    _value: &[c_char],        /* I - keyword value            */
-    _comm: Option<&[c_char]>, /* I - keyword comment          */
-    _status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,     /* I - FITS file pointer        */
+    keyname: &[c_char],      /* I - name of keyword to write */
+    value: &[c_char],        /* I - keyword value            */
+    comm: Option<&[c_char]>, /* I - keyword comment          */
+    status: &mut c_int,      /* IO - error status            */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tmpkeyname: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tstatus = -1;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /*  construct the new keyword, and insert into header */
+    let mut remain = strlen_safe(value) as c_int; /* number of characters to write out */
+    let mut next = 0; /* pointer to next character to write */
+
+    /* count the number of single quote characters in the string */
+    let mut nquote = 0;
+    for &ch in value.iter() {
+        if ch == bb(b'\'') {
+            nquote += 1;
+        }
+    }
+
+    strncpy_safe(&mut tmpkeyname, keyname, 80);
+    tmpkeyname[80] = 0;
+
+    // Find first non-space character in keyname
+    let mut cptr_offset = 0;
+    while cptr_offset < tmpkeyname.len() && tmpkeyname[cptr_offset] == bb(b' ') {
+        cptr_offset += 1;
+    }
+
+    /* determine the number of characters that will fit on the line */
+    /* Note: each quote character is expanded to 2 quotes */
+
+    let namelen = strlen_safe(&tmpkeyname[cptr_offset..]) as c_int;
+    let mut nchar = if namelen <= 8 && (fftkey_safe(&tmpkeyname[cptr_offset..], &mut tstatus) <= 0)
+    {
+        /* This a normal 8-character FITS keyword */
+        68 - nquote /*  max of 68 chars fit in a FITS string value */
+    } else {
+        80 - nquote - namelen - 5
+    };
+
+    let mut contin = 0;
+    while remain > 0 {
+        if nchar > FLEN_VALUE as c_int - 1 {
+            ffpmsg_str("longstr keyword value is too long (ffikls)");
+            *status = BAD_KEYCHAR;
+            return *status;
+        }
+
+        // Copy substring to temporary buffer
+        let copy_len = if nchar > remain { remain } else { nchar } as usize;
+        for i in 0..copy_len {
+            tstring[i] = value[(next as usize) + i];
+        }
+        tstring[copy_len] = 0;
+
+        ffs2c(&tstring, &mut valstring, status); /* put quotes around the string */
+
+        if remain > nchar
+        /* if string is continued, put & as last char */
+        {
+            let vlen = strlen_safe(&valstring);
+            nchar -= 1; /* outputting one less character now */
+
+            if valstring[vlen - 2] != bb(b'\'') {
+                valstring[vlen - 2] = bb(b'&'); /*  over write last char with &  */
+            } else {
+                /* last char was a pair of single quotes, so over write both */
+                valstring[vlen - 3] = bb(b'&');
+                valstring[vlen - 1] = 0;
+            }
+        }
+
+        if contin != 0
+        /* This is a CONTINUEd keyword */
+        {
+            ffmkky_safe(cs!(c"CONTINUE"), &valstring, comm, &mut card, status); /* make keyword */
+            // Overwrite the '=' with spaces
+            card[8] = bb(b' ');
+            card[9] = bb(b' ');
+        } else {
+            ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* make keyword */
+        }
+
+        ffikey_safe(fptr, &card, status); /* insert the keyword */
+
+        contin = 1;
+        remain -= nchar;
+        next += nchar;
+        nchar = 68 - nquote;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2361,14 +2619,44 @@ pub unsafe extern "C" fn ffikfc(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex float keyword into the FITS header at the current position.
 pub fn ffikfc_safer(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f32; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffr2f(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikfc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffr2f(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikfc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2396,14 +2684,44 @@ pub unsafe extern "C" fn ffikyc(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex float keyword into the FITS header at the current position.
 pub fn ffikyc_safer(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f32; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f32; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffr2e(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikyc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffr2e(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikyc)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2431,14 +2749,44 @@ pub unsafe extern "C" fn ffikfm(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex double keyword into the FITS header at the current position.
 pub fn ffikfm_safer(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f64; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    _status: &mut c_int,      /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    todo!();
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffd2f(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikfm)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffd2f(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikfm)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2466,23 +2814,42 @@ pub unsafe extern "C" fn ffikym(
 /*--------------------------------------------------------------------------*/
 /// Insert a complex double keyword into the FITS header at the current position.
 pub fn ffikym_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer  */
-    _keyname: &[c_char],      /* I - keyword name       */
-    _value: &[f64; 2],        /* I - keyword value      */
-    _decim: c_int,            /* I - no of decimals     */
-    _comm: Option<&[c_char]>, /* I - keyword comment    */
-    status: &mut c_int,       /* IO - error status      */
+    fptr: &mut fitsfile,     /* I - FITS file pointer  */
+    keyname: &[c_char],      /* I - keyword name       */
+    value: &[f64; 2],        /* I - keyword value      */
+    decim: c_int,            /* I - no of decimals     */
+    comm: Option<&[c_char]>, /* I - keyword comment    */
+    status: &mut c_int,      /* IO - error status      */
 ) -> c_int {
-    let _valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let _card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-    let _tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
     }
 
-    todo!();
+    strcpy_safe(&mut valstring, cs!(c"("));
+    ffd2e(value[0], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&tmpstring) + 3 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikym)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c", "));
+    ffd2e(value[1], decim, &mut tmpstring, status); /* convert to string */
+    if strlen_safe(&valstring) + strlen_safe(&tmpstring) + 1 > FLEN_VALUE - 1 {
+        ffpmsg_str("complex key value too long (ffikym)");
+        *status = BAD_F2C;
+        return *status;
+    }
+    strcat_safe(&mut valstring, &tmpstring);
+    strcat_safe(&mut valstring, cs!(c")"));
+
+    ffmkky_safe(keyname, &valstring, comm, &mut card, status); /* construct the keyword*/
+    ffikey_safe(fptr, &card, status); /* write the keyword*/
 
     *status
 }
@@ -2752,11 +3119,76 @@ pub unsafe extern "C" fn ffdstr(
 /*--------------------------------------------------------------------------*/
 /// delete a specified header keyword containing the input string
 pub fn ffdstr_safe(
-    _fptr: &mut fitsfile, /* I - FITS file pointer  */
-    _string: &[c_char],   /* I - keyword string     */
-    _status: &mut c_int,  /* IO - error status      */
+    fptr: &mut fitsfile, /* I - FITS file pointer  */
+    string: &[c_char],   /* I - keyword string     */
+    status: &mut c_int,  /* IO - error status      */
 ) -> c_int {
-    todo!()
+    let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if ffgstr_safe(fptr, string, &mut card, status) > 0 {
+        /* read keyword */
+        int_snprintf!(
+            message,
+            FLEN_ERRMSG,
+            "Could not find the {} keyword to delete (ffdkey)",
+            CStr::from_bytes_until_nul(cast_slice(string))
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        ffpmsg_slice(&message);
+        return *status;
+    }
+
+    /* calc position of keyword in header */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    let keypos = (((fptr.Fptr.nextkey) - headstart[fptr.Fptr.curhdu as usize]) / 80) as c_int;
+
+    ffdrec_safe(fptr, keypos, status); /* delete the keyword */
+
+    /* check for string value which may be continued over multiple keywords */
+    ffpsvc_safe(&card, &mut valstring, Some(&mut comm), status);
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    /* check for string value which may be continued over multiple keywords */
+    ffpmrk_safe(); /* put mark on message stack; erase any messages after this */
+    ffc2s(&valstring, &mut value, status); /* remove quotes and trailing spaces */
+
+    if *status == VALUE_UNDEFINED {
+        ffcmrk_safe(); /* clear any spurious error messages, back to the mark */
+        *status = 0;
+    } else {
+        let mut len = strlen_safe(&value) as c_int;
+
+        while len > 0 && value[(len - 1) as usize] == bb(b'&')
+        /* ampersand used as continuation char */
+        {
+            ffgcnt(fptr, &mut value, Some(&mut nextcomm), status);
+            if value[0] != 0 {
+                ffdrec_safe(fptr, keypos, status); /* delete the keyword */
+                len = strlen_safe(&value) as c_int;
+            } else {
+                /* a null valstring indicates no continuation */
+                len = 0;
+            }
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

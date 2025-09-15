@@ -12,9 +12,11 @@ use std::{cmp, ptr};
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 use crate::fitscore::ALLOCATIONS;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::imcompress::fits_img_decompress_header_safer;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
+use crate::aliases::rust_api::{fits_close_file, fits_create_file, fits_delete_file};
 use crate::buffers::*;
 use crate::fitscore::{
     ffc2d, ffc2dd, ffc2i, ffc2ii, ffc2j, ffc2jj, ffc2l, ffc2ll, ffc2r, ffc2s, ffc2uj, ffcmps_safe,
@@ -6093,45 +6095,35 @@ pub fn ffcnvthdr2str_safer(
     if fits_is_compressed_image_safe(fptr, status) != 0 {
         /* this is a tile compressed image, so need to make an uncompressed */
         /* copy of the image header in memory before concatenating the keywords */
-        todo!();
-    /*
-    if (fits_create_file(&tempfptr, "mem://", status) > 0) {
-        return(*status);
-    }
 
+        unsafe {
+            let mut tempfptr = None;
 
-    if (fits_img_decompress_header(fptr, tempfptr, status) > 0) {
-     fits_delete_file(tempfptr, status);
-     return(*status);
-    }
+            if fits_create_file(&mut tempfptr, cs!(c"mem://"), status) > 0 {
+                return *status;
+            }
 
-    ffhdr2str(tempfptr, exclude_comm, exclist, nexc, header, nkeys, status);
-    fits_close_file(tempfptr, status);
-    */
+            let mut tempfptr = tempfptr.unwrap();
+
+            if fits_img_decompress_header_safer(fptr, &mut tempfptr, status) > 0 {
+                fits_delete_file(&mut Some(tempfptr), status);
+                return *status;
+            }
+
+            ffhdr2str_safe(
+                &mut tempfptr,
+                exclude_comm,
+                exclist,
+                nexc,
+                header,
+                nkeys,
+                status,
+            );
+            fits_close_file(tempfptr, status);
+        }
     } else {
         ffhdr2str_safe(fptr, exclude_comm, exclist, nexc, header, nkeys, status);
     }
 
     *status
-}
-
-/*--------------------------------------------------------------------------*/
-/// Free a keyword long string that was allocated by CFITSIO
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fffkls(
-    value: *mut c_char, /* I - pointer to string to free */
-    status: *mut c_int, /* IO - error status */
-) -> c_int {
-    unsafe {
-        let status = status.as_mut().expect("Null status pointer");
-        fffkls_safer(value, status)
-    }
-}
-
-/// Free a keyword long string that was allocated by CFITSIO
-pub fn fffkls_safer(
-    value: *mut c_char,  /* I - pointer to string to free */
-    _status: &mut c_int, /* IO - error status */
-) -> c_int {
-    todo!("fffkls: Free keyword long string at address {:p}", value)
 }

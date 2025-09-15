@@ -581,7 +581,7 @@ pub fn ffgcx_safe(
 
 /*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
-/// interprete them as an unsigned integer.  The number of bits must be
+/// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -616,7 +616,7 @@ pub unsafe extern "C" fn ffgcxui(
 
 /*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
-/// interprete them as an unsigned integer.  The number of bits must be
+/// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxui_safe(
@@ -634,7 +634,7 @@ pub fn ffgcxui_safe(
 
 /*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
-/// interprete them as an unsigned integer.  The number of bits must be
+/// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -669,7 +669,7 @@ pub unsafe extern "C" fn ffgcxuk(
 
 /*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
-/// interprete them as an unsigned integer.  The number of bits must be
+/// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxuk_safe(

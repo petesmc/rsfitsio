@@ -12,7 +12,7 @@ use std::io::BufRead;
 use std::num::ParseIntError;
 use std::{cmp, mem};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 
 use crate::c_types::*;
 
@@ -4023,7 +4023,6 @@ pub unsafe extern "C" fn ffdt2s(
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        let datestr = datestr.as_mut().expect(NULL_MSG);
 
         let datestr: &mut [c_char; 11] = slice::from_raw_parts_mut(datestr, 11).try_into().unwrap();
 
@@ -4034,13 +4033,33 @@ pub unsafe extern "C" fn ffdt2s(
 /*-----------------------------------------------------------------*/
 /// Construct a date character string
 pub fn ffdt2s_safe(
-    _year: c_int,            /* I - year (0 - 9999)           */
-    _month: c_int,           /* I - month (1 - 12)            */
-    _day: c_int,             /* I - day (1 - 31)              */
-    _datestr: &[c_char; 11], /* O - date string: "YYYY-MM-DD" */
-    _status: *mut c_int,     /* IO - error status             */
+    year: c_int,                /* I - year (0 - 9999)           */
+    month: c_int,               /* I - month (1 - 12)            */
+    day: c_int,                 /* I - day (1 - 31)              */
+    datestr: &mut [c_char; 11], /* O - date string: "YYYY-MM-DD" */
+    status: &mut c_int,         /* IO - error status             */
 ) -> c_int {
-    todo!()
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    datestr[0] = 0;
+
+    if ffverifydate_safe(year, month, day, status) > 0 {
+        ffpmsg_str("invalid date (ffdt2s)");
+        return *status;
+    }
+
+    if year >= 1900 && year <= 1998 {
+        /* use old 'dd/mm/yy' format */
+        int_snprintf!(datestr, 9, "{:02}/{:02}/{:02}", day, month, year - 1900);
+    } else {
+        /* use the new 'YYYY-MM-DD' format */
+        int_snprintf!(datestr, 11, "{:04}-{:02}-{:02}", year, month, day);
+    }
+
+    *status
 }
 
 /*-----------------------------------------------------------------*/
@@ -4055,25 +4074,131 @@ pub unsafe extern "C" fn ffs2dt(
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        let year = year.as_mut().expect(NULL_MSG);
-        let month = month.as_mut().expect(NULL_MSG);
-        let day = day.as_mut().expect(NULL_MSG);
-        raw_to_slice!(datestr);
+        let year = year.as_mut();
+        let month = month.as_mut();
+        let day = day.as_mut();
+        nullable_slice_cstr!(datestr);
 
-        ffs2dt_safe(cast_slice(datestr), year, month, day, status)
+        ffs2dt_safe(datestr.map(cast_slice), year, month, day, status)
     }
 }
 
 /*-----------------------------------------------------------------*/
 /// Parse a date character string into year, month, and day values
 pub fn ffs2dt_safe(
-    _datestr: &[c_char], /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
-    _year: &mut c_int,   /* O - year (0 - 9999)                         */
-    _month: &mut c_int,  /* O - month (1 - 12)                          */
-    _day: &mut c_int,    /* O - day (1 - 31)                            */
-    _status: &mut c_int, /* IO - error status                           */
+    datestr: Option<&[c_char]>, /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
+    mut year: Option<&mut c_int>, /* O - year (0 - 9999)                         */
+    mut month: Option<&mut c_int>, /* O - month (1 - 12)                          */
+    mut day: Option<&mut c_int>, /* O - day (1 - 31)                            */
+    status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
-    todo!();
+    let lyear: c_int;
+    let lmonth: c_int;
+    let lday: c_int;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if let Some(y) = year.as_deref_mut() {
+        *y = 0;
+    }
+    if let Some(m) = month.as_deref_mut() {
+        *m = 0;
+    }
+    if let Some(d) = day.as_deref_mut() {
+        *d = 0;
+    }
+
+    let datestr = match datestr {
+        Some(d) if !d.is_empty() => d,
+        _ => {
+            ffpmsg_str("error: null input date string (ffs2dt)");
+            *status = BAD_DATE;
+            return *status;
+        }
+    };
+
+    let slen: usize = strlen_safe(datestr);
+
+    if slen == 8 && datestr[2] == bb(b'/') && datestr[5] == bb(b'/') {
+        if isdigit_safe(datestr[0])
+            && isdigit_safe(datestr[1])
+            && isdigit_safe(datestr[3])
+            && isdigit_safe(datestr[4])
+            && isdigit_safe(datestr[6])
+            && isdigit_safe(datestr[7])
+        {
+            /* this is an old format string: "dd/mm/yy" */
+            lyear = atoi_safe(&datestr[6..]) + 1900;
+            lmonth = atoi_safe(&datestr[3..]);
+            lday = atoi_safe(datestr);
+
+            if let Some(y) = year.as_deref_mut() {
+                *y = lyear;
+            }
+            if let Some(m) = month.as_deref_mut() {
+                *m = lmonth;
+            }
+            if let Some(d) = day.as_deref_mut() {
+                *d = lday;
+            }
+        } else {
+            ffpmsg_str("input date string has illegal format (ffs2dt):");
+            ffpmsg_slice(datestr);
+            *status = BAD_DATE;
+            return *status;
+        }
+    } else if slen >= 10 && datestr[4] == bb(b'-') && datestr[7] == bb(b'-') {
+        if isdigit_safe(datestr[0])
+            && isdigit_safe(datestr[1])
+            && isdigit_safe(datestr[2])
+            && isdigit_safe(datestr[3])
+            && isdigit_safe(datestr[5])
+            && isdigit_safe(datestr[6])
+            && isdigit_safe(datestr[8])
+            && isdigit_safe(datestr[9])
+        {
+            if slen > 10 && datestr[10] != bb(b'T') {
+                ffpmsg_str("input date string has illegal format (ffs2dt):");
+                ffpmsg_slice(datestr);
+                *status = BAD_DATE;
+                return *status;
+            }
+
+            /* this is a new format string: "yyyy-mm-dd" */
+            lyear = atoi_safe(datestr);
+            lmonth = atoi_safe(&datestr[5..]);
+            lday = atoi_safe(&datestr[8..]);
+
+            if let Some(y) = year {
+                *y = lyear;
+            }
+            if let Some(m) = month {
+                *m = lmonth;
+            }
+            if let Some(d) = day {
+                *d = lday;
+            }
+        } else {
+            ffpmsg_str("input date string has illegal format (ffs2dt):");
+            ffpmsg_slice(datestr);
+            *status = BAD_DATE;
+            return *status;
+        }
+    } else {
+        ffpmsg_str("input date string has illegal format (ffs2dt):");
+        ffpmsg_slice(datestr);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if ffverifydate_safe(lyear, lmonth, lday, status) > 0 {
+        ffpmsg_str("invalid date (ffs2dt)");
+    }
+
+    *status
 }
 
 /*-----------------------------------------------------------------*/
@@ -4125,27 +4250,27 @@ pub unsafe extern "C" fn ffs2tm(
     datestr: *const c_char, /* I - date string: "YYYY-MM-DD"    */
     /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
     /*     or "dd/mm/yy"                */
-    year: *mut c_int,        /* O - year (0 - 9999)              */
-    month: *mut c_int,       /* O - month (1 - 12)               */
-    day: *mut c_int,         /* O - day (1 - 31)                 */
-    hour: *const c_int,      /* I - hour (0 - 23)                */
-    minute: *const c_int,    /* I - minute (0 - 59)              */
-    second: *const c_double, /* I - second (0. - 60.9999999)     */
-    status: *mut c_int,      /* IO - error status                */
+    year: *mut c_int,      /* O - year (0 - 9999)              */
+    month: *mut c_int,     /* O - month (1 - 12)               */
+    day: *mut c_int,       /* O - day (1 - 31)                 */
+    hour: *mut c_int,      /* O - hour (0 - 23)                */
+    minute: *mut c_int,    /* O - minute (0 - 59)              */
+    second: *mut c_double, /* O - second (0. - 60.9999999)     */
+    status: *mut c_int,    /* IO - error status                */
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        let year = year.as_mut().expect(NULL_MSG);
-        let month = month.as_mut().expect(NULL_MSG);
-        let day = day.as_mut().expect(NULL_MSG);
-        let hour = hour.as_ref().expect(NULL_MSG);
-        let minute = minute.as_ref().expect(NULL_MSG);
-        let second = second.as_ref().expect(NULL_MSG);
+        let year = year.as_mut();
+        let month = month.as_mut();
+        let day = day.as_mut();
+        let hour = hour.as_mut();
+        let minute = minute.as_mut();
+        let second = second.as_mut();
 
-        raw_to_slice!(datestr);
+        nullable_slice_cstr!(datestr);
 
         ffs2tm_safe(
-            cast_slice(datestr),
+            datestr.map(cast_slice),
             year,
             month,
             day,
@@ -4160,18 +4285,187 @@ pub unsafe extern "C" fn ffs2tm(
 /*-----------------------------------------------------------------*/
 /// Parse a date character string into date and time values
 pub fn ffs2tm_safe(
-    _datestr: &[c_char], /* I - date string: "YYYY-MM-DD"    */
+    datestr: Option<&[c_char]>, /* I - date string: "YYYY-MM-DD"    */
     /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
     /*     or "dd/mm/yy"                */
-    _year: &mut c_int,   /* O - year (0 - 9999)              */
-    _month: &mut c_int,  /* O - month (1 - 12)               */
-    _day: &mut c_int,    /* O - day (1 - 31)                 */
-    _hour: &c_int,       /* I - hour (0 - 23)                */
-    _minute: &c_int,     /* I - minute (0 - 59)              */
-    _second: &c_double,  /* I - second (0. - 60.9999999)     */
-    _status: &mut c_int, /* IO - error status                */
+    mut year: Option<&mut c_int>,  /* O - year (0 - 9999)              */
+    mut month: Option<&mut c_int>, /* O - month (1 - 12)               */
+    mut day: Option<&mut c_int>,   /* O - day (1 - 31)                 */
+    mut hour: Option<&mut c_int>,  /* O - hour (0 - 23)                */
+    mut minute: Option<&mut c_int>, /* O - minute (0 - 59)              */
+    mut second: Option<&mut c_double>, /* O - second (0. - 60.9999999)     */
+    status: &mut c_int,            /* IO - error status                */
 ) -> c_int {
-    todo!();
+    let slen: usize;
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    if let Some(y) = year.as_deref_mut() {
+        *y = 0;
+    }
+    if let Some(m) = month.as_deref_mut() {
+        *m = 0;
+    }
+    if let Some(d) = day.as_deref_mut() {
+        *d = 0;
+    }
+    if let Some(h) = hour.as_deref_mut() {
+        *h = 0;
+    }
+    if let Some(min) = minute.as_deref_mut() {
+        *min = 0;
+    }
+    if let Some(s) = second.as_deref_mut() {
+        *s = 0.;
+    }
+
+    let datestr = match datestr {
+        Some(d) if !d.is_empty() => d,
+        _ => {
+            ffpmsg_str("error: null input date string (ffs2tm)");
+            *status = BAD_DATE;
+            return *status;
+        }
+    };
+
+    if datestr.len() > 2
+        && (datestr[2] == bb(b'/') || (datestr.len() > 4 && datestr[4] == bb(b'-')))
+    {
+        /*  Parse the year, month, and date */
+        if ffs2dt_safe(Some(datestr), year, month, day, status) > 0 {
+            return *status;
+        }
+
+        slen = strlen_safe(datestr);
+        if slen == 8 || slen == 10 {
+            return *status; /* OK, no time fields */
+        } else if slen < 19 {
+            ffpmsg_str("input date string has illegal format:");
+            ffpmsg_slice(datestr);
+            *status = BAD_DATE;
+            return *status;
+        } else if datestr[10] == bb(b'T') {
+            if datestr[13] == bb(b':') && datestr[16] == bb(b':') {
+                if isdigit_safe(datestr[11])
+                    && isdigit_safe(datestr[12])
+                    && isdigit_safe(datestr[14])
+                    && isdigit_safe(datestr[15])
+                    && isdigit_safe(datestr[17])
+                    && isdigit_safe(datestr[18])
+                {
+                    if slen > 19 && datestr[19] != bb(b'.') {
+                        ffpmsg_str("input date string has illegal format:");
+                        ffpmsg_slice(datestr);
+                        *status = BAD_DATE;
+                        return *status;
+                    }
+
+                    /* this is a new format string: "yyyy-mm-ddThh:mm:ss.dddd" */
+                    if let Some(h) = hour.as_deref_mut() {
+                        *h = atoi_safe(&datestr[11..]);
+                    }
+                    if let Some(min) = minute.as_deref_mut() {
+                        *min = atoi_safe(&datestr[14..]);
+                    }
+                    if let Some(s) = second.as_deref_mut() {
+                        *s = atof_safe(&datestr[17..]);
+                    }
+                } else {
+                    ffpmsg_str("input date string has illegal format:");
+                    ffpmsg_slice(datestr);
+                    *status = BAD_DATE;
+                    return *status;
+                }
+            } else {
+                ffpmsg_str("input date string has illegal format:");
+                ffpmsg_slice(datestr);
+                *status = BAD_DATE;
+                return *status;
+            }
+        }
+    } else
+    /* no date fields */
+    if datestr.len() > 5 && datestr[2] == bb(b':') && datestr[5] == bb(b':')
+    /* time string */
+    {
+        if datestr.len() > 7
+            && isdigit_safe(datestr[0])
+            && isdigit_safe(datestr[1])
+            && isdigit_safe(datestr[3])
+            && isdigit_safe(datestr[4])
+            && isdigit_safe(datestr[6])
+            && isdigit_safe(datestr[7])
+        {
+            /* this is a time string: "hh:mm:ss.dddd" */
+            if let Some(h) = hour.as_deref_mut() {
+                *h = atoi_safe(datestr);
+            }
+            if let Some(min) = minute.as_deref_mut() {
+                *min = atoi_safe(&datestr[3..]);
+            }
+            if let Some(s) = second.as_deref_mut() {
+                *s = atof_safe(&datestr[6..]);
+            }
+        } else {
+            ffpmsg_str("input date string has illegal format:");
+            ffpmsg_slice(datestr);
+            *status = BAD_DATE;
+            return *status;
+        }
+    } else {
+        ffpmsg_str("input date string has illegal format:");
+        ffpmsg_slice(datestr);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if let Some(h) = hour.as_deref()
+        && (*h < 0 || *h > 23)
+    {
+        int_snprintf!(
+            errmsg,
+            FLEN_ERRMSG,
+            "hour value is out of range 0 - 23: {} (ffs2tm)",
+            *h
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if let Some(min) = minute.as_deref()
+        && (*min < 0 || *min > 59)
+    {
+        int_snprintf!(
+            errmsg,
+            FLEN_ERRMSG,
+            "minute value is out of range 0 - 59: {} (ffs2tm)",
+            *min
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if let Some(s) = second.as_deref()
+        && (*s < 0. || *s >= 61.)
+    {
+        int_snprintf!(
+            errmsg,
+            FLEN_ERRMSG,
+            "second value is out of range 0 - 60.9999: {} (ffs2tm)",
+            *s
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4198,12 +4492,19 @@ pub unsafe extern "C" fn ffgsdt(
 /// This routine is included for backward compatibility with the Fortran FITSIO library.
 /// Get current System DaTe (GMT if available)
 pub fn ffgsdt_safe(
-    _day: &mut c_int,
-    _month: &mut c_int,
-    _year: &mut c_int,
-    _status: &mut c_int,
+    day: &mut c_int,
+    month: &mut c_int,
+    year: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let utc: DateTime<Utc> = Utc::now();
+    let utc = utc.date_naive();
+
+    *day = utc.day() as c_int;
+    *month = utc.month() as c_int;
+    *year = utc.year() as c_int;
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4645,18 +4946,99 @@ pub unsafe extern "C" fn ffverifydate(
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
-        ffverifydate_safer(year, month, day, status)
+        ffverifydate_safe(year, month, day, status)
     }
 }
 
 /// Verify that the specified date is valid (safe version)
-pub fn ffverifydate_safer(
-    year: c_int,         /* I - year */
-    month: c_int,        /* I - month (1-12) */
-    day: c_int,          /* I - day (1-31) */
-    _status: &mut c_int, /* IO - error status */
+pub fn ffverifydate_safe(
+    year: c_int,        /* I - year */
+    month: c_int,       /* I - month (1-12) */
+    day: c_int,         /* I - day (1-31) */
+    status: &mut c_int, /* IO - error status */
 ) -> c_int {
-    todo!("ffverifydate: Verify date {}/{}/{}", year, month, day)
+    const NDAYS: [c_int; 13] = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if year < 0 || year > 9999 {
+        int_snprintf!(
+            errmsg,
+            FLEN_ERRMSG,
+            "input year value = {} is out of range 0 - 9999",
+            year
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    } else if month < 1 || month > 12 {
+        int_snprintf!(
+            errmsg,
+            FLEN_ERRMSG,
+            "input month value = {} is out of range 1 - 12",
+            month
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if NDAYS[month as usize] == 31 {
+        if day < 1 || day > 31 {
+            int_snprintf!(
+                errmsg,
+                FLEN_ERRMSG,
+                "input day value = {} is out of range 1 - 31 for month {}",
+                day,
+                month
+            );
+            ffpmsg_slice(&errmsg);
+            *status = BAD_DATE;
+            return *status;
+        }
+    } else if NDAYS[month as usize] == 30 {
+        if day < 1 || day > 30 {
+            int_snprintf!(
+                errmsg,
+                FLEN_ERRMSG,
+                "input day value = {} is out of range 1 - 30 for month {}",
+                day,
+                month
+            );
+            ffpmsg_slice(&errmsg);
+            *status = BAD_DATE;
+            return *status;
+        }
+    } else if day < 1 || day > 28 {
+        if day == 29 {
+            /* year is a leap year if it is divisible by 4 but not by 100,
+               except years divisible by 400 are leap years
+            */
+            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                return *status;
+            }
+
+            int_snprintf!(
+                errmsg,
+                FLEN_ERRMSG,
+                "input day value = {} is out of range 1 - 28 for February {} (not leap year)",
+                day,
+                year
+            );
+            ffpmsg_slice(&errmsg);
+        } else {
+            int_snprintf!(
+                errmsg,
+                FLEN_ERRMSG,
+                "input day value = {} is out of range 1 - 28 (or 29) for February",
+                day
+            );
+            ffpmsg_slice(&errmsg);
+        }
+
+        *status = BAD_DATE;
+        return *status;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4702,4 +5084,631 @@ pub fn ffpknjj_safer(
         nstart,
         keyroot.to_string_lossy()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ffverifydate_safe() {
+        let mut status = 0;
+
+        // Test valid dates for each month
+        assert_eq!(ffverifydate_safe(2024, 1, 15, &mut status), 0);
+        assert_eq!(status, 0);
+
+        assert_eq!(ffverifydate_safe(2024, 3, 31, &mut status), 0);
+        assert_eq!(status, 0);
+
+        assert_eq!(ffverifydate_safe(2024, 4, 30, &mut status), 0);
+        assert_eq!(status, 0);
+
+        // Test leap year - 2024 is a leap year
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 2, 29, &mut status), 0);
+        assert_eq!(status, 0);
+
+        // Test non-leap year - 2023 is not a leap year
+        status = 0;
+        assert_eq!(ffverifydate_safe(2023, 2, 29, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test leap year rules - 2000 is a leap year (divisible by 400)
+        status = 0;
+        assert_eq!(ffverifydate_safe(2000, 2, 29, &mut status), 0);
+        assert_eq!(status, 0);
+
+        // Test leap year rules - 1900 is not a leap year (divisible by 100 but not 400)
+        status = 0;
+        assert_eq!(ffverifydate_safe(1900, 2, 29, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid year
+        status = 0;
+        assert_eq!(ffverifydate_safe(-1, 1, 1, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        status = 0;
+        assert_eq!(ffverifydate_safe(10000, 1, 1, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid month
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 0, 1, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 13, 1, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid day for 31-day month
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 1, 0, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 1, 32, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid day for 30-day month
+        status = 0;
+        assert_eq!(ffverifydate_safe(2024, 4, 31, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid day for February (non-leap year)
+        status = 0;
+        assert_eq!(ffverifydate_safe(2023, 2, 30, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+    }
+
+    #[test]
+    fn test_ffs2dt_safe() {
+        let mut status = 0;
+        let mut year = 0;
+        let mut month = 0;
+        let mut day = 0;
+
+        // Test old format: "dd/mm/yy"
+        let date_old = cs!(c"15/03/99");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(date_old),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 1999);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+
+        // Test new format: "yyyy-mm-dd"
+        let date_new = cs!(c"2024-03-15");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(date_new),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+
+        // Test new format with time extension: "yyyy-mm-ddThh:mm:ss"
+        let date_time = cs!(c"2024-03-15T12:30:45");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(date_time),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+
+        // Test invalid old format
+        let invalid_old = cs!(c"1a/03/99");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(invalid_old),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid new format
+        let invalid_new = cs!(c"202a-03-15");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(invalid_new),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid format with wrong separator after date
+        let invalid_sep = cs!(c"2024-03-15X12:30:45");
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(invalid_sep),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test empty string
+        let empty: &[c_char] = &[];
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(empty),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+
+        // Test None (null pointer)
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                None,
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test date validation through ffverifydate_safe
+        let invalid_date = cs!(c"2023-02-29"); // Not a leap year
+        status = 0;
+        assert_eq!(
+            ffs2dt_safe(
+                Some(invalid_date),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+    }
+
+    #[test]
+    fn test_ffs2tm_safe() {
+        let mut status = 0;
+        let mut year = 0;
+        let mut month = 0;
+        let mut day = 0;
+        let mut hour = 0;
+        let mut minute = 0;
+        let mut second = 0.0;
+
+        // Test full datetime: "yyyy-mm-ddThh:mm:ss.ddd"
+        let datetime = cs!(c"2024-03-15T14:30:45.123");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(datetime),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+        assert_eq!(hour, 14);
+        assert_eq!(minute, 30);
+        assert!(second >= 45.123 - 0.001 && second <= 45.123 + 0.001);
+
+        // Test date only: "yyyy-mm-dd"
+        let date_only = cs!(c"2024-03-15");
+        status = 0;
+        year = 0;
+        month = 0;
+        day = 0;
+        hour = 0;
+        minute = 0;
+        second = 0.0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(date_only),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+        assert_eq!(hour, 0);
+        assert_eq!(minute, 0);
+        assert_eq!(second, 0.0);
+
+        // Test old date format: "dd/mm/yy"
+        let old_date = cs!(c"15/03/99");
+        status = 0;
+        year = 0;
+        month = 0;
+        day = 0;
+        hour = 0;
+        minute = 0;
+        second = 0.0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(old_date),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 1999);
+        assert_eq!(month, 3);
+        assert_eq!(day, 15);
+
+        // Test time only: "hh:mm:ss.ddd"
+        let time_only = cs!(c"14:30:45.678");
+        status = 0;
+        year = 0;
+        month = 0;
+        day = 0;
+        hour = 0;
+        minute = 0;
+        second = 0.0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(time_only),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 0);
+        assert_eq!(month, 0);
+        assert_eq!(day, 0);
+        assert_eq!(hour, 14);
+        assert_eq!(minute, 30);
+        assert!(second >= 45.678 - 0.001 && second <= 45.678 + 0.001);
+
+        // Test invalid hour
+        let invalid_hour = cs!(c"24:30:45");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(invalid_hour),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid minute
+        let invalid_minute = cs!(c"14:60:45");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(invalid_minute),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid second (>= 61)
+        let invalid_second = cs!(c"14:30:61.0");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(invalid_second),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test valid leap second (60.999...)
+        let leap_second = cs!(c"14:30:60.5");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(leap_second),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            0
+        );
+        assert_eq!(status, 0);
+        assert!(second >= 60.5 - 0.001 && second <= 60.5 + 0.001);
+
+        // Test invalid format
+        let invalid_format = cs!(c"not-a-date");
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(invalid_format),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test empty string
+        let empty: &[c_char] = &[];
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                Some(empty),
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+
+        // Test None (null pointer)
+        status = 0;
+        assert_eq!(
+            ffs2tm_safe(
+                None,
+                Some(&mut year),
+                Some(&mut month),
+                Some(&mut day),
+                Some(&mut hour),
+                Some(&mut minute),
+                Some(&mut second),
+                &mut status
+            ),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+    }
+
+    #[test]
+    fn test_ffdt2s_safe() {
+        let mut status = 0;
+        let mut datestr = [0; 11];
+
+        // Test new format (YYYY-MM-DD) for year 2024
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(2024, 3, 15, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "2024-03-15");
+
+        // Test old format (dd/mm/yy) for year 1950
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(1950, 12, 25, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "25/12/50");
+
+        // Test edge case: year 1900 (should use old format)
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(1900, 1, 1, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "01/01/00");
+
+        // Test edge case: year 1998 (should use old format)
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(1998, 12, 31, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "31/12/98");
+
+        // Test edge case: year 1999 (should use new format)
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(1999, 6, 15, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "1999-06-15");
+
+        // Test year 0 (should use new format)
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(0, 1, 1, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "0000-01-01");
+
+        // Test year 9999 (should use new format)
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(9999, 12, 31, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "9999-12-31");
+
+        // Test invalid date: month > 12
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(
+            ffdt2s_safe(2024, 13, 15, &mut datestr, &mut status),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid date: day > 31
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(
+            ffdt2s_safe(2024, 3, 32, &mut datestr, &mut status),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid date: month = 0
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(
+            ffdt2s_safe(2024, 0, 15, &mut datestr, &mut status),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid date: day = 0
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(2024, 3, 0, &mut datestr, &mut status), BAD_DATE);
+        assert_eq!(status, BAD_DATE);
+
+        // Test invalid date: year > 9999
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(
+            ffdt2s_safe(10000, 3, 15, &mut datestr, &mut status),
+            BAD_DATE
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // Test leap year February 29
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(2024, 2, 29, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "2024-02-29");
+
+        // Test single digit values with padding
+        status = 0;
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(2024, 1, 5, &mut datestr, &mut status), 0);
+        assert_eq!(status, 0);
+        let result_str = CStr::from_bytes_until_nul(cast_slice(&datestr))
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(result_str, "2024-01-05");
+
+        // Test status inheritance
+        status = 123; // Pre-existing error status
+        datestr = [0; 11];
+        assert_eq!(ffdt2s_safe(2024, 3, 15, &mut datestr, &mut status), 123);
+        assert_eq!(status, 123);
+    }
 }
