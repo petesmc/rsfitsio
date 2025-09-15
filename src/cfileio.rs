@@ -17,6 +17,8 @@ use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
+use errno::errno;
+use libc::{ERANGE, strtod};
 
 use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
@@ -6497,12 +6499,71 @@ pub unsafe extern "C" fn fits_get_token(
 ///
 /// Safe wrapper for fits_get_token - copies token to provided String buffer
 pub fn fits_get_token_safe(
-    _ptr: &mut *mut c_char,
-    _delimiter: &[c_char],
-    _token: *mut c_char,
-    _isanumber: Option<&mut c_int>, /* O - is this token a number? */
+    ptr: &mut *mut c_char,
+    delimiter: &[c_char],
+    token: *mut c_char,
+    isanumber: Option<&mut c_int>, /* O - is this token a number? */
 ) -> c_int {
-    todo!()
+    let mut loc: c_char = 0;
+    let mut tval: [c_char; 73] = [0; 73];
+
+    let mut input_str = unsafe { CStr::from_ptr(*ptr).to_bytes_with_nul() };
+    let mut ptr_idx = 0;
+    let mut slen: usize = 0;
+
+    unsafe {
+        *token = 0;
+
+        while (input_str[0] == b' ') {
+            /* skip over leading blanks */
+            ptr_idx += 1;
+            input_str = &input_str[1..];
+        }
+
+        slen = strcspn_safe(cast_slice(input_str), delimiter) as usize; /* length of next token */
+        if (slen != 0) {
+            strncat(token, input_str.as_ptr(), slen); /* copy token */
+
+            ptr_idx += slen; /* skip over the token */
+            input_str = &input_str[slen..];
+
+            /* check if token is a number */
+            if let Some(isanumber) = isanumber {
+                *isanumber = 1;
+
+                if (!strchr(token, b'D' as c_int).is_null()) {
+                    strncpy(tval.as_mut_ptr(), token, 72);
+                    tval[72] = 0;
+
+                    /*  The C language does not support a 'D'; replace with 'E' */
+                    let mut tmp_loc = strchr_safe(&tval, bb(b'D'));
+                    if let Some(tmp_loc) = tmp_loc
+                        && tmp_loc != 0
+                    {
+                        tval[tmp_loc] = bb(b'E');
+                    }
+
+                    let mut tmp_loc = 0;
+                    let _ = strtod_safe(&tval, &mut tmp_loc);
+                    loc = tval[tmp_loc];
+                } else {
+                    let mut tmp_loc: *mut c_char = ptr::null_mut();
+                    strtod(token, &mut tmp_loc);
+                    loc = *tmp_loc;
+                }
+
+                /* check for read error, or junk following the value */
+                if (loc != 0 && loc != bb(b' ')) {
+                    *isanumber = 0;
+                }
+                if (errno().0 == ERANGE) {
+                    *isanumber = 0;
+                }
+            }
+        }
+    }
+
+    return (slen as c_int);
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7108,7 +7169,10 @@ pub unsafe extern "C" fn ffvhtps(flag: c_int) {
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
 pub unsafe fn ffvhtps_safer(flag: c_int) {
-    todo!();
+    #[cfg(feature = "net_services")]
+    {
+        https_set_verbose(flag);
+    }
 }
 
 /*-------------------------------------------------------------------*/
@@ -7265,43 +7329,4 @@ pub fn fits_get_token2_safe(
     }
 
     slen as c_int
-}
-
-/*--------------------------------------------------------------------------*/
-/// Initialize HTTPS support for FITS file access
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_init_https() -> c_int {
-    fits_init_https_safer()
-}
-
-/// Initialize HTTPS support for FITS file access (safe version)
-pub fn fits_init_https_safer() -> c_int {
-    todo!("fits_init_https: Initialize HTTPS support for FITS file access")
-}
-
-/*--------------------------------------------------------------------------*/
-/// Cleanup HTTPS support for FITS file access  
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_cleanup_https() -> c_int {
-    fits_cleanup_https_safer()
-}
-
-/// Cleanup HTTPS support for FITS file access (safe version)
-pub fn fits_cleanup_https_safer() -> c_int {
-    todo!("fits_cleanup_https: Cleanup HTTPS support for FITS file access")
-}
-
-/*--------------------------------------------------------------------------*/
-/// Set verbose mode for HTTPS operations
-#[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_verbose_https(verbose: c_int) -> c_int {
-    fits_verbose_https_safer(verbose)
-}
-
-/// Set verbose mode for HTTPS operations (safe version)
-pub fn fits_verbose_https_safer(verbose: c_int) -> c_int {
-    todo!(
-        "fits_verbose_https: Set verbose mode for HTTPS operations with verbose={}",
-        verbose
-    )
 }
