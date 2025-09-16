@@ -3532,6 +3532,7 @@ pub fn ffffrw_safer(
 }
 
 /*---------------------------------------------------------------------------*/
+///  Setup iterator column and parser information to be ready to compute temporary calculator expression
 fn fits_parser_set_temporary_col(
     lParse: &mut ParseData,
     Info: &mut parseInfo,
@@ -3539,17 +3540,14 @@ fn fits_parser_set_temporary_col(
     nulval: *mut c_void,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        /* Setup iterator column and parser information to be ready to compute
-        temporary calculator expression */
-
+        
         if *status != 0 {
             return *status;
         }
 
         let col_cnt: c_int = lParse.nCols;
 
-        if fits_parser_allocateCol(lParse, col_cnt, unsafe { &mut *status }) != 0 {
+        if fits_parser_allocateCol(lParse, col_cnt,  status ) != 0 {
             return *status;
         }
 
@@ -3572,7 +3570,6 @@ fn fits_parser_set_temporary_col(
         lParse.nCols += 1;
 
         0
-    }
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4040,9 +4037,8 @@ pub fn fits_pixel_filter_safer(
                     status,
                 ) != 0
                 {
-                    unsafe {
                         int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
-                    }
+                    
                     ffpmsg_slice(&msg);
                     ffcprs(&mut lParse);
                     return *status;
@@ -4060,14 +4056,12 @@ pub fn fits_pixel_filter_safer(
                 } else if fits_write_record(unsafe { outfptr.as_mut().unwrap() }, &card, status)
                     != 0
                 {
-                    unsafe {
                         int_snprintf!(
                             &mut msg,
                             256,
                             "pixel_filter: unable to write keycard [{}]",
                             *status,
                         );
-                    }
                     ffpmsg_slice(&msg);
                     ffcprs(&mut lParse);
                     return *status;
@@ -4098,14 +4092,12 @@ pub fn fits_pixel_filter_safer(
             }
 
             _ => {
-                unsafe {
                     int_snprintf!(
                         &mut msg,
                         256,
                         "pixel_filter: unexpected output bitpix {}",
                         bitpix,
                     );
-                }
                 ffpmsg_slice(&msg);
                 *status = P_ERROR;
                 ffcprs(&mut lParse);
@@ -4120,7 +4112,7 @@ pub fn fits_pixel_filter_safer(
                 let mut tstatus: c_int = 0;
                 if fits_read_key_lng(
                     unsafe { infptr.as_mut().unwrap() },
-                    unsafe { cs!(c"BLANK") },
+                     cs!(c"BLANK") ,
                     &mut null_val,
                     None,
                     &mut tstatus,
@@ -4183,7 +4175,7 @@ pub fn fits_pixel_filter_safer(
             info.maxRows = -1;
             info.parseData = &mut lParse;
 
-            if unsafe {
+            if  {
                 let colData_slice = &mut lParse.colData[..];
                 ffiter_safe(
                     lParse.nCols,
@@ -4206,9 +4198,9 @@ pub fn fits_pixel_filter_safer(
                 if write_blank_kwd != 0 {
                     fits_update_key_lng(
                         unsafe { outfptr.as_mut().unwrap() },
-                        unsafe { cs!(c"BLANK") },
+                         cs!(c"BLANK") ,
                         filter.blank as LONGLONG,
-                        Some(unsafe { cs!(c"NULL pixel value") }),
+                        Some( cs!(c"NULL pixel value") ),
                         status,
                     );
                     if *status != 0 {
@@ -4409,13 +4401,13 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
 
             colnum = -1;
-            for i in 0..unsafe { (*lParse.pixFilter).count } {
-                if fits_strcasecmp(colName, unsafe {
+            for i in 0..(*lParse.pixFilter).count  {
+                if fits_strcasecmp(colName, 
                     std::slice::from_raw_parts(
                         (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
                         strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
                     )
-                }) == 0
+                ) == 0
                 {
                     colnum = i;
                 }
@@ -4442,19 +4434,19 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             varInfo = &mut lParse.varData[col_cnt as usize];
             colIter = &mut lParse.colData[col_cnt as usize];
 
-            fptr = unsafe {
+            fptr = 
                 (*lParse.pixFilter)
                     .ifptr
                     .wrapping_add(colnum as usize)
                     .read()
-            };
+            ;
 
             fits_get_img_param(
-                unsafe { &mut *fptr },
+                 &mut *fptr ,
                 MAXDIMS,
                 Some(&mut typecode), /* actually bitpix */
-                Some(unsafe { &mut varInfo.naxis }),
-                Some(unsafe { &mut varInfo.naxes }),
+                Some(&mut varInfo.naxis ),
+                Some(&mut varInfo.naxes ),
                 &mut status,
             );
 
@@ -4463,7 +4455,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
 
             if set_image_col_types(
                 &mut lParse.status,
-                unsafe { &mut *fptr },
+                 &mut *fptr ,
                 colName,
                 typecode,
                 &mut *varInfo,
@@ -4479,7 +4471,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             if lParse.compressed != 0 {
                 colnum = lParse.valCol;
             } else if fits_get_colnum(
-                unsafe { &mut *fptr },
+                &mut *fptr ,
                 CASEINSEN.try_into().unwrap(),
                 colName,
                 &mut colnum,
@@ -4498,7 +4490,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
 
             if fits_get_coltype(
-                unsafe { &mut *fptr },
+                 &mut *fptr ,
                 colnum,
                 Some(&mut typecode),
                 Some(&mut repeat),
@@ -4541,7 +4533,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     int_snprintf!(&mut temp, 80, "TZERO{}", colnum,);
                     istatus = 0;
                     if fits_read_key_dbl(
-                        unsafe { &mut *fptr },
+                         &mut *fptr ,
                         &temp,
                         &mut tzero,
                         None,
@@ -4553,7 +4545,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     int_snprintf!(&mut temp, 80, "TSCAL{}", colnum,);
                     istatus = 0;
                     if fits_read_key_dbl(
-                        unsafe { &mut *fptr },
+                         &mut *fptr ,
                         &temp,
                         &mut tscale,
                         None,
@@ -4630,11 +4622,11 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             colIter.repeat = 0; /* ffiter() will fill in this value */
             if repeat > 1 && typecode != TSTRING {
                 if fits_read_tdim(
-                    unsafe { &mut *fptr },
+                     &mut *fptr ,
                     colnum,
                     MAXDIMS,
-                    unsafe { &mut varInfo.naxis },
-                    unsafe { &mut varInfo.naxes },
+                     &mut varInfo.naxis ,
+                     &mut varInfo.naxes ,
                     &mut status,
                 ) != 0
                 {
