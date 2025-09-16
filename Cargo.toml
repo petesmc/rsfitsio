@@ -38,7 +38,7 @@ name = "cookbook_expanded_rust"
 test = true
 
 [features]
-default = ["bzip2"]
+default = ["bzip2", "shared_mem"]
 bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
 net_services = []

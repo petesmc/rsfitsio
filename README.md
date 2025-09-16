@@ -24,3 +24,7 @@ All other 662 C API functions from cfitsio are available.
 [cfitsio Homepage](https://heasarc.gsfc.nasa.gov/fitsio/)
 
 [Fits File Standard](https://fits.gsfc.nasa.gov/fits_standard.html)
+
+## Non-Goals
+
+- VAX / VMS / ALPHA Support

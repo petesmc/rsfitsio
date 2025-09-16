@@ -91,7 +91,7 @@ pub fn main() -> ExitCode {
     for _ in 0..rawloop {
         match buff_reader.read_exact(&mut buffer) {
             Ok(_) => {}
-            Err(e) => {
+            Err(_e) => {
                 println!("read error");
             }
         }

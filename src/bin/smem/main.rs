@@ -11,11 +11,11 @@ use std::{ffi::CStr, process::ExitCode};
 pub fn main() -> ExitCode {
     let mut cmdok: bool = true;
     let mut listmode: bool = false;
-    let mut longlistmode: bool = false;
+    let _longlistmode: bool;
     let mut recovermode: bool = false;
     let mut deletemode: bool = false;
     let mut id: c_int = -1;
-    let mut status: c_int = 0;
+    let mut status: c_int;
 
     let args = std::env::args();
     let args: Vec<String> = args.collect();
@@ -32,7 +32,7 @@ pub fn main() -> ExitCode {
                 let a1 = CString::new(args[1].as_str()).unwrap().as_c_str().as_ptr();
 
                 if 0 == strcmp(c"-l".as_ptr(), a1) {
-                    longlistmode = true;
+                    _longlistmode = true;
                 } else if 0 == strcmp(c"-r".as_ptr(), a1) {
                     recovermode = true;
                 } else if 0 == strcmp(c"-d".as_ptr(), a1) {

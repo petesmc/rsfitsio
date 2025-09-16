@@ -6514,14 +6514,14 @@ pub fn fits_get_token_safe(
     unsafe {
         *token = 0;
 
-        while (input_str[0] == b' ') {
+        while input_str[0] == b' ' {
             /* skip over leading blanks */
             ptr_idx += 1;
             input_str = &input_str[1..];
         }
 
         slen = strcspn_safe(cast_slice(input_str), delimiter) as usize; /* length of next token */
-        if (slen != 0) {
+        if slen != 0 {
             strncat(token, input_str.as_ptr(), slen); /* copy token */
 
             ptr_idx += slen; /* skip over the token */
@@ -6531,12 +6531,12 @@ pub fn fits_get_token_safe(
             if let Some(isanumber) = isanumber {
                 *isanumber = 1;
 
-                if (!strchr(token, b'D' as c_int).is_null()) {
+                if !strchr(token, b'D' as c_int).is_null() {
                     strncpy(tval.as_mut_ptr(), token, 72);
                     tval[72] = 0;
 
                     /*  The C language does not support a 'D'; replace with 'E' */
-                    let mut tmp_loc = strchr_safe(&tval, bb(b'D'));
+                    let tmp_loc = strchr_safe(&tval, bb(b'D'));
                     if let Some(tmp_loc) = tmp_loc
                         && tmp_loc != 0
                     {
@@ -6553,17 +6553,18 @@ pub fn fits_get_token_safe(
                 }
 
                 /* check for read error, or junk following the value */
-                if (loc != 0 && loc != bb(b' ')) {
+                if loc != 0 && loc != bb(b' ') {
                     *isanumber = 0;
                 }
-                if (errno().0 == ERANGE) {
+
+                if errno().0 == ERANGE {
                     *isanumber = 0;
                 }
             }
         }
     }
 
-    return (slen as c_int);
+    return slen as c_int;
 }
 
 /*--------------------------------------------------------------------------*/

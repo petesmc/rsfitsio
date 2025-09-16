@@ -923,19 +923,17 @@ fn yy_symbol_print(
     scanner: yyscan_t,
     lParse: &mut ParseData,
 ) {
-    unsafe {
-        eprint!(
-            "{} {} (",
-            if (yykind as usize) < YYNTOKENS {
-                "token"
-            } else {
-                "nterm"
-            },
-            yysymbol_name(yykind)
-        );
-        yy_symbol_value_print(yykind, yyvaluep, scanner, lParse);
-        eprintln!(")");
-    }
+    eprint!(
+        "{} {} (",
+        if (yykind as usize) < YYNTOKENS {
+            "token"
+        } else {
+            "nterm"
+        },
+        yysymbol_name(yykind)
+    );
+    yy_symbol_value_print(yykind, yyvaluep, scanner, lParse);
+    eprintln!(")");
 }
 
 /*------------------------------------------------------------------.
@@ -7908,18 +7906,14 @@ fn New_GTI(
         ffgcno_safe(
             fptr,
             0,
-            unsafe {
-                std::slice::from_raw_parts(start_str.as_ptr() as *const c_char, start_str.len())
-            },
+            std::slice::from_raw_parts(start_str.as_ptr() as *const c_char, start_str.len()),
             &mut startCol,
             &mut lParse.status,
         );
         ffgcno_safe(
             fptr,
             0,
-            unsafe {
-                std::slice::from_raw_parts(stop_str.as_ptr() as *const c_char, stop_str.len())
-            },
+            std::slice::from_raw_parts(stop_str.as_ptr() as *const c_char, stop_str.len()),
             &mut stopCol,
             &mut lParse.status,
         );
@@ -8023,7 +8017,7 @@ fn New_GTI(
                     1,
                     nrows as LONGLONG,
                     0.0,
-                    unsafe { std::slice::from_raw_parts_mut(startptr, nrows as usize) },
+                    std::slice::from_raw_parts_mut(startptr, nrows as usize),
                     Some(&mut i),
                     &mut lParse.status,
                 );
@@ -8034,7 +8028,7 @@ fn New_GTI(
                     1,
                     nrows as LONGLONG,
                     0.0,
-                    unsafe { std::slice::from_raw_parts_mut(stopptr, nrows as usize) },
+                    std::slice::from_raw_parts_mut(stopptr, nrows as usize),
                     Some(&mut i),
                     &mut lParse.status,
                 );
@@ -8112,7 +8106,7 @@ fn New_GTI(
         if samefile != 0 {
             ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
         } else {
-            ffclos_safer(unsafe { Box::from_raw(fptr) }, &mut lParse.status);
+            ffclos_safer(Box::from_raw(fptr), &mut lParse.status);
         }
         n
     }
@@ -8238,18 +8232,14 @@ fn New_REG(
                 ffgcno_safe(
                     fptr,
                     0,
-                    unsafe {
-                        std::slice::from_raw_parts(cX_str.as_ptr() as *const c_char, cX_str.len())
-                    },
+                    std::slice::from_raw_parts(cX_str.as_ptr() as *const c_char, cX_str.len()),
                     &mut Xcol,
                     &mut lParse.status,
                 );
                 ffgcno_safe(
                     fptr,
                     0,
-                    unsafe {
-                        std::slice::from_raw_parts(cY_str.as_ptr() as *const c_char, cY_str.len())
-                    },
+                    std::slice::from_raw_parts(cY_str.as_ptr() as *const c_char, cY_str.len()),
                     &mut Ycol,
                     &mut lParse.status,
                 );

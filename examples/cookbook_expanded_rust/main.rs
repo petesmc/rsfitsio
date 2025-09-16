@@ -1279,7 +1279,6 @@ fn read_binary_table() {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
     let mut hdutype: c_int = 0;
-    let mut nfound: c_int = 0;
     let frow: c_long = 1;
     let felem: c_long = 1;
     let nelem: c_long = 6;

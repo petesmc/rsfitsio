@@ -1167,7 +1167,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
         let mut m = MEM_TABLE.lock().unwrap();
 
         if strstr_safe(filename, cs!(c".Z")).is_some() {
-            let raw_file_handle = unsafe {
+            let raw_file_handle = {
                 use libc::fdopen;
                 let fd = diskfile.as_raw_fd();
 
@@ -1186,7 +1186,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
         } else if strstr_safe(filename, cs!(c".bz2")).is_some() {
             #[cfg(feature = "bzip2")]
             {
-                let raw_file_handle = unsafe {
+                let raw_file_handle = {
                     use libc::fdopen;
                     let fd = diskfile.as_raw_fd();
 

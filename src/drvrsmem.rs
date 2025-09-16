@@ -32,7 +32,7 @@ use crate::{
     wrappers::strcpy_safe,
 };
 
-const SHARED_MAXSEG: c_int = 16; /* maximum number of shared memory blocks */
+const SHARED_MAXSEG_VAL: c_int = 16; /* maximum number of shared memory blocks */
 
 const SHARED_KEYBASE: c_int = 14011963; /* base for shared memory keys, may be overriden by getenv */
 const SHARED_FDNAME: &CStr = c"/tmp/.shmem-lockfile"; /* template for lock file name */
@@ -155,33 +155,33 @@ struct DAL_SHM_SEGHEAD_STRUCT {
             no shmem segments remain, and last process terminates
 */
 
-static mut shared_maxseg: c_int = 0; /* max number of shared memory blocks */
-static mut shared_range: c_int = 0; /* max number of tried entries */
-static mut shared_fd: c_int = SHARED_INVALID; /* handle of global access lock file */
-static mut shared_gt_h: c_int = SHARED_INVALID; /* handle of global table segment */
+static mut SHARED_MAXSEG: c_int = 0; /* max number of shared memory blocks */
+static mut SHARED_RANGE: c_int = 0; /* max number of tried entries */
+static mut SHARED_FD: c_int = SHARED_INVALID; /* handle of global access lock file */
+static mut SHARED_GT_H: c_int = SHARED_INVALID; /* handle of global table segment */
 
-static mut shared_kbase: c_int = 0; /* base for shared memory handles */
-static mut shared_debug: bool = false; /* simple debugging tool, set to 0 to disable messages */
-static mut shared_create_mode: c_int = 0o666; /* permission flags for created objects */
-static mut shared_init_called: bool = false; /* flag whether shared_init() has been called, used for delayed init */
+static mut SHARED_KBASE: c_int = 0; /* base for shared memory handles */
+static mut SHARED_DEBUG: bool = false; /* simple debugging tool, set to 0 to disable messages */
+static mut SHARED_CREATE_MODE: c_int = 0o666; /* permission flags for created objects */
+static mut SHARED_INIT_CALLED: bool = false; /* flag whether shared_init() has been called, used for delayed init */
 
-static mut shared_gt: &mut [SHARED_GTAB] = &mut []; /* global table pointer */
-static mut shared_gt_ptr: *mut SHARED_GTAB = ptr::null_mut();
-static mut shared_lt: Vec<SHARED_LTAB> = Vec::new(); /* local table pointer */
+static mut SHARED_GT: &mut [SHARED_GTAB] = &mut []; /* global table pointer */
+static mut SHARED_GT_PTR: *mut SHARED_GTAB = ptr::null_mut();
+static mut SHARED_LT: Vec<SHARED_LTAB> = Vec::new(); /* local table pointer */
 
 unsafe fn shared_clear_entry(idx: usize) -> c_int /* unconditionally clear entry */ {
     unsafe {
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
-        shared_gt[idx].key = SHARED_INVALID; /* clear entries in global table */
-        shared_gt[idx].handle = SHARED_INVALID;
-        shared_gt[idx].sem = SHARED_INVALID;
-        shared_gt[idx].semkey = SHARED_INVALID;
-        shared_gt[idx].nprocdebug = 0;
-        shared_gt[idx].size = 0;
-        shared_gt[idx].attr = 0;
+        SHARED_GT[idx].key = SHARED_INVALID; /* clear entries in global table */
+        SHARED_GT[idx].handle = SHARED_INVALID;
+        SHARED_GT[idx].sem = SHARED_INVALID;
+        SHARED_GT[idx].semkey = SHARED_INVALID;
+        SHARED_GT[idx].nprocdebug = 0;
+        SHARED_GT[idx].size = 0;
+        SHARED_GT[idx].attr = 0;
 
         SHARED_OK
     }
@@ -194,18 +194,18 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
         let mut r2: c_int = 0;
         let filler: semun = semun { val: 0 };
 
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
         r2 = SHARED_OK;
         r = SHARED_OK;
 
-        if SHARED_INVALID != shared_gt[idx].sem {
-            r = semctl(shared_gt[idx].sem, 0, IPC_RMID, filler); /* destroy semaphore */
+        if SHARED_INVALID != SHARED_GT[idx].sem {
+            r = semctl(SHARED_GT[idx].sem, 0, IPC_RMID, filler); /* destroy semaphore */
         }
-        if SHARED_INVALID != shared_gt[idx].handle {
-            r2 = shmctl(shared_gt[idx].handle, IPC_RMID, std::ptr::null_mut()); /* destroy shared memory segment */
+        if SHARED_INVALID != SHARED_GT[idx].handle {
+            r2 = shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()); /* destroy shared memory segment */
         }
         if SHARED_OK == r {
             r = r2; /* accumulate error code in r, free r2 */
@@ -236,25 +236,25 @@ pub extern "C" fn shared_cleanup() {
 
         let mut ds: MaybeUninit<shmid_ds> = MaybeUninit::uninit();
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("shared_cleanup:");
         }
 
-        if !shared_lt.is_empty() {
-            if shared_debug {
+        if !SHARED_LT.is_empty() {
+            if SHARED_DEBUG {
                 print!(" deleting segments:");
             }
 
-            for i in 0..shared_maxseg {
-                if 0 == shared_lt[i as usize].tcnt {
+            for i in 0..SHARED_MAXSEG {
+                if 0 == SHARED_LT[i as usize].tcnt {
                     continue; /* we're not using this segment, skip this ... */
                 }
-                if -1 != shared_lt[i as usize].lkcnt {
+                if -1 != SHARED_LT[i as usize].lkcnt {
                     continue; /* seg not R/W locked by us, skip this ... */
                 }
 
                 r = shared_destroy_entry(i.try_into().unwrap()); /* destroy unconditionally sema & segment */
-                if shared_debug {
+                if SHARED_DEBUG {
                     if SHARED_OK == r {
                         print!(" [{i}]");
                     } else {
@@ -263,29 +263,29 @@ pub extern "C" fn shared_cleanup() {
                 }
             }
 
-            shared_lt = Vec::new(); /* free local table */
+            SHARED_LT = Vec::new(); /* free local table */
         }
 
         /* detach global index table */
-        if !shared_gt.len() == 0 {
+        if !SHARED_GT.len() == 0 {
             oktodelete = false;
             filelocked = false;
-            if shared_debug {
+            if SHARED_DEBUG {
                 print!(" detaching globalsharedtable");
             }
 
-            if SHARED_INVALID != shared_fd {
+            if SHARED_INVALID != SHARED_FD {
                 flk.l_type = F_WRLCK as c_short; /* lock whole lock file */
 
                 flk.l_whence = 0;
                 flk.l_start = 0;
-                flk.l_len = shared_maxseg as c_long;
+                flk.l_len = SHARED_MAXSEG as c_long;
 
-                if -1 != fcntl(shared_fd, F_SETLK, &mut flk) {
+                if -1 != fcntl(SHARED_FD, F_SETLK, &mut flk) {
                     filelocked = true; /* success, scan global table, to see if there are any segs */
                     segmentspresent = false; /* assume, there are no segs in the system */
-                    for j in 0..shared_maxseg {
-                        if SHARED_INVALID != shared_gt[j as usize].key {
+                    for j in 0..SHARED_MAXSEG {
+                        if SHARED_INVALID != SHARED_GT[j as usize].key {
                             segmentspresent = true; /* yes, there is at least one */
                             break;
                         }
@@ -294,7 +294,7 @@ pub extern "C" fn shared_cleanup() {
                     if !segmentspresent {
                         /* if there are no segs ... */
 
-                        if 0 == shmctl(shared_gt_h, IPC_STAT, ds.as_mut_ptr()) {
+                        if 0 == shmctl(SHARED_GT_H, IPC_STAT, ds.as_mut_ptr()) {
                             /* get number of processes attached to table */
 
                             let ds: shmid_ds = ds.assume_init();
@@ -307,42 +307,42 @@ pub extern "C" fn shared_cleanup() {
                 }
             }
 
-            unsafe { shmdt(shared_gt.as_ptr() as *const _) }; /* detach global table */
+            let _ = shmdt(SHARED_GT.as_ptr() as *const _); /* detach global table */
 
             /* delete global table from system, if no shm seg present */
             if oktodelete {
-                shmctl(shared_gt_h, IPC_RMID, ptr::null_mut()); /* there is a race condition here - time window between shmdt and shmctl */
-                shared_gt_h = SHARED_INVALID;
+                shmctl(SHARED_GT_H, IPC_RMID, ptr::null_mut()); /* there is a race condition here - time window between shmdt and shmctl */
+                SHARED_GT_H = SHARED_INVALID;
             }
 
-            shared_gt = &mut [];
+            SHARED_GT = &mut [];
 
             /* if we locked, we need to unlock */
             if filelocked {
                 flk.l_type = F_UNLCK.try_into().unwrap();
                 flk.l_whence = 0;
                 flk.l_start = 0;
-                flk.l_len = shared_maxseg.into();
-                fcntl(shared_fd, F_SETLK, &flk);
+                flk.l_len = SHARED_MAXSEG.into();
+                fcntl(SHARED_FD, F_SETLK, &flk);
             }
         }
-        shared_gt_h = SHARED_INVALID;
+        SHARED_GT_H = SHARED_INVALID;
 
         /* close lock file */
-        if SHARED_INVALID != shared_fd {
-            if shared_debug {
+        if SHARED_INVALID != SHARED_FD {
+            if SHARED_DEBUG {
                 print!(" closing lockfile");
             }
-            close(shared_fd);
-            shared_fd = SHARED_INVALID;
+            close(SHARED_FD);
+            SHARED_FD = SHARED_INVALID;
         }
 
-        shared_kbase = 0;
-        shared_maxseg = 0;
-        shared_range = 0;
-        shared_init_called = false;
+        SHARED_KBASE = 0;
+        SHARED_MAXSEG = 0;
+        SHARED_RANGE = 0;
+        SHARED_INIT_CALLED = false;
 
-        if shared_debug {
+        if SHARED_DEBUG {
             println!(" <<done>>");
         }
     }
@@ -362,56 +362,56 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
         let mut p: *mut c_char = ptr::null_mut();
         let mut oldumask: mode_t = 0;
 
-        shared_init_called = true; /* tell everybody no need to call us for the 2nd time */
-        shared_debug = debug_msgs != 0; /* set required debug mode */
+        SHARED_INIT_CALLED = true; /* tell everybody no need to call us for the 2nd time */
+        SHARED_DEBUG = debug_msgs != 0; /* set required debug mode */
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("shared_init:");
         }
 
-        shared_kbase = 0; /* adapt to current env. settings */
+        SHARED_KBASE = 0; /* adapt to current env. settings */
         p = getenv(SHARED_ENV_KEYBASE.as_ptr());
 
         if !p.is_null() {
-            shared_kbase = atoi(p);
+            SHARED_KBASE = atoi(p);
         }
 
-        if 0 == shared_kbase {
-            shared_kbase = SHARED_KEYBASE;
+        if 0 == SHARED_KBASE {
+            SHARED_KBASE = SHARED_KEYBASE;
         }
 
-        if shared_debug {
-            let skb = shared_kbase;
+        if SHARED_DEBUG {
+            let skb = SHARED_KBASE;
             print!(" keybase={}", skb);
         }
 
-        shared_maxseg = 0;
+        SHARED_MAXSEG = 0;
 
         (p = getenv(SHARED_ENV_MAXSEG.as_ptr()));
 
         if !p.is_null() {
-            shared_maxseg = atoi(p);
+            SHARED_MAXSEG = atoi(p);
         }
 
-        if 0 == shared_maxseg {
-            shared_maxseg = SHARED_MAXSEG;
+        if 0 == SHARED_MAXSEG {
+            SHARED_MAXSEG = SHARED_MAXSEG_VAL;
         }
 
-        if shared_debug {
-            let sms = shared_maxseg;
+        if SHARED_DEBUG {
+            let sms = SHARED_MAXSEG;
             print!(" maxseg={}", sms);
         }
 
-        shared_range = 3 * shared_maxseg;
+        SHARED_RANGE = 3 * SHARED_MAXSEG;
 
         /* create rw locking file (this file is never deleted) */
-        if SHARED_INVALID == shared_fd {
-            if shared_debug {
+        if SHARED_INVALID == SHARED_FD {
+            if SHARED_DEBUG {
                 print!(" lockfileinit=");
             }
 
-            let skb = shared_kbase;
-            let sms = shared_maxseg;
+            let skb = SHARED_KBASE;
+            let sms = SHARED_MAXSEG;
             int_snprintf!(
                 buf,
                 1000,
@@ -423,117 +423,117 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
 
             oldumask = umask(0);
 
-            shared_fd = open(
+            SHARED_FD = open(
                 buf.as_ptr(),
                 O_TRUNC | O_EXCL | O_CREAT | O_RDWR,
-                shared_create_mode,
+                SHARED_CREATE_MODE,
             );
 
             umask(oldumask);
 
             /* or just open rw locking file, in case it already exists */
-            if SHARED_INVALID == shared_fd {
-                shared_fd = open(buf.as_mut_ptr(), O_TRUNC | O_RDWR, shared_create_mode);
+            if SHARED_INVALID == SHARED_FD {
+                SHARED_FD = open(buf.as_mut_ptr(), O_TRUNC | O_RDWR, SHARED_CREATE_MODE);
 
-                if SHARED_INVALID == shared_fd {
+                if SHARED_INVALID == SHARED_FD {
                     return SHARED_NOFILE;
                 }
 
-                if shared_debug {
+                if SHARED_DEBUG {
                     print!("slave");
                 }
-            } else if shared_debug {
+            } else if SHARED_DEBUG {
                 print!("master");
             }
         }
 
         /* global table not attached, try to create it in shared memory */
-        if SHARED_INVALID == shared_gt_h {
-            if shared_debug {
+        if SHARED_INVALID == SHARED_GT_H {
+            if SHARED_DEBUG {
                 print!(" globalsharedtableinit=");
             }
 
-            shared_gt_h = shmget(
-                shared_kbase,
-                (shared_maxseg * size_of::<SHARED_GTAB>() as c_int)
+            SHARED_GT_H = shmget(
+                SHARED_KBASE,
+                (SHARED_MAXSEG * size_of::<SHARED_GTAB>() as c_int)
                     .try_into()
                     .unwrap(),
-                IPC_CREAT | IPC_EXCL | shared_create_mode,
+                IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE,
             ); /* try open as a master */
 
             /* if failed, try to open as a slave */
-            if SHARED_INVALID == shared_gt_h {
-                let segment_size_bytes = (shared_maxseg * size_of::<SHARED_GTAB>() as c_int)
+            if SHARED_INVALID == SHARED_GT_H {
+                let segment_size_bytes = (SHARED_MAXSEG * size_of::<SHARED_GTAB>() as c_int)
                     .try_into()
                     .unwrap();
 
-                shared_gt_h = shmget(shared_kbase, segment_size_bytes, shared_create_mode);
+                SHARED_GT_H = shmget(SHARED_KBASE, segment_size_bytes, SHARED_CREATE_MODE);
 
-                if SHARED_INVALID == shared_gt_h {
+                if SHARED_INVALID == SHARED_GT_H {
                     return SHARED_IPCERR; /* means deleted ID residing in system, shared mem unusable ... */
                 }
 
-                shared_gt_ptr = unsafe { shmat(shared_gt_h, ptr::null(), 0) } as *mut SHARED_GTAB; /* attach segment */
+                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
 
-                if (SHARED_INVALID as *mut SHARED_GTAB) == shared_gt_ptr {
+                if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
                     return SHARED_IPCERR;
                 }
 
-                shared_gt = slice::from_raw_parts_mut(shared_gt_ptr, shared_maxseg as usize);
+                SHARED_GT = slice::from_raw_parts_mut(SHARED_GT_PTR, SHARED_MAXSEG as usize);
 
-                if shared_debug {
+                if SHARED_DEBUG {
                     print!("slave");
                 }
             } else {
-                shared_gt_ptr = unsafe { shmat(shared_gt_h, ptr::null(), 0) } as *mut SHARED_GTAB; /* attach segment */
+                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
 
-                if (SHARED_INVALID as *mut SHARED_GTAB) == shared_gt_ptr {
+                if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
                     return SHARED_IPCERR;
                 }
 
-                shared_gt = slice::from_raw_parts_mut(shared_gt_ptr, shared_maxseg as usize);
+                SHARED_GT = slice::from_raw_parts_mut(SHARED_GT_PTR, SHARED_MAXSEG as usize);
 
-                for i in 0..shared_maxseg {
+                for i in 0..SHARED_MAXSEG {
                     shared_clear_entry(i.try_into().unwrap()); /* since we are master, init data */
                 }
 
-                if shared_debug {
+                if SHARED_DEBUG {
                     print!("master");
                 }
             }
         }
 
         /* initialize local table */
-        if shared_lt.is_empty() {
-            if shared_debug {
+        if SHARED_LT.is_empty() {
+            if SHARED_DEBUG {
                 print!(" localtableinit=");
             }
 
             let mut v = Vec::new();
 
-            if v.try_reserve_exact(shared_maxseg as usize).is_err() {
+            if v.try_reserve_exact(SHARED_MAXSEG as usize).is_err() {
                 return SHARED_NOMEM; /* not enough memory to allocate local table */
             } else {
-                v.resize(shared_maxseg as usize, SHARED_LTAB::default());
+                v.resize(SHARED_MAXSEG as usize, SHARED_LTAB::default());
             }
 
-            for i in 0..shared_maxseg as usize {
+            for i in 0..SHARED_MAXSEG as usize {
                 v[i].p = None; /* not mapped */
                 v[i].tcnt = 0; /* unused (or zero threads using this seg) */
                 v[i].lkcnt = 0; /* segment is unlocked */
                 v[i].seekpos = 0; /* r/w pointer at the beginning of file */
             }
 
-            shared_lt = v;
+            SHARED_LT = v;
 
-            if shared_debug {
+            if SHARED_DEBUG {
                 print!("ok");
             }
         }
 
         atexit(shared_cleanup); /* we want shared_cleanup to be called at exit or abort */
 
-        if shared_debug {
+        if SHARED_DEBUG {
             println!(" <<done>>");
         }
 
@@ -549,11 +549,11 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
 
-        if shared_gt.is_empty() {
+        if SHARED_GT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -561,16 +561,16 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        for i in 0..shared_maxseg {
+        for i in 0..SHARED_MAXSEG {
             if -1 != id && i != id {
                 continue;
             }
 
-            if shared_lt[i as usize].tcnt != 0 {
+            if SHARED_LT[i as usize].tcnt != 0 {
                 continue; /* somebody (we) is using it */
             }
 
-            if SHARED_INVALID == shared_gt[i as usize].key {
+            if SHARED_INVALID == SHARED_GT[i as usize].key {
                 continue; /* unused slot */
             }
 
@@ -578,16 +578,16 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
                 continue; /* acquire exclusive access to segment, but do not wait */
             }
 
-            r2 = shared_process_count(shared_gt[i as usize].sem);
-            if (shared_gt[i as usize].nprocdebug > r2) || (0 == r2) {
-                if shared_debug {
+            r2 = shared_process_count(SHARED_GT[i as usize].sem);
+            if (SHARED_GT[i as usize].nprocdebug > r2) || (0 == r2) {
+                if SHARED_DEBUG {
                     print!(
                         "Bogus handle={} nproc={} sema={}:",
-                        i, shared_gt[i as usize].nprocdebug, r2,
+                        i, SHARED_GT[i as usize].nprocdebug, r2,
                     );
                 }
                 r = shared_destroy_entry(i.try_into().unwrap());
-                if shared_debug {
+                if SHARED_DEBUG {
                     print!(
                         "{}",
                         if r != 0 {
@@ -620,18 +620,18 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
         let mut r: c_int = 0;
 
         /* delayed initialization */
-        if !shared_init_called {
+        if !SHARED_INIT_CALLED {
             r = shared_init(0);
             if SHARED_OK != r {
                 return r;
             }
         }
 
-        if SHARED_INVALID == shared_fd {
+        if SHARED_INVALID == SHARED_FD {
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
@@ -644,13 +644,13 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
         flk.l_start = idx as c_long;
         flk.l_len = 1;
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!(" [mux ({idx}): ");
         }
 
         if -1
             == fcntl(
-                shared_fd,
+                SHARED_FD,
                 if (mode & SHARED_NOWAIT) != 0 {
                     F_SETLK
                 } else {
@@ -663,13 +663,13 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
 
             match errno {
                 EAGAIN | EACCES => {
-                    if shared_debug {
+                    if SHARED_DEBUG {
                         print!("again]");
                     }
                     return SHARED_AGAIN;
                 }
                 _ => {
-                    if shared_debug {
+                    if SHARED_DEBUG {
                         print!("err]");
                     }
                     return SHARED_IPCERR;
@@ -677,7 +677,7 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
             }
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("ok]");
         }
 
@@ -696,11 +696,11 @@ unsafe fn shared_demux(idx: usize, mode: c_int) -> c_int /* free exclusive acces
             l_pid: 0,
         };
 
-        if SHARED_INVALID == shared_fd {
+        if SHARED_INVALID == SHARED_FD {
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
@@ -709,22 +709,22 @@ unsafe fn shared_demux(idx: usize, mode: c_int) -> c_int /* free exclusive acces
         flk.l_start = idx as c_long;
         flk.l_len = 1;
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!(" [demux ({idx}): ");
         }
 
-        if -1 == fcntl(shared_fd, F_SETLKW, &flk) {
+        if -1 == fcntl(SHARED_FD, F_SETLKW, &flk) {
             let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
 
             match errno {
                 EAGAIN | EACCES => {
-                    if shared_debug {
+                    if SHARED_DEBUG {
                         print!("again]");
                     }
                     return SHARED_AGAIN;
                 }
                 _ => {
-                    if shared_debug {
+                    if SHARED_DEBUG {
                         print!("err]");
                     }
                     return SHARED_IPCERR;
@@ -732,7 +732,7 @@ unsafe fn shared_demux(idx: usize, mode: c_int) -> c_int /* free exclusive acces
             }
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("mode={mode} ok]");
         }
 
@@ -773,7 +773,7 @@ unsafe fn shared_delta_process(sem: c_int, delta: c_int) -> c_int /* change numb
 
 unsafe fn shared_attach_process(sem: c_int) -> c_int {
     unsafe {
-        if shared_debug {
+        if SHARED_DEBUG {
             print!(" [attach process]");
         }
         shared_delta_process(sem, 1)
@@ -782,7 +782,7 @@ unsafe fn shared_attach_process(sem: c_int) -> c_int {
 
 unsafe fn shared_detach_process(sem: c_int) -> c_int {
     unsafe {
-        if shared_debug {
+        if SHARED_DEBUG {
             print!(" [detach process]");
         }
         shared_delta_process(sem, -1)
@@ -794,11 +794,11 @@ unsafe fn shared_detach_process(sem: c_int) -> c_int {
 unsafe fn shared_get_free_entry(newhandle: c_int) -> c_int /* get newhandle, or -1, entry is set rw locked */
 {
     unsafe {
-        if shared_gt.is_empty() {
+        if SHARED_GT.is_empty() {
             return -1; /* not initialized */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return -1; /* not initialized */
         }
 
@@ -806,11 +806,11 @@ unsafe fn shared_get_free_entry(newhandle: c_int) -> c_int /* get newhandle, or 
             return -1;
         }
 
-        if newhandle >= shared_maxseg {
+        if newhandle >= SHARED_MAXSEG {
             return -1;
         }
 
-        if !shared_lt.is_empty() && shared_lt[newhandle as usize].tcnt != 0 {
+        if !SHARED_LT.is_empty() && SHARED_LT[newhandle as usize].tcnt != 0 {
             return -1; /* somebody (we) is using it */
         }
 
@@ -822,13 +822,13 @@ unsafe fn shared_get_free_entry(newhandle: c_int) -> c_int /* get newhandle, or 
             return -1; /* used by others */
         }
 
-        if SHARED_INVALID == shared_gt[newhandle as usize].key {
+        if SHARED_INVALID == SHARED_GT[newhandle as usize].key {
             return newhandle; /* we have found free slot, lock it and return index */
         }
 
         shared_demux(newhandle.try_into().unwrap(), SHARED_RDWRITE);
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("[free_entry - ERROR - entry unusable]");
         }
         -1 /* table full */
@@ -841,8 +841,8 @@ unsafe fn shared_get_hash(size: c_int, idx: usize) -> c_int {
         static mut COUNTER: c_int = 0;
         let mut hash: c_int = 0;
 
-        hash = (COUNTER + size * idx as c_int) % shared_range;
-        COUNTER = (COUNTER + 1) % shared_range;
+        hash = (COUNTER + size * idx as c_int) % SHARED_RANGE;
+        COUNTER = (COUNTER + 1) % SHARED_RANGE;
         hash
     }
 }
@@ -866,14 +866,14 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 
     unsafe {
         /* delayed initialization */
-        if !shared_init_called {
+        if !SHARED_INIT_CALLED {
             r = shared_init(0);
             if SHARED_OK != r {
                 return r;
             }
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("malloc (size = {size}, mode = {mode}):");
         }
 
@@ -886,23 +886,23 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
             return SHARED_INVALID;
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!(" idx={idx}");
         }
 
         i = 0;
         loop {
             /* table full, signal error & exit */
-            if i >= shared_range {
+            if i >= SHARED_RANGE {
                 shared_demux(idx.try_into().unwrap(), SHARED_RDWRITE);
                 return SHARED_INVALID;
             }
 
-            key = shared_kbase
+            key = SHARED_KBASE
                 + ((i + shared_get_hash(size.try_into().unwrap(), idx.try_into().unwrap()))
-                    % shared_range);
+                    % SHARED_RANGE);
 
-            if shared_debug {
+            if SHARED_DEBUG {
                 print!(" key={key}");
             }
 
@@ -911,10 +911,10 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
                 shared_adjust_size(size.try_into().unwrap())
                     .try_into()
                     .unwrap(),
-                IPC_CREAT | IPC_EXCL | shared_create_mode,
+                IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE,
             );
 
-            if shared_debug {
+            if SHARED_DEBUG {
                 print!(" handle={h}");
             }
 
@@ -925,7 +925,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 
             let bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD; /* try attach */
 
-            if shared_debug {
+            if SHARED_DEBUG {
                 print!(" p={bp:p}");
             }
 
@@ -936,21 +936,21 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
                 continue;
             } /* now create semaphor counting number of processes attached */
 
-            shared_gt[idx as usize].sem = semget(key, 1, IPC_CREAT | IPC_EXCL | shared_create_mode);
-            if SHARED_INVALID == shared_gt[idx as usize].sem {
+            SHARED_GT[idx as usize].sem = semget(key, 1, IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE);
+            if SHARED_INVALID == SHARED_GT[idx as usize].sem {
                 shmdt(bp as *const c_void); /* cannot create segment, delete everything */
                 shmctl(h, IPC_RMID, ptr::null_mut());
                 i += 1;
                 continue; /* try with another key */
             }
 
-            if shared_debug {
-                print!(" sem={}", shared_gt[idx as usize].sem);
+            if SHARED_DEBUG {
+                print!(" sem={}", SHARED_GT[idx as usize].sem);
             }
 
             /* try attach process */
-            if shared_attach_process(shared_gt[idx as usize].sem) != 0 {
-                semctl(shared_gt[idx as usize].sem, 0, IPC_RMID, filler); /* destroy semaphore */
+            if shared_attach_process(SHARED_GT[idx as usize].sem) != 0 {
+                semctl(SHARED_GT[idx as usize].sem, 0, IPC_RMID, filler); /* destroy semaphore */
                 shmdt(bp as *const c_void); /* detach shared mem segment */
                 shmctl(h, IPC_RMID, std::ptr::null_mut()); /* destroy shared mem segment */
                 i += 1;
@@ -962,25 +962,25 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
             (*bp).ID[1] = SHARED_ID_1;
             (*bp).handle = idx; /* used in yorick */
 
-            if !shared_lt.is_empty() {
+            if !SHARED_LT.is_empty() {
                 if mode & SHARED_RESIZE != 0 {
-                    if unsafe { shmdt(bp as *const c_void) != 0 } {
+                    if shmdt(bp as *const c_void) != 0 {
                         r = SHARED_IPCERR; /* if segment is resizable, then detach segment */
                     }
-                    shared_lt[idx as usize].p = None;
+                    SHARED_LT[idx as usize].p = None;
                 } else {
-                    shared_lt[idx as usize].p = Some(bp);
+                    SHARED_LT[idx as usize].p = Some(bp);
                 }
 
-                shared_lt[idx as usize].tcnt = 1; /* one thread using segment */
-                shared_lt[idx as usize].lkcnt = 0; /* no locks at the moment */
-                shared_lt[idx as usize].seekpos = 0; /* r/w pointer positioned at beg of block */
-                shared_gt[idx as usize].handle = h; /* fill in data in global table */
-                shared_gt[idx as usize].size = size as c_int;
-                shared_gt[idx as usize].attr = mode as c_char;
-                shared_gt[idx as usize].semkey = key;
-                shared_gt[idx as usize].key = key;
-                shared_gt[idx as usize].nprocdebug = 0;
+                SHARED_LT[idx as usize].tcnt = 1; /* one thread using segment */
+                SHARED_LT[idx as usize].lkcnt = 0; /* no locks at the moment */
+                SHARED_LT[idx as usize].seekpos = 0; /* r/w pointer positioned at beg of block */
+                SHARED_GT[idx as usize].handle = h; /* fill in data in global table */
+                SHARED_GT[idx as usize].size = size as c_int;
+                SHARED_GT[idx as usize].attr = mode as c_char;
+                SHARED_GT[idx as usize].semkey = key;
+                SHARED_GT[idx as usize].key = key;
+                SHARED_GT[idx as usize].nprocdebug = 0;
             }
 
             break;
@@ -1013,24 +1013,24 @@ pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
         // let shared_lt = shared_lt.as_mut().unwrap();
 
         /* try attach process */
-        if shared_attach_process(shared_gt[idx].sem) != 0 {
-            shmdt(shared_lt[idx].p.unwrap() as *const c_void); /* cannot attach process, detach everything */
-            shared_lt[idx].p = None;
+        if shared_attach_process(SHARED_GT[idx].sem) != 0 {
+            shmdt(SHARED_LT[idx].p.unwrap() as *const c_void); /* cannot attach process, detach everything */
+            SHARED_LT[idx].p = None;
             shared_demux(idx, SHARED_RDWRITE);
             return SHARED_BADARG;
         }
 
-        shared_lt[idx].tcnt += 1; /* one more thread is using segment */
+        SHARED_LT[idx].tcnt += 1; /* one more thread is using segment */
 
         /* if resizeable, detach and return special pointer */
-        if shared_gt[idx].attr as c_int & SHARED_RESIZE != 0 {
-            if shmdt(shared_lt[idx].p.unwrap() as *const c_void) != 0 {
+        if SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
                 r = SHARED_IPCERR; /* if segment is resizable, then detach segment */
             }
-            shared_lt[idx].p = None;
+            SHARED_LT[idx].p = None;
         }
 
-        shared_lt[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
+        SHARED_LT[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
         r2 = shared_demux(idx, SHARED_RDWRITE);
         if r != 0 { r } else { r2 }
     }
@@ -1041,34 +1041,34 @@ unsafe fn shared_check_locked_index(idx: usize) -> c_int /* verify that given id
         let mut r: c_int = 0;
 
         /* delayed initialization */
-        if !shared_init_called {
+        if !SHARED_INIT_CALLED {
             r = shared_init(0);
             if SHARED_OK != r {
                 return r;
             }
         }
 
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_deref().unwrap();
 
-        if shared_lt[idx].p.is_none() {
+        if SHARED_LT[idx].p.is_none() {
             return SHARED_BADARG; /* NULL pointer, not attached ?? */
         }
 
-        if 0 == shared_lt[idx].lkcnt {
+        if 0 == SHARED_LT[idx].lkcnt {
             return SHARED_BADARG; /* not locked ?? */
         }
 
-        if (SHARED_ID_0 != (*shared_lt[idx].p.unwrap()).ID[0])
-            || (SHARED_ID_1 != (*shared_lt[idx].p.unwrap()).ID[1])
-            || (BLOCK_SHARED != (*shared_lt[idx].p.unwrap()).tflag)
+        if (SHARED_ID_0 != (*SHARED_LT[idx].p.unwrap()).ID[0])
+            || (SHARED_ID_1 != (*SHARED_LT[idx].p.unwrap()).ID[1])
+            || (BLOCK_SHARED != (*SHARED_LT[idx].p.unwrap()).tflag)
         {
             /* invalid data in segment */
             return SHARED_BADARG;
@@ -1081,15 +1081,15 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
     unsafe {
         /* have to obtain excl. access before calling shared_map */
 
-        if (idx < 0) || (idx >= shared_maxseg.try_into().unwrap()) {
+        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
             return SHARED_BADARG;
         }
 
-        if SHARED_INVALID == shared_gt[idx].key {
+        if SHARED_INVALID == SHARED_GT[idx].key {
             return SHARED_BADARG;
         }
 
-        let h: c_int = shmget(shared_gt[idx].key, 1, shared_create_mode);
+        let h: c_int = shmget(SHARED_GT[idx].key, 1, SHARED_CREATE_MODE);
 
         if SHARED_INVALID == h {
             return SHARED_BADARG;
@@ -1103,25 +1103,25 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
         if (SHARED_ID_0 != (*bp).ID[0])
             || (SHARED_ID_1 != (*bp).ID[1])
             || (BLOCK_SHARED != (*bp).tflag)
-            || (h != shared_gt[idx].handle)
+            || (h != SHARED_GT[idx].handle)
         {
             shmdt(bp as *const c_void); /* invalid segment, detach everything */
             return SHARED_BADARG;
         }
 
         /* check if sema is still there */
-        if shared_gt[idx].sem != semget(shared_gt[idx].semkey, 1, shared_create_mode) {
+        if SHARED_GT[idx].sem != semget(SHARED_GT[idx].semkey, 1, SHARED_CREATE_MODE) {
             shmdt(bp as *const c_void); /* cannot attach semaphore, detach everything */
             return SHARED_BADARG;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        shared_lt[idx].p = Some(bp); /* store pointer to shmem data */
+        SHARED_LT[idx].p = Some(bp); /* store pointer to shmem data */
         SHARED_OK
     }
 }
@@ -1135,13 +1135,13 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
             return r; /* idx checked by shared_mux */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if shared_lt[idx].p.is_none() {
+        if SHARED_LT[idx].p.is_none() {
             r = shared_map(idx);
             if SHARED_OK != r {
                 shared_demux(idx, mode);
@@ -1149,9 +1149,9 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
             }
         }
 
-        if (SHARED_ID_0 != (*shared_lt[idx].p.unwrap()).ID[0])
-            || (SHARED_ID_1 != (*shared_lt[idx].p.unwrap()).ID[1])
-            || (BLOCK_SHARED != (*shared_lt[idx].p.unwrap()).tflag)
+        if (SHARED_ID_0 != (*SHARED_LT[idx].p.unwrap()).ID[0])
+            || (SHARED_ID_1 != (*SHARED_LT[idx].p.unwrap()).ID[1])
+            || (BLOCK_SHARED != (*SHARED_LT[idx].p.unwrap()).tflag)
         {
             shared_demux(idx, mode);
             return r;
@@ -1182,39 +1182,39 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
             return ptr::null();
         }
 
-        if 0 == (shared_gt[idx].attr as c_int & SHARED_RESIZE) {
+        if 0 == (SHARED_GT[idx].attr as c_int & SHARED_RESIZE) {
             return ptr::null();
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return ptr::null(); /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if -1 != shared_lt[idx].lkcnt {
+        if -1 != SHARED_LT[idx].lkcnt {
             return ptr::null(); /* check for RW lock */
         }
 
-        if shared_adjust_size(shared_gt[idx].size.try_into().unwrap())
+        if shared_adjust_size(SHARED_GT[idx].size.try_into().unwrap())
             == shared_adjust_size(newsize.try_into().unwrap())
         {
-            shared_gt[idx].size = newsize;
+            SHARED_GT[idx].size = newsize;
 
-            return ((shared_lt[idx].p.unwrap()).add(1)) as SHARED_P;
+            return ((SHARED_LT[idx].p.unwrap()).add(1)) as SHARED_P;
         }
 
         loop {
-            if i >= shared_range {
+            if i >= SHARED_RANGE {
                 return ptr::null(); /* table full, signal error & exit */
             }
-            key = shared_kbase + ((i + shared_get_hash(newsize, idx)) % shared_range);
+            key = SHARED_KBASE + ((i + shared_get_hash(newsize, idx)) % SHARED_RANGE);
             h = shmget(
                 key,
                 shared_adjust_size(newsize.try_into().unwrap())
                     .try_into()
                     .unwrap(),
-                IPC_CREAT | IPC_EXCL | shared_create_mode,
+                IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE,
             );
             if SHARED_INVALID == h {
                 i += 1;
@@ -1230,35 +1230,35 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
                 continue;
             }
 
-            *bp = *(shared_lt[idx].p.unwrap()); /* copy header, then data */
+            *bp = *(SHARED_LT[idx].p.unwrap()); /* copy header, then data */
 
-            transfersize = if newsize < shared_gt[idx].size {
+            transfersize = if newsize < SHARED_GT[idx].size {
                 newsize.into()
             } else {
-                shared_gt[idx].size.into()
+                SHARED_GT[idx].size.into()
             };
 
             if transfersize > 0 {
                 memcpy(
                     bp.add(1) as *mut c_void,
-                    (shared_lt[idx].p.unwrap()).add(1) as *const c_void,
+                    (SHARED_LT[idx].p.unwrap()).add(1) as *const c_void,
                     transfersize.try_into().unwrap(),
                 );
             }
 
-            if shmdt(shared_lt[idx].p.unwrap() as *const c_void) != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
                 r = SHARED_IPCERR; /* try to detach old segment */
             }
 
-            if shmctl(shared_gt[idx].handle, IPC_RMID, std::ptr::null_mut()) != 0 && SHARED_OK == r
+            if shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()) != 0 && SHARED_OK == r
             {
                 r = SHARED_IPCERR; /* destroy old shared memory segment */
             }
 
-            shared_gt[idx].size = newsize; /* signal new size */
-            shared_gt[idx].handle = h; /* signal new handle */
-            shared_gt[idx].key = key; /* signal new key */
-            shared_lt[idx].p = Some(bp);
+            SHARED_GT[idx].size = newsize; /* signal new size */
+            SHARED_GT[idx].handle = h; /* signal new handle */
+            SHARED_GT[idx].key = key; /* signal new key */
+            SHARED_LT[idx].p = Some(bp);
             break;
         }
 
@@ -1279,7 +1279,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
             return r;
         }
 
-        r = shared_detach_process(shared_gt[idx].sem);
+        r = shared_detach_process(SHARED_GT[idx].sem);
 
         /* update number of processes using segment */
         if SHARED_OK != r {
@@ -1287,27 +1287,27 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
             return r;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        shared_lt[idx].tcnt -= 1; /* update number of threads using segment */
+        SHARED_LT[idx].tcnt -= 1; /* update number of threads using segment */
 
-        if shared_lt[idx].tcnt > 0 {
+        if SHARED_LT[idx].tcnt > 0 {
             return shared_demux(idx, SHARED_RDWRITE); /* if more threads are using segment we are done */
         }
 
         /* if, we are the last thread, try to detach segment */
-        if shmdt(shared_lt[idx].p.unwrap() as *const c_void) != 0 {
+        if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
             shared_demux(idx, SHARED_RDWRITE);
             return SHARED_IPCERR;
         }
 
-        shared_lt[idx].p = None; /* clear entry in local table */
-        shared_lt[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
-        (cnt = shared_process_count(shared_gt[idx].sem));
+        SHARED_LT[idx].p = None; /* clear entry in local table */
+        SHARED_LT[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
+        (cnt = shared_process_count(SHARED_GT[idx].sem));
 
         /* get number of processes hanging on segment */
         if -1 == cnt {
@@ -1315,7 +1315,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
             return SHARED_IPCERR;
         }
 
-        if (0 == cnt) && (0 == (shared_gt[idx].attr as c_int & SHARED_PERSIST)) {
+        if (0 == cnt) && (0 == (SHARED_GT[idx].attr as c_int & SHARED_PERSIST)) {
             r = shared_destroy_entry(idx); /* no procs on seg, destroy it */
         }
 
@@ -1334,13 +1334,13 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
             return ptr::null(); /* idx checked by shared_mux */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return ptr::null(); /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if 0 != shared_lt[idx].lkcnt {
+        if 0 != SHARED_LT[idx].lkcnt {
             /* are we already locked ?? */
             r = shared_map(idx);
             if SHARED_OK != r {
@@ -1348,7 +1348,7 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
                 return ptr::null();
             }
         }
-        if shared_lt[idx].p.is_none() {
+        if SHARED_LT[idx].p.is_none() {
             /* stupid pointer ?? */
             r = shared_map(idx);
             if SHARED_OK != r {
@@ -1357,24 +1357,24 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
             }
         }
 
-        if (SHARED_ID_0 != (*shared_lt[idx].p.unwrap()).ID[0])
-            || (SHARED_ID_1 != (*shared_lt[idx].p.unwrap()).ID[1])
-            || (BLOCK_SHARED != (*shared_lt[idx].p.unwrap()).tflag)
+        if (SHARED_ID_0 != (*SHARED_LT[idx].p.unwrap()).ID[0])
+            || (SHARED_ID_1 != (*SHARED_LT[idx].p.unwrap()).ID[1])
+            || (BLOCK_SHARED != (*SHARED_LT[idx].p.unwrap()).tflag)
         {
             shared_demux(idx, mode);
             return ptr::null();
         }
 
         if (mode & SHARED_RDWRITE) != 0 {
-            shared_lt[idx].lkcnt = -1;
+            SHARED_LT[idx].lkcnt = -1;
 
-            shared_gt[idx].nprocdebug += 1;
+            SHARED_GT[idx].nprocdebug += 1;
         } else {
-            shared_lt[idx].lkcnt += 1;
+            SHARED_LT[idx].lkcnt += 1;
         }
 
-        shared_lt[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
-        (shared_lt[idx].p.unwrap().add(1)) as SHARED_P
+        SHARED_LT[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
+        (SHARED_LT[idx].p.unwrap().add(1)) as SHARED_P
     }
 }
 
@@ -1391,26 +1391,26 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
             return r;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if shared_lt[idx].lkcnt > 0 {
-            shared_lt[idx].lkcnt -= 1; /* unlock read lock */
+        if SHARED_LT[idx].lkcnt > 0 {
+            SHARED_LT[idx].lkcnt -= 1; /* unlock read lock */
             mode = SHARED_RDONLY;
         } else {
-            shared_lt[idx].lkcnt = 0; /* unlock write lock */
-            shared_gt[idx].nprocdebug -= 1;
+            SHARED_LT[idx].lkcnt = 0; /* unlock write lock */
+            SHARED_GT[idx].nprocdebug -= 1;
             mode = SHARED_RDWRITE;
         }
 
-        if 0 == shared_lt[idx].lkcnt && shared_gt[idx].attr as c_int & SHARED_RESIZE != 0 {
-            if shmdt(shared_lt[idx].p.unwrap() as *const c_void) != 0 {
+        if 0 == SHARED_LT[idx].lkcnt && SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
                 r = SHARED_IPCERR; /* segment is resizable, then detach segment */
             }
-            shared_lt[idx].p = None; /* signal detachment in local table */
+            SHARED_LT[idx].p = None; /* signal detachment in local table */
         }
         r2 = shared_demux(idx, mode); /* unlock segment, rest is only parameter checking */
         if r != 0 { r } else { r2 }
@@ -1427,7 +1427,7 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
             return SHARED_INVALID;
         }
 
-        let r: c_int = shared_gt[idx].attr as c_int;
+        let r: c_int = SHARED_GT[idx].attr as c_int;
 
         r
     }
@@ -1441,19 +1441,19 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
             return SHARED_INVALID;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if -1 != shared_lt[idx].lkcnt {
+        if -1 != SHARED_LT[idx].lkcnt {
             return SHARED_INVALID; /* ADDED - check for RW lock */
         }
 
-        let r: c_int = shared_gt[idx].attr as c_int;
+        let r: c_int = SHARED_GT[idx].attr as c_int;
 
-        shared_gt[idx].attr = newattr as u8;
+        SHARED_GT[idx].attr = newattr as u8;
         r
     }
 }
@@ -1461,9 +1461,9 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset debug mode */ {
     unsafe {
-        let r: c_int = shared_debug as c_int;
+        let r: c_int = SHARED_DEBUG as c_int;
 
-        shared_debug = mode != 0;
+        SHARED_DEBUG = mode != 0;
         r
     }
 }
@@ -1471,9 +1471,9 @@ pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset deb
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/reset debug mode */ {
     unsafe {
-        let r: c_int = shared_create_mode;
+        let r: c_int = SHARED_CREATE_MODE;
 
-        shared_create_mode = mode;
+        SHARED_CREATE_MODE = mode;
         r
     }
 }
@@ -1484,27 +1484,27 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
         let i: c_int = 0;
         let mut r: c_int = 0;
 
-        if shared_gt.is_empty() {
+        if SHARED_GT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("shared_list:");
         }
 
         r = SHARED_OK;
         println!(" Idx    Key   Nproc   Size   Flags");
         println!("==============================================");
-        for i in 0..shared_maxseg {
+        for i in 0..SHARED_MAXSEG {
             if -1 != id && i != id {
                 continue;
             }
 
-            if SHARED_INVALID == shared_gt[i as usize].key {
+            if SHARED_INVALID == SHARED_GT[i as usize].key {
                 continue; /* unused slot */
             }
 
@@ -1514,14 +1514,14 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                     print!(
                         "!{:3} {:08x} {:4}  {:8}",
                         i,
-                        shared_gt[i as usize].key as c_ulong,
-                        shared_gt[i as usize].nprocdebug,
-                        shared_gt[i as usize].size
+                        SHARED_GT[i as usize].key as c_ulong,
+                        SHARED_GT[i as usize].nprocdebug,
+                        SHARED_GT[i as usize].size
                     );
-                    if SHARED_RESIZE & shared_gt[i as usize].attr as c_int != 0 {
+                    if SHARED_RESIZE & SHARED_GT[i as usize].attr as c_int != 0 {
                         print!(" RESIZABLE");
                     }
-                    if SHARED_PERSIST & shared_gt[i as usize].attr as c_int != 0 {
+                    if SHARED_PERSIST & SHARED_GT[i as usize].attr as c_int != 0 {
                         print!(" PERSIST");
                     }
                     println!();
@@ -1530,14 +1530,14 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                     print!(
                         " {:3} {:08x} {:4}  {:8}",
                         i,
-                        shared_gt[i as usize].key as c_ulong,
-                        shared_gt[i as usize].nprocdebug,
-                        shared_gt[i as usize].size
+                        SHARED_GT[i as usize].key as c_ulong,
+                        SHARED_GT[i as usize].nprocdebug,
+                        SHARED_GT[i as usize].size
                     );
-                    if SHARED_RESIZE & shared_gt[i as usize].attr as c_int != 0 {
+                    if SHARED_RESIZE & SHARED_GT[i as usize].attr as c_int != 0 {
                         print!(" RESIZABLE");
                     }
-                    if SHARED_PERSIST & shared_gt[i as usize].attr as c_int != 0 {
+                    if SHARED_PERSIST & SHARED_GT[i as usize].attr as c_int != 0 {
                         print!(" PERSIST");
                     }
                     println!();
@@ -1546,7 +1546,7 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                 _ => continue,
             }
         }
-        if shared_debug {
+        if SHARED_DEBUG {
             println!(" done");
         }
         r /* table full */
@@ -1559,11 +1559,11 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
         let mut i: c_int = 0;
         let mut segname: [c_char; 10] = [0; 10];
 
-        if shared_gt.is_empty() {
+        if SHARED_GT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -1577,7 +1577,7 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
             return SHARED_BADARG;
         }
 
-        *address = (((shared_lt[i as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD).add(1))
+        *address = (((SHARED_LT[i as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD).add(1))
             as *mut c_char;
         /*  smem_close(i); */
         SHARED_OK
@@ -1590,20 +1590,20 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
         let i: c_int = 0;
         let mut r: c_int = 0;
 
-        if shared_gt.is_empty() {
+        if SHARED_GT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             print!("shared_uncond_delete:");
         }
 
         r = SHARED_OK;
-        for i in 0..shared_maxseg {
+        for i in 0..SHARED_MAXSEG {
             if -1 != id && i != id {
                 continue;
             }
@@ -1633,7 +1633,7 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
             }
         }
 
-        if shared_debug {
+        if SHARED_DEBUG {
             println!(" done");
         }
         r /* table full */
@@ -1648,8 +1648,8 @@ pub(crate) fn smem_init() -> c_int {
 
 pub(crate) fn smem_shutdown() -> c_int {
     unsafe {
-        if shared_init_called {
-            unsafe { shared_cleanup() };
+        if SHARED_INIT_CALLED {
+            shared_cleanup();
         }
         0
     }
@@ -1787,7 +1787,7 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
             return SHARED_BADARG;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -1795,7 +1795,7 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
 
         /* are we locked ? */
         if 0 == shared_check_locked_index(h.try_into().unwrap()) {
-            if -1 != shared_lt[h as usize].lkcnt
+            if -1 != SHARED_LT[h as usize].lkcnt
             /* are we locked RO ? */
             {
                 r = shared_unlock(h.try_into().unwrap());
@@ -1835,7 +1835,7 @@ pub(crate) fn smem_size(driverhandle: c_int, size: &mut usize) -> c_int {
                     return SHARED_INVALID;
                 }
 
-                *sz = (shared_gt[driverhandle as usize].size
+                *sz = (SHARED_GT[driverhandle as usize].size
                     - size_of::<DAL_SHM_SEGHEAD>() as c_int) as usize;
             }
 
@@ -1861,17 +1861,17 @@ pub(crate) fn smem_seek(driverhandle: c_int, offset: LONGLONG) -> c_int {
             return SHARED_BADARG;
         }
 
-        if unsafe { shared_check_locked_index(driverhandle.try_into().unwrap()) } != 0 {
+        if shared_check_locked_index(driverhandle.try_into().unwrap()) != 0 {
             return SHARED_INVALID;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        shared_lt[driverhandle as usize].seekpos = offset;
+        SHARED_LT[driverhandle as usize].seekpos = offset;
         0
     }
 }
@@ -1890,28 +1890,28 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
             return SHARED_BADARG;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if (shared_lt[driverhandle as usize].seekpos + nbytes as c_long)
-            > shared_gt[driverhandle as usize].size.into()
+        if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long)
+            > SHARED_GT[driverhandle as usize].size.into()
         {
             return SHARED_BADARG; /* read beyond EOF */
         }
 
         memcpy(
             buffer.as_mut_ptr() as *mut c_void,
-            ((((shared_lt[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
+            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
                 .add(1)) as *const c_char)
-                .add(shared_lt[driverhandle as usize].seekpos as usize)
+                .add(SHARED_LT[driverhandle as usize].seekpos as usize)
                 as *const c_void,
             nbytes,
         );
 
-        shared_lt[driverhandle as usize].seekpos += nbytes as c_long;
+        SHARED_LT[driverhandle as usize].seekpos += nbytes as c_long;
         0
     }
 }
@@ -1926,13 +1926,13 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
             return SHARED_INVALID;
         }
 
-        if shared_lt.is_empty() {
+        if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
         // let shared_lt = shared_lt.as_mut().unwrap();
 
-        if -1 != shared_lt[driverhandle as usize].lkcnt {
+        if -1 != SHARED_LT[driverhandle as usize].lkcnt {
             return SHARED_INVALID; /* are we locked RW ? */
         }
 
@@ -1940,14 +1940,14 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
             return SHARED_BADARG;
         }
 
-        if (shared_lt[driverhandle as usize].seekpos + nbytes as c_long) as c_ulong
-            > (shared_gt[driverhandle as usize].size - size_of::<DAL_SHM_SEGHEAD>() as c_int)
+        if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long) as c_ulong
+            > (SHARED_GT[driverhandle as usize].size - size_of::<DAL_SHM_SEGHEAD>() as c_int)
                 as c_ulong
         {
             /* need to realloc shmem */
             if shared_realloc(
                 driverhandle.try_into().unwrap(),
-                (shared_lt[driverhandle as usize].seekpos
+                (SHARED_LT[driverhandle as usize].seekpos
                     + nbytes as c_long
                     + size_of::<DAL_SHM_SEGHEAD>() as c_long)
                     .try_into()
@@ -1960,14 +1960,14 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
         }
 
         memcpy(
-            ((((shared_lt[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
+            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
                 .add(1)) as *const c_char)
-                .add(shared_lt[driverhandle as usize].seekpos as usize) as *mut c_void,
+                .add(SHARED_LT[driverhandle as usize].seekpos as usize) as *mut c_void,
             buffer.as_ptr() as *mut c_void,
             nbytes,
         );
 
-        shared_lt[driverhandle as usize].seekpos += nbytes as c_long;
+        SHARED_LT[driverhandle as usize].seekpos += nbytes as c_long;
         0
     }
 }

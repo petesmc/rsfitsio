@@ -742,9 +742,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = unsafe {
-                                        std::mem::transmute::<&[u8], &[c_char]>(b"#PI\0")
-                                    };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#PI\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -755,8 +753,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 =
-                                        unsafe { std::mem::transmute::<&[u8], &[c_char]>(b"#E\0") };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#E\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -767,9 +764,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = unsafe {
-                                        std::mem::transmute::<&[u8], &[c_char]>(b"#DEG\0")
-                                    };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#DEG\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -780,9 +775,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = unsafe {
-                                        std::mem::transmute::<&[u8], &[c_char]>(b"#ROW\0")
-                                    };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#ROW\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -792,9 +785,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = unsafe {
-                                        std::mem::transmute::<&[u8], &[c_char]>(b"#NULL\0")
-                                    };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#NULL\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -804,9 +795,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = unsafe {
-                                        std::mem::transmute::<&[u8], &[c_char]>(b"#SNULL\0")
-                                    };
+                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#SNULL\0");
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
