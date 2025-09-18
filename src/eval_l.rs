@@ -38,7 +38,7 @@ pub type flex_int16_t = int16_t;
 pub struct yy_buffer_state {
     pub yy_input_file: *mut FILE,
     pub yy_ch_buf: Option<Box<[c_char]>>,
-    pub yy_buf_pos: *mut c_char,
+    pub yy_buf_pos: usize,
     pub yy_buf_size: c_int,
     pub yy_n_chars: c_int,
     pub yy_is_our_buffer: bool,
@@ -1475,14 +1475,23 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
 
 fn fits_parser_yy_load_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
-        yyscanner.yy_n_chars =
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars;
-        yyscanner.yy_c_buf_p =
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_pos;
+        let buffer = *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
+
+        yyscanner.yy_n_chars = (*buffer).yy_n_chars;
+
+        // Convert index to pointer
+        let buf_pos_index = (*buffer).yy_buf_pos;
+        yyscanner.yy_c_buf_p = if let Some(ch_buf) = (*buffer).yy_ch_buf.as_deref_mut() {
+            ch_buf[buf_pos_index..].as_mut_ptr()
+        } else {
+            ptr::null_mut()
+        };
+
         yyscanner.yytext_r = yyscanner.yy_c_buf_p;
-        yyscanner.yyin_r =
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_input_file;
-        yyscanner.yy_hold_char = *yyscanner.yy_c_buf_p;
+        yyscanner.yyin_r = (*buffer).yy_input_file;
+        if !yyscanner.yy_c_buf_p.is_null() {
+            yyscanner.yy_hold_char = *yyscanner.yy_c_buf_p;
+        }
     }
 }
 
@@ -1579,7 +1588,7 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: YY_BUFFER_STATE, yyscanner: &mut yy
         (*b).yy_n_chars = 0;
         ((*b).yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
         ((*b).yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
-        (*b).yy_buf_pos = ((*b).yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
+        (*b).yy_buf_pos = 0; // Set index to start of buffer
         (*b).yy_at_bol = 1;
         (*b).yy_buffer_status = 0;
         if b == (if !(yyscanner.yy_buffer_stack).is_null() {

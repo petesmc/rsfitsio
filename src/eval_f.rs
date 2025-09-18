@@ -4296,58 +4296,56 @@ fn set_image_col_types(
     varInfo: &mut DataInfo,
     colIter: &mut iteratorCol,
 ) -> c_int {
-    unsafe {
-        let mut istatus: c_int = 0;
-        let mut tscale: f64 = 0.0;
-        let mut tzero: f64 = 0.0;
-        let mut temp: [c_char; 80] = [0; 80];
+    let mut istatus: c_int = 0;
+    let mut tscale: f64 = 0.0;
+    let mut tzero: f64 = 0.0;
+    let mut temp: [c_char; 80] = [0; 80];
 
-        match bitpix {
-            BYTE_IMG | SHORT_IMG | LONG_IMG => {
-                istatus = 0;
-                if fits_read_key_dbl(fptr, cs!(c"BZERO"), &mut tzero, None, &mut istatus) != 0 {
-                    tzero = 0.0;
-                }
-
-                istatus = 0;
-                if fits_read_key_dbl(fptr, cs!(c"BSCALE"), &mut tscale, None, &mut istatus) != 0 {
-                    tscale = 1.0;
-                }
-
-                if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                    varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
-                    colIter.datatype = TLONG;
-                } else {
-                    varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
-                    colIter.datatype = TDOUBLE;
-                    if DEBUG_PIXFILTER != 0 {
-                        println!(
-                            "usefits_parser_yytokentype::DOUBLE as c_int for {} with BSCALE={}/BZERO={}",
-                            str::from_utf8(cast_slice(name)).unwrap(),
-                            tscale,
-                            tzero,
-                        );
-                    }
-                }
+    match bitpix {
+        BYTE_IMG | SHORT_IMG | LONG_IMG => {
+            istatus = 0;
+            if fits_read_key_dbl(fptr, cs!(c"BZERO"), &mut tzero, None, &mut istatus) != 0 {
+                tzero = 0.0;
             }
-            LONGLONG_IMG | FLOAT_IMG | DOUBLE_IMG => {
+
+            istatus = 0;
+            if fits_read_key_dbl(fptr, cs!(c"BSCALE"), &mut tscale, None, &mut istatus) != 0 {
+                tscale = 1.0;
+            }
+
+            if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
+                varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                colIter.datatype = TLONG;
+            } else {
                 varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
                 colIter.datatype = TDOUBLE;
-            }
-            _ => {
-                int_snprintf!(
-                    &mut temp,
-                    80,
-                    "set_image_col_types: unrecognized image bitpix [{}]\n",
-                    bitpix
-                );
-                ffpmsg_slice(&temp);
-                *lParse_status = PARSE_BAD_TYPE;
-                return *lParse_status;
+                if DEBUG_PIXFILTER != 0 {
+                    println!(
+                        "usefits_parser_yytokentype::DOUBLE as c_int for {} with BSCALE={}/BZERO={}",
+                        str::from_utf8(cast_slice(name)).unwrap(),
+                        tscale,
+                        tzero,
+                    );
+                }
             }
         }
-        0
+        LONGLONG_IMG | FLOAT_IMG | DOUBLE_IMG => {
+            varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+            colIter.datatype = TDOUBLE;
+        }
+        _ => {
+            int_snprintf!(
+                &mut temp,
+                80,
+                "set_image_col_types: unrecognized image bitpix [{}]\n",
+                bitpix
+            );
+            ffpmsg_slice(&temp);
+            *lParse_status = PARSE_BAD_TYPE;
+            return *lParse_status;
+        }
     }
+    0
 }
 
 /*************************************************************************
