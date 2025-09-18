@@ -2128,10 +2128,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 || (lParse.Nodes[(*yyvsp.offset(0)).Node as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
-                                fits_parser_yyerror(
-                                    lParse,
-                                    cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"),
-                                );
+                                fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval.Node = New_BinOp(
@@ -2151,10 +2148,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 || (lParse.Nodes[(*yyvsp.offset(0)).Node as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
-                                fits_parser_yyerror(
-                                    lParse,
-                                    cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"),
-                                );
+                                fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval.Node = New_BinOp(
@@ -2174,10 +2168,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 || (lParse.Nodes[(*yyvsp.offset(0)).Node as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
-                                fits_parser_yyerror(
-                                    lParse,
-                                    cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"),
-                                );
+                                fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval.Node = New_BinOp(
@@ -6611,10 +6602,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     (*yyvsp.offset(-1)).Node,
                                 ) != 0)
                             {
-                                fits_parser_yyerror(
-                                    lParse,
-                                    cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"),
-                                );
+                                fits_parser_yyerror(lParse, cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"));
                                 current_block = 4830776507462815627;
                             } else {
                                 if (if ((*yyvsp.offset(-14)).astr[0] as c_int)
@@ -7368,11 +7356,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .nelem
                                         != 1
                                 {
-                                    fits_parser_yyerror(
-
-                                        lParse,
-                                        cs!(c"When using STRMID(S,P,N), P and N must be integers (and not vector columns)"),
-                                    );
+                                    fits_parser_yyerror(lParse, cs!(c"When using STRMID(S,P,N), P and N must be integers (and not vector columns)"));
                                     current_block = 4830776507462815627;
                                 } else {
                                     if ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).operation

@@ -363,16 +363,8 @@ pub unsafe fn ffcphd_safer(
             ffpkyl_safe(outfptr, cs!(c"EXTEND"), TRUE as c_int, Some(&comm), status);
 
             /* write standard block of self-documentating comments */
-            ffprec_safe(
-                outfptr,
-                cs!(c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"),
-                status,
-            );
-            ffprec_safe(
-                outfptr,
-                cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"),
-                status,
-            );
+            ffprec_safe(outfptr, cs!(c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"), status);
+            ffprec_safe(outfptr, cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"), status);
 
             /* copy remaining keywords, excluding pcount, gcount */
             for ii in (3 + naxis as usize)..(nkeys as usize) {

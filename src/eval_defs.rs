@@ -244,8 +244,3 @@ pub(crate) struct parseInfo {
     pub(crate) parseData: *mut ParseData, /* Pointer to parser configuration */
     pub(crate) parseVariables: ParseStatusVariables,
 }
-
-/* Not sure why this is needed but it is */
-// pub type YYSTYPE  = FITS_PARSER_YYSTYPE;
-/* How ParseData is accessed from the lexer, i.e. by yyextra */
-//pub type YY_EXTRA_TYPE =  ParseData;

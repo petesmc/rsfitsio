@@ -3540,36 +3540,35 @@ fn fits_parser_set_temporary_col(
     nulval: *mut c_void,
     status: &mut c_int,
 ) -> c_int {
-        
-        if *status != 0 {
-            return *status;
-        }
+    if *status != 0 {
+        return *status;
+    }
 
-        let col_cnt: c_int = lParse.nCols;
+    let col_cnt: c_int = lParse.nCols;
 
-        if fits_parser_allocateCol(lParse, col_cnt,  status ) != 0 {
-            return *status;
-        }
+    if fits_parser_allocateCol(lParse, col_cnt, status) != 0 {
+        return *status;
+    }
 
-        /* Set important variables for TemporaryCol where calculated results end up */
+    /* Set important variables for TemporaryCol where calculated results end up */
 
-        fits_iter_set_by_num_safe(
-            &mut lParse.colData[col_cnt as usize],
-            ptr::null_mut(),
-            0,
-            TDOUBLE,
-            TemporaryCol,
-        );
+    fits_iter_set_by_num_safe(
+        &mut lParse.colData[col_cnt as usize],
+        ptr::null_mut(),
+        0,
+        TDOUBLE,
+        TemporaryCol,
+    );
 
-        (lParse.colData[col_cnt as usize]).repeat = lParse.nElements;
+    (lParse.colData[col_cnt as usize]).repeat = lParse.nElements;
 
-        Info.dataPtr = ptr::null_mut();
-        Info.nullPtr = nulval;
-        Info.maxRows = nrows;
-        Info.parseData = lParse;
-        lParse.nCols += 1;
+    Info.dataPtr = ptr::null_mut();
+    Info.nullPtr = nulval;
+    Info.maxRows = nrows;
+    Info.parseData = lParse;
+    lParse.nCols += 1;
 
-        0
+    0
 }
 
 /*---------------------------------------------------------------------------*/
@@ -4037,8 +4036,8 @@ pub fn fits_pixel_filter_safer(
                     status,
                 ) != 0
                 {
-                        int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
-                    
+                    int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
+
                     ffpmsg_slice(&msg);
                     ffcprs(&mut lParse);
                     return *status;
@@ -4056,12 +4055,12 @@ pub fn fits_pixel_filter_safer(
                 } else if fits_write_record(unsafe { outfptr.as_mut().unwrap() }, &card, status)
                     != 0
                 {
-                        int_snprintf!(
-                            &mut msg,
-                            256,
-                            "pixel_filter: unable to write keycard [{}]",
-                            *status,
-                        );
+                    int_snprintf!(
+                        &mut msg,
+                        256,
+                        "pixel_filter: unable to write keycard [{}]",
+                        *status,
+                    );
                     ffpmsg_slice(&msg);
                     ffcprs(&mut lParse);
                     return *status;
@@ -4092,12 +4091,12 @@ pub fn fits_pixel_filter_safer(
             }
 
             _ => {
-                    int_snprintf!(
-                        &mut msg,
-                        256,
-                        "pixel_filter: unexpected output bitpix {}",
-                        bitpix,
-                    );
+                int_snprintf!(
+                    &mut msg,
+                    256,
+                    "pixel_filter: unexpected output bitpix {}",
+                    bitpix,
+                );
                 ffpmsg_slice(&msg);
                 *status = P_ERROR;
                 ffcprs(&mut lParse);
@@ -4112,7 +4111,7 @@ pub fn fits_pixel_filter_safer(
                 let mut tstatus: c_int = 0;
                 if fits_read_key_lng(
                     unsafe { infptr.as_mut().unwrap() },
-                     cs!(c"BLANK") ,
+                    cs!(c"BLANK"),
                     &mut null_val,
                     None,
                     &mut tstatus,
@@ -4175,7 +4174,7 @@ pub fn fits_pixel_filter_safer(
             info.maxRows = -1;
             info.parseData = &mut lParse;
 
-            if  {
+            if {
                 let colData_slice = &mut lParse.colData[..];
                 ffiter_safe(
                     lParse.nCols,
@@ -4198,9 +4197,9 @@ pub fn fits_pixel_filter_safer(
                 if write_blank_kwd != 0 {
                     fits_update_key_lng(
                         unsafe { outfptr.as_mut().unwrap() },
-                         cs!(c"BLANK") ,
+                        cs!(c"BLANK"),
                         filter.blank as LONGLONG,
-                        Some( cs!(c"NULL pixel value") ),
+                        Some(cs!(c"NULL pixel value")),
                         status,
                     );
                     if *status != 0 {
@@ -4401,12 +4400,13 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
 
             colnum = -1;
-            for i in 0..(*lParse.pixFilter).count  {
-                if fits_strcasecmp(colName, 
+            for i in 0..(*lParse.pixFilter).count {
+                if fits_strcasecmp(
+                    colName,
                     std::slice::from_raw_parts(
                         (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
                         strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
-                    )
+                    ),
                 ) == 0
                 {
                     colnum = i;
@@ -4434,19 +4434,17 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             varInfo = &mut lParse.varData[col_cnt as usize];
             colIter = &mut lParse.colData[col_cnt as usize];
 
-            fptr = 
-                (*lParse.pixFilter)
-                    .ifptr
-                    .wrapping_add(colnum as usize)
-                    .read()
-            ;
+            fptr = (*lParse.pixFilter)
+                .ifptr
+                .wrapping_add(colnum as usize)
+                .read();
 
             fits_get_img_param(
-                 &mut *fptr ,
+                &mut *fptr,
                 MAXDIMS,
                 Some(&mut typecode), /* actually bitpix */
-                Some(&mut varInfo.naxis ),
-                Some(&mut varInfo.naxes ),
+                Some(&mut varInfo.naxis),
+                Some(&mut varInfo.naxes),
                 &mut status,
             );
 
@@ -4455,7 +4453,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
 
             if set_image_col_types(
                 &mut lParse.status,
-                 &mut *fptr ,
+                &mut *fptr,
                 colName,
                 typecode,
                 &mut *varInfo,
@@ -4471,7 +4469,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             if lParse.compressed != 0 {
                 colnum = lParse.valCol;
             } else if fits_get_colnum(
-                &mut *fptr ,
+                &mut *fptr,
                 CASEINSEN.try_into().unwrap(),
                 colName,
                 &mut colnum,
@@ -4490,7 +4488,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
 
             if fits_get_coltype(
-                 &mut *fptr ,
+                &mut *fptr,
                 colnum,
                 Some(&mut typecode),
                 Some(&mut repeat),
@@ -4532,26 +4530,12 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     */
                     int_snprintf!(&mut temp, 80, "TZERO{}", colnum,);
                     istatus = 0;
-                    if fits_read_key_dbl(
-                         &mut *fptr ,
-                        &temp,
-                        &mut tzero,
-                        None,
-                        &mut istatus,
-                    ) != 0
-                    {
+                    if fits_read_key_dbl(&mut *fptr, &temp, &mut tzero, None, &mut istatus) != 0 {
                         tzero = 0.0;
                     }
                     int_snprintf!(&mut temp, 80, "TSCAL{}", colnum,);
                     istatus = 0;
-                    if fits_read_key_dbl(
-                         &mut *fptr ,
-                        &temp,
-                        &mut tscale,
-                        None,
-                        &mut istatus,
-                    ) != 0
-                    {
+                    if fits_read_key_dbl(&mut *fptr, &temp, &mut tscale, None, &mut istatus) != 0 {
                         tscale = 1.0;
                     }
                     if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
@@ -4622,11 +4606,11 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             colIter.repeat = 0; /* ffiter() will fill in this value */
             if repeat > 1 && typecode != TSTRING {
                 if fits_read_tdim(
-                     &mut *fptr ,
+                    &mut *fptr,
                     colnum,
                     MAXDIMS,
-                     &mut varInfo.naxis ,
-                     &mut varInfo.naxes ,
+                    &mut varInfo.naxis,
+                    &mut varInfo.naxes,
                     &mut status,
                 ) != 0
                 {
@@ -4824,7 +4808,7 @@ fn load_column(
             match var.datatype {
                 TBYTE => {
                     nbytes = ((var.repeat + 7) / 8) * nRows;
-                    bytes = malloc((nbytes as usize) * size_of::<c_char>()) as *mut c_uchar;
+                    let mut bytes = vec![0; nbytes as usize];
 
                     ffgcvb_safe(
                         unsafe { &mut *var.fptr },
@@ -4833,7 +4817,7 @@ fn load_column(
                         1,
                         nbytes as LONGLONG,
                         0,
-                        unsafe { std::slice::from_raw_parts_mut(bytes, nbytes as usize) },
+                        &mut bytes,
                         Some(&mut anynul),
                         &mut status,
                     );
@@ -4843,9 +4827,7 @@ fn load_column(
                     for row in 0..nRows {
                         idx = (row) * ((nelem + 7) / 8) + 1;
                         for len in 0..nelem {
-                            if unsafe { *bytes.wrapping_add(idx as usize) } & (1 << (7 - len % 8))
-                                != 0
-                            {
+                            if bytes[idx as usize] & (1 << (7 - len % 8)) != 0 {
                                 unsafe {
                                     *(*bitStrs.wrapping_add(row as usize))
                                         .wrapping_add(len as usize) = b'1' as c_char;
@@ -4864,8 +4846,6 @@ fn load_column(
                             *(*bitStrs.wrapping_add(row as usize)).wrapping_add(len as usize) = 0;
                         }
                     }
-
-                    FREE!(bytes);
                 }
                 TSTRING => {
                     // Convert data to Vec<&mut [c_char]> and undef to &mut [c_char]

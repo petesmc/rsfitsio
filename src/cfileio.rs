@@ -1605,11 +1605,7 @@ pub unsafe fn ffopen_safer(
                     let f = (*fptr).as_mut().unwrap();
 
                     /* write history records */
-                    ffphis_safe(
-                        f,
-                        cs!(c"CFITSIO used the following filtering expression to create this table:"),
-                        status,
-                    );
+                    ffphis_safe(f, cs!(c"CFITSIO used the following filtering expression to create this table:"), status);
                     ffphis_safe(f, name, status);
                 } /* end of no binspec case */
             } /* end of table HDU case */

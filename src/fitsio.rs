@@ -1064,6 +1064,7 @@ pub struct fitsfile {
     pub Fptr: Box<FITSfile>,
 }
 
+/// Do not change this as it is part of the public API
 /// structure for the iterator function column information
 /// elements required as input to fits_iterate_data:
 #[derive(Debug, Clone, Copy)]
@@ -1183,6 +1184,7 @@ impl Drop for wtbarr {
     }
 }
 
+// Do not change this as it is exposed via extern functions
 #[repr(C)]
 pub struct PixelFilter {
     /* input(s) */
