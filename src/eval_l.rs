@@ -4,6 +4,7 @@ use errno::{Errno, errno, set_errno};
 
 use std::ffi::CStr;
 use std::process::exit;
+use std::ptr;
 
 use bytemuck::cast_slice;
 use libc::{
@@ -33,15 +34,14 @@ pub type uint8_t = __uint8_t;
 pub type flex_uint8_t = uint8_t;
 pub type flex_int16_t = int16_t;
 
-#[derive(Copy, Clone)]
-#[repr(C)]
+#[derive(Default)]
 pub struct yy_buffer_state {
     pub yy_input_file: *mut FILE,
-    pub yy_ch_buf: *mut c_char,
+    pub yy_ch_buf: Option<Box<[c_char]>>,
     pub yy_buf_pos: *mut c_char,
     pub yy_buf_size: c_int,
     pub yy_n_chars: c_int,
-    pub yy_is_our_buffer: c_int,
+    pub yy_is_our_buffer: bool,
     pub yy_is_interactive: c_int,
     pub yy_at_bol: c_int,
     pub yy_bs_lineno: c_int,
@@ -58,7 +58,6 @@ pub type yy_size_t = size_t;
 
 /* Holds the entire state of the reentrant scanner. */
 #[derive(Default, Copy, Clone)]
-#[repr(C)]
 pub struct yyguts_t {
     /* User-defined. Not touched by flex. */
     pub yyextra_r: *mut ParseData,
@@ -337,7 +336,7 @@ pub(crate) fn fits_parser_yylex(
             if if !(yyscanner.yy_buffer_stack).is_null() {
                 *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
             } else {
-                0 as YY_BUFFER_STATE
+                ptr::null_mut()
             }
             .is_null()
             {
@@ -1068,9 +1067,15 @@ pub(crate) fn fits_parser_yylex(
                                     return fits_parser_yytokentype::FUNCTION as c_int;
                                 }
                             }
-                            15 => return fits_parser_yytokentype::INTCAST as c_int,
-                            16 => return fits_parser_yytokentype::FLTCAST as c_int,
-                            17 => return fits_parser_yytokentype::POWER as c_int,
+                            15 => {
+                                return fits_parser_yytokentype::INTCAST as c_int;
+                            }
+                            16 => {
+                                return fits_parser_yytokentype::FLTCAST as c_int;
+                            }
+                            17 => {
+                                return fits_parser_yytokentype::POWER as c_int;
+                            }
                             18 => return fits_parser_yytokentype::NOT as c_int,
                             19 => return fits_parser_yytokentype::OR as c_int,
                             20 => return fits_parser_yytokentype::AND as c_int,
@@ -1117,11 +1122,13 @@ pub(crate) fn fits_parser_yylex(
                                     .yy_buffer_status = 1;
                                 }
                                 if yyscanner.yy_c_buf_p
-                                    <= &mut *((**(yyscanner.yy_buffer_stack)
+                                    <= ((**(yyscanner.yy_buffer_stack)
                                         .add(yyscanner.yy_buffer_stack_top))
                                     .yy_ch_buf)
-                                        .offset(yyscanner.yy_n_chars as isize)
-                                        as *mut c_char
+                                        .as_deref_mut()
+                                        .unwrap()
+                                        [yyscanner.yy_n_chars as usize..]
+                                        .as_mut_ptr()
                                 {
                                     yy_next_state = 0;
                                     yyscanner.yy_c_buf_p = (yyscanner.yytext_r)
@@ -1164,12 +1171,14 @@ pub(crate) fn fits_parser_yylex(
                                             break '_yy_find_action;
                                         }
                                         2 => {
-                                            yyscanner.yy_c_buf_p = &mut *((**(yyscanner
+                                            yyscanner.yy_c_buf_p = ((**(yyscanner
                                                 .yy_buffer_stack)
                                                 .add(yyscanner.yy_buffer_stack_top))
                                             .yy_ch_buf)
-                                                .offset(yyscanner.yy_n_chars as isize)
-                                                as *mut c_char;
+                                                .as_deref_mut()
+                                                .unwrap()
+                                                [yyscanner.yy_n_chars as usize..]
+                                                .as_mut_ptr();
                                             yy_current_state = yy_get_previous_state(yyscanner);
                                             yy_cp = yyscanner.yy_c_buf_p;
                                             yy_bp = (yyscanner.yytext_r).offset(0);
@@ -1207,15 +1216,21 @@ pub(crate) fn fits_parser_yylex(
 
 fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
     unsafe {
-        let mut dest: *mut c_char =
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf;
+        let mut dest: *mut c_char = (**(yyscanner.yy_buffer_stack)
+            .add(yyscanner.yy_buffer_stack_top))
+        .yy_ch_buf
+        .as_deref_mut()
+        .unwrap()
+        .as_mut_ptr();
         let mut source: *mut c_char = yyscanner.yytext_r;
         let mut number_to_move: c_int = 0;
         let mut i: c_int = 0;
         let mut ret_val: c_int = 0;
         if yyscanner.yy_c_buf_p
-            > &mut *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-                .offset((yyscanner.yy_n_chars + 1) as isize) as *mut c_char
+            > ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
+                .as_deref_mut()
+                .unwrap()[(yyscanner.yy_n_chars + 1) as usize..]
+                .as_mut_ptr()
         {
             yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
@@ -1250,27 +1265,41 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             while num_to_read <= 0 {
                 let b: YY_BUFFER_STATE =
                     *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-                let yy_c_buf_p_offset: c_int =
-                    (yyscanner.yy_c_buf_p).offset_from((*b).yy_ch_buf) as c_long as c_int;
-                if (*b).yy_is_our_buffer != 0 {
+                let yy_c_buf_p_offset: c_int = (yyscanner.yy_c_buf_p)
+                    .offset_from((*b).yy_ch_buf.as_deref().unwrap().as_ptr())
+                    as c_long as c_int;
+                if (*b).yy_is_our_buffer {
                     let new_size: c_int = (*b).yy_buf_size * 2;
                     if new_size <= 0 {
                         (*b).yy_buf_size += (*b).yy_buf_size / 8 as c_int;
                     } else {
                         (*b).yy_buf_size *= 2;
                     }
-                    (*b).yy_ch_buf = fits_parser_yyrealloc(
-                        (*b).yy_ch_buf as *mut c_void,
-                        ((*b).yy_buf_size + 2) as yy_size_t,
-                    ) as *mut c_char;
+
+                    let mut v = Vec::new();
+                    let size = new_size as usize;
+                    if v.try_reserve_exact(size).is_err() {
+                        yy_fatal_error("out of dynamic memory in yy_get_next_buffer()");
+                    } else {
+                        v.resize(size, 0);
+                    }
+
+                    for i in (*b).yy_ch_buf.as_deref().unwrap().iter() {
+                        v.push(*i);
+                    }
+
+                    (*b).yy_ch_buf = Some(v.into_boxed_slice());
                 } else {
-                    (*b).yy_ch_buf = std::ptr::null_mut::<c_char>();
+                    (*b).yy_ch_buf = None;
                 }
-                if ((*b).yy_ch_buf).is_null() {
+
+                if ((*b).yy_ch_buf).is_none() {
                     yy_fatal_error("fatal error - scanner input buffer overflow");
                 }
-                yyscanner.yy_c_buf_p =
-                    &mut *((*b).yy_ch_buf).offset(yy_c_buf_p_offset as isize) as *mut c_char;
+
+                yyscanner.yy_c_buf_p = ((*b).yy_ch_buf).as_deref_mut().unwrap()
+                    [yy_c_buf_p_offset as usize..]
+                    .as_mut_ptr();
                 num_to_read = (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
                     .yy_buf_size
                     - number_to_move
@@ -1281,8 +1310,10 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             }
             yyscanner.yy_n_chars = expr_read(
                 &mut *yyscanner.yyextra_r,
-                &mut *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-                    .offset(number_to_move as isize) as *mut c_char,
+                ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
+                    .as_deref_mut()
+                    .unwrap()[number_to_move as usize..]
+                    .as_mut_ptr(),
                 num_to_read,
             );
             if yyscanner.yy_n_chars < 0 {
@@ -1310,27 +1341,44 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                 yyscanner.yy_n_chars + number_to_move + (yyscanner.yy_n_chars >> 1);
             let fresh7 =
                 &mut (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf;
-            *fresh7 = fits_parser_yyrealloc(
-                (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf
-                    as *mut c_void,
-                new_size_0 as yy_size_t,
-            ) as *mut c_char;
-            if ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-                .is_null()
-            {
+
+            let mut v = Vec::new();
+            let size = new_size_0 as usize;
+            if v.try_reserve_exact(size).is_err() {
                 yy_fatal_error("out of dynamic memory in yy_get_next_buffer()");
+            } else {
+                v.resize(size, 0);
             }
+
+            for i in (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
+                .yy_ch_buf
+                .as_deref()
+                .unwrap()
+                .iter()
+            {
+                v.push(*i);
+            }
+
+            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf =
+                Some(v.into_boxed_slice());
+
             (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_size =
                 new_size_0 - 2;
         }
+
         yyscanner.yy_n_chars += number_to_move;
-        *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-            .offset(yyscanner.yy_n_chars as isize) = 0;
-        *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-            .offset((yyscanner.yy_n_chars + 1) as isize) = 0;
+
+        ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
+            .as_deref_mut()
+            .unwrap()[yyscanner.yy_n_chars as usize] = 0;
+        ((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
+            .as_deref_mut()
+            .unwrap()[(yyscanner.yy_n_chars + 1) as usize] = 0;
         yyscanner.yytext_r =
             &mut *((**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_ch_buf)
-                .offset(0) as *mut c_char;
+                .as_deref_mut()
+                .unwrap()
+                .as_mut_ptr();
         ret_val
     }
 }
@@ -1402,7 +1450,7 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
         if if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }
         .is_null()
         {
@@ -1416,7 +1464,7 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
             if !(yyscanner.yy_buffer_stack).is_null() {
                 *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
             } else {
-                0 as YY_BUFFER_STATE
+                ptr::null_mut()
             },
             input_file,
             yyscanner,
@@ -1424,43 +1472,6 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
         fits_parser_yy_load_buffer_state(yyscanner);
     }
 }
-
-/*
-pub(crate) fn fits_parser_yy_switch_to_buffer(
-    new_buffer: YY_BUFFER_STATE,
-    yyscanner: &mut yyguts_t,
-) {
-    unsafe {
-        fits_parser_yyensure_buffer_stack(yyscanner);
-        if (if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }) == new_buffer
-        {
-            return;
-        }
-        if !if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            *yyscanner.yy_c_buf_p = yyscanner.yy_hold_char;
-            let fresh9 =
-                &mut (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_pos;
-            *fresh9 = yyscanner.yy_c_buf_p;
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars =
-                yyscanner.yy_n_chars;
-        }
-        let fresh10 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-        *fresh10 = new_buffer;
-        fits_parser_yy_load_buffer_state(yyscanner);
-        yyscanner.yy_did_buffer_switch_on_eof = 1;
-    }
-}
-*/
 
 fn fits_parser_yy_load_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
@@ -1485,30 +1496,34 @@ pub(crate) fn fits_parser_yy_create_buffer(
     size: c_int,
     yyscanner: &mut yyguts_t,
 ) -> YY_BUFFER_STATE {
-    unsafe {
-        let mut b: YY_BUFFER_STATE = std::ptr::null_mut::<yy_buffer_state>();
-        b = fits_parser_yyalloc(
-            (::core::mem::size_of::<yy_buffer_state>() as c_ulong)
-                .try_into()
-                .unwrap(),
-        ) as YY_BUFFER_STATE;
-        if b.is_null() {
-            yy_fatal_error("out of dynamic memory in yy_create_buffer()");
-        }
-        (*b).yy_buf_size = size;
+    let b = box_try_new(yy_buffer_state::default());
 
-        /* yy_ch_buf has to be 2 characters longer than the size given because
-         * we need to put in 2 end-of-buffer characters.
-         */
-
-        (*b).yy_ch_buf = fits_parser_yyalloc(((*b).yy_buf_size + 2) as yy_size_t) as *mut c_char;
-        if ((*b).yy_ch_buf).is_null() {
-            yy_fatal_error("out of dynamic memory in yy_create_buffer()");
-        }
-        (*b).yy_is_our_buffer = 1;
-        fits_parser_yy_init_buffer(b, file, yyscanner);
-        b
+    if b.is_err() {
+        yy_fatal_error("out of dynamic memory in yy_create_buffer()");
     }
+
+    let mut b = b.unwrap();
+    b.yy_buf_size = size;
+
+    /* yy_ch_buf has to be 2 characters longer than the size given because
+     * we need to put in 2 end-of-buffer characters.
+     */
+
+    let mut v = Vec::new();
+    let size = (b.yy_buf_size + 2) as usize;
+    if v.try_reserve_exact(size).is_err() {
+        yy_fatal_error("out of dynamic memory in yy_create_buffer()");
+    } else {
+        v.resize(size, 0);
+    }
+
+    b.yy_ch_buf = None;
+    b.yy_ch_buf = Some(v.into_boxed_slice());
+    b.yy_is_our_buffer = true;
+
+    fits_parser_yy_init_buffer(b.as_mut(), file, yyscanner);
+
+    Box::into_raw(b)
 }
 
 pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut yyguts_t) {
@@ -1519,15 +1534,16 @@ pub(crate) fn fits_parser_yy_delete_buffer(b: YY_BUFFER_STATE, yyscanner: &mut y
         if b == (if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }) {
-            let fresh11 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-            *fresh11 = 0 as YY_BUFFER_STATE;
+            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top) = ptr::null_mut();
         }
-        if (*b).yy_is_our_buffer != 0 {
-            fits_parser_yyfree((*b).yy_ch_buf as *mut c_void);
+
+        if (*b).yy_is_our_buffer {
+            (*b).yy_ch_buf = None;
         }
-        fits_parser_yyfree(b as *mut c_void);
+
+        let _ = Box::from_raw(b); // Drop box
     }
 }
 
@@ -1541,7 +1557,7 @@ fn fits_parser_yy_init_buffer(b: YY_BUFFER_STATE, file: *mut FILE, yyscanner: &m
         if b != (if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }) {
             (*b).yy_bs_lineno = 1;
             (*b).yy_bs_column = 0;
@@ -1561,69 +1577,27 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: YY_BUFFER_STATE, yyscanner: &mut yy
             return;
         }
         (*b).yy_n_chars = 0;
-        *((*b).yy_ch_buf).offset(0) = 0;
-        *((*b).yy_ch_buf).offset(1) = 0;
-        (*b).yy_buf_pos = &mut *((*b).yy_ch_buf).offset(0) as *mut c_char;
+        ((*b).yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
+        ((*b).yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
+        (*b).yy_buf_pos = ((*b).yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         (*b).yy_at_bol = 1;
         (*b).yy_buffer_status = 0;
         if b == (if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }) {
             fits_parser_yy_load_buffer_state(yyscanner);
         }
     }
 }
 
-/*
-pub(crate) fn fits_parser_yypush_buffer_state(
-    new_buffer: YY_BUFFER_STATE,
-    yyscanner: &mut yyguts_t,
-) {
-    unsafe {
-        if new_buffer.is_null() {
-            return;
-        }
-        fits_parser_yyensure_buffer_stack(yyscanner);
-        if !if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            *yyscanner.yy_c_buf_p = yyscanner.yy_hold_char;
-            let fresh12 =
-                &mut (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_buf_pos;
-            *fresh12 = yyscanner.yy_c_buf_p;
-            (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_n_chars =
-                yyscanner.yy_n_chars;
-        }
-        if !if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            yyscanner.yy_buffer_stack_top = (yyscanner.yy_buffer_stack_top).wrapping_add(1);
-            yyscanner.yy_buffer_stack_top;
-        }
-        let fresh13 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-        *fresh13 = new_buffer;
-        fits_parser_yy_load_buffer_state(yyscanner);
-        yyscanner.yy_did_buffer_switch_on_eof = 1;
-    }
-}
-*/
-
 pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
         if if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }
         .is_null()
         {
@@ -1633,12 +1607,12 @@ pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
             if !(yyscanner.yy_buffer_stack).is_null() {
                 *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
             } else {
-                0 as YY_BUFFER_STATE
+                ptr::null_mut()
             },
             yyscanner,
         );
         let fresh14 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-        *fresh14 = 0 as YY_BUFFER_STATE;
+        *fresh14 = ptr::null_mut();
         if yyscanner.yy_buffer_stack_top > 0 {
             yyscanner.yy_buffer_stack_top = (yyscanner.yy_buffer_stack_top).wrapping_sub(1);
             yyscanner.yy_buffer_stack_top;
@@ -1646,7 +1620,7 @@ pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
         if !if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }
         .is_null()
         {
@@ -1703,155 +1677,12 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
     }
 }
 
-/*
-pub(crate) fn fits_parser_yy_scan_buffer(
-    base: *mut c_char,
-    size: yy_size_t,
-    yyscanner: &mut yyguts_t,
-) -> YY_BUFFER_STATE {
-    unsafe {
-        let mut b: YY_BUFFER_STATE = std::ptr::null_mut::<yy_buffer_state>();
-        if size < 2 as yy_size_t
-            || *base.add(size.wrapping_sub(2 as c_int as yy_size_t)) as c_int != 0
-            || *base.add(size.wrapping_sub(1 as c_int as yy_size_t)) as c_int != 0
-        {
-            return 0 as YY_BUFFER_STATE;
-        }
-        b = fits_parser_yyalloc(
-            (::core::mem::size_of::<yy_buffer_state>() as c_ulong)
-                .try_into()
-                .unwrap(),
-        ) as YY_BUFFER_STATE;
-        if b.is_null() {
-            yy_fatal_error("out of dynamic memory in yy_scan_buffer()");
-        }
-        (*b).yy_buf_size = size.wrapping_sub(2 as c_int as yy_size_t) as c_int;
-        (*b).yy_ch_buf = base;
-        (*b).yy_buf_pos = (*b).yy_ch_buf;
-        (*b).yy_is_our_buffer = 0;
-        (*b).yy_input_file = std::ptr::null_mut::<FILE>();
-        (*b).yy_n_chars = (*b).yy_buf_size;
-        (*b).yy_is_interactive = 0;
-        (*b).yy_at_bol = 1;
-        (*b).yy_fill_buffer = 0;
-        (*b).yy_buffer_status = 0;
-        fits_parser_yy_switch_to_buffer(b, yyscanner);
-        b
-    }
-}
-*/
-
-/*
-pub(crate) fn fits_parser_yy_scan_string(
-    yystr: *const c_char,
-    yyscanner: &mut yyguts_t,
-) -> YY_BUFFER_STATE {
-    unsafe { fits_parser_yy_scan_bytes(yystr, strlen(yystr) as c_int, yyscanner) }
-}
-*/
-
-/*
-pub(crate) fn fits_parser_yy_scan_bytes(
-    yybytes: *const c_char,
-    mut _yybytes_len: c_int,
-    yyscanner: &mut yyguts_t,
-) -> YY_BUFFER_STATE {
-    unsafe {
-        let mut b: YY_BUFFER_STATE = std::ptr::null_mut::<yy_buffer_state>();
-        let mut buf: *mut c_char = std::ptr::null_mut::<c_char>();
-        let mut n: yy_size_t = 0;
-        let mut i: c_int = 0;
-        n = (_yybytes_len + 2) as yy_size_t;
-        buf = fits_parser_yyalloc(n) as *mut c_char;
-        if buf.is_null() {
-            yy_fatal_error(
-                "out of dynamic memory in yy_scan_bytes()"
-            );
-        }
-        i = 0;
-        while i < _yybytes_len {
-            *buf.offset(i as isize) = *yybytes.offset(i as isize);
-            i += 1;
-            i;
-        }
-        let fresh15 = &mut *buf.offset((_yybytes_len + 1) as isize);
-        *fresh15 = 0;
-        *buf.offset(_yybytes_len as isize) = *fresh15;
-        b = fits_parser_yy_scan_buffer(buf, n, yyscanner);
-        if b.is_null() {
-            yy_fatal_error(
-                "bad buffer in yy_scan_bytes()"
-            );
-        }
-        (*b).yy_is_our_buffer = 1;
-        b
-    }
-}
-*/
-
 const YY_EXIT_FAILURE: c_int = 2;
 
 fn yy_fatal_error(msg: &str) -> ! {
     eprintln!("{}", msg);
     exit(YY_EXIT_FAILURE);
 }
-
-/*
-pub(crate) fn fits_parser_yyget_lineno(yyscanner: &mut yyguts_t) -> c_int {
-    unsafe {
-        if if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            return 0;
-        }
-        (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_lineno
-    }
-}
-*/
-
-/*
-pub(crate) fn fits_parser_yyget_column(yyscanner: &mut yyguts_t) -> c_int {
-    unsafe {
-        if if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            return 0;
-        }
-        (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_column
-    }
-}
-*/
-/*
-pub(crate) fn fits_parser_yyget_in(yyscanner: &mut yyguts_t) -> *mut FILE {
-    yyscanner.yyin_r
-}
- */
-
-/*
- pub(crate) fn fits_parser_yyget_out(yyscanner: &mut yyguts_t) -> *mut FILE {
-    yyscanner.yyout_r
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyget_leng(yyscanner: &mut yyguts_t) -> c_int {
-    yyscanner.yyleng_r
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyget_text(yyscanner: &mut yyguts_t) -> *mut c_char {
-    yyscanner.yytext_r
-}
- */
 
 /** Set the user-defined data. This data is never touched by the scanner.
  * @param user_defined The data to be associated with this scanner.
@@ -1860,96 +1691,6 @@ pub(crate) fn fits_parser_yyget_text(yyscanner: &mut yyguts_t) -> *mut c_char {
 pub(crate) fn fits_parser_yyset_extra(user_defined: &mut ParseData, yyscanner: &mut yyguts_t) {
     yyscanner.yyextra_r = user_defined;
 }
-
-/*
-pub(crate) fn fits_parser_yyset_lineno(mut _line_number: c_int, yyscanner: &mut yyguts_t) {
-    unsafe {
-        if if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            yy_fatal_error("yyset_lineno called with no buffer");
-        }
-        (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_lineno =
-            _line_number;
-    }
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyset_column(mut _column_no: c_int, yyscanner: &mut yyguts_t) {
-    unsafe {
-        if if !(yyscanner.yy_buffer_stack).is_null() {
-            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
-        } else {
-            0 as YY_BUFFER_STATE
-        }
-        .is_null()
-        {
-            yy_fatal_error("yyset_column called with no buffer");
-        }
-        (**(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).yy_bs_column =
-            _column_no;
-    }
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyset_in(mut _in_str: *mut FILE, yyscanner: &mut yyguts_t) {
-    yyscanner.yyin_r = _in_str;
-}
-*/
-
-/*
-pub(crate) fn fits_parser_yyset_out(mut _out_str: *mut FILE, yyscanner: &mut yyguts_t) {
-    yyscanner.yyout_r = _out_str;
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyget_debug(yyscanner: &mut yyguts_t) -> c_int {
-    yyscanner.yy_flex_debug_r
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyset_debug(mut _bdebug: c_int, yyscanner: &mut yyguts_t) {
-    yyscanner.yy_flex_debug_r = _bdebug;
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyget_lval(yyscanner: &mut yyguts_t) -> *mut FITS_PARSER_YYSTYPE {
-    yyscanner.yylval_r
-}
- */
-
-/*
-pub(crate) fn fits_parser_yyset_lval(
-    yylval_param: *mut FITS_PARSER_YYSTYPE,
-    yyscanner: &mut yyguts_t,
-) {
-    yyscanner.yylval_r = yylval_param;
-}
- */
-
-/*
-pub(crate) fn fits_parser_yylex_init(ptr_yy_globals: &mut Option<Box<yyguts_t>>) -> c_int {
-    let b = box_try_new(yyguts_t::default());
-
-    if b.is_err() {
-        set_errno(Errno(ENOMEM));
-        return 1;
-    }
-
-    *ptr_yy_globals = Some(b.unwrap());
-
-    yy_init_globals(ptr_yy_globals.as_deref_mut().unwrap())
-}
- */
 
 /* yylex_init_extra has the same functionality as yylex_init, but follows the
  * convention of taking the scanner as the last argument. Note however, that
@@ -2003,7 +1744,7 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
         while !if !(yyscanner.yy_buffer_stack).is_null() {
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
         } else {
-            0 as YY_BUFFER_STATE
+            ptr::null_mut()
         }
         .is_null()
         {
@@ -2011,12 +1752,12 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
                 if !(yyscanner.yy_buffer_stack).is_null() {
                     *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)
                 } else {
-                    0 as YY_BUFFER_STATE
+                    ptr::null_mut()
                 },
                 &mut yyscanner,
             );
             let fresh16 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-            *fresh16 = 0 as YY_BUFFER_STATE;
+            *fresh16 = ptr::null_mut();
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
         fits_parser_yyfree(yyscanner.yy_buffer_stack as *mut c_void);
