@@ -9,7 +9,7 @@ use std::ptr;
 use bytemuck::cast_slice;
 use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
 
-use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_void};
+use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
 use crate::eval_defs::{MAXVARNAME, P_ERROR, ParseData};
 use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::helpers::boxed::box_try_new;
@@ -119,7 +119,7 @@ fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int
 
                 // Safely access the byte array
                 if (fresh0 as usize) < expr_data.len() {
-                    buf[(fresh1 as usize)] = expr_data[fresh0 as usize] as c_char;
+                    buf[fresh1 as usize] = expr_data[fresh0 as usize] as c_char;
                 } else {
                     break;
                 }
@@ -138,7 +138,7 @@ fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int
                 lParse.is_eobuf = 1;
             }
         }
-        buf[(n as usize)] = 0;
+        buf[n as usize] = 0;
         n
     }
 }
@@ -652,7 +652,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#PI".to_bytes_with_nul());
+                                    let s2 = c"#PI".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -663,7 +663,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#E".to_bytes_with_nul());
+                                    let s2 = c"#E".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -674,7 +674,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#DEG".to_bytes_with_nul());
+                                    let s2 = c"#DEG".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -685,7 +685,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#ROW".to_bytes_with_nul());
+                                    let s2 = c"#ROW".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -695,7 +695,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#NULL".to_bytes_with_nul());
+                                    let s2 = c"#NULL".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -705,7 +705,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = (c"#SNULL".to_bytes_with_nul());
+                                    let s2 = c"#SNULL".to_bytes_with_nul();
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -1384,7 +1384,7 @@ pub(crate) fn fits_parser_yy_delete_buffer(
         }
 
         let mut b = b.unwrap();
-        let mut top_stack = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
+        let top_stack = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
             .as_deref_mut()
         {
             Some(x) => x,
