@@ -422,20 +422,16 @@ pub(crate) fn fits_parser_yylex(
                                 if len_0 >= 256 as c_int {
                                     let mut errMsg: [c_char; 100] = [0; 100];
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
-                                    strcpy(
-                                        errMsg.as_mut_ptr(),
-                                        b"Bit string exceeds maximum length: '\0" as *const u8
-                                            as *const c_char,
+                                    strcpy_safe(
+                                        &mut errMsg,
+                                        c"Bit string exceeds maximum length: '".to_bytes_with_nul(),
                                     );
                                     strncat(
                                         errMsg.as_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
-                                    strcat(
-                                        errMsg.as_mut_ptr(),
-                                        b"...'\0" as *const u8 as *const c_char,
-                                    );
+                                    strcat(errMsg.as_mut_ptr(), c"...'".as_ptr());
                                     ffpmsg_slice(&errMsg);
                                     len_0 = 0;
                                 } else {
@@ -457,58 +453,31 @@ pub(crate) fn fits_parser_yylex(
                                 while tmpstring[len_0 as usize] as c_int != 0 {
                                     match tmpstring[len_0 as usize] as c_int {
                                         48 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"000\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"000".as_ptr());
                                         }
                                         49 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"001\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"001".as_ptr());
                                         }
                                         50 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"010\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"010".as_ptr());
                                         }
                                         51 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"011\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"011".as_ptr());
                                         }
                                         52 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"100\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"100".as_ptr());
                                         }
                                         53 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"101\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"101".as_ptr());
                                         }
                                         54 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"110\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"110".as_ptr());
                                         }
                                         55 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"111\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"111".as_ptr());
                                         }
                                         120 | 88 => {
-                                            strcat(
-                                                bitstring.as_mut_ptr(),
-                                                b"xxx\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring.as_mut_ptr(), c"xxx".as_ptr());
                                         }
                                         _ => {}
                                     }
@@ -528,20 +497,16 @@ pub(crate) fn fits_parser_yylex(
                                 if len_1 >= 256 as c_int {
                                     let mut errMsg_0: [c_char; 100] = [0; 100];
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
-                                    strcpy(
-                                        errMsg_0.as_mut_ptr(),
-                                        b"Hex string exceeds maximum length: '\0" as *const u8
-                                            as *const c_char,
+                                    strcpy_safe(
+                                        &mut errMsg_0,
+                                        c"Hex string exceeds maximum length: '".to_bytes_with_nul(),
                                     );
                                     strncat(
                                         errMsg_0.as_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
-                                    strcat(
-                                        errMsg_0.as_mut_ptr(),
-                                        b"...'\0" as *const u8 as *const c_char,
-                                    );
+                                    strcat(errMsg_0.as_mut_ptr(), c"...'".as_ptr());
                                     ffpmsg_slice(&errMsg_0);
                                     len_1 = 0;
                                 } else {
@@ -563,106 +528,55 @@ pub(crate) fn fits_parser_yylex(
                                 while tmpstring_0[len_1 as usize] as c_int != 0 {
                                     match tmpstring_0[len_1 as usize] as c_int {
                                         48 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0000\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0000".as_ptr());
                                         }
                                         49 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0001\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0001".as_ptr());
                                         }
                                         50 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0010\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0010".as_ptr());
                                         }
                                         51 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0011\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0011".as_ptr());
                                         }
                                         52 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0100\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0100".as_ptr());
                                         }
                                         53 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0101\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0101".as_ptr());
                                         }
                                         54 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0110\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0110".as_ptr());
                                         }
                                         55 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"0111\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"0111".as_ptr());
                                         }
                                         56 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1000\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1000".as_ptr());
                                         }
                                         57 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1001\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1001".as_ptr());
                                         }
                                         97 | 65 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1010\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1010".as_ptr());
                                         }
                                         98 | 66 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1011\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1011".as_ptr());
                                         }
                                         99 | 67 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1100\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1100".as_ptr());
                                         }
                                         100 | 68 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1101\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1101".as_ptr());
                                         }
                                         101 | 69 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1110\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1110".as_ptr());
                                         }
                                         102 | 70 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"1111\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"1111".as_ptr());
                                         }
                                         120 | 88 => {
-                                            strcat(
-                                                bitstring_0.as_mut_ptr(),
-                                                b"xxxx\0" as *const u8 as *const c_char,
-                                            );
+                                            strcat(bitstring_0.as_mut_ptr(), c"xxxx".as_ptr());
                                         }
                                         _ => {}
                                     }
@@ -738,7 +652,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#PI\0");
+                                    let s2 = (c"#PI".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -749,7 +663,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#E\0");
+                                    let s2 = (c"#E".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -760,7 +674,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#DEG\0");
+                                    let s2 = (c"#DEG".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -771,7 +685,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#ROW\0");
+                                    let s2 = (c"#ROW".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -781,7 +695,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#NULL\0");
+                                    let s2 = (c"#NULL".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -791,7 +705,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = std::mem::transmute::<&[u8], &[c_char]>(b"#SNULL\0");
+                                    let s2 = (c"#SNULL".to_bytes_with_nul());
                                     fits_strcasecmp(s1, s2)
                                 } == 0
                                 {
@@ -832,20 +746,16 @@ pub(crate) fn fits_parser_yylex(
                                 if len_3 >= 256 as c_int {
                                     let mut errMsg_1: [c_char; 100] = [0; 100];
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
-                                    strcpy(
-                                        errMsg_1.as_mut_ptr(),
-                                        b"String exceeds maximum length: '\0" as *const u8
-                                            as *const c_char,
+                                    strcpy_safe(
+                                        &mut errMsg_1,
+                                        c"String exceeds maximum length: '".to_bytes_with_nul(),
                                     );
                                     strncat(
                                         errMsg_1.as_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
                                         20,
                                     );
-                                    strcat(
-                                        errMsg_1.as_mut_ptr(),
-                                        b"...'\0" as *const u8 as *const c_char,
-                                    );
+                                    strcat(errMsg_1.as_mut_ptr(), c"...'".as_ptr());
                                     ffpmsg_slice(&errMsg_1);
                                     len_3 = 0;
                                 } else {
@@ -901,162 +811,124 @@ pub(crate) fn fits_parser_yylex(
                                     len_5 += 1;
                                 }
                                 if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0] as c_int
+                                    < (c"BOX(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0] as c_int
+                                    > (c"BOX(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"BOX(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"BOX(".as_ptr())
                                 }) == 0
                                     || (if (*fname.offset(0) as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                            b"CIRCLE(\0",
-                                        ))[0] as c_int
+                                        < (c"CIRCLE(".to_bytes_with_nul())[0] as c_int
                                     {
                                         -1
                                     } else if *fname.offset(0) as c_int
-                                        > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                            b"CIRCLE(\0",
-                                        ))[0] as c_int
+                                        > (c"CIRCLE(".to_bytes_with_nul())[0] as c_int
                                     {
                                         1
                                     } else {
-                                        strcmp(fname, b"CIRCLE(\0" as *const u8 as *const c_char)
+                                        strcmp(fname, c"CIRCLE(".as_ptr())
                                     }) == 0
                                     || (if (*fname.offset(0) as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                            b"ELLIPSE(\0",
-                                        ))[0] as c_int
+                                        < (c"ELLIPSE(".to_bytes_with_nul())[0] as c_int
                                     {
                                         -1
                                     } else if *fname.offset(0) as c_int
-                                        > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                            b"ELLIPSE(\0",
-                                        ))[0] as c_int
+                                        > (c"ELLIPSE(".to_bytes_with_nul())[0] as c_int
                                     {
                                         1
                                     } else {
-                                        strcmp(fname, b"ELLIPSE(\0" as *const u8 as *const c_char)
+                                        strcmp(fname, c"ELLIPSE(".as_ptr())
                                     }) == 0
                                     || (if (*fname.offset(0) as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"NEAR(\0",
-                                        ))[0] as c_int
+                                        < (c"NEAR(".to_bytes_with_nul())[0] as c_int
                                     {
                                         -1
                                     } else if *fname.offset(0) as c_int
-                                        > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"NEAR(\0",
-                                        ))[0] as c_int
+                                        > (c"NEAR(".to_bytes_with_nul())[0] as c_int
                                     {
                                         1
                                     } else {
-                                        strcmp(fname, b"NEAR(\0" as *const u8 as *const c_char)
+                                        strcmp(fname, c"NEAR(".as_ptr())
                                     }) == 0
                                     || (if (*fname.offset(0) as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                            b"ISNULL(\0",
-                                        ))[0] as c_int
+                                        < (c"ISNULL(".to_bytes_with_nul())[0] as c_int
                                     {
                                         -1
                                     } else if *fname.offset(0) as c_int
-                                        > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                            b"ISNULL(\0",
-                                        ))[0] as c_int
+                                        > (c"ISNULL(".to_bytes_with_nul())[0] as c_int
                                     {
                                         1
                                     } else {
-                                        strcmp(fname, b"ISNULL(\0" as *const u8 as *const c_char)
+                                        strcmp(fname, c"ISNULL(".as_ptr())
                                     }) == 0
                                 {
                                     return fits_parser_yytokentype::BFUNCTION as c_int;
                                 } else if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
-                                        b"GTIFILTER(\0",
-                                    ))[0] as c_int
+                                    < (c"GTIFILTER(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
-                                        b"GTIFILTER(\0",
-                                    ))[0] as c_int
+                                    > (c"GTIFILTER(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"GTIFILTER(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"GTIFILTER(".as_ptr())
                                 }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIFILTER as c_int;
                                 } else if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
-                                        b"GTIOVERLAP(\0",
-                                    ))[0] as c_int
+                                    < (c"GTIOVERLAP(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
-                                        b"GTIOVERLAP(\0",
-                                    ))[0] as c_int
+                                    > (c"GTIOVERLAP(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"GTIOVERLAP(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"GTIOVERLAP(".as_ptr())
                                 }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIOVERLAP as c_int;
                                 } else if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"GTIFIND(\0",
-                                    ))[0] as c_int
+                                    < (c"GTIFIND(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"GTIFIND(\0",
-                                    ))[0] as c_int
+                                    > (c"GTIFIND(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"GTIFIND(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"GTIFIND(".as_ptr())
                                 }) == 0
                                 {
                                     return fits_parser_yytokentype::GTIFIND as c_int;
                                 } else if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
-                                        b"REGFILTER(\0",
-                                    ))[0] as c_int
+                                    < (c"REGFILTER(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 11], &[c_char; 11]>(
-                                        b"REGFILTER(\0",
-                                    ))[0] as c_int
+                                    > (c"REGFILTER(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"REGFILTER(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"REGFILTER(".as_ptr())
                                 }) == 0
                                 {
                                     return fits_parser_yytokentype::REGFILTER as c_int;
                                 } else if (if (*fname.offset(0) as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"STRSTR(\0",
-                                    ))[0] as c_int
+                                    < (c"STRSTR(".to_bytes_with_nul())[0] as c_int
                                 {
                                     -1
                                 } else if *fname.offset(0) as c_int
-                                    > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"STRSTR(\0",
-                                    ))[0] as c_int
+                                    > (c"STRSTR(".to_bytes_with_nul())[0] as c_int
                                 {
                                     1
                                 } else {
-                                    strcmp(fname, b"STRSTR(\0" as *const u8 as *const c_char)
+                                    strcmp(fname, c"STRSTR(".as_ptr())
                                 }) == 0
                                 {
                                     return fits_parser_yytokentype::IFUNCTION as c_int;
