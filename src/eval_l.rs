@@ -12,9 +12,10 @@ use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
 use crate::eval_defs::{MAXVARNAME, P_ERROR, ParseData};
 use crate::fitsio::PARSE_SYNTAX_ERR;
+use crate::fitsio2::FSTRCMP;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
-use crate::wrappers::{isdigit_safe, strcpy_safe, strncat_safe};
+use crate::wrappers::{isdigit_safe, strcat_safe, strcpy_safe, strncat_safe};
 use crate::{STDIN, STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
@@ -106,41 +107,39 @@ pub(crate) fn fits_parser_yywrap() -> c_int {
    buffer can be supported. PDW - 28 Feb 1998
 */
 fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int {
-    unsafe {
-        let mut n: c_int = 0;
-        if lParse.is_eobuf == 0
-            && let Some(ref expr_data) = lParse.expr
-        {
-            loop {
-                let fresh0 = lParse.index;
-                lParse.index += 1;
-                let fresh1 = n;
-                n += 1;
+    let mut n: c_int = 0;
+    if lParse.is_eobuf == 0
+        && let Some(ref expr_data) = lParse.expr
+    {
+        loop {
+            let fresh0 = lParse.index;
+            lParse.index += 1;
+            let fresh1 = n;
+            n += 1;
 
-                // Safely access the byte array
-                if (fresh0 as usize) < expr_data.len() {
-                    buf[fresh1 as usize] = expr_data[fresh0 as usize] as c_char;
-                } else {
-                    break;
-                }
-
-                // Check if we've reached the end
-                if !(n < nbytes
-                    && (lParse.index as usize) < expr_data.len()
-                    && expr_data[lParse.index as usize] != 0)
-                {
-                    break;
-                }
+            // Safely access the byte array
+            if (fresh0 as usize) < expr_data.len() {
+                buf[fresh1 as usize] = expr_data[fresh0 as usize] as c_char;
+            } else {
+                break;
             }
 
-            // Check if we've reached null terminator
-            if (lParse.index as usize) < expr_data.len() && expr_data[lParse.index as usize] == 0 {
-                lParse.is_eobuf = 1;
+            // Check if we've reached the end
+            if !(n < nbytes
+                && (lParse.index as usize) < expr_data.len()
+                && expr_data[lParse.index as usize] != 0)
+            {
+                break;
             }
         }
-        buf[n as usize] = 0;
-        n
+
+        // Check if we've reached null terminator
+        if (lParse.index as usize) < expr_data.len() && expr_data[lParse.index as usize] == 0 {
+            lParse.is_eobuf = 1;
+        }
     }
+    buf[n as usize] = 0;
+    n
 }
 
 pub(crate) fn fits_parser_yyGetVariable(
@@ -431,7 +430,7 @@ pub(crate) fn fits_parser_yylex(
                                         &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
-                                    strcat(errMsg.as_mut_ptr(), c"...'".as_ptr());
+                                    strcat_safe(&mut errMsg, cs!(c"...'"));
                                     ffpmsg_slice(&errMsg);
                                     len_0 = 0;
                                 } else {
@@ -506,7 +505,7 @@ pub(crate) fn fits_parser_yylex(
                                         &*(yyscanner.yytext_r).offset(0),
                                         20,
                                     );
-                                    strcat(errMsg_0.as_mut_ptr(), c"...'".as_ptr());
+                                    strcat_safe(&mut errMsg_0, cs!(c"...'"));
                                     ffpmsg_slice(&errMsg_0);
                                     len_1 = 0;
                                 } else {
@@ -528,55 +527,55 @@ pub(crate) fn fits_parser_yylex(
                                 while tmpstring_0[len_1 as usize] as c_int != 0 {
                                     match tmpstring_0[len_1 as usize] as c_int {
                                         48 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0000".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0000"));
                                         }
                                         49 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0001".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0001"));
                                         }
                                         50 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0010".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0010"));
                                         }
                                         51 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0011".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0011"));
                                         }
                                         52 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0100".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0100"));
                                         }
                                         53 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0101".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0101"));
                                         }
                                         54 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0110".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0110"));
                                         }
                                         55 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"0111".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"0111"));
                                         }
                                         56 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1000".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1000"));
                                         }
                                         57 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1001".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1001"));
                                         }
                                         97 | 65 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1010".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1010"));
                                         }
                                         98 | 66 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1011".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1011"));
                                         }
                                         99 | 67 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1100".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1100"));
                                         }
                                         100 | 68 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1101".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1101"));
                                         }
                                         101 | 69 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1110".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1110"));
                                         }
                                         102 | 70 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"1111".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"1111"));
                                         }
                                         120 | 88 => {
-                                            strcat(bitstring_0.as_mut_ptr(), c"xxxx".as_ptr());
+                                            strcat_safe(&mut bitstring_0, cs!(c"xxxx"));
                                         }
                                         _ => {}
                                     }
@@ -652,8 +651,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#PI".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#PI"))
                                 } == 0
                                 {
                                     (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan();
@@ -663,8 +661,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#E".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#E"))
                                 } == 0
                                 {
                                     (*yyscanner.yylval_r).dbl = (1.0_f64).exp();
@@ -674,8 +671,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#DEG".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#DEG"))
                                 } == 0
                                 {
                                     (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan() / 180.0;
@@ -685,8 +681,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#ROW".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#ROW"))
                                 } == 0
                                 {
                                     return fits_parser_yytokentype::ROWREF as c_int;
@@ -695,8 +690,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#NULL".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#NULL"))
                                 } == 0
                                 {
                                     return fits_parser_yytokentype::NULLREF as c_int;
@@ -705,8 +699,7 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
-                                    let s2 = c"#SNULL".to_bytes_with_nul();
-                                    fits_strcasecmp(s1, s2)
+                                    fits_strcasecmp(s1, cs!(c"#SNULL"))
                                 } == 0
                                 {
                                     return fits_parser_yytokentype::SNULLREF as c_int;
@@ -755,7 +748,7 @@ pub(crate) fn fits_parser_yylex(
                                         &*(yyscanner.yytext_r).offset(1),
                                         20,
                                     );
-                                    strcat(errMsg_1.as_mut_ptr(), c"...'".as_ptr());
+                                    strcat_safe(&mut errMsg_1, cs!(c"...'"));
                                     ffpmsg_slice(&errMsg_1);
                                     len_3 = 0;
                                 } else {
@@ -794,146 +787,35 @@ pub(crate) fn fits_parser_yylex(
                                 return dtype;
                             }
                             14 => {
-                                let mut fname: *mut c_char = std::ptr::null_mut::<c_char>();
-                                let mut len_5: c_int = 0;
-                                fname = &mut *((*yyscanner.yylval_r).astr).as_mut_ptr().offset(0)
-                                    as *mut c_char;
+                                let mut len: usize = 0;
+                                let fname = &mut ((*yyscanner.yylval_r).astr);
+
                                 loop {
-                                    let fresh3 = &mut *fname.offset(len_5 as isize);
-                                    *fresh3 = toupper(
-                                        (*(yyscanner.yytext_r).offset(len_5 as isize) as c_int)
-                                            .try_into()
-                                            .unwrap(),
-                                    ) as c_char;
-                                    if *fresh3 == 0 {
+                                    fname[len] = toupper(*yyscanner.yytext_r.add(len));
+                                    if fname[len] == 0 {
                                         break;
                                     }
-                                    len_5 += 1;
+                                    len += 1;
                                 }
-                                if (if (*fname.offset(0) as c_int)
-                                    < (c"BOX(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"BOX(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
-                                } else {
-                                    strcmp(fname, c"BOX(".as_ptr())
-                                }) == 0
-                                    || (if (*fname.offset(0) as c_int)
-                                        < (c"CIRCLE(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        -1
-                                    } else if *fname.offset(0) as c_int
-                                        > (c"CIRCLE(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(fname, c"CIRCLE(".as_ptr())
-                                    }) == 0
-                                    || (if (*fname.offset(0) as c_int)
-                                        < (c"ELLIPSE(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        -1
-                                    } else if *fname.offset(0) as c_int
-                                        > (c"ELLIPSE(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(fname, c"ELLIPSE(".as_ptr())
-                                    }) == 0
-                                    || (if (*fname.offset(0) as c_int)
-                                        < (c"NEAR(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        -1
-                                    } else if *fname.offset(0) as c_int
-                                        > (c"NEAR(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(fname, c"NEAR(".as_ptr())
-                                    }) == 0
-                                    || (if (*fname.offset(0) as c_int)
-                                        < (c"ISNULL(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        -1
-                                    } else if *fname.offset(0) as c_int
-                                        > (c"ISNULL(".to_bytes_with_nul())[0] as c_int
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(fname, c"ISNULL(".as_ptr())
-                                    }) == 0
+                                if (FSTRCMP(fname, cs!(c"BOX(")) == 0
+                                    || FSTRCMP(fname, cs!(c"CIRCLE(")) == 0
+                                    || FSTRCMP(fname, cs!(c"ELLIPSE(")) == 0
+                                    || FSTRCMP(fname, cs!(c"NEAR(")) == 0
+                                    || FSTRCMP(fname, cs!(c"ISNULL(")) == 0)
                                 {
                                     return fits_parser_yytokentype::BFUNCTION as c_int;
-                                } else if (if (*fname.offset(0) as c_int)
-                                    < (c"GTIFILTER(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"GTIFILTER(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
+                                } else if (FSTRCMP(fname, cs!(c"GTIFILTER(")) == 0) {
+                                    return (fits_parser_yytokentype::GTIFILTER as c_int);
+                                } else if (FSTRCMP(fname, cs!(c"GTIOVERLAP(")) == 0) {
+                                    return (fits_parser_yytokentype::GTIOVERLAP as c_int);
+                                } else if (FSTRCMP(fname, cs!(c"GTIFIND(")) == 0) {
+                                    return (fits_parser_yytokentype::GTIFIND as c_int);
+                                } else if (FSTRCMP(fname, cs!(c"REGFILTER(")) == 0) {
+                                    return (fits_parser_yytokentype::REGFILTER as c_int);
+                                } else if (FSTRCMP(fname, cs!(c"STRSTR(")) == 0) {
+                                    return (fits_parser_yytokentype::IFUNCTION as c_int); /* Returns integer */
                                 } else {
-                                    strcmp(fname, c"GTIFILTER(".as_ptr())
-                                }) == 0
-                                {
-                                    return fits_parser_yytokentype::GTIFILTER as c_int;
-                                } else if (if (*fname.offset(0) as c_int)
-                                    < (c"GTIOVERLAP(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"GTIOVERLAP(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
-                                } else {
-                                    strcmp(fname, c"GTIOVERLAP(".as_ptr())
-                                }) == 0
-                                {
-                                    return fits_parser_yytokentype::GTIOVERLAP as c_int;
-                                } else if (if (*fname.offset(0) as c_int)
-                                    < (c"GTIFIND(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"GTIFIND(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
-                                } else {
-                                    strcmp(fname, c"GTIFIND(".as_ptr())
-                                }) == 0
-                                {
-                                    return fits_parser_yytokentype::GTIFIND as c_int;
-                                } else if (if (*fname.offset(0) as c_int)
-                                    < (c"REGFILTER(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"REGFILTER(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
-                                } else {
-                                    strcmp(fname, c"REGFILTER(".as_ptr())
-                                }) == 0
-                                {
-                                    return fits_parser_yytokentype::REGFILTER as c_int;
-                                } else if (if (*fname.offset(0) as c_int)
-                                    < (c"STRSTR(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    -1
-                                } else if *fname.offset(0) as c_int
-                                    > (c"STRSTR(".to_bytes_with_nul())[0] as c_int
-                                {
-                                    1
-                                } else {
-                                    strcmp(fname, c"STRSTR(".as_ptr())
-                                }) == 0
-                                {
-                                    return fits_parser_yytokentype::IFUNCTION as c_int;
-                                } else {
-                                    return fits_parser_yytokentype::FUNCTION as c_int;
+                                    return (fits_parser_yytokentype::FUNCTION as c_int);
                                 }
                             }
                             15 => {
