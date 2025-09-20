@@ -1391,7 +1391,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
                 yyscanner.yy_buffer_stack_max,
                 yyscanner.yy_buffer_stack_max,
             );
-            
+
             if v.try_reserve_exact(grow_size).is_err() {
                 yy_fatal_error("out of dynamic memory in yyensure_buffer_stack()");
             } else {

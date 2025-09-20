@@ -283,41 +283,39 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
         d_stream.next_out = *buffptr;
         d_stream.avail_out = *buffsize as uInt;
 
-        loop {
-            /* uncompress as much of the input as will fit in the output */
-            err = inflate(&mut d_stream, Z_NO_FLUSH);
+        /* uncompress as much of the input as will fit in the output */
+        err = inflate(&mut d_stream, Z_NO_FLUSH);
 
-            if err == Z_STREAM_END {
-                /* We reached the end of the input */
-                break;
-            } else if err == Z_OK || err == Z_BUF_ERROR {
-                /* need more space in output buffer */
-                /* Z_BUF_ERROR means need more input data to make progress */
+        if err == Z_STREAM_END {
+            /* We reached the end of the input */
+            // Noop
+        } else if err == Z_OK || err == Z_BUF_ERROR {
+            /* need more space in output buffer */
+            /* Z_BUF_ERROR means need more input data to make progress */
 
-                if let Some(mem_realloc) = mem_realloc {
-                    panic!("Realloc function not implemented for uncompress2mem_from_mem");
-                    *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
-                    if (*buffptr).is_null() {
-                        inflateEnd(&mut d_stream);
-                        *status = DATA_DECOMPRESSION_ERR;
-                        return *status; /* memory allocation failed */
-                    }
-
-                    d_stream.avail_out = BUFFINCR as uInt;
-                    d_stream.next_out = (*buffptr).add(*buffsize);
-                    *buffsize += BUFFINCR;
-                } else {
-                    /* error: no realloc function available */
+            if let Some(mem_realloc) = mem_realloc {
+                panic!("Realloc function not implemented for uncompress2mem_from_mem");
+                *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
+                if (*buffptr).is_null() {
                     inflateEnd(&mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
-                    return *status;
+                    return *status; /* memory allocation failed */
                 }
+
+                d_stream.avail_out = BUFFINCR as uInt;
+                d_stream.next_out = (*buffptr).add(*buffsize);
+                *buffsize += BUFFINCR;
             } else {
-                /* some other error */
+                /* error: no realloc function available */
                 inflateEnd(&mut d_stream);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
+        } else {
+            /* some other error */
+            inflateEnd(&mut d_stream);
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
         }
 
         /* Set the output file size to be the total output data */
@@ -570,39 +568,37 @@ pub(crate) unsafe fn compress2mem_from_mem(
         c_stream.next_out = *buffptr;
         c_stream.avail_out = *buffsize as uInt;
 
-        loop {
-            /* compress as much of the input as will fit in the output */
-            err = deflate(&mut c_stream, Z_FINISH);
+        /* compress as much of the input as will fit in the output */
+        err = deflate(&mut c_stream, Z_FINISH);
 
-            if err == Z_STREAM_END {
-                /* We reached the end of the input */
-                break;
-            } else if err == Z_OK {
-                /* need more space in output buffer */
-                if let Some(mem_realloc) = mem_realloc {
-                    panic!("Realloc function not implemented for compress2mem_from_mem");
-                    *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
-                    if (*buffptr).is_null() {
-                        deflateEnd(&mut c_stream);
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status; /* memory allocation failed */
-                    }
-
-                    c_stream.avail_out = BUFFINCR as uInt;
-                    c_stream.next_out = (*buffptr).add(*buffsize);
-                    *buffsize += BUFFINCR;
-                } else {
-                    /* error: no realloc function available */
+        if err == Z_STREAM_END {
+            /* We reached the end of the input */
+            // Noop
+        } else if err == Z_OK {
+            /* need more space in output buffer */
+            if let Some(mem_realloc) = mem_realloc {
+                panic!("Realloc function not implemented for compress2mem_from_mem");
+                *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
+                if (*buffptr).is_null() {
                     deflateEnd(&mut c_stream);
                     *status = DATA_COMPRESSION_ERR;
-                    return *status;
+                    return *status; /* memory allocation failed */
                 }
+
+                c_stream.avail_out = BUFFINCR as uInt;
+                c_stream.next_out = (*buffptr).add(*buffsize);
+                *buffsize += BUFFINCR;
             } else {
-                /* some other error */
+                /* error: no realloc function available */
                 deflateEnd(&mut c_stream);
                 *status = DATA_COMPRESSION_ERR;
                 return *status;
             }
+        } else {
+            /* some other error */
+            deflateEnd(&mut c_stream);
+            *status = DATA_COMPRESSION_ERR;
+            return *status;
         }
 
         /* Set the output file size to be the total output data */

@@ -6510,7 +6510,7 @@ pub fn fits_get_token_safe(
     unsafe {
         *token = 0;
 
-        while input_str[0] == bb(b' '){
+        while input_str[0] == bb(b' ') {
             /* skip over leading blanks */
             ptr_idx += 1;
             input_str = &input_str[1..];
