@@ -1017,7 +1017,7 @@ fn yydestruct(
     lParse: &mut ParseData,
 ) {
     if yymsg.is_null() {
-        yymsg = b"Deleting\0" as *const u8 as *const c_char;
+        yymsg = c"Deleting".as_ptr();
     }
 }
 
@@ -1321,7 +1321,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 }
                             } else {
                                 yydestruct(
-                                    b"Error: discarding\0" as *const u8 as *const c_char,
+                                    c"Error: discarding".as_ptr(),
                                     yytoken,
                                     &mut yylval,
                                     scanner,
@@ -2521,20 +2521,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         54 => {
                             /* expr: FUNCTION ')'  */
                             if (if ((*yyvsp.offset(-1)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"RANDOM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"RANDOM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-1)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"RANDOM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"RANDOM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-1)).astr).as_mut_ptr(),
-                                    b"RANDOM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-1)).astr).as_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -2552,19 +2547,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 1297461190301222800;
                             } else if (if ((*yyvsp.offset(-1)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"RANDOMN(\0"))
-                                    [0] as c_int
+                                < (cs!(c"RANDOMN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-1)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"RANDOMN(\0"))
-                                    [0] as c_int
+                                > (cs!(c"RANDOMN("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-1)).astr).as_mut_ptr(),
-                                    b"RANDOMN(\0" as *const u8 as *const c_char,
+                                    c"RANDOMN(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -2600,20 +2593,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         55 => {
                             /* expr: FUNCTION bexpr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                < (cs!(c"SUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                > (cs!(c"SUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"SUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -2631,20 +2619,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 10848699504537784535;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NELEM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NELEM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NELEM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Const(
@@ -2658,20 +2641,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 10848699504537784535;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ACCUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ACCUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ACCUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                             {
                                 let mut zero: c_long = 0;
@@ -2708,21 +2686,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         56 => {
                             /* expr: FUNCTION bexpr ',' expr ')'  */
                             if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 10], &[c_char; 10]>(
-                                    b"AXISELEM(\0",
-                                ))[0] as c_int
+                                < (cs!(c"AXISELEM"))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 10], &[c_char; 10]>(
-                                    b"AXISELEM(\0",
-                                ))[0] as c_int
+                                > (cs!(c"AXISELEM"))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"AXISELEM(\0" as *const u8 as *const c_char,
+                                    c"AXISELEM(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -2783,20 +2757,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXES(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NAXES("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXES(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NAXES("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"NAXES(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).operation
@@ -2866,20 +2835,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ARRAY(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ARRAY("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ARRAY(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ARRAY("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"ARRAY(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Array(
@@ -2913,20 +2877,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         57 => {
                             /* expr: FUNCTION sexpr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NELEM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NELEM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NELEM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Const(
@@ -2940,20 +2899,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 15752106442776732052;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NVALID("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NVALID("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NVALID(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -2988,20 +2942,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         58 => {
                             /* expr: FUNCTION bits ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NELEM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NELEM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NELEM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Const(
@@ -3015,20 +2964,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 494012601817399562;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NVALID("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NVALID("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NVALID(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Const(
@@ -3042,20 +2986,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 494012601817399562;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                < (cs!(c"SUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                > (cs!(c"SUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"SUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3073,20 +3012,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 494012601817399562;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MIN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MIN("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"MIN(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3105,20 +3039,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ACCUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ACCUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ACCUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                             {
                                 let mut zero_0: c_long = 0;
@@ -3138,20 +3067,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 494012601817399562;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MAX("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MAX("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"MAX(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3187,20 +3111,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         59 => {
                             /* expr: FUNCTION expr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                < (cs!(c"SUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SUM(\0"))[0]
-                                    as c_int
+                                > (cs!(c"SUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"SUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3218,19 +3137,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"AVERAGE(\0"))
-                                    [0] as c_int
+                                < (cs!(c"AVERAGE("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"AVERAGE(\0"))
-                                    [0] as c_int
+                                > (cs!(c"AVERAGE("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"AVERAGE(\0" as *const u8 as *const c_char,
+                                    c"AVERAGE(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -3249,20 +3166,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STDDEV(\0"))
-                                    [0] as c_int
+                                < (cs!(c"STDDEV("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STDDEV(\0"))
-                                    [0] as c_int
+                                > (cs!(c"STDDEV("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"STDDEV(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"STDDEV(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3280,20 +3192,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"MEDIAN(\0"))
-                                    [0] as c_int
+                                < (cs!(c"MEDIAN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"MEDIAN(\0"))
-                                    [0] as c_int
+                                > (cs!(c"MEDIAN("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"MEDIAN(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"MEDIAN(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3311,20 +3218,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NELEM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NELEM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NELEM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NELEM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Const(
@@ -3338,20 +3240,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NVALID("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"NVALID(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NVALID("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NVALID(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3369,20 +3266,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ACCUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ACCUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ACCUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
@@ -3407,20 +3299,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ACCUM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ACCUM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ACCUM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ACCUM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
@@ -3442,19 +3329,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SEQDIFF(\0"))
-                                    [0] as c_int
+                                < (cs!(c"SEQDIFF("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SEQDIFF(\0"))
-                                    [0] as c_int
+                                > (cs!(c"SEQDIFF("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"SEQDIFF(\0" as *const u8 as *const c_char,
+                                    c"SEQDIFF(".as_ptr(),
                                 )
                             }) == 0
                                 && ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).ntype
@@ -3477,19 +3362,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SEQDIFF(\0"))
-                                    [0] as c_int
+                                < (cs!(c"SEQDIFF("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SEQDIFF(\0"))
-                                    [0] as c_int
+                                > (cs!(c"SEQDIFF("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"SEQDIFF(\0" as *const u8 as *const c_char,
+                                    c"SEQDIFF(".as_ptr(),
                                 )
                             }) == 0
                                 && ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).ntype
@@ -3512,20 +3395,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"ABS(\0"))[0]
-                                    as c_int
+                                < (cs!(c"ABS("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"ABS(\0"))[0]
-                                    as c_int
+                                > (cs!(c"ABS("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ABS(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ABS(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3543,20 +3421,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MIN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MIN("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"MIN(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3574,20 +3447,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MAX("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MAX("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"MAX(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3605,20 +3473,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 7600445499126923600;
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"RANDOM(\0"))
-                                    [0] as c_int
+                                < (cs!(c"RANDOM("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"RANDOM(\0"))
-                                    [0] as c_int
+                                > (cs!(c"RANDOM("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"RANDOM(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -3642,19 +3505,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 7600445499126923600;
                                 }
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"RANDOMN(\0"))
-                                    [0] as c_int
+                                < (cs!(c"RANDOMN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"RANDOMN(\0"))
-                                    [0] as c_int
+                                > (cs!(c"RANDOMN("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"RANDOMN(\0" as *const u8 as *const c_char,
+                                    c"RANDOMN(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -3679,21 +3540,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 7600445499126923600;
                                 }
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
-                                    b"ELEMENTNUM(\0",
-                                ))[0] as c_int
+                                < (cs!(c"ELEMENTNUM"))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 12], &[c_char; 12]>(
-                                    b"ELEMENTNUM(\0",
-                                ))[0] as c_int
+                                > (cs!(c"ELEMENTNUM"))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ELEMENTNUM(\0" as *const u8 as *const c_char,
+                                    c"ELEMENTNUM(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -3731,20 +3588,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXIS(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NAXIS("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXIS(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NAXIS("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"NAXIS(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"NAXIS(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).operation
@@ -3788,19 +3640,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                 }
                                 if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SIN(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"SIN("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"SIN(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"SIN("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"SIN(\0" as *const u8 as *const c_char,
+                                        c"SIN(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -3819,19 +3669,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"COS(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"COS("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"COS(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"COS("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"COS(\0" as *const u8 as *const c_char,
+                                        c"COS(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -3850,19 +3698,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"TAN(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"TAN("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"TAN(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"TAN("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"TAN(\0" as *const u8 as *const c_char,
+                                        c"TAN(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -3881,39 +3727,31 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCSIN(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"ARCSIN"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCSIN(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"ARCSIN"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"ARCSIN(\0" as *const u8 as *const c_char,
+                                        c"ARCSIN(".as_ptr(),
                                     )
                                 }) == 0
                                     || (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ASIN(\0",
-                                        ))[0] as c_int
+                                        < (cs!(c"ASIN"))[0] as c_int
                                     {
                                         -(1)
                                     } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                        > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ASIN(\0",
-                                        ))[0] as c_int
+                                        > (cs!(c"ASIN"))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(
                                             ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                            b"ASIN(\0" as *const u8 as *const c_char,
+                                            c"ASIN(".as_ptr(),
                                         )
                                     }) == 0
                                 {
@@ -3932,39 +3770,31 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCCOS(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"ARCCOS"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCCOS(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"ARCCOS"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"ARCCOS(\0" as *const u8 as *const c_char,
+                                        c"ARCCOS(".as_ptr(),
                                     )
                                 }) == 0
                                     || (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ACOS(\0",
-                                        ))[0] as c_int
+                                        < (cs!(c"ACOS"))[0] as c_int
                                     {
                                         -(1)
                                     } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                        > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ACOS(\0",
-                                        ))[0] as c_int
+                                        > (cs!(c"ACOS"))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(
                                             ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                            b"ACOS(\0" as *const u8 as *const c_char,
+                                            c"ACOS(".as_ptr(),
                                         )
                                     }) == 0
                                 {
@@ -3983,39 +3813,31 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCTAN(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"ARCTAN"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(
-                                        b"ARCTAN(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"ARCTAN"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"ARCTAN(\0" as *const u8 as *const c_char,
+                                        c"ARCTAN(".as_ptr(),
                                     )
                                 }) == 0
                                     || (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                        < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ATAN(\0",
-                                        ))[0] as c_int
+                                        < (cs!(c"ATAN"))[0] as c_int
                                     {
                                         -(1)
                                     } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                        > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                            b"ATAN(\0",
-                                        ))[0] as c_int
+                                        > (cs!(c"ATAN"))[0] as c_int
                                     {
                                         1
                                     } else {
                                         strcmp(
                                             ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                            b"ATAN(\0" as *const u8 as *const c_char,
+                                            c"ATAN(".as_ptr(),
                                         )
                                     }) == 0
                                 {
@@ -4034,21 +3856,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"SINH(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"SINH"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"SINH(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"SINH"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"SINH(\0" as *const u8 as *const c_char,
+                                        c"SINH(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4067,21 +3885,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"COSH(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"COSH"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"COSH(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"COSH"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"COSH(\0" as *const u8 as *const c_char,
+                                        c"COSH(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4100,21 +3914,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"TANH(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"TANH"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"TANH(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"TANH"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"TANH(\0" as *const u8 as *const c_char,
+                                        c"TANH(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4133,19 +3943,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"EXP(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"EXP("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"EXP(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"EXP("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"EXP(\0" as *const u8 as *const c_char,
+                                        c"EXP(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4164,19 +3972,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"LOG(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"LOG("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"LOG(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"LOG("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"LOG(\0" as *const u8 as *const c_char,
+                                        c"LOG(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4195,21 +4001,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"LOG10(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"LOG10"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"LOG10(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"LOG10"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"LOG10(\0" as *const u8 as *const c_char,
+                                        c"LOG10(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4228,21 +4030,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"SQRT(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"SQRT"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"SQRT(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"SQRT"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"SQRT(\0" as *const u8 as *const c_char,
+                                        c"SQRT(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4261,21 +4059,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"ROUND(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"ROUND"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"ROUND(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"ROUND"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"ROUND(\0" as *const u8 as *const c_char,
+                                        c"ROUND(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4294,21 +4088,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"FLOOR(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"FLOOR"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(
-                                        b"FLOOR(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"FLOOR"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"FLOOR(\0" as *const u8 as *const c_char,
+                                        c"FLOOR(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4327,21 +4117,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"CEIL(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"CEIL"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(
-                                        b"CEIL(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"CEIL"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"CEIL(\0" as *const u8 as *const c_char,
+                                        c"CEIL(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4360,21 +4146,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 7600445499126923600;
                                 } else if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"RANDOMP(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"RANDOMP"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"RANDOMP(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"RANDOMP"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                        b"RANDOMP(\0" as *const u8 as *const c_char,
+                                        c"RANDOMP(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -4416,20 +4198,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         60 => {
                             /* expr: IFUNCTION sexpr ',' sexpr ')'  */
                             if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STRSTR(\0"))
-                                    [0] as c_int
+                                < (cs!(c"STRSTR("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STRSTR(\0"))
-                                    [0] as c_int
+                                > (cs!(c"STRSTR("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"STRSTR(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"STRSTR(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -4463,19 +4240,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         61 => {
                             /* expr: FUNCTION expr ',' expr ')'  */
                             if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"DEFNULL(\0" as *const u8 as *const c_char,
+                                    c"DEFNULL(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -4539,19 +4314,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"ARCTAN2(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ARCTAN2("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"ARCTAN2(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ARCTAN2("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"ARCTAN2(\0" as *const u8 as *const c_char,
+                                    c"ARCTAN2(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -4616,20 +4389,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MIN("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MIN(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MIN("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"MIN(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-3)).Node as usize]).ntype
@@ -4692,20 +4460,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                < (cs!(c"MAX("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"MAX(\0"))[0]
-                                    as c_int
+                                > (cs!(c"MAX("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"MAX(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-3)).Node as usize]).ntype
@@ -4768,19 +4531,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SETNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"SETNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"SETNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"SETNULL("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"SETNULL(\0" as *const u8 as *const c_char,
+                                    c"SETNULL(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -4824,21 +4585,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 9966817879908499150;
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 10], &[c_char; 10]>(
-                                    b"AXISELEM(\0",
-                                ))[0] as c_int
+                                < (cs!(c"AXISELEM"))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 10], &[c_char; 10]>(
-                                    b"AXISELEM(\0",
-                                ))[0] as c_int
+                                > (cs!(c"AXISELEM"))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"AXISELEM(\0" as *const u8 as *const c_char,
+                                    c"AXISELEM(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -4899,20 +4656,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXES(\0"))
-                                    [0] as c_int
+                                < (cs!(c"NAXES("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"NAXES(\0"))
-                                    [0] as c_int
+                                > (cs!(c"NAXES("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"NAXES(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-1)).Node as usize]).operation
@@ -4983,20 +4735,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ARRAY(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ARRAY("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 7], &[c_char; 7]>(b"ARRAY(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ARRAY("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"ARRAY(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-4)).astr).as_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Array(
@@ -5026,20 +4773,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         62 => {
                             /* expr: FUNCTION expr ',' expr ',' expr ',' expr ')'  */
                             if (if ((*yyvsp.offset(-8)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ANGSEP(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ANGSEP("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-8)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ANGSEP(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ANGSEP("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-8)).astr).as_mut_ptr(),
-                                    b"ANGSEP(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-8)).astr).as_mut_ptr(), c"ANGSEP(".as_ptr())
                             }) == 0
                             {
                                 if ((lParse.Nodes)[(*yyvsp.offset(-7)).Node as usize]).ntype
@@ -5170,8 +4912,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ((*yyvsp.offset(-(5))).astr).as_mut_ptr(),
                                 (*yyvsp.offset(-3)).Node,
                                 (*yyvsp.offset(-1)).Node,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6025,20 +5767,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         102 => {
                             /* bexpr: BFUNCTION expr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ISNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ISNULL("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ISNULL(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -6072,20 +5809,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         103 => {
                             /* bexpr: BFUNCTION bexpr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ISNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ISNULL("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ISNULL(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -6119,20 +5851,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         104 => {
                             /* bexpr: BFUNCTION sexpr ')'  */
                             if (if ((*yyvsp.offset(-2)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"ISNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-2)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"ISNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"ISNULL("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-2)).astr).as_mut_ptr(),
-                                    b"ISNULL(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-2)).astr).as_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -6164,19 +5891,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         105 => {
                             /* bexpr: FUNCTION bexpr ',' bexpr ')'  */
                             if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"DEFNULL(\0" as *const u8 as *const c_char,
+                                    c"DEFNULL(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -6274,20 +5999,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else if (if ((*yyvsp.offset(-6)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(b"NEAR(\0"))[0]
-                                    as c_int
+                                < (cs!(c"NEAR("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-6)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 6], &[c_char; 6]>(b"NEAR(\0"))[0]
-                                    as c_int
+                                > (cs!(c"NEAR("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-6)).astr).as_mut_ptr(),
-                                    b"NEAR(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-6)).astr).as_mut_ptr(), c"NEAR(".as_ptr())
                             }) == 0
                             {
                                 yyval.Node = New_Func(
@@ -6417,19 +6137,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else if (if ((*yyvsp.offset(-10)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"CIRCLE(\0"))
-                                    [0] as c_int
+                                < (cs!(c"CIRCLE("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-10)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"CIRCLE(\0"))
-                                    [0] as c_int
+                                > (cs!(c"CIRCLE("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-10)).astr).as_mut_ptr(),
-                                    b"CIRCLE(\0" as *const u8 as *const c_char,
+                                    c"CIRCLE(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -6606,19 +6324,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 current_block = 4830776507462815627;
                             } else {
                                 if (if ((*yyvsp.offset(-14)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0] as c_int
+                                    < (cs!(c"BOX("))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-14)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 5], &[c_char; 5]>(b"BOX(\0"))
-                                        [0] as c_int
+                                    > (cs!(c"BOX("))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-14)).astr).as_mut_ptr(),
-                                        b"BOX(\0" as *const u8 as *const c_char,
+                                        c"BOX(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -6637,21 +6353,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 3023179740610631044;
                                 } else if (if ((*yyvsp.offset(-14)).astr[0] as c_int)
-                                    < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"ELLIPSE(\0",
-                                    ))[0] as c_int
+                                    < (cs!(c"ELLIPSE"))[0] as c_int
                                 {
                                     -(1)
                                 } else if (*yyvsp.offset(-14)).astr[0] as c_int
-                                    > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(
-                                        b"ELLIPSE(\0",
-                                    ))[0] as c_int
+                                    > (cs!(c"ELLIPSE"))[0] as c_int
                                 {
                                     1
                                 } else {
                                     strcmp(
                                         ((*yyvsp.offset(-14)).astr).as_mut_ptr(),
-                                        b"ELLIPSE(\0" as *const u8 as *const c_char,
+                                        c"ELLIPSE(".as_ptr(),
                                     )
                                 }) == 0
                                 {
@@ -6793,8 +6505,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 b"\0" as *const u8 as *const c_char as *mut c_char,
                                 -99,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6811,8 +6523,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ((*yyvsp.offset(-1)).astr).as_mut_ptr(),
                                 -99,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6828,8 +6540,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ((*yyvsp.offset(-3)).astr).as_mut_ptr(),
                                 (*yyvsp.offset(-1)).Node,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6863,8 +6575,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 b"\0" as *const u8 as *const c_char as *mut c_char,
                                 -99,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6880,8 +6592,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ((*yyvsp.offset(-1)).astr).as_mut_ptr(),
                                 -99,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -6897,8 +6609,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ((*yyvsp.offset(-3)).astr).as_mut_ptr(),
                                 (*yyvsp.offset(-1)).Node,
                                 -99,
-                                b"*START*\0" as *const u8 as *const c_char as *mut c_char,
-                                b"*STOP*\0" as *const u8 as *const c_char as *mut c_char,
+                                c"*START*".as_ptr() as *mut c_char,
+                                c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
@@ -7250,19 +6962,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         134 => {
                             /* sexpr: FUNCTION sexpr ',' sexpr ')'  */
                             if (if ((*yyvsp.offset(-4)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                < (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-4)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 9], &[c_char; 9]>(b"DEFNULL(\0"))
-                                    [0] as c_int
+                                > (cs!(c"DEFNULL("))[0] as c_int
                             {
                                 1
                             } else {
                                 strcmp(
                                     ((*yyvsp.offset(-4)).astr).as_mut_ptr(),
-                                    b"DEFNULL(\0" as *const u8 as *const c_char,
+                                    c"DEFNULL(".as_ptr(),
                                 )
                             }) == 0
                             {
@@ -7326,20 +7036,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         135 => {
                             /* sexpr: FUNCTION sexpr ',' expr ',' expr ')'  */
                             if (if ((*yyvsp.offset(-6)).astr[0] as c_int)
-                                < (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STRMID(\0"))
-                                    [0] as c_int
+                                < (cs!(c"STRMID("))[0] as c_int
                             {
                                 -(1)
                             } else if (*yyvsp.offset(-6)).astr[0] as c_int
-                                > (*::core::mem::transmute::<&[u8; 8], &[c_char; 8]>(b"STRMID(\0"))
-                                    [0] as c_int
+                                > (cs!(c"STRMID("))[0] as c_int
                             {
                                 1
                             } else {
-                                strcmp(
-                                    ((*yyvsp.offset(-6)).astr).as_mut_ptr(),
-                                    b"STRMID(\0" as *const u8 as *const c_char,
-                                )
+                                strcmp(((*yyvsp.offset(-6)).astr).as_mut_ptr(), c"STRMID(".as_ptr())
                             }) == 0
                             {
                                 let mut len: c_int = 0;
@@ -7492,7 +7197,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             break 's_54;
                         }
                         yydestruct(
-                            b"Error: popping\0" as *const u8 as *const c_char,
+                            c"Error: popping".as_ptr(),
                             YYSTOS[yystate as usize] as yysymbol_kind_t,
                             yyvsp,
                             scanner,
@@ -7532,7 +7237,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 YYSYMBOL_YYUNDEF as c_int
             }) as yysymbol_kind_t;
             yydestruct(
-                b"Cleanup: discarding lookahead\0" as *const u8 as *const c_char,
+                c"Cleanup: discarding lookahead".as_ptr(),
                 yytoken,
                 &mut yylval,
                 scanner,
@@ -7543,7 +7248,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
         yyssp = yyssp.offset(-(yylen as isize));
         while yyssp != yyss {
             yydestruct(
-                b"Cleanup: popping\0" as *const u8 as *const c_char,
+                c"Cleanup: popping".as_ptr(),
                 YYSTOS[*yyssp as usize] as yysymbol_kind_t,
                 yyvsp,
                 scanner,
@@ -7871,8 +7576,7 @@ fn New_GTI(
                     continue;
                 }
                 ffupch_safe(&mut extname);
-                if !(strstr(extname.as_mut_ptr(), b"GTI\0" as *const u8 as *const c_char)).is_null()
-                {
+                if !(strstr(extname.as_mut_ptr(), c"GTI".as_ptr())).is_null() {
                     break;
                 }
             }

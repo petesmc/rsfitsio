@@ -19,7 +19,7 @@ use crate::wrappers::{isdigit_safe, strcat_safe, strcpy_safe, strncat_safe};
 use crate::{STDIN, STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
-    wrappers::{strcat, strcmp, strcpy, strlen, strncat, strncpy, toupper},
+    wrappers::{strcat, strcpy, strlen, strncat, strncpy, toupper},
 };
 
 pub type __uint8_t = c_uchar;
@@ -797,25 +797,25 @@ pub(crate) fn fits_parser_yylex(
                                     }
                                     len += 1;
                                 }
-                                if (FSTRCMP(fname, cs!(c"BOX(")) == 0
+                                if FSTRCMP(fname, cs!(c"BOX(")) == 0
                                     || FSTRCMP(fname, cs!(c"CIRCLE(")) == 0
                                     || FSTRCMP(fname, cs!(c"ELLIPSE(")) == 0
                                     || FSTRCMP(fname, cs!(c"NEAR(")) == 0
-                                    || FSTRCMP(fname, cs!(c"ISNULL(")) == 0)
+                                    || FSTRCMP(fname, cs!(c"ISNULL(")) == 0
                                 {
                                     return fits_parser_yytokentype::BFUNCTION as c_int;
-                                } else if (FSTRCMP(fname, cs!(c"GTIFILTER(")) == 0) {
-                                    return (fits_parser_yytokentype::GTIFILTER as c_int);
-                                } else if (FSTRCMP(fname, cs!(c"GTIOVERLAP(")) == 0) {
-                                    return (fits_parser_yytokentype::GTIOVERLAP as c_int);
-                                } else if (FSTRCMP(fname, cs!(c"GTIFIND(")) == 0) {
-                                    return (fits_parser_yytokentype::GTIFIND as c_int);
-                                } else if (FSTRCMP(fname, cs!(c"REGFILTER(")) == 0) {
-                                    return (fits_parser_yytokentype::REGFILTER as c_int);
-                                } else if (FSTRCMP(fname, cs!(c"STRSTR(")) == 0) {
-                                    return (fits_parser_yytokentype::IFUNCTION as c_int); /* Returns integer */
+                                } else if FSTRCMP(fname, cs!(c"GTIFILTER(")) == 0 {
+                                    return fits_parser_yytokentype::GTIFILTER as c_int;
+                                } else if FSTRCMP(fname, cs!(c"GTIOVERLAP(")) == 0 {
+                                    return fits_parser_yytokentype::GTIOVERLAP as c_int;
+                                } else if FSTRCMP(fname, cs!(c"GTIFIND(")) == 0 {
+                                    return fits_parser_yytokentype::GTIFIND as c_int;
+                                } else if FSTRCMP(fname, cs!(c"REGFILTER(")) == 0 {
+                                    return fits_parser_yytokentype::REGFILTER as c_int;
+                                } else if FSTRCMP(fname, cs!(c"STRSTR(")) == 0 {
+                                    return fits_parser_yytokentype::IFUNCTION as c_int; /* Returns integer */
                                 } else {
-                                    return (fits_parser_yytokentype::FUNCTION as c_int);
+                                    return fits_parser_yytokentype::FUNCTION as c_int;
                                 }
                             }
                             15 => {
@@ -1198,18 +1198,18 @@ fn fits_parser_yy_load_buffer_state(yyscanner: &mut yyguts_t) {
             .as_deref_mut()
             .unwrap();
 
-        yyscanner.yy_n_chars = (*top_state).yy_n_chars;
+        yyscanner.yy_n_chars = top_state.yy_n_chars;
 
         // Convert index to pointer
-        let buf_pos_index = (*top_state).yy_buf_pos;
-        yyscanner.yy_c_buf_p = if let Some(ch_buf) = (*top_state).yy_ch_buf.as_deref_mut() {
+        let buf_pos_index = top_state.yy_buf_pos;
+        yyscanner.yy_c_buf_p = if let Some(ch_buf) = top_state.yy_ch_buf.as_deref_mut() {
             ch_buf[buf_pos_index..].as_mut_ptr()
         } else {
             ptr::null_mut()
         };
 
         yyscanner.yytext_r = yyscanner.yy_c_buf_p;
-        yyscanner.yyin_r = (*top_state).yy_input_file;
+        yyscanner.yyin_r = top_state.yy_input_file;
         if !yyscanner.yy_c_buf_p.is_null() {
             yyscanner.yy_hold_char = *yyscanner.yy_c_buf_p;
         }
@@ -1279,8 +1279,8 @@ pub(crate) fn fits_parser_yy_delete_buffer(
             z = (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).take();
         }
 
-        if (*b).yy_is_our_buffer {
-            eprintln!("")
+        if b.yy_is_our_buffer {
+            eprintln!()
             // (*b).yy_ch_buf = None;
         }
 
@@ -1294,8 +1294,8 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
         let oerrno = errno().0;
 
         fits_parser_yy_flush_buffer(b, yyscanner);
-        (*b).yy_input_file = file;
-        (*b).yy_fill_buffer = 1;
+        b.yy_input_file = file;
+        b.yy_fill_buffer = 1;
 
         let top_state = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
             .as_deref_mut()
@@ -1305,10 +1305,10 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
         };
 
         if !ptr::addr_eq(b, top_state) {
-            (*b).yy_bs_lineno = 1;
-            (*b).yy_bs_column = 0;
+            b.yy_bs_lineno = 1;
+            b.yy_bs_column = 0;
         }
-        (*b).yy_is_interactive = if !file.is_null() {
+        b.yy_is_interactive = if !file.is_null() {
             (isatty(fileno(file)) > 0) as c_int
         } else {
             0
@@ -1319,12 +1319,12 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
 
 pub(crate) fn fits_parser_yy_flush_buffer(b: &mut yy_buffer_state, yyscanner: &mut yyguts_t) {
     unsafe {
-        (*b).yy_n_chars = 0;
-        ((*b).yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
-        ((*b).yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
-        (*b).yy_buf_pos = 0; // Set index to start of buffer
-        (*b).yy_at_bol = 1;
-        (*b).yy_buffer_status = 0;
+        b.yy_n_chars = 0;
+        (b.yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
+        (b.yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
+        b.yy_buf_pos = 0; // Set index to start of buffer
+        b.yy_at_bol = 1;
+        b.yy_buffer_status = 0;
 
         let top_state = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
             .as_deref_mut()

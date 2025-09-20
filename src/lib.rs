@@ -169,7 +169,7 @@ macro_rules! slice_to_str {
 #[macro_export]
 macro_rules! cs {
     ($e: expr) => {
-        cast_slice($e.to_bytes_with_nul())
+        cast_slice::<u8, c_char>($e.to_bytes_with_nul())
     };
 }
 
