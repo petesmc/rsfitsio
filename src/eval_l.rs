@@ -58,34 +58,30 @@ pub type yy_size_t = size_t;
 
 /* Holds the entire state of the reentrant scanner. */
 #[derive(Default, Copy, Clone)]
-pub struct yyguts_t {
+pub(crate) struct yyguts_t {
     /* User-defined. Not touched by flex. */
-    pub yyextra_r: *mut ParseData,
+    pub(crate) yyextra_r: *mut ParseData,
 
     /* The rest are the same as the globals declared in the non-reentrant scanner. */
-    pub yyin_r: *mut FILE,
-    pub yyout_r: *mut FILE,
-    pub yy_buffer_stack_top: size_t,
+    pub(crate) yyin_r: *mut FILE,
+    pub(crate) yyout_r: *mut FILE,
+    pub(crate) yy_buffer_stack_top: size_t,
     /**< index of top of stack. */
-    pub yy_buffer_stack_max: size_t,
+    pub(crate) yy_buffer_stack_max: size_t,
     /**< capacity of stack. */
-    pub yy_buffer_stack: *mut Option<Box<yy_buffer_state>>,
+    pub(crate) yy_buffer_stack: *mut Option<Box<yy_buffer_state>>,
     /**< Stack as an array. */
-    pub yy_hold_char: c_char,
-    pub yy_n_chars: c_int,
-    pub yyleng_r: c_int,
-    pub yy_c_buf_p: *mut c_char,
-    pub yy_init: c_int,
-    pub yy_start: c_int,
-    pub yy_did_buffer_switch_on_eof: c_int,
-    pub yy_last_accepting_state: yy_state_type,
-    pub yy_last_accepting_cpos: *mut c_char,
-    pub yylineno_r: c_int,
-    pub yy_flex_debug_r: c_int,
-    pub yytext_r: *mut c_char,
-    pub yy_more_flag: c_int,
-    pub yy_more_len: c_int,
-    pub yylval_r: *mut FITS_PARSER_YYSTYPE,
+    pub(crate) yy_hold_char: c_char,
+    pub(crate) yy_n_chars: c_int,
+    pub(crate) yyleng_r: c_int,
+    pub(crate) yy_c_buf_p: *mut c_char,
+    pub(crate) yy_init: c_int,
+    pub(crate) yy_start: c_int,
+    pub(crate) yy_did_buffer_switch_on_eof: c_int,
+    pub(crate) yy_last_accepting_state: yy_state_type,
+    pub(crate) yy_last_accepting_cpos: *mut c_char,
+    pub(crate) yytext_r: *mut c_char,
+    pub(crate) yylval_r: *mut FITS_PARSER_YYSTYPE,
 }
 
 pub type yy_state_type = c_int;
@@ -1383,6 +1379,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
             yyscanner.yy_buffer_stack_top = 0;
             return;
         }
+
         if yyscanner.yy_buffer_stack_top
             >= (yyscanner.yy_buffer_stack_max).wrapping_sub(1 as c_int as size_t)
         {
@@ -1394,6 +1391,7 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
                 yyscanner.yy_buffer_stack_max,
                 yyscanner.yy_buffer_stack_max,
             );
+            
             if v.try_reserve_exact(grow_size).is_err() {
                 yy_fatal_error("out of dynamic memory in yyensure_buffer_stack()");
             } else {
