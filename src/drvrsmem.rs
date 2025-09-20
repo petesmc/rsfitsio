@@ -60,8 +60,8 @@ const SHARED_GRANUL: c_int = 16384; /* granularity of shared_malloc allocation =
 
 /* checkpoints in shared memory segments - might be omitted */
 
-const SHARED_ID_0: u8 = b'J'; /* first byte of identifier in BLKHEAD */
-const SHARED_ID_1: u8 = b'B'; /* second byte of identifier in BLKHEAD */
+const SHARED_ID_0: c_char = b'J' as c_char; /* first byte of identifier in BLKHEAD */
+const SHARED_ID_1: c_char = b'B' as c_char; /* second byte of identifier in BLKHEAD */
 
 const BLOCK_REG: c_char = 0; /* value for tflag member of BLKHEAD */
 const BLOCK_SHARED: c_char = 1; /* value for tflag member of BLKHEAD */
