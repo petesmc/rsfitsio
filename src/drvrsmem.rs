@@ -1453,7 +1453,7 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
 
         let r: c_int = SHARED_GT[idx].attr as c_int;
 
-        SHARED_GT[idx].attr = newattr as u8;
+        SHARED_GT[idx].attr = newattr as c_char;
         r
     }
 }

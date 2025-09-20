@@ -6503,14 +6503,14 @@ pub fn fits_get_token_safe(
     let mut loc: c_char = 0;
     let mut tval: [c_char; 73] = [0; 73];
 
-    let mut input_str = unsafe { CStr::from_ptr(*ptr).to_bytes_with_nul() };
+    let mut input_str: &[c_char] = unsafe { cast_slice(CStr::from_ptr(*ptr).to_bytes_with_nul()) };
     let mut ptr_idx = 0;
     let mut slen: usize = 0;
 
     unsafe {
         *token = 0;
 
-        while input_str[0] == b' ' {
+        while input_str[0] == bb(b' '){
             /* skip over leading blanks */
             ptr_idx += 1;
             input_str = &input_str[1..];

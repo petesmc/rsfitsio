@@ -419,7 +419,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
                                     strcpy_safe(
                                         &mut errMsg,
-                                        c"Bit string exceeds maximum length: '".to_bytes_with_nul(),
+                                        cs!(c"Bit string exceeds maximum length: '"),
                                     );
                                     strncat(
                                         errMsg.as_mut_ptr(),
@@ -494,7 +494,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
                                     strcpy_safe(
                                         &mut errMsg_0,
-                                        c"Hex string exceeds maximum length: '".to_bytes_with_nul(),
+                                        cs!(c"Hex string exceeds maximum length: '"),
                                     );
                                     strncat(
                                         errMsg_0.as_mut_ptr(),
@@ -737,7 +737,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yyextra_r).status = 431 as c_int;
                                     strcpy_safe(
                                         &mut errMsg_1,
-                                        c"String exceeds maximum length: '".to_bytes_with_nul(),
+                                        cs!(c"String exceeds maximum length: '"),
                                     );
                                     strncat(
                                         errMsg_1.as_mut_ptr(),
