@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.462.8] - 2025.09.20
+
+### Added
+- Comprehensive eval* tests for table where clauses and calculator expressions
+- Expanded cookbook examples for binary tables
+- Unit tests for eval functions and row expressions
+- Python fitsio compatibility improvements
+
+### Changed
+- Rewritten error handling with new ErrorStack and ErrorMessage structs for thread safety
+
+### Fixed
+- Bzip2 feature now fully functional
+- Multiple safety issues and TODO implementations across modkey.rs, putkey.rs
+- Various bugs found through Python fitsio integration testing
+- Overflow handling in eval functions
+- Table where clause parsing and execution
+
+## [0.462.7] - 2025-08-04
+
+### Fixed
+- Critical bug typo
+
+## [0.462.6] - 2025-08-04
+
+### Added
+- Shared memory code and utility functionality (previously non-functional feature)
+- Expanded test coverage
+
+### Changed
+- Further reduced libc dependencies from cfileio.rs and edithdu.rs modules
+
+### Fixed
+- Bugs with long keywords and null NAXES handling
+- fgets usage in region.rs
+
+## [0.462.5] - 2025-06-29
+
+### Added
+- CI support for MacOS (Intel and ARM), Windows (x86_64 and ARM), and Linux ARM64
+- Iterator examples demonstrating FITS file traversal
+
+### Changed
+- ZCompress module now uses Read/Write traits for better Rust integration
+
+### Removed
+- Dependency on nightly variadic functions - now works on stable Rust
+
+### Fixed
+- Platform-specific issues for MacOS and Windows builds
+- stdin/stdout/stderr linking on MacOS
+- Type compatibility issues on Windows (c_long vs LONGLONG)
+- Various TODOs and documentation improvements
+
 ## [0.462.4] - 2025-06-17
 
 ### Added
