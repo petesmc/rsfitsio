@@ -1,6 +1,8 @@
 #![allow(deprecated)]
 
+#[cfg(linux)]
 use libc::{c_char, c_int, sscanf, strcmp};
+#[cfg(linux)]
 use rsfitsio::drvrsmem::{
     shared_getaddr, shared_init, shared_list, shared_recover, shared_uncond_delete,
 };
@@ -8,6 +10,13 @@ use std::ffi::CString;
 use std::ptr;
 use std::{ffi::CStr, process::ExitCode};
 
+#[cfg(windows)]
+pub fn main() -> ExitCode {
+    println!("smem not supported on windows");
+    ExitCode::from(10)
+}
+
+#[cfg(not(windows))]
 pub fn main() -> ExitCode {
     let mut cmdok: bool = true;
     let mut listmode: bool = false;

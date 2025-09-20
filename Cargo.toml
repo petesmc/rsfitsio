@@ -1,6 +1,6 @@
 [package]
 name = "rsfitsio"
-version = "0.462.9"
+version = "0.462.10"
 edition = "2024"
 rust-version = "1.88"
 description = "Rust bindings for the CFITSIO library, providing access to FITS files."
@@ -38,7 +38,7 @@ name = "cookbook_expanded_rust"
 test = true
 
 [features]
-default = ["bzip2", "shared_mem"]
+default = ["bzip2"]
 bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
 net_services = []
