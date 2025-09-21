@@ -1264,7 +1264,7 @@ pub(crate) fn ffgcluj(
     /*  not need to use a temporary buffer to store intermediate datatype.  */
     /*----------------------------------------------------------------------*/
 
-    if (tcode == TULONG) && (LONGSIZE == 32) {
+    if (tcode == TLONG) && (LONGSIZE == 32) {
         /* Special Case:                        */
         /* no type convertion required, so read */
         /* data directly into output buffer.    */
@@ -1344,7 +1344,7 @@ pub(crate) fn ffgcluj(
                     );
                 }
             }
-            TULONGLONG => {
+            TLONGLONG => {
                 ffgi8b(fptr, readptr, ntodo, incre, cast_slice_mut(buffer), status);
 
                 fffi8u4(

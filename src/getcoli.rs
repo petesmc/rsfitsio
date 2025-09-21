@@ -1285,7 +1285,7 @@ pub(crate) fn ffgcli(
         && (tnull > c_short::MAX as LONGLONG || tnull < c_short::MIN as LONGLONG)
     {
         nulcheck = NullCheckType::None; /* Impossible null value */
-    } else if tcode == TSHORT && (tnull > 255 || tnull < 0) {
+    } else if tcode == TBYTE && (tnull > 255 || tnull < 0) {
         nulcheck = NullCheckType::None; /* Impossible null value */
     } else if tcode == TSTRING && snull[0] == ASCII_NULL_UNDEFINED {
         nulcheck = NullCheckType::None;
@@ -2109,7 +2109,7 @@ pub(crate) fn fffi8i2(
             /* no scaling */
 
             for ii in 0..(ntodo as usize) {
-                if input[ii] < 0 {
+                if input[ii] < c_short::MIN as LONGLONG {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_short::MIN;
                 } else if input[ii] > c_short::MAX as LONGLONG {
@@ -2174,7 +2174,7 @@ pub(crate) fn fffi8i2(
                     } else {
                         nullarray[ii] = 1;
                     }
-                } else if input[ii] < 0 {
+                } else if input[ii] < c_short::MIN as LONGLONG {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_short::MIN;
                 } else if input[ii] > c_short::MAX as LONGLONG {
