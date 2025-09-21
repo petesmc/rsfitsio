@@ -350,10 +350,6 @@ pub(crate) fn isspace(c: c_char) -> bool {
     c == bb(b' ') || c == bb(b'\t') || c == bb(b'\n') || c == bb(b'\r') || c == 0x0b || c == 0x0c
 }
 
-pub fn atoi_safe(cs: &[c_char]) -> c_int {
-    unsafe { atoi(cs.as_ptr()) }
-}
-
 pub fn atof_safe(cs: &[c_char]) -> f64 {
     let mut dummy = 0;
     strtod_safe(cs, &mut dummy)

@@ -1,17 +1,18 @@
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
     use bytemuck::{cast_slice, cast_slice_mut};
-    use libc::{c_char, c_double, c_float, c_int, c_long, c_longlong, c_short, c_uchar, c_ulong, c_ulonglong};
+    use libc::{
+        c_char, c_double, c_float, c_int, c_long, c_longlong, c_short, c_uchar, c_ulong,
+        c_ulonglong,
+    };
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::fitsio::{
-        BYTE_IMG, SHORT_IMG, LONG_IMG, LONGLONG_IMG, FLOAT_IMG, DOUBLE_IMG,
-        SBYTE_IMG, USHORT_IMG, ULONG_IMG, ULONGLONG_IMG,
-        TBYTE, TSHORT, TLONG, TLONGLONG, TFLOAT, TDOUBLE,
-        TSBYTE, TUSHORT, TULONG, TULONGLONG,
-        READWRITE, fitsfile, LONGLONG
+        BYTE_IMG, DOUBLE_IMG, FLOAT_IMG, LONG_IMG, LONGLONG, LONGLONG_IMG, READWRITE, SBYTE_IMG,
+        SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG, TSBYTE, TSHORT, TULONG, TULONGLONG,
+        TUSHORT, ULONG_IMG, ULONGLONG_IMG, USHORT_IMG, fitsfile,
     };
-    use rsfitsio::helpers::testhelpers::{with_temp_file, floats_close_f32, floats_close_f64};
+    use rsfitsio::helpers::testhelpers::{floats_close_f32, floats_close_f64, with_temp_file};
+    use std::ffi::CString;
 
     const IMAGE_WIDTH: c_long = 50;
     const IMAGE_HEIGHT: c_long = 50;
@@ -38,42 +39,68 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read back as LONG
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_long> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TLONG, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TLONG,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
                 assert_eq!(status, 0, "Failed to read LONG_IMG as TLONG");
-                
+
                 for i in 0..nelements {
-                    assert_eq!(write_data[i], read_data[i],
-                             "Data mismatch at index {}", i);
+                    assert_eq!(write_data[i], read_data[i], "Data mismatch at index {}", i);
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -90,37 +117,64 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as BYTE - should get overflow
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_uchar> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TBYTE, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TBYTE,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
+
                 assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG → BYTE");
-                
+
                 // Verify clamping behavior
                 for i in 0..nelements {
                     let expected = if write_data[i] < 0 {
@@ -130,12 +184,14 @@ mod tests {
                     } else {
                         write_data[i] as c_uchar
                     };
-                    assert_eq!(read_data[i], expected,
-                             "Value at index {} should be clamped: LONG {} → BYTE {} (got {})", 
-                             i, write_data[i], expected, read_data[i]);
+                    assert_eq!(
+                        read_data[i], expected,
+                        "Value at index {} should be clamped: LONG {} → BYTE {} (got {})",
+                        i, write_data[i], expected, read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -152,58 +208,88 @@ mod tests {
             let naxis: c_long = 2;
             let naxes: [c_long; 2] = [10, 10];
             let nelements = 100;
-            
+
             // Create LONG data that tests SHORT boundaries
             let mut write_data: Vec<c_long> = vec![0; nelements];
             write_data[0] = -32769; // Underflow SHORT
             write_data[1] = -32768; // Min SHORT
-            write_data[2] = 0;      // Valid
-            write_data[3] = 32767;  // Max SHORT
-            write_data[4] = 32768;  // Overflow SHORT
+            write_data[2] = 0; // Valid
+            write_data[3] = 32767; // Max SHORT
+            write_data[4] = 32768; // Overflow SHORT
             write_data[5] = 100000; // Large overflow
             for i in 6..nelements {
                 write_data[i] = (i as c_long - 50) * 100; // Mix of values
             }
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as SHORT - should get overflow
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_short> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TSHORT, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TSHORT,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
+
                 assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG → SHORT");
-                
+
                 // Verify specific clamping
                 assert_eq!(read_data[0], -32768, "Underflow should clamp to SHORT min");
                 assert_eq!(read_data[1], -32768, "Min SHORT should convert exactly");
                 assert_eq!(read_data[2], 0, "Zero should convert exactly");
                 assert_eq!(read_data[3], 32767, "Max SHORT should convert exactly");
                 assert_eq!(read_data[4], 32767, "Overflow should clamp to SHORT max");
-                assert_eq!(read_data[5], 32767, "Large overflow should clamp to SHORT max");
+                assert_eq!(
+                    read_data[5], 32767,
+                    "Large overflow should clamp to SHORT max"
+                );
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -220,37 +306,67 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data(); // Contains negatives
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as USHORT - should get overflow due to negatives
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<u16> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TUSHORT, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TUSHORT,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
-                assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG with negatives → USHORT");
-                
+
+                assert_eq!(
+                    status, 412,
+                    "Expected NUM_OVERFLOW (412) for LONG with negatives → USHORT"
+                );
+
                 // Verify clamping: negatives → 0, large values → 65535
                 for i in 0..nelements {
                     let expected = if write_data[i] < 0 {
@@ -260,12 +376,14 @@ mod tests {
                     } else {
                         write_data[i] as u16
                     };
-                    assert_eq!(read_data[i], expected,
-                             "Value at index {} should be clamped: LONG {} → USHORT {} (got {})", 
-                             i, write_data[i], expected, read_data[i]);
+                    assert_eq!(
+                        read_data[i], expected,
+                        "Value at index {} should be clamped: LONG {} → USHORT {} (got {})",
+                        i, write_data[i], expected, read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -282,43 +400,72 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as LONGLONG - should succeed
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_longlong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TLONGLONG, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TLONGLONG,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
                 assert_eq!(status, 0, "LONG → LONGLONG should succeed without overflow");
-                
+
                 for i in 0..nelements {
-                    assert_eq!(write_data[i] as c_longlong, read_data[i],
-                             "Data mismatch at index {}: LONG {} → LONGLONG {}", 
-                             i, write_data[i], read_data[i]);
+                    assert_eq!(
+                        write_data[i] as c_longlong, read_data[i],
+                        "Data mismatch at index {}: LONG {} → LONGLONG {}",
+                        i, write_data[i], read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -335,44 +482,76 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as FLOAT - should succeed
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_float> = vec![0.0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TFLOAT, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TFLOAT,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
                 assert_eq!(status, 0, "LONG → FLOAT should succeed without overflow");
-                
+
                 for i in 0..nelements {
                     let expected = write_data[i] as c_float;
-                    assert!(floats_close_f32(expected, read_data[i]),
-                           "Data mismatch at index {}: LONG {} → FLOAT {} (expected {})", 
-                           i, write_data[i], read_data[i], expected);
+                    assert!(
+                        floats_close_f32(expected, read_data[i]),
+                        "Data mismatch at index {}: LONG {} → FLOAT {} (expected {})",
+                        i,
+                        write_data[i],
+                        read_data[i],
+                        expected
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -389,44 +568,76 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as DOUBLE - should succeed
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_double> = vec![0.0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TDOUBLE, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TDOUBLE,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
                 assert_eq!(status, 0, "LONG → DOUBLE should succeed without overflow");
-                
+
                 for i in 0..nelements {
                     let expected = write_data[i] as c_double;
-                    assert!(floats_close_f64(expected, read_data[i]),
-                           "Data mismatch at index {}: LONG {} → DOUBLE {} (expected {})", 
-                           i, write_data[i], read_data[i], expected);
+                    assert!(
+                        floats_close_f64(expected, read_data[i]),
+                        "Data mismatch at index {}: LONG {} → DOUBLE {} (expected {})",
+                        i,
+                        write_data[i],
+                        read_data[i],
+                        expected
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -443,37 +654,64 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data();
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as SBYTE - should get overflow
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<i8> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TSBYTE, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TSBYTE,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
+
                 assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG → SBYTE");
-                
+
                 // Verify clamping behavior
                 for i in 0..nelements {
                     let expected = if write_data[i] < -128 {
@@ -483,12 +721,14 @@ mod tests {
                     } else {
                         write_data[i] as i8
                     };
-                    assert_eq!(read_data[i], expected,
-                             "Value at index {} should be clamped: LONG {} → SBYTE {} (got {})", 
-                             i, write_data[i], expected, read_data[i]);
+                    assert_eq!(
+                        read_data[i], expected,
+                        "Value at index {} should be clamped: LONG {} → SBYTE {} (got {})",
+                        i, write_data[i], expected, read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -505,37 +745,67 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data(); // Contains negatives
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as ULONG - should get overflow due to negatives
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_ulong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TULONG, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TULONG,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
-                assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG with negatives → ULONG");
-                
+
+                assert_eq!(
+                    status, 412,
+                    "Expected NUM_OVERFLOW (412) for LONG with negatives → ULONG"
+                );
+
                 // Verify clamping: negatives → 0
                 for i in 0..nelements {
                     let expected = if write_data[i] < 0 {
@@ -543,12 +813,14 @@ mod tests {
                     } else {
                         write_data[i] as c_ulong
                     };
-                    assert_eq!(read_data[i], expected,
-                             "Value at index {} should be clamped: LONG {} → ULONG {} (got {})", 
-                             i, write_data[i], expected, read_data[i]);
+                    assert_eq!(
+                        read_data[i], expected,
+                        "Value at index {} should be clamped: LONG {} → ULONG {} (got {})",
+                        i, write_data[i], expected, read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
@@ -565,37 +837,67 @@ mod tests {
             let naxes: [c_long; 2] = [IMAGE_WIDTH, IMAGE_HEIGHT];
             let nelements = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
             let write_data = generate_long_test_data(); // Contains negatives
-            
+
             // Write as LONG_IMG
             let filename_cstr = CString::new(filename).unwrap();
             unsafe {
-                fits_create_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()), &mut status);
-                fits_create_img(fptr.as_mut().unwrap(), LONG_IMG, naxis as c_int, &naxes, &mut status);
-                fits_write_img(fptr.as_mut().unwrap(), TLONG, 1, nelements as LONGLONG,
-                              cast_slice(&write_data), &mut status);
+                fits_create_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    &mut status,
+                );
+                fits_create_img(
+                    fptr.as_mut().unwrap(),
+                    LONG_IMG,
+                    naxis as c_int,
+                    &naxes,
+                    &mut status,
+                );
+                fits_write_img(
+                    fptr.as_mut().unwrap(),
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
             assert_eq!(status, 0, "Failed to write LONG_IMG");
-            
+
             // Read as ULONGLONG - should get overflow due to negatives
             fptr = None;
             unsafe {
-                fits_open_file(&mut fptr, cast_slice(filename_cstr.to_bytes_with_nul()),
-                              READWRITE, &mut status);
+                fits_open_file(
+                    &mut fptr,
+                    cast_slice(filename_cstr.to_bytes_with_nul()),
+                    READWRITE,
+                    &mut status,
+                );
             }
-            
+
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_ulonglong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
-                
+
                 unsafe {
-                    fits_read_img(fptr_box, TULONGLONG, 1, nelements as LONGLONG,
-                                 None, cast_slice_mut(&mut read_data),
-                                 Some(&mut anynull), &mut status);
+                    fits_read_img(
+                        fptr_box,
+                        TULONGLONG,
+                        1,
+                        nelements as LONGLONG,
+                        None,
+                        cast_slice_mut(&mut read_data),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
                 }
-                
-                assert_eq!(status, 412, "Expected NUM_OVERFLOW (412) for LONG with negatives → ULONGLONG");
-                
+
+                assert_eq!(
+                    status, 412,
+                    "Expected NUM_OVERFLOW (412) for LONG with negatives → ULONGLONG"
+                );
+
                 // Verify clamping: negatives → 0
                 for i in 0..nelements {
                     let expected = if write_data[i] < 0 {
@@ -603,14 +905,17 @@ mod tests {
                     } else {
                         write_data[i] as c_ulonglong
                     };
-                    assert_eq!(read_data[i], expected,
-                             "Value at index {} should be clamped: LONG {} → ULONGLONG {} (got {})", 
-                             i, write_data[i], expected, read_data[i]);
+                    assert_eq!(
+                        read_data[i], expected,
+                        "Value at index {} should be clamped: LONG {} → ULONGLONG {} (got {})",
+                        i, write_data[i], expected, read_data[i]
+                    );
                 }
             }
-            
+
             unsafe {
                 fits_close_file(fptr.take().unwrap(), &mut status);
             }
         });
-    }}
+    }
+}
