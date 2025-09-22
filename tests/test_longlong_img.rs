@@ -226,9 +226,9 @@ mod tests {
             write_data[4] = if c_long::BITS == 32 {
                 c_long::MAX as c_longlong + 1
             } else {
-                c_long::MAX as c_longlong
+                c_long::MAX as c_longlong 
             }; // Overflow LONG (LONG max + 1)
-            write_data[5] = 2 ^ 47; // Large overflow
+            write_data[5] = c_longlong::MAX; // Large potential overflow
             for i in 6..nelements {
                 write_data[i] = (i as c_longlong - 50) * 1000000; // Mix of values
             }
@@ -338,11 +338,7 @@ mod tests {
                 );
                 assert_eq!(
                     read_data[5],
-                    if c_long::BITS == 32 {
-                        c_long::MAX
-                    } else {
-                        2 ^ 47
-                    },
+                    c_long::MAX,
                     "Large overflow should clamp"
                 );
 

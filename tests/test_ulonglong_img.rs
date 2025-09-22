@@ -923,13 +923,29 @@ mod tests {
                         &mut status,
                     );
                 }
-                assert_eq!(
-                    status, 0,
-                    "ULONGLONG → ULONG should succeed for our data range"
-                );
+                if c_ulong::BITS < 64 {
+                    // On 32-bit ULONG systems, some values may overflow
+                    assert_eq!(
+                        status, 412,
+                        "Expected NUM_OVERFLOW (412) for ULONGLONG → ULONG on 32-bit ULONG"
+                    );
+                } else {
+                    // On 64-bit ULONG systems, all values should fit
+                    assert_eq!(
+                        status, 0,
+                        "ULONGLONG → ULONG should succeed on 64-bit ULONG systems"
+                    );
+                }
+
 
                 for i in 0..nelements {
-                    let expected = write_data[i] as c_ulong;
+                    let expected = if c_ulong::BITS < 64 && write_data[i] > c_ulong::MAX as c_ulonglong {
+                        c_ulong::MAX
+                    } else {
+                        write_data[i] as c_ulong
+                    };
+    
+                    
                     assert_eq!(
                         read_data[i], expected,
                         "Data mismatch at index {}: ULONGLONG {} → ULONG {} (expected {})",
