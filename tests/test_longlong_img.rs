@@ -293,11 +293,17 @@ mod tests {
                     );
                 }
 
-                // CFITSIO doesn't report overflow for LONGLONG → LONG conversion
-                assert_eq!(
-                    status, 0,
-                    "LONGLONG → LONG conversion should succeed without overflow reporting"
-                );
+                if c_long::BITS == 32 {
+                    // CFITSIO doesn't report overflow for LONGLONG → LONG conversion
+                    assert_eq!(
+                        status, 412,
+                        "LONGLONG → LONG conversion should fail with overflow reporting"
+                    );
+                } else {
+                    assert_eq!(
+                        status, 0,
+                        "LONGLONG → LONG conversion should succeed without overflow reporting");
+                }
 
                 // Print actual conversion values to understand behavior
                 println!("Actual LONGLONG → LONG conversion values:");
