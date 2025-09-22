@@ -226,7 +226,7 @@ mod tests {
             write_data[4] = if c_long::BITS == 32 {
                 c_long::MAX as c_longlong + 1
             } else {
-                c_long::MAX as c_longlong 
+                c_long::MAX as c_longlong
             }; // Overflow LONG (LONG max + 1)
             write_data[5] = c_longlong::MAX; // Large potential overflow
             for i in 6..nelements {
@@ -302,7 +302,8 @@ mod tests {
                 } else {
                     assert_eq!(
                         status, 0,
-                        "LONGLONG → LONG conversion should succeed without overflow reporting");
+                        "LONGLONG → LONG conversion should succeed without overflow reporting"
+                    );
                 }
 
                 // Print actual conversion values to understand behavior
@@ -315,32 +316,12 @@ mod tests {
                 }
 
                 // Test specific conversions (no clamping, direct conversion)
-                assert_eq!(
-                    read_data[0],
-                    c_long::MIN,
-                    "Min LONG should convert exactly"
-                );
-                assert_eq!(
-                    read_data[1],
-                    c_long::MIN,
-                    "Min LONG should convert exactly"
-                );
+                assert_eq!(read_data[0], c_long::MIN, "Min LONG should convert exactly");
+                assert_eq!(read_data[1], c_long::MIN, "Min LONG should convert exactly");
                 assert_eq!(read_data[2], 0, "Zero should convert exactly");
-                assert_eq!(
-                    read_data[3],
-                    c_long::MAX,
-                    "Max LONG should convert exactly"
-                );
-                assert_eq!(
-                    read_data[4],
-                    c_long::MAX,
-                    "Max LONG + 1 should clamp"
-                );
-                assert_eq!(
-                    read_data[5],
-                    c_long::MAX,
-                    "Large overflow should clamp"
-                );
+                assert_eq!(read_data[3], c_long::MAX, "Max LONG should convert exactly");
+                assert_eq!(read_data[4], c_long::MAX, "Max LONG + 1 should clamp");
+                assert_eq!(read_data[5], c_long::MAX, "Large overflow should clamp");
 
                 // Note: Values exceeding LONG range may not be clamped but converted directly
             } else {

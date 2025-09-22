@@ -937,15 +937,14 @@ mod tests {
                     );
                 }
 
-
                 for i in 0..nelements {
-                    let expected = if c_ulong::BITS < 64 && write_data[i] > c_ulong::MAX as c_ulonglong {
-                        c_ulong::MAX
-                    } else {
-                        write_data[i] as c_ulong
-                    };
-    
-                    
+                    let expected =
+                        if c_ulong::BITS < 64 && write_data[i] > c_ulong::MAX as c_ulonglong {
+                            c_ulong::MAX
+                        } else {
+                            write_data[i] as c_ulong
+                        };
+
                     assert_eq!(
                         read_data[i], expected,
                         "Data mismatch at index {}: ULONGLONG {} → ULONG {} (expected {})",

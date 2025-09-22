@@ -4,7 +4,6 @@ use bytemuck::cast_slice;
 use cbitset::BitSet256;
 
 use crate::c_types::{c_char, c_int, c_uchar, size_t};
-use libc::atoi;
 
 use crate::bb;
 

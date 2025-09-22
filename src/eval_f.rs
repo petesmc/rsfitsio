@@ -4570,7 +4570,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
                     colIter.datatype = TSTRING;
                     ktype = fits_parser_yytokentype::SCOLUMN as c_int;
-                    if width >= MAX_STRLEN.into() {
+                    if width >= MAX_STRLEN {
                         int_snprintf!(
                             &mut temp,
                             80,
