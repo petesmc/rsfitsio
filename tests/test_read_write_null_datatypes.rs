@@ -66,7 +66,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -205,7 +205,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -342,7 +342,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -479,7 +479,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -616,7 +616,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -1001,7 +1001,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        (NULL_VALUE as i32 + 128) as c_long, // Convert to stored unsigned value
+                        (NULL_VALUE as i32 + 128) as LONGLONG, // Convert to stored unsigned value
                         None,
                         &mut status,
                     );
@@ -1138,7 +1138,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
@@ -1275,7 +1275,7 @@ mod tests {
                     fits_update_key_lng(
                         fptr_box,
                         cs!(c"BLANK"),
-                        NULL_VALUE as c_long,
+                        NULL_VALUE as LONGLONG,
                         None,
                         &mut status,
                     );
