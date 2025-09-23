@@ -563,10 +563,35 @@ pub(crate) fn bytes_per_datatype(datatype: c_int) -> Option<usize> {
 //https://stackoverflow.com/questions/65601579/parse-an-integer-ignoring-any-non-numeric-suffix
 fn atoi<F: FromStr>(input: &str) -> Result<F, <F as FromStr>::Err> {
     let input = input.trim();
-    let i = input
-        .find(|c: char| !c.is_numeric() && c != '-' && c != '+')
-        .unwrap_or(input.len());
-    input[..i].parse::<F>()
+
+    // Handle sign at the beginning
+    let (has_sign, start_idx) = match input.chars().next() {
+        Some('+') | Some('-') => (true, 1),
+        _ => (false, 0),
+    };
+
+    // Find the end of the numeric part (after the optional sign)
+    let end_idx = if has_sign {
+        input[start_idx..]
+            .find(|c: char| !c.is_numeric())
+            .map(|i| i + start_idx)
+            .unwrap_or(input.len())
+    } else {
+        input.find(|c: char| !c.is_numeric()).unwrap_or(input.len())
+    };
+
+    input[..end_idx].parse::<F>()
+}
+
+/// Parse a c_char slice to c_int, matching C's atoi behavior (returns 0 on error)
+fn parse_c_int(cs: &[c_char]) -> c_int {
+    // Convert c_char slice to UTF-8 string
+    if let Ok(s) = str::from_utf8(cast_slice(cs)) {
+        // Use the existing atoi function which handles numeric parsing
+        atoi::<c_int>(s).unwrap_or(0)
+    } else {
+        0 // Return 0 on UTF-8 conversion failure, matching C's atoi behavior
+    }
 }
 
 // https://stackoverflow.com/questions/65264069/alignment-of-floating-point-numbers-printed-in-scientific-notation
@@ -752,5 +777,70 @@ mod tests {
                 assert_eq!(status, 0);
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod atoi_tests {
+    use super::*;
+
+    #[test]
+    fn test_atoi_basic() {
+        // Basic integer parsing
+        assert_eq!(atoi::<i32>("123").unwrap(), 123);
+        assert_eq!(atoi::<i32>("-456").unwrap(), -456);
+        assert_eq!(atoi::<i32>("+789").unwrap(), 789);
+    }
+
+    #[test]
+    fn test_atoi_with_trailing_chars() {
+        // Should stop at first non-numeric character
+        assert_eq!(atoi::<i32>("123abc").unwrap(), 123);
+        assert_eq!(atoi::<i32>("456/789").unwrap(), 456);
+        assert_eq!(atoi::<i32>("99\0").unwrap(), 99); // Null terminator
+        assert_eq!(atoi::<i32>("15/03/99").unwrap(), 15);
+    }
+
+    #[test]
+    fn test_atoi_with_whitespace() {
+        // Should trim leading/trailing whitespace
+        assert_eq!(atoi::<i32>("  123  ").unwrap(), 123);
+        assert_eq!(atoi::<i32>("\t456\n").unwrap(), 456);
+    }
+
+    #[test]
+    fn test_atoi_empty_or_invalid() {
+        // Empty string or no digits should fail
+        assert!(atoi::<i32>("").is_err());
+        assert!(atoi::<i32>("abc").is_err());
+        assert!(atoi::<i32>("   ").is_err());
+    }
+
+    #[test]
+    fn test_atoi_sign_handling() {
+        // Sign at the beginning is valid
+        assert_eq!(atoi::<i32>("+123").unwrap(), 123);
+        assert_eq!(atoi::<i32>("-123").unwrap(), -123);
+
+        // Sign in the middle should stop parsing before it
+        // (matching C atoi behavior)
+        assert_eq!(atoi::<i32>("123-456").unwrap(), 123);
+        assert_eq!(atoi::<i32>("123+456").unwrap(), 123);
+    }
+
+    #[test]
+    fn test_atoi_matches_c_behavior() {
+        // Test cases that should match C atoi behavior
+        // C atoi("99") = 99
+        assert_eq!(atoi::<i32>("99").unwrap(), 99);
+
+        // C atoi("03") = 3 (leading zeros are ok)
+        assert_eq!(atoi::<i32>("03").unwrap(), 3);
+
+        // C atoi("15") = 15
+        assert_eq!(atoi::<i32>("15").unwrap(), 15);
+
+        // C atoi("2024") = 2024
+        assert_eq!(atoi::<i32>("2024").unwrap(), 2024);
     }
 }

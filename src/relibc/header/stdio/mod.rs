@@ -198,6 +198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_sscanf_basic_debug() {
         // First test: Check if our original sscanf works
         #[cfg(not(target_family = "windows"))]
@@ -225,6 +226,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_sscanf_internal_vs_libc() {
         // Test 1: Basic integer parsing with %d
         unsafe {

@@ -4,7 +4,6 @@ use bytemuck::cast_slice;
 use cbitset::BitSet256;
 
 use crate::c_types::{c_char, c_int, c_uchar, size_t};
-use libc::atoi;
 
 use crate::bb;
 
@@ -348,10 +347,6 @@ pub(crate) fn isupper(c: c_char) -> bool {
 pub(crate) fn isspace(c: c_char) -> bool {
     let c = c as c_char;
     c == bb(b' ') || c == bb(b'\t') || c == bb(b'\n') || c == bb(b'\r') || c == 0x0b || c == 0x0c
-}
-
-pub fn atoi_safe(cs: &[c_char]) -> c_int {
-    unsafe { atoi(cs.as_ptr()) }
 }
 
 pub fn atof_safe(cs: &[c_char]) -> f64 {

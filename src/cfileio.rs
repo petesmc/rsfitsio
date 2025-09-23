@@ -6560,7 +6560,7 @@ pub fn fits_get_token_safe(
         }
     }
 
-    return slen as c_int;
+    slen as c_int
 }
 
 /*--------------------------------------------------------------------------*/

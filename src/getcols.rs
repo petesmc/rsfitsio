@@ -29,7 +29,7 @@ use crate::int_snprintf;
 use crate::relibc::header::stdio::{snprintf_cint, snprintf_f64, sprintf_string_width};
 use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
-use crate::{bb, cs};
+use crate::{bb, cs, parse_c_int};
 
 /*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
@@ -879,7 +879,7 @@ pub fn ffgcdw_safe(
                 /* find 1st digit */
                 cp += 1;
             }
-            *width = atoi_safe(&dispfmt[cp..]);
+            *width = parse_c_int(&dispfmt[cp..]);
             if tcode >= TCOMPLEX {
                 *width = (2 * (*width)) + 3;
             }
@@ -919,7 +919,7 @@ pub fn ffgcdw_safe(
                     /* find 1st digit */
                     cp += 1;
                 }
-                *width = atoi_safe(&dispfmt[cp..]);
+                *width = parse_c_int(&dispfmt[cp..]);
             } else {
                 /* this is a binary table */
                 if tcode == TBIT {
@@ -982,7 +982,7 @@ pub fn ffgcdw_safe(
                             cp += 1;
                         }
 
-                        *width = atoi_safe(&dispfmt[cp..]);
+                        *width = parse_c_int(&dispfmt[cp..]);
                     }
 
                     if *width < 1 {

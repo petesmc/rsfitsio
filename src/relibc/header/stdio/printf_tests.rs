@@ -21,6 +21,7 @@ mod tests {
 
     // Test the existing snprintf_cint function against libc
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_cint() {
         unsafe {
             let value: c_int = 42;
@@ -47,6 +48,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_f64() {
         unsafe {
             let value: f64 = 3.24159;
@@ -74,6 +76,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_sprintf_f64() {
         unsafe {
             let value: f64 = 2.81828;
@@ -107,6 +110,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_f64_decim() {
         unsafe {
             let value: f64 = 3.24159265;
@@ -139,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_sprintf_string_width() {
         unsafe {
             let width: c_int = 10;
@@ -178,6 +183,7 @@ mod tests {
 
     // Test edge cases
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_sprintf_edge_cases() {
         unsafe {
             // Test zero value
@@ -231,6 +237,7 @@ mod tests {
 
     // Comprehensive integer tests
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_integers_comprehensive() {
         unsafe {
             let test_values = [
@@ -283,6 +290,7 @@ mod tests {
 
     // Comprehensive float tests
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_floats_comprehensive() {
         unsafe {
             let test_values = [
@@ -333,6 +341,7 @@ mod tests {
 
     // Test precision specifiers
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_snprintf_precision_comprehensive() {
         unsafe {
             let test_cases = [
@@ -395,6 +404,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_many_test_cases() {
         unsafe {
             // Test case: 233 with %d should produce "233"

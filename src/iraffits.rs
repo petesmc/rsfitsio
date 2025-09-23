@@ -64,10 +64,10 @@ use crate::int_snprintf;
 use crate::{
     BL, bb, cs,
     fitsio::FLEN_ERRMSG,
-    raw_to_slice,
+    parse_c_int, raw_to_slice,
     wrappers::{
-        atof_safe, atoi_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncat_safe,
-        strncmp_safe, strncpy_safe,
+        atof_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncat_safe, strncmp_safe,
+        strncpy_safe,
     },
 };
 
@@ -1618,7 +1618,7 @@ fn hgetc(
             keyword[brack2] = 0;
         }
 
-        let ipar = atoi_safe(&keyword[brack1..]);
+        let ipar = parse_c_int(&keyword[brack1..]);
         if ipar > 0 {
             let mut cpar = None;
             let v_tok = &line[v1..];

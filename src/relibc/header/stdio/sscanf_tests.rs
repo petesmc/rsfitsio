@@ -902,6 +902,7 @@ mod tests {
     // COMPREHENSIVE SCANF TESTS - INSPIRED
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_d_comprehensive() {
         unsafe {
             // Test 1: Simple decimal integer
@@ -959,6 +960,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_u_comprehensive() {
         unsafe {
             // Test 1: Simple unsigned integer
@@ -995,6 +997,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_x_comprehensive() {
         unsafe {
             // Test 1: Simple hex number
@@ -1051,6 +1054,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_o_comprehensive() {
         unsafe {
             // Test 1: Simple octal number
@@ -1092,6 +1096,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_f_comprehensive() {
         unsafe {
             // Test 1: Simple float
@@ -1210,6 +1215,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_ld_comprehensive() {
         unsafe {
             // Test 1: Simple long integer
@@ -1282,6 +1288,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_scanf_c_comprehensive() {
         unsafe {
             // Test 1: Single character
@@ -1986,6 +1993,7 @@ mod tests {
 
     // Comparison tests with libc::sscanf for failing cases
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_libc_comparison_overflow() {
         unsafe {
             // Test the overflow case that's failing
@@ -2040,6 +2048,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_libc_comparison_percent_literal() {
         unsafe {
             // Test the percent literal case that's failing
@@ -2094,6 +2103,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_debug_minimal_percent() {
         unsafe {
             // Very simple test: just %% followed by %d
@@ -2133,6 +2143,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_debug_percent_step_by_step() {
         unsafe {
             // Test step 1: Just matching a single %

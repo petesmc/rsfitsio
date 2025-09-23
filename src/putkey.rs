@@ -29,7 +29,7 @@ use crate::relibc::header::stdio::snprintf_f64_decim;
 use crate::{KeywordDatatype, fitsio2::*};
 use crate::{TKeywords, wrappers::*};
 use crate::{atoi, int_snprintf};
-use crate::{bb, cs};
+use crate::{bb, cs, parse_c_int};
 use crate::{buffers::*, nullable_slice_cstr, raw_to_slice};
 use crate::{fitsio::*, fmt_f64};
 
@@ -4131,9 +4131,9 @@ pub fn ffs2dt_safe(
             && isdigit_safe(datestr[7])
         {
             /* this is an old format string: "dd/mm/yy" */
-            lyear = atoi_safe(&datestr[6..]) + 1900;
-            lmonth = atoi_safe(&datestr[3..]);
-            lday = atoi_safe(datestr);
+            lyear = parse_c_int(&datestr[6..]) + 1900;
+            lmonth = parse_c_int(&datestr[3..]);
+            lday = parse_c_int(datestr);
 
             if let Some(y) = year.as_deref_mut() {
                 *y = lyear;
@@ -4168,9 +4168,9 @@ pub fn ffs2dt_safe(
             }
 
             /* this is a new format string: "yyyy-mm-dd" */
-            lyear = atoi_safe(datestr);
-            lmonth = atoi_safe(&datestr[5..]);
-            lday = atoi_safe(&datestr[8..]);
+            lyear = parse_c_int(datestr);
+            lmonth = parse_c_int(&datestr[5..]);
+            lday = parse_c_int(&datestr[8..]);
 
             if let Some(y) = year {
                 *y = lyear;
@@ -4366,10 +4366,10 @@ pub fn ffs2tm_safe(
 
                     /* this is a new format string: "yyyy-mm-ddThh:mm:ss.dddd" */
                     if let Some(h) = hour.as_deref_mut() {
-                        *h = atoi_safe(&datestr[11..]);
+                        *h = parse_c_int(&datestr[11..]);
                     }
                     if let Some(min) = minute.as_deref_mut() {
-                        *min = atoi_safe(&datestr[14..]);
+                        *min = parse_c_int(&datestr[14..]);
                     }
                     if let Some(s) = second.as_deref_mut() {
                         *s = atof_safe(&datestr[17..]);
@@ -4402,10 +4402,10 @@ pub fn ffs2tm_safe(
         {
             /* this is a time string: "hh:mm:ss.dddd" */
             if let Some(h) = hour.as_deref_mut() {
-                *h = atoi_safe(datestr);
+                *h = parse_c_int(datestr);
             }
             if let Some(min) = minute.as_deref_mut() {
-                *min = atoi_safe(&datestr[3..]);
+                *min = parse_c_int(&datestr[3..]);
             }
             if let Some(s) = second.as_deref_mut() {
                 *s = atof_safe(&datestr[6..]);

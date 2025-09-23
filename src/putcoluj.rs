@@ -678,9 +678,9 @@ pub fn ffpcluj_safe(
     let mut tform: [c_char; 20] = [0; 20];
     let mut cform: [c_char; 20] = [0; 20];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let mut snull: [c_char; 20] = [0; 20];
+    let mut snull: [c_char; 20] = [0; 20]; /*  the FITS null value  */
     let mut buffer: [f64; DBUFFSIZE as usize / mem::size_of::<f64>()] =
-        [0.0; DBUFFSIZE as usize / mem::size_of::<f64>()];
+        [0.0; DBUFFSIZE as usize / mem::size_of::<f64>()]; /* align cbuff on word boundary */
 
     if *status > 0 {
         /* inherit input status value if > 0 */
