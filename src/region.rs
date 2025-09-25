@@ -11,7 +11,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::NullValue;
 use crate::aliases::rust_api::{fits_clear_errmark, fits_write_errmark};
-use crate::cfileio::{ffclos_safer, ffopen_safer};
+use crate::cfileio::{ffclos_safer, ffopen_safe};
 use crate::fitscore::{
     ffgcno_safe, ffmnhd_safe, ffpmsg_slice, ffpmsg_str, fits_strcasecmp, fits_strncasecmp,
 };
@@ -137,7 +137,7 @@ pub(crate) fn fits_read_rgnfile(
     fits_write_errmark();
 
     // SAFETY: TODO
-    let retval = unsafe { ffopen_safer(&mut fptr, filename, READONLY, &mut tstatus) };
+    let retval = unsafe { ffopen_safe(&mut fptr, filename, READONLY, &mut tstatus) };
     if retval != 0 {
         fits_clear_errmark();
         fits_read_ascii_region(filename, wcs, Rgn, status);

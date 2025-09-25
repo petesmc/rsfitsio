@@ -13,6 +13,7 @@ use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
+use crate::grparser::fits_execute_template_safer;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -34,7 +35,7 @@ use crate::drvrmem::{
     mem_setoptions, mem_shutdown, mem_size, mem_truncate_unsafe, mem_write_unsafe, stdin_checkfile,
     stdin_open, stdout_close_unsafe,
 };
-use crate::fitscore::{ffgisz_safe, ffpmsg_cstr};
+use crate::fitscore::{ffcrhd_safer, ffgisz_safe, ffpmsg_cstr, ffxmsg_safer};
 
 #[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
 use crate::drvrsmem::{
@@ -50,11 +51,11 @@ use crate::fitscore::{
     ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safer, ffupch_safe, fits_strcasecmp,
     fits_strncasecmp,
 };
-use crate::getkey::{ffgcrd_safe, ffgkyl_safe, ffmaky_safe};
+use crate::getkey::{ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffmaky_safe};
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
 use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
-use crate::putkey::ffphis_safe;
+use crate::putkey::{ffphis_safe, ffprec_safe};
 use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
 use crate::wrappers::*;
 use crate::{FFLOCK, FFUNLOCK};
@@ -457,7 +458,7 @@ pub fn ffdkopn_safer(
 
     *status = OPEN_DISK_FILE;
 
-    unsafe { ffopen_safer(fptr, name, mode, status) };
+    unsafe { ffopen_safe(fptr, name, mode, status) };
 
     *status
 }
@@ -494,7 +495,7 @@ pub fn ffdopn_safer(
 
     *status = SKIP_NULL_PRIMARY;
 
-    unsafe { ffopen_safer(fptr, name, mode, status) };
+    unsafe { ffopen_safe(fptr, name, mode, status) };
 
     *status
 }
@@ -554,7 +555,7 @@ pub unsafe fn ffeopn_safer(
             return *status;
         }
 
-        if ffopen_safer(fptr, name, mode, status) > 0 {
+        if ffopen_safe(fptr, name, mode, status) > 0 {
             return *status;
         }
 
@@ -645,7 +646,7 @@ pub unsafe fn fftopn_safer(
 
         *status = SKIP_IMAGE;
 
-        ffopen_safer(fptr, name, mode, status);
+        ffopen_safe(fptr, name, mode, status);
 
         let f = (*fptr).as_mut().expect(NULL_MSG);
 
@@ -695,7 +696,7 @@ pub unsafe fn ffiopn_safer(
 
         *status = SKIP_TABLE;
 
-        ffopen_safer(fptr, name, mode, status);
+        ffopen_safe(fptr, name, mode, status);
 
         let f = (*fptr).as_mut().expect(NULL_MSG);
 
@@ -745,26 +746,22 @@ pub fn ffopentest_safe(
     mode: c_int,   /* I - 0 = open readonly; 1 = read/write   */
     status: &mut c_int, /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        if soname != CFITSIO_SONAME as c_int {
-            println!("\nERROR: Mismatch in the CFITSIO_SONAME value in the fitsio.h include file");
-            println!(
-                "that was used to build the CFITSIO library, and the value in the include file"
-            );
-            println!("that was used when compiling the application program:");
-            println!("   Version used to build the CFITSIO library   = {CFITSIO_SONAME}");
-            println!("   Version included by the application program = {soname}");
-            print!("\nFix this by recompiling and then relinking this application program \n");
-            println!("with the CFITSIO library.");
+    if soname != CFITSIO_SONAME as c_int {
+        println!("\nERROR: Mismatch in the CFITSIO_SONAME value in the fitsio.h include file");
+        println!("that was used to build the CFITSIO library, and the value in the include file");
+        println!("that was used when compiling the application program:");
+        println!("   Version used to build the CFITSIO library   = {CFITSIO_SONAME}");
+        println!("   Version included by the application program = {soname}");
+        print!("\nFix this by recompiling and then relinking this application program \n");
+        println!("with the CFITSIO library.");
 
-            *status = FILE_NOT_OPENED;
-            return *status;
-        }
-
-        /* now call the normal file open routine */
-        ffopen_safer(fptr, name, mode, status);
-        *status
+        *status = FILE_NOT_OPENED;
+        return *status;
     }
+
+    /* now call the normal file open routine */
+    ffopen_safe(fptr, name, mode, status);
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -781,13 +778,13 @@ pub unsafe extern "C" fn ffopen(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(name);
 
-        ffopen_safer(fptr, name, mode, status)
+        ffopen_safe(fptr, name, mode, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
-pub unsafe fn ffopen_safer(
+pub fn ffopen_safe(
     fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     name: &[c_char],                  /* I - full name of file to open           */
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
@@ -1424,7 +1421,7 @@ pub unsafe fn ffopen_safer(
             /* fptr.  This will close the table that contains the original image. */
 
             /* create new empty file to hold copy of the image */
-            if ffinit_safer(&mut newptr, &outfile, status) > 0 {
+            if ffinit_safe(&mut newptr, &outfile, status) > 0 {
                 ffpmsg_str("failed to create file for copy of image in table cell:");
                 ffpmsg_slice(&outfile);
                 return *status;
@@ -1831,26 +1828,26 @@ pub fn ffreopen_safer(
 
 /*--------------------------------------------------------------------------*/
 /// store the new Fptr address for future use by fits_already_open
-pub(crate) unsafe fn fits_store_Fptr(
+pub(crate) fn fits_store_Fptr(
     Fptr: &mut FITSfile, /* O - FITS file pointer               */
     status: &mut c_int,  /* IO - error status                   */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        let lock = FFLOCK();
-        for ii in 0..NMAXFILES {
+    let lock = FFLOCK();
+    for ii in 0..NMAXFILES {
+        unsafe {
             if FPTR_TABLE[ii].is_null() {
                 FPTR_TABLE[ii] = Fptr;
                 break;
             };
         }
-        FFUNLOCK(lock);
-
-        *status
     }
+    FFUNLOCK(lock);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1908,7 +1905,7 @@ fn fits_clear_Fptr_safer(
 /// version of this function would not have reconized that the two files
 /// were the same. This version does recognize that the two files are
 /// the same.
-pub(crate) unsafe fn fits_already_open(
+pub(crate) fn fits_already_open(
     fptr: &mut Option<Box<fitsfile>>, /* I/O - FITS file pointer       */
     url: &[c_char],
     urltype: &mut [c_char],
@@ -2498,7 +2495,7 @@ pub(crate) unsafe fn ffedit_columns(
 
         if outfile[0] != 0 {
             /* create new empty file in to hold the selected rows */
-            if ffinit_safer(&mut newptr, outfile, status) > 0 {
+            if ffinit_safe(&mut newptr, outfile, status) > 0 {
                 ffpmsg_str("failed to create file for copy (ffedit_columns)");
                 return *status;
             }
@@ -3567,7 +3564,7 @@ pub(crate) fn ffselect_table(
 pub(crate) fn ffparsecompspec(
     _fptr: &mut fitsfile, /* I - FITS file pointer               */
     _compspec: &[c_char], /* I - image compression specification */
-    _status: *mut c_int,  /* IO - error status                       */
+    _status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
     todo!()
 }
@@ -3615,7 +3612,7 @@ pub fn ffdkinit_safer(
     *status = CREATE_DISK_FILE;
 
     unsafe {
-        ffinit_safer(fptr, name, status);
+        ffinit_safe(fptr, name, status);
     }
 
     *status
@@ -3634,220 +3631,221 @@ pub unsafe extern "C" fn ffinit(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         raw_to_slice!(name);
 
-        ffinit_safer(fptr, name, status)
+        ffinit_safe(fptr, name, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file.
-pub unsafe fn ffinit_safer(
+pub fn ffinit_safe(
     fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     name: &[c_char],                  /* I - name of file to create              */
     status: &mut c_int,               /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        let mut driver: c_int = 0;
-        let mut clobber: c_int = 0;
+    let mut driver: c_int = 0;
+    let mut clobber: c_int = 0;
 
-        let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
-        let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut tmplfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut compspec: [c_char; 80] = [0; 80];
-        let mut handle: c_int = 0;
-        let mut create_disk_file: c_int = 0;
+    let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+    let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmplfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut compspec: [c_char; 80] = [0; 80];
+    let mut handle: c_int = 0;
+    let mut create_disk_file: c_int = 0;
 
-        /* initialize null file pointer */
-        let f_tmp = fptr.take();
-        if let Some(f) = f_tmp {
-            // WARNING: The c version doesn't null pointers after a close, so we have a dangling pointer.
-            // We need to be careful with this, as it can cause double free errors.
-            // Therefore, if this function is called with a Some(), then we will leak the pointer because
-            // it's probably invalid.
-            let _ = Box::into_raw(f);
-        }
-
-        /* regardless of the value of *status */
-        if *status > 0 {
-            return *status;
-        }
-
-        if *status == CREATE_DISK_FILE {
-            create_disk_file = 1;
-            *status = 0;
-        }
-
-        if *NEED_TO_INITIALIZE.lock().unwrap() {
-            /* this is called only once */
-            *status = fits_init_cfitsio_safer();
-        }
-
-        if *status > 0 {
-            return *status;
-        }
-
-        let url = name;
-
-        let mut j = 0;
-        while url[j] == bb(b' ') {
-            /* ignore leading spaces in the filename */
-            j += 1;
-        }
-        if url[j] == 0 {
-            ffpmsg_str("Name of file to create is blank. (ffinit)");
-            *status = FILE_NOT_CREATED;
-            return *status;
-        }
-
-        if create_disk_file > 0 {
-            if strlen_safe(&url[j..]) > FLEN_FILENAME - 1 {
-                ffpmsg_str("Filename is too long. (ffinit)");
-                *status = FILE_NOT_CREATED;
-                return *status;
-            }
-
-            strcpy_safe(&mut outfile, &url[j..]);
-            strcpy_safe(&mut urltype, cs!(c"file://"));
-            tmplfile[0] = 0;
-            compspec[0] = 0;
-        } else {
-            /* check for clobber symbol, i.e,  overwrite existing file */
-            if url[j] == bb(b'!') {
-                clobber = TRUE as c_int;
-                j += 1;
-            } else {
-                clobber = FALSE as c_int;
-            }
-            /* parse the output file specification */
-            /* this routine checks that the strings will not overflow */
-
-            ffourl(
-                &url[j..],
-                urltype.as_mut_ptr(),
-                outfile.as_mut_ptr(),
-                tmplfile.as_mut_ptr(),
-                compspec.as_mut_ptr(),
-                status,
-            );
-
-            if *status > 0 {
-                ffpmsg_str("could not parse the output filename: (ffinit)");
-                ffpmsg_slice(&url[j..]);
-                return *status;
-            }
-        }
-
-        let url = &url[j..];
-
-        /* find which driver corresponds to the urltype */
-        *status = urltype2driver(&urltype, &mut driver);
-
-        if *status > 0 {
-            ffpmsg_str("could not find driver for this file: (ffinit)");
-            ffpmsg_slice(url);
-            return *status;
-        }
-
-        /* delete pre-existing file, if asked to do so */
-        if clobber > 0 {
-            {
-                //let d = driverTable.lock().unwrap();
-                let d = DRIVER_TABLE.get().unwrap();
-                if d[driver as usize].remove.is_some() {
-                    (d[driver as usize].remove.unwrap())(&outfile);
-                }
-            }
-        }
-
-        //let d = driverTable.lock().unwrap();
-        let d = DRIVER_TABLE.get().unwrap();
-
-        /* call appropriate driver to create the file */
-        if d[driver as usize].create.is_some() {
-            let lock = FFLOCK(); /* lock this while searching for vacant handle */
-            *status = (d[driver as usize].create.unwrap())(&mut outfile, &mut handle);
-            FFUNLOCK(lock);
-
-            if *status > 0 {
-                ffpmsg_str("failed to create new file (already exists?):");
-                ffpmsg_slice(url);
-                return *status;
-            }
-        } else {
-            ffpmsg_str("cannot create a new file of this type: (ffinit)");
-            ffpmsg_slice(url);
-            *status = FILE_NOT_CREATED;
-            return *status;
-        }
-
-        let d = DRIVER_TABLE.get().unwrap();
-
-        /* allocate fitsfile structure and initialize = 0 */
-        let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffinit"), status);
-        if Fptr.is_err() {
-            return *status;
-        }
-        let mut Fptr = Fptr.unwrap();
-
-        /* initialize the ageindex array (relative age of the I/O buffers) */
-        /* and initialize the bufrecnum array as being empty */
-        let mut ii = 0;
-        while ii < NIOBUF as usize {
-            Fptr.ageindex[ii] = ii as c_int;
-            Fptr.bufrecnum[ii] = -1;
-            ii += 1;
-        }
-
-        /* store the parameters describing the file */
-        Fptr.MAXHDU = 1000; /* initial size of headstart */
-        Fptr.filehandle = handle; /* store the file pointer */
-        Fptr.driver = driver; /*  driver number         */
-        strcpy(Fptr.filename, url.as_ptr()); /* full input filename    */
-        Fptr.filesize = 0; /* physical file size     */
-        Fptr.logfilesize = 0; /* logical file size      */
-        Fptr.writemode = 1; /* read-write mode        */
-        Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data  */
-        Fptr.curbuf = -1; /* undefined current IO buffer   */
-        Fptr.open_count = 1; /* structure is currently used once */
-        Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
-        Fptr.noextsyntax = create_disk_file; /* true if extended syntax is disabled */
-
-        // HEAP ALLOCATION
-        /* allocate fitsfile structure and initialize = 0 */
-        let f_fitsfile = box_try_new(fitsfile {
-            HDUposition: 0,
-            Fptr,
-        });
-
-        if f_fitsfile.is_err() {
-            let d = DRIVER_TABLE.get().unwrap();
-            ((d[driver as usize]).close)(handle); /* close the file */
-            ffpmsg_str("failed to allocate structure for following file: (ffopen)");
-            ffpmsg_slice(url);
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        }
-
-        let mut f_fitsfile = f_fitsfile.unwrap();
-
-        ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
-
-        fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
-
-        /* if template file was given, use it to define structure of new file */
-
-        if tmplfile[0] > 0 {
-            ffoptplt(&mut f_fitsfile, &tmplfile, status);
-        }
-
-        /* parse and save image compression specification, if given */
-        if compspec[0] > 0 {
-            ffparsecompspec(&mut f_fitsfile, &compspec, status);
-        }
-
-        *fptr = Some(f_fitsfile);
-
-        *status /* successful return */
+    /* initialize null file pointer */
+    let f_tmp = fptr.take();
+    if let Some(f) = f_tmp {
+        // WARNING: The c version doesn't null pointers after a close, so we have a dangling pointer.
+        // We need to be careful with this, as it can cause double free errors.
+        // Therefore, if this function is called with a Some(), then we will leak the pointer because
+        // it's probably invalid.
+        let _ = Box::into_raw(f);
     }
+
+    /* regardless of the value of *status */
+    if *status > 0 {
+        return *status;
+    }
+
+    if *status == CREATE_DISK_FILE {
+        create_disk_file = 1;
+        *status = 0;
+    }
+
+    if *NEED_TO_INITIALIZE.lock().unwrap() {
+        /* this is called only once */
+        *status = fits_init_cfitsio_safer();
+    }
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let url = name;
+
+    let mut j = 0;
+    while url[j] == bb(b' ') {
+        /* ignore leading spaces in the filename */
+        j += 1;
+    }
+    if url[j] == 0 {
+        ffpmsg_str("Name of file to create is blank. (ffinit)");
+        *status = FILE_NOT_CREATED;
+        return *status;
+    }
+
+    if create_disk_file > 0 {
+        if strlen_safe(&url[j..]) > FLEN_FILENAME - 1 {
+            ffpmsg_str("Filename is too long. (ffinit)");
+            *status = FILE_NOT_CREATED;
+            return *status;
+        }
+
+        strcpy_safe(&mut outfile, &url[j..]);
+        strcpy_safe(&mut urltype, cs!(c"file://"));
+        tmplfile[0] = 0;
+        compspec[0] = 0;
+    } else {
+        /* check for clobber symbol, i.e,  overwrite existing file */
+        if url[j] == bb(b'!') {
+            clobber = TRUE as c_int;
+            j += 1;
+        } else {
+            clobber = FALSE as c_int;
+        }
+        /* parse the output file specification */
+        /* this routine checks that the strings will not overflow */
+
+        ffourl(
+            &url[j..],
+            &mut urltype,
+            &mut outfile,
+            &mut tmplfile,
+            &mut compspec,
+            status,
+        );
+
+        if *status > 0 {
+            ffpmsg_str("could not parse the output filename: (ffinit)");
+            ffpmsg_slice(&url[j..]);
+            return *status;
+        }
+    }
+
+    let url = &url[j..];
+
+    /* find which driver corresponds to the urltype */
+    *status = urltype2driver(&urltype, &mut driver);
+
+    if *status > 0 {
+        ffpmsg_str("could not find driver for this file: (ffinit)");
+        ffpmsg_slice(url);
+        return *status;
+    }
+
+    /* delete pre-existing file, if asked to do so */
+    if clobber > 0 {
+        {
+            //let d = driverTable.lock().unwrap();
+            let d = DRIVER_TABLE.get().unwrap();
+            if d[driver as usize].remove.is_some() {
+                (d[driver as usize].remove.unwrap())(&outfile);
+            }
+        }
+    }
+
+    //let d = driverTable.lock().unwrap();
+    let d = DRIVER_TABLE.get().unwrap();
+
+    /* call appropriate driver to create the file */
+    if d[driver as usize].create.is_some() {
+        let lock = FFLOCK(); /* lock this while searching for vacant handle */
+        *status = (d[driver as usize].create.unwrap())(&mut outfile, &mut handle);
+        FFUNLOCK(lock);
+
+        if *status > 0 {
+            ffpmsg_str("failed to create new file (already exists?):");
+            ffpmsg_slice(url);
+            return *status;
+        }
+    } else {
+        ffpmsg_str("cannot create a new file of this type: (ffinit)");
+        ffpmsg_slice(url);
+        *status = FILE_NOT_CREATED;
+        return *status;
+    }
+
+    let d = DRIVER_TABLE.get().unwrap();
+
+    /* allocate fitsfile structure and initialize = 0 */
+    let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffinit"), status);
+    if Fptr.is_err() {
+        return *status;
+    }
+    let mut Fptr = Fptr.unwrap();
+
+    /* initialize the ageindex array (relative age of the I/O buffers) */
+    /* and initialize the bufrecnum array as being empty */
+    let mut ii = 0;
+    while ii < NIOBUF as usize {
+        Fptr.ageindex[ii] = ii as c_int;
+        Fptr.bufrecnum[ii] = -1;
+        ii += 1;
+    }
+
+    /* store the parameters describing the file */
+    Fptr.MAXHDU = 1000; /* initial size of headstart */
+    Fptr.filehandle = handle; /* store the file pointer */
+    Fptr.driver = driver; /*  driver number         */
+
+    unsafe {
+        strcpy(Fptr.filename, url.as_ptr());
+    } /* full input filename    */
+    Fptr.filesize = 0; /* physical file size     */
+    Fptr.logfilesize = 0; /* logical file size      */
+    Fptr.writemode = 1; /* read-write mode        */
+    Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data  */
+    Fptr.curbuf = -1; /* undefined current IO buffer   */
+    Fptr.open_count = 1; /* structure is currently used once */
+    Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
+    Fptr.noextsyntax = create_disk_file; /* true if extended syntax is disabled */
+
+    // HEAP ALLOCATION
+    /* allocate fitsfile structure and initialize = 0 */
+    let f_fitsfile = box_try_new(fitsfile {
+        HDUposition: 0,
+        Fptr,
+    });
+
+    if f_fitsfile.is_err() {
+        let d = DRIVER_TABLE.get().unwrap();
+        ((d[driver as usize]).close)(handle); /* close the file */
+        ffpmsg_str("failed to allocate structure for following file: (ffopen)");
+        ffpmsg_slice(url);
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+
+    let mut f_fitsfile = f_fitsfile.unwrap();
+
+    ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
+
+    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+
+    /* if template file was given, use it to define structure of new file */
+
+    if tmplfile[0] > 0 {
+        ffoptplt(&mut f_fitsfile, &tmplfile, status);
+    }
+
+    /* parse and save image compression specification, if given */
+    if compspec[0] > 0 {
+        ffparsecompspec(&mut f_fitsfile, &compspec, status);
+    }
+
+    *fptr = Some(f_fitsfile);
+
+    *status /* successful return */
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5776,178 +5774,159 @@ pub fn ffrtnm_safe(_url: &[c_char], _rootname: *mut c_char, _status: &mut c_int)
 
 /*--------------------------------------------------------------------------*/
 /// parse the output URL into its basic components.
-pub(crate) unsafe fn ffourl(
-    url: &[c_char],        /* I - full input URL   */
-    urltype: *mut c_char,  /* O - url type         */
-    outfile: *mut c_char,  /* O - base file name   */
-    tpltfile: *mut c_char, /* O - template file name, if any */
-    compspec: *mut c_char, /* O - compression specification, if any */
-    status: *mut c_int,
+pub(crate) fn ffourl(
+    url: &[c_char],          /* I - full input URL   */
+    urltype: &mut [c_char],  /* O - url type         */
+    outfile: &mut [c_char],  /* O - base file name   */
+    tpltfile: &mut [c_char], /* O - template file name, if any */
+    compspec: &mut [c_char], /* O - compression specification, if any */
+    status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
-        if !urltype.is_null() {
-            *urltype = 0;
-        }
-        if !outfile.is_null() {
-            *outfile = 0;
-        }
-        if !tpltfile.is_null() {
-            *tpltfile = 0;
-        }
-        if !compspec.is_null() {
-            *compspec = 0;
-        }
-
-        let mut ptr1 = url; // url
-
-        while ptr1[0] == bb(b' ') {
-            /* ignore leading blanks */
-            ptr1 = &ptr1[1..];
-        }
-
-        if ((ptr1[0] == bb(b'-')) && (ptr1[1] == 0 || ptr1[1] == bb(b' ')))
-            || strcmp_safe(ptr1, cs!(c"stdout")) == 0
-            || strcmp_safe(ptr1, cs!(c"STDOUT")) == 0
-        /* "-" means write to stdout;  also support "- "            */
-        /* but exclude disk file names that begin with a minus sign */
-        /* e.g., "-55d33m.fits"   */
-        {
-            if !urltype.is_null() {
-                strcpy(urltype, c"stdout://".as_ptr());
-            }
-        } else {
-            /* not writing to stdout */
-            /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
-
-            let ptr2 = strstr_safe(ptr1, cs!(c"://"));
-
-            if let Some(ptr2) = ptr2 {
-                /* copy the explicit urltype string */
-
-                if !urltype.is_null() {
-                    if ptr2 + 3 > MAX_PREFIX_LEN - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strncat(urltype, ptr1.as_ptr(), ptr2 + 3);
-                }
-
-                ptr1 = &ptr1[(ptr2 + 3)..];
-            } else {
-                /* assume file driver    */
-
-                if !urltype.is_null() {
-                    strcat(urltype, c"file://".as_ptr());
-                }
-            }
-
-            /* look for template file name, enclosed in parenthesis */
-            let ptr2 = strchr_safe(ptr1, bb(b'('));
-
-            /* look for image compression parameters, enclosed in sq. brackets */
-            let ptr3 = strchr_safe(ptr1, bb(b'['));
-
-            if !outfile.is_null() {
-                if let Some(ptr2) = ptr2 {
-                    /* template file was specified  */
-                    if ptr2 > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strncat(outfile, ptr1.as_ptr(), ptr2);
-                } else if let Some(ptr3) = ptr3 {
-                    /* compression was specified  */
-                    if ptr3 > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strncat(outfile, ptr1.as_ptr(), ptr3);
-                } else {
-                    /* no template file or compression */
-                    if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strcpy(outfile, ptr1.as_ptr());
-                }
-            }
-
-            if let Some(mut ptr2) = ptr2 {
-                /* template file was specified  */
-
-                ptr2 += 1;
-
-                let tmp_ptr1 = strchr_safe(&ptr1[ptr2..], bb(b')')); /* search for closing ) */
-
-                if tmp_ptr1.is_none() {
-                    *status = URL_PARSE_ERROR; /* error, no closing ) */
-                    return *status;
-                }
-
-                let tmp_ptr1 = tmp_ptr1.unwrap();
-                ptr1 = &ptr1[(ptr2 + tmp_ptr1)..];
-
-                if !tpltfile.is_null() {
-                    if tmp_ptr1 > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-                    strncat(tpltfile, ptr1[ptr2..].as_ptr(), tmp_ptr1);
-                }
-            }
-
-            if let Some(mut ptr3) = ptr3 {
-                /* compression was specified  */
-
-                ptr3 += 1;
-
-                let tmp_ptr1 = strchr_safe(&ptr1[ptr3..], bb(b']')); /* search for closing ] */
-
-                if tmp_ptr1.is_none() {
-                    *status = URL_PARSE_ERROR; /* error, no closing ] */
-                    return *status;
-                }
-
-                let tmp_ptr1 = tmp_ptr1.unwrap();
-                ptr1 = &ptr1[(ptr3 + tmp_ptr1)..];
-
-                if !compspec.is_null() {
-                    if tmp_ptr1 > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strncat(compspec, ptr1[ptr3..].as_ptr(), tmp_ptr1);
-                }
-            }
-
-            /* check if a .gz compressed output file is to be created */
-            /* by seeing if the filename ends in '.gz'   */
-            if !urltype.is_null() && !outfile.is_null() {
-                raw_to_slice!(urltype);
-                raw_to_slice!(outfile);
-
-                if strcmp_safe(urltype, cs!(c"file://")) == 0 {
-                    let ptr1 = strstr_safe(outfile, cs!(c".gz"));
-                    if let Some(mut ptr1) = ptr1 {
-                        /* make sure the ".gz" is at the end of the file name */
-                        ptr1 += 3;
-                        if outfile[ptr1] == 0 || outfile[ptr1] == bb(b' ') {
-                            strcpy(urltype.as_ptr() as *mut _, c"compressoutfile://".as_ptr());
-                        }
-                    }
-                }
-            }
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    urltype[0] = 0;
+    outfile[0] = 0;
+    tpltfile[0] = 0;
+    compspec[0] = 0;
+
+    let mut ptr1 = url; // url
+
+    while ptr1[0] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 = &ptr1[1..];
+    }
+
+    if ((ptr1[0] == bb(b'-')) && (ptr1[1] == 0 || ptr1[1] == bb(b' ')))
+        || strcmp_safe(ptr1, cs!(c"stdout")) == 0
+        || strcmp_safe(ptr1, cs!(c"STDOUT")) == 0
+    /* "-" means write to stdout;  also support "- "            */
+    /* but exclude disk file names that begin with a minus sign */
+    /* e.g., "-55d33m.fits"   */
+    {
+        strcpy_safe(urltype, cs!(c"stdout://"));
+    } else {
+        /* not writing to stdout */
+        /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
+
+        let ptr2 = strstr_safe(ptr1, cs!(c"://"));
+
+        if let Some(ptr2) = ptr2 {
+            /* copy the explicit urltype string */
+
+            if ptr2 + 3 > MAX_PREFIX_LEN - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+
+            strncat_safe(urltype, ptr1, ptr2 + 3);
+
+            ptr1 = &ptr1[(ptr2 + 3)..];
+        } else {
+            /* assume file driver    */
+
+            strcat_safe(urltype, cs!(c"file://"));
+        }
+
+        /* look for template file name, enclosed in parenthesis */
+        let ptr2 = strchr_safe(ptr1, bb(b'('));
+
+        /* look for image compression parameters, enclosed in sq. brackets */
+        let mut ptr3 = strchr_safe(ptr1, bb(b'['));
+
+        if let Some(ptr2) = ptr2 {
+            /* template file was specified  */
+            if ptr2 > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+
+            strncat_safe(outfile, ptr1, ptr2);
+        } else if let Some(ptr3) = ptr3 {
+            /* compression was specified  */
+            if ptr3 > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+
+            strncat_safe(outfile, ptr1, ptr3);
+        } else {
+            /* no template file or compression */
+            if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+
+            strcpy_safe(outfile, ptr1);
+        }
+
+        if let Some(mut ptr2) = ptr2 {
+            /* template file was specified  */
+
+            ptr2 += 1;
+
+            let tmp_ptr1 = strchr_safe(&ptr1[ptr2..], bb(b')')); /* search for closing ) */
+
+            if tmp_ptr1.is_none() {
+                *status = URL_PARSE_ERROR;
+                /* error, no closing ) */
+                return URL_PARSE_ERROR;
+            }
+
+            let tmp_ptr1 = tmp_ptr1.unwrap();
+
+            if tmp_ptr1 > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+            strncat_safe(tpltfile, &ptr1[ptr2..], tmp_ptr1);
+
+            ptr1 = &ptr1[(ptr2 + tmp_ptr1 + 1)..];
+
+            // After processing template, look for compression in the remaining string
+            ptr3 = strchr_safe(ptr1, bb(b'['));
+        }
+
+        if let Some(mut ptr3) = ptr3 {
+            /* compression was specified  */
+
+            ptr3 += 1;
+
+            let tmp_ptr1 = strchr_safe(&ptr1[ptr3..], bb(b']')); /* search for closing ] */
+
+            if tmp_ptr1.is_none() {
+                *status = URL_PARSE_ERROR;
+                /* error, no closing ] */
+                return URL_PARSE_ERROR;
+            }
+
+            let tmp_ptr1 = tmp_ptr1.unwrap();
+
+            if tmp_ptr1 > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return URL_PARSE_ERROR;
+            }
+
+            strncat_safe(compspec, &ptr1[ptr3..], tmp_ptr1);
+
+            ptr1 = &ptr1[(ptr3 + tmp_ptr1 + 1)..];
+        }
+
+        /* check if a .gz compressed output file is to be created */
+        /* by seeing if the filename ends in '.gz'   */
+        if strcmp_safe(urltype, cs!(c"file://")) == 0 {
+            let ptr1 = strstr_safe(outfile, cs!(c".gz"));
+            if let Some(mut ptr1) = ptr1 {
+                /* make sure the ".gz" is at the end of the file name */
+                ptr1 += 3;
+                if outfile[ptr1] == 0 || outfile[ptr1] == bb(b' ') {
+                    strcpy_safe(urltype, cs!(c"compressoutfile://"));
+                }
+            }
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7044,7 +7023,7 @@ pub unsafe fn fftplt_safer(
             return *status;
         }
 
-        if ffinit_safer(fptr, filename, status) != 0 {
+        if ffinit_safe(fptr, filename, status) != 0 {
             /* create empty file */
             return *status;
         }
@@ -7059,12 +7038,80 @@ pub unsafe fn fftplt_safer(
 
 /*--------------------------------------------------------------------------*/
 /// open template file and use it to create new file
-pub(crate) unsafe fn ffoptplt(
-    _fptr: &mut fitsfile, /* O - FITS file pointer                   */
-    _tempname: &[c_char], /* I - name of template file               */
-    _status: &mut c_int,  /* IO - error status                       */
+pub(crate) fn ffoptplt(
+    fptr: &mut fitsfile, /* O - FITS file pointer                   */
+    tempname: &[c_char], /* I - name of template file               */
+    status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
-    todo!();
+    let mut tptr = None;
+    let mut tstatus: c_int = 0;
+    let mut nkeys: c_int = 0;
+    let mut nadd: c_int = 0;
+
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    if (*status > 0) {
+        return (*status);
+    }
+
+    if (tempname[0] == 0) {
+        /* no template file? */
+        return (*status);
+    }
+
+    /* try opening template */
+    unsafe {
+        ffopen_safe(&mut tptr, &tempname, READONLY, &mut tstatus);
+    }
+
+    if (tstatus != 0) {
+        /* not a FITS file, so treat it as an ASCII template */
+        ffxmsg_safer(2, Some(&mut card)); /* clear the  error message */
+        fits_execute_template_safer(fptr, tempname, status);
+
+        ffmahd_safe(fptr, 1, None, status); /* move back to the primary array */
+        return (*status);
+    } else {
+        /* template is a valid FITS file */
+        let mut tptr = tptr.expect(NULL_MSG);
+
+        ffmahd_safe(tptr.as_mut(), 1, None, status); /* make sure we are at the beginning */
+        while (*status <= 0) {
+            ffghsp_safe(tptr.as_mut(), Some(&mut nkeys), Some(&mut nadd), status); /* get no. of keywords */
+
+            for ii in 1..=nkeys {
+                /* copy keywords */
+
+                ffgrec_safe(tptr.as_mut(), ii, Some(&mut card), status);
+
+                /* must reset the PCOUNT keyword to zero in the new output file */
+                if (strncmp_safe(&card, cs!(c"PCOUNT  "), 8) == 0) {
+                    /* the PCOUNT keyword? */
+                    if (strncmp_safe(&card[25..], cs!(c"    0"), 5) != 0) {
+                        /* non-zero value? */
+                        strncpy_safe(&mut card, cs!(c"PCOUNT  =                    0"), 30);
+                    }
+                }
+
+                ffprec_safe(fptr, &card, status);
+            }
+
+            ffmrhd_safe(tptr.as_mut(), 1, None, status); /* move to next HDU until error */
+            unsafe {
+                ffcrhd_safer(fptr, status); /* create empty new HDU in output file */
+            }
+        }
+
+        if (*status == END_OF_FILE) {
+            *status = 0; /* expected error condition */
+        }
+        unsafe {
+            ffclos_safer(tptr, status); /* close the template file */
+        }
+    }
+
+    ffmahd_safe(fptr, 1, None, status); /* move to the primary array */
+    return (*status);
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7326,4 +7373,493 @@ pub fn fits_get_token2_safe(
     }
 
     slen as c_int
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cfileio::MAX_PREFIX_LEN;
+    use crate::fitsio::{FLEN_FILENAME, URL_PARSE_ERROR};
+
+    // Helper function to create and initialize C-style string buffers
+    fn create_buffer(size: usize) -> Vec<c_char> {
+        vec![0; size]
+    }
+
+    // Helper function to convert Rust string to C-style char array
+    fn str_to_c_array(s: &str) -> Vec<c_char> {
+        let mut vec: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        vec.push(0); // Null terminate
+        vec
+    }
+
+    // Helper function to convert C-style char buffer to Rust string (for verification)
+    unsafe fn c_array_to_string(buf: *const c_char) -> String {
+        if buf.is_null() {
+            return String::new();
+        }
+        unsafe {
+            let c_str = CStr::from_ptr(buf);
+            c_str.to_string_lossy().into_owned()
+        }
+    }
+
+    #[test]
+    fn test_ffourl_stdout_dash() {
+        unsafe {
+            let url = str_to_c_array("-");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "stdout://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_stdout_dash_with_space() {
+        unsafe {
+            let url = str_to_c_array("- ");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut status: c_int = 0;
+
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "stdout://");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_stdout_keyword() {
+        unsafe {
+            let test_cases = vec!["stdout", "STDOUT"];
+
+            for test_case in test_cases {
+                let url = str_to_c_array(test_case);
+                let mut urltype = create_buffer(MAX_PREFIX_LEN);
+                let mut status: c_int = 0;
+
+                let mut outfile = create_buffer(FLEN_FILENAME);
+                let mut tpltfile = create_buffer(FLEN_FILENAME);
+                let mut compspec = create_buffer(FLEN_FILENAME);
+
+                let result = ffourl(
+                    &url,
+                    &mut urltype,
+                    &mut outfile,
+                    &mut tpltfile,
+                    &mut compspec,
+                    &mut status,
+                );
+
+                assert_eq!(result, 0);
+                assert_eq!(status, 0);
+                assert_eq!(c_array_to_string(urltype.as_ptr()), "stdout://");
+            }
+        }
+    }
+
+    #[test]
+    fn test_ffourl_explicit_file_url() {
+        unsafe {
+            let url = str_to_c_array("file://myfile.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "myfile.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_explicit_http_url() {
+        unsafe {
+            let url = str_to_c_array("http://example.com/data.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "http://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "example.com/data.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_implicit_file_url() {
+        unsafe {
+            let url = str_to_c_array("myfile.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "myfile.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_with_template() {
+        unsafe {
+            let url = str_to_c_array("output.fits(template.fits)");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "output.fits");
+            assert_eq!(c_array_to_string(tpltfile.as_ptr()), "template.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_with_compression() {
+        unsafe {
+            let url = str_to_c_array("output.fits[compress]");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "output.fits");
+            assert_eq!(c_array_to_string(compspec.as_ptr()), "compress");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_with_template_and_compression() {
+        unsafe {
+            let url = str_to_c_array("output.fits(template.fits)[compress R]");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "output.fits");
+            assert_eq!(c_array_to_string(tpltfile.as_ptr()), "template.fits");
+            assert_eq!(c_array_to_string(compspec.as_ptr()), "compress R");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_gz_file() {
+        unsafe {
+            let url = str_to_c_array("output.fits.gz");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "compressoutfile://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "output.fits.gz");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_gz_not_at_end() {
+        unsafe {
+            let url = str_to_c_array("output.gz.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "output.gz.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_leading_spaces() {
+        unsafe {
+            let url = str_to_c_array("   myfile.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "myfile.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_status_propagation() {
+        unsafe {
+            let url = str_to_c_array("myfile.fits");
+            let mut status: c_int = 123; // Pre-existing error
+
+            let mut urltype = create_buffer(1);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 123);
+            assert_eq!(status, 123);
+        }
+    }
+
+    #[test]
+    fn test_ffourl_missing_closing_paren() {
+        unsafe {
+            let url = str_to_c_array("output.fits(template.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, URL_PARSE_ERROR);
+            assert_eq!(status, URL_PARSE_ERROR);
+        }
+    }
+
+    #[test]
+    fn test_ffourl_missing_closing_bracket() {
+        unsafe {
+            let url = str_to_c_array("output.fits[compress");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, URL_PARSE_ERROR);
+            assert_eq!(status, URL_PARSE_ERROR);
+        }
+    }
+
+    #[test]
+    fn test_ffourl_not_stdout_dash_prefix() {
+        unsafe {
+            // Test that file names starting with - but not exactly "-" are treated as regular files
+            let url = str_to_c_array("-55d33m.fits");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "-55d33m.fits");
+        }
+    }
+
+    #[test]
+    fn test_ffourl_empty_url() {
+        unsafe {
+            let url = str_to_c_array("");
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let mut tpltfile = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+
+            let result = ffourl(
+                &url,
+                &mut urltype,
+                &mut outfile,
+                &mut tpltfile,
+                &mut compspec,
+                &mut status,
+            );
+
+            assert_eq!(result, 0);
+            assert_eq!(status, 0);
+            assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
+            assert_eq!(c_array_to_string(outfile.as_ptr()), "");
+        }
+    }
 }

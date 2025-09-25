@@ -685,7 +685,7 @@ mod tests {
 
     use crate::cs;
     use bytemuck::cast_slice;
-    use cfileio::{ffclos_safer, ffinit_safer};
+    use cfileio::{ffclos_safer, ffinit_safe};
 
     use putkey::ffcrim_safer;
     use tempfile::Builder;
@@ -725,7 +725,7 @@ mod tests {
                 let filename_str = filename.to_str().expect("cannot create string filename");
                 let filename_cstr = CString::new(filename_str).unwrap();
 
-                status = ffinit_safer(
+                status = ffinit_safe(
                     &mut fptr,
                     cast_slice(filename_cstr.as_bytes_with_nul()),
                     &mut status,

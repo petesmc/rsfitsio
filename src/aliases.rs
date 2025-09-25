@@ -757,7 +757,7 @@ pub mod rust_api {
     pub use crate::cfileio::ffdopn_safer as fits_open_data;
     pub use crate::cfileio::ffeopn_safer as fits_open_extlist;
     pub use crate::cfileio::ffimem_safer as fits_create_memfile;
-    pub use crate::cfileio::ffinit_safer as fits_create_file;
+    pub use crate::cfileio::ffinit_safe as fits_create_file;
     pub use crate::cfileio::ffiopn_safer as fits_open_image;
     pub use crate::cfileio::ffreopen_safer as fits_reopen_file;
     pub use crate::cfileio::fftopn_safer as fits_open_table;

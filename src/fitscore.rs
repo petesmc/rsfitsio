@@ -48,7 +48,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::BL;
 use crate::aliases::rust_api::fits_read_key_dbl;
-use crate::cfileio::{STREAM_DRIVER, ffinit_safer, fftrun, urltype2driver};
+use crate::cfileio::{STREAM_DRIVER, ffinit_safe, fftrun, urltype2driver};
 use crate::cfileio::{ffclos_safer, ffurlt_safe};
 use crate::editcol::ffirow_safe;
 use crate::edithdu::ffcopy_safer;
@@ -7827,7 +7827,7 @@ pub unsafe fn ffcmph_safer(
         let mut tptr: Option<Box<fitsfile>> = None;
 
         /* copy the current HDU to a temporary file in memory */
-        if ffinit_safer(&mut tptr, cs!(c"mem://tempheapfile"), status) != 0 {
+        if ffinit_safe(&mut tptr, cs!(c"mem://tempheapfile"), status) != 0 {
             int_snprintf!(
                 &mut message,
                 FLEN_ERRMSG,

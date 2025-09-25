@@ -7,7 +7,7 @@ use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::cast_slice;
 
 use crate::cfileio::ffdelt_safer;
-use crate::cfileio::ffinit_safer;
+use crate::cfileio::ffinit_safe;
 
 use crate::fitscore::{
     ALLOCATIONS, ffgcno_safe, ffghdn_safe, ffghdt_safe, ffgncl_safe, ffkeyn_safe, ffmahd_safe,
@@ -1034,7 +1034,7 @@ pub unsafe fn ffgtcs_safer(
         naxes[1] = 10;
 
         /* create temporary  FITS file, in memory */
-        ffinit_safer(&mut tptr, cs!(c"mem://"), status);
+        ffinit_safe(&mut tptr, cs!(c"mem://"), status);
 
         let mut tptr = tptr.unwrap();
 

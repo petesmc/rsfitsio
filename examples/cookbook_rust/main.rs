@@ -67,13 +67,11 @@ fn writeimage() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe {
-        fits_create_file(
-            &mut fptr,
-            cast_slice(filename_cstr.to_bytes_with_nul()),
-            &mut status,
-        )
-    } != 0
+    if fits_create_file(
+        &mut fptr,
+        cast_slice(filename_cstr.to_bytes_with_nul()),
+        &mut status,
+    ) != 0
     {
         printerror(status); /* call printerror if error occurs */
     }
@@ -466,13 +464,11 @@ fn copyhdu() {
         printerror(status);
     }
 
-    if unsafe {
-        fits_create_file(
-            &mut outfptr,
-            cast_slice(outfilename_cstr.to_bytes_with_nul()),
-            &mut status,
-        )
-    } != 0
+    if fits_create_file(
+        &mut outfptr,
+        cast_slice(outfilename_cstr.to_bytes_with_nul()),
+        &mut status,
+    ) != 0
     {
         /*create FITS file*/
         printerror(status); /* call printerror if error occurs */
