@@ -4577,8 +4577,16 @@ pub unsafe extern "C" fn ffifile2(
 
 /*--------------------------------------------------------------------------*/
 /// fits_parse_input_filename
-/// parse the input URL into its basic components.
-/// This routine is big and ugly and should be redesigned someday!
+/// Parse the input filename or URL into its component parts, namely:
+/// the file type (file://, ftp://, http://, etc),
+/// the base input file name,
+/// the name of the output file that the input file is to be copied to prior to opening,
+/// the HDU or extension specification,
+/// the filtering specifier,
+/// the binning specifier,
+/// the column specifier,
+/// and the image pixel filtering specifier.
+/// A null pointer (0) may be be specified for any of the output string arguments that are not needed. Null strings will be returned for any components that are not present in the input file name. The calling routine must allocate sufficient memory to hold the returned character strings. Allocating the string lengths equal to FLEN_FILENAME is guaranteed to be safe. These routines are mainly for internal use by other CFITSIO routines.
 pub unsafe fn ffifile2_safer(
     url: &[c_char],          /* input filename */
     urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
@@ -4690,7 +4698,7 @@ pub unsafe fn ffifile2_safer(
         } else {
             let mut ptr2 = strstr_safe(ptr1, cs!(c"://"));
             let ptr3 = strstr_safe(ptr1, cs!(c"("));
-            if ptr3.is_some() && (ptr3.unwrap() < ptr2.unwrap()) {
+            if ptr3.is_some() && ptr2.is_some() && (ptr3.unwrap() < ptr2.unwrap()) {
                 /* the urltype follows a '(' character, so it must apply */
                 /* to the output file, and is not the urltype of the input file */
                 ptr2 = None; /* so reset pointer to zero */
@@ -4707,7 +4715,7 @@ pub unsafe fn ffifile2_safer(
                 if !urltype.is_null() {
                     strncat(urltype, ptr1.as_ptr(), ptr2 + 3);
                 }
-                ptr1_index += 3;
+                ptr1_index += ptr2 + 3;
             } else if strncmp_safe(ptr1, cs!(c"ftp:"), 4) == 0 {
                 /* the 2 //'s are optional */
                 if !urltype.is_null() {
@@ -4926,10 +4934,11 @@ pub unsafe fn ffifile2_safer(
             infilelen = ii; /* yes, the '+n' convention was used.  Copy */
             ii += 1; /* the digits to the output extspec string. */
             let ptr1 = &infile[(ii as usize)..]; /* delete the extension number */
-            for ii in ii..jj {
+            while ii < jj {
                 if !isdigit_safe(infile[ii as usize]) {
                     break;
                 };
+                ii += 1;
             }
             if ii == jj {
                 plus_ext = 1;
@@ -5587,7 +5596,7 @@ pub unsafe fn ffifile2_safer(
 
                 strcpy(compspec, rowfilter[(p1 + 1)..].as_ptr());
 
-                let _ptr2 = strchr(compspec, bb(b']') as c_int);
+                let mut ptr2 = strchr(compspec, bb(b']') as c_int);
                 if !ptr2.is_null() {
                     *ptr2 = 0;
                     if *{
@@ -5619,7 +5628,7 @@ pub unsafe fn ffifile2_safer(
 
             /* Check for multiple expressions, which would appear as c"[expr][expr]...".as_ptr() */
             let mut p1 = 0; // rowfilter;
-            let mut p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap() - p1;
+            let mut p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap_or(0);
 
             while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
                 /* Advance past any white space */
@@ -7861,5 +7870,447 @@ mod tests {
             assert_eq!(c_array_to_string(urltype.as_ptr()), "file://");
             assert_eq!(c_array_to_string(outfile.as_ptr()), "");
         }
+    }
+
+    // Tests for ffifile2_safer function
+    // Helper function to create test buffers and call ffifile2_safer
+    fn call_ffifile2_safer(input: &str) -> (c_int, c_int, String, String, String, String, String, String, String, String, String) {
+        unsafe {
+            let infile = str_to_c_array(input);
+            let mut urltype = create_buffer(MAX_PREFIX_LEN);
+            let mut infilex = create_buffer(FLEN_FILENAME);
+            let mut outfile = create_buffer(FLEN_FILENAME);
+            let mut extspec = create_buffer(FLEN_FILENAME);
+            let mut rowfilterx = create_buffer(FLEN_FILENAME);
+            let mut binspec = create_buffer(FLEN_FILENAME);
+            let mut colspec = create_buffer(FLEN_FILENAME);
+            let mut pixfilter = create_buffer(FLEN_FILENAME);
+            let mut compspec = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let result = ffifile2_safer(
+                &infile,
+                urltype.as_mut_ptr(),
+                infilex.as_mut_ptr(),
+                outfile.as_mut_ptr(),
+                extspec.as_mut_ptr(),
+                rowfilterx.as_mut_ptr(),
+                binspec.as_mut_ptr(),
+                colspec.as_mut_ptr(),
+                pixfilter.as_mut_ptr(),
+                compspec.as_mut_ptr(),
+                &mut status,
+            );
+
+            (
+                result,
+                status,
+                c_array_to_string(urltype.as_ptr()),
+                c_array_to_string(infilex.as_ptr()),
+                c_array_to_string(outfile.as_ptr()),
+                c_array_to_string(extspec.as_ptr()),
+                c_array_to_string(rowfilterx.as_ptr()),
+                c_array_to_string(binspec.as_ptr()),
+                c_array_to_string(colspec.as_ptr()),
+                c_array_to_string(pixfilter.as_ptr()),
+                c_array_to_string(compspec.as_ptr()),
+            )
+        }
+    }
+
+    #[test]
+    fn test_ffifile2_safer_basic_file_url() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter, compspec) = call_ffifile2_safer("file://test.fits");
+
+        // Expected behavior based on C cfitsio output
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "");
+        assert_eq!(rowfilterx, "");
+        assert_eq!(binspec, "");
+        assert_eq!(colspec, "");
+        assert_eq!(pixfilter, "");
+        assert_eq!(compspec, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_http_url() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("http://example.com/data.fits");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "http://");
+        assert_eq!(infilex, "example.com/data.fits");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_output_spec() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("input.fits(output.fits)");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "input.fits");
+        assert_eq!(outfile, "output.fits");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_extension_name() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_extension_number() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[2]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "2");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_image_section() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[1:100,1:50]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(rowfilterx, "1:100,1:50");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_row_filter() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS][#row > 100 && #row < 200]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(rowfilterx, "#row > 100 && #row < 200");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_row_range_syntax() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[1:100]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(rowfilterx, "1:100");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_complex_filename() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, colspec, _, _) = call_ffifile2_safer("http://example.com/data.fits.gz[EVENTS,2](output.fits)[col TIME,ENERGY][#row>10]");
+        assert_eq!(result, 125);
+        assert_eq!(status, 125);
+        assert_eq!(urltype, "http://");
+        assert_eq!(infilex, "example.com/data.fits.gz");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS,2");
+        assert_eq!(colspec, "col TIME,ENERGY");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_gz_extension() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("data.fits.gz");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "data.fits.gz");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_stdout() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("-");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "stdin://");
+        assert_eq!(infilex, "");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_empty_filename() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "");
+        assert_eq!(infilex, "");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_invalid_bracket() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("test.fits[unclosed");
+        assert_eq!(result, 125);
+        assert_eq!(status, 125);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_mem_protocol() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("mem://testfile");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "mem://");
+        assert_eq!(infilex, "testfile");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_column_filtering() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("test.fits[EVENTS][col TIME,ENERGY,PHA]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(colspec, "col TIME,ENERGY,PHA");
+    }
+
+    // Tests for output file specification (parentheses syntax)
+    #[test]
+    fn test_ffifile2_safer_with_output_file_memory() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("remote.fits.gz(mem://)");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "remote.fits.gz");
+        assert_eq!(outfile, "mem://");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_with_local_copy() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("data.fits.gz(temp.fits)");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "data.fits.gz");
+        assert_eq!(outfile, "temp.fits");
+    }
+
+    // Tests for extension specification with version and type
+    #[test]
+    fn test_ffifile2_safer_extension_with_version() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS,2]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS,2");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_extension_with_type() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS,2,B]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS,2,B");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_plus_notation() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits+1");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "test.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "1");
+    }
+
+    // Tests for image sectioning with different syntaxes
+    #[test]
+    fn test_ffifile2_safer_image_section_with_step() {
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[1:512:2,2:512:2]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "image.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(rowfilterx, "1:512:2,2:512:2");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_image_section_with_wildcard() {
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[*,512:256]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "image.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(rowfilterx, "*,512:256");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_image_section_flip_axis() {
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[*,-*]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "image.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(rowfilterx, "*,-*");
+    }
+
+    // Tests for compression specification
+    #[test]
+    fn test_ffifile2_safer_compression_default() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "output.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(compspec, "compress");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_compression_with_algorithm() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress GZIP]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "output.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(compspec, "compress GZIP");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_compression_with_tile_size() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress Rice 100,100]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "output.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(compspec, "compress Rice 100,100");
+    }
+
+    // Tests for binning specification
+    #[test]
+    fn test_ffifile2_safer_binning_specification() {
+        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) = call_ffifile2_safer("table.fits[EVENTS][bin X=1:1024:2,Y=1:1024:2]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "table.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(binspec, "bin X=1:1024:2,Y=1:1024:2");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_simple_binning() {
+        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) = call_ffifile2_safer("table.fits[EVENTS][bin X,Y]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "table.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(binspec, "bin X,Y");
+    }
+
+    // Tests for column manipulation
+    #[test]
+    fn test_ffifile2_safer_column_deletion() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("table.fits[EVENTS][col -TIME, Good == STATUS]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "table.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(colspec, "col -TIME, Good == STATUS");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_column_wildcards() {
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("table.fits[EVENTS][col *TIME*, RATE]");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "file://");
+        assert_eq!(infilex, "table.fits");
+        assert_eq!(outfile, "");
+        assert_eq!(extspec, "EVENTS");
+        assert_eq!(colspec, "col *TIME*, RATE");
+    }
+
+    // Tests for very complex combinations
+    #[test]
+    fn test_ffifile2_safer_ultra_complex() {
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter, compspec) = call_ffifile2_safer("ftp://server.com/data.fits.gz[EVENTS,2,B](output.fits)[col TIME,PHA][#row > 100][bin X,Y=1:1024:16][pix X*2][compress GZIP 64,64]");
+        assert_eq!(result, 125);
+        assert_eq!(status, 125);
+        assert_eq!(urltype, "ftp://");
+        assert_eq!(infilex, "server.com/data.fits.gz");
+        assert_eq!(extspec, "EVENTS,2,B");
+        // Note: cfitsio returns error 125 for output spec after brackets
+    }
+
+    // Tests for FTP and HTTPS protocols
+    #[test]
+    fn test_ffifile2_safer_ftp_protocol() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("ftp://archive.stsci.edu/pub/hlsp/test.fits");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "ftp://");
+        assert_eq!(infilex, "archive.stsci.edu/pub/hlsp/test.fits");
+        assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffifile2_safer_https_protocol() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("https://fits.gsfc.nasa.gov/samples/test.fits.gz");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "https://");
+        assert_eq!(infilex, "fits.gsfc.nasa.gov/samples/test.fits.gz");
+        assert_eq!(outfile, "");
+    }
+
+    // Tests for shared memory protocol
+    #[test]
+    fn test_ffifile2_safer_shmem_protocol() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("shmem://shm_12345");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "shmem://");
+        assert_eq!(infilex, "shm_12345");
+        assert_eq!(outfile, "");
+    }
+
+    // Tests for gsiftp protocol
+    #[test]
+    fn test_ffifile2_safer_gsiftp_protocol() {
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("gsiftp://gridftp.server.edu/data/test.fits");
+        assert_eq!(result, 0);
+        assert_eq!(status, 0);
+        assert_eq!(urltype, "gsiftp://");
+        assert_eq!(infilex, "gridftp.server.edu/data/test.fits");
+        assert_eq!(outfile, "");
     }
 }
