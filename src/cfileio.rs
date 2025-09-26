@@ -946,15 +946,15 @@ pub fn ffopen_safe(
 
             ffifile2_safer(
                 url,
-                urltype.as_mut_ptr(),
-                infile.as_mut_ptr(),
-                outfile.as_mut_ptr(),
-                extspec.as_mut_ptr(),
-                rowfilter.as_mut_ptr(),
-                binspec.as_mut_ptr(),
-                colspec.as_mut_ptr(),
-                pixfilter.as_mut_ptr(),
-                compspec.as_mut_ptr(),
+                Some(&mut urltype[..]),
+                Some(&mut infile[..]),
+                Some(&mut outfile[..]),
+                Some(&mut extspec[..]),
+                Some(&mut rowfilter[..]),
+                Some(&mut binspec[..]),
+                Some(&mut colspec[..]),
+                Some(&mut pixfilter[..]),
+                Some(&mut compspec[..]),
                 status,
             );
         }
@@ -4474,15 +4474,29 @@ pub unsafe fn ffiurl_safer(
     unsafe {
         ffifile2_safer(
             url,
-            urltype,
-            infilex,
-            outfile,
-            extspec,
-            rowfilterx,
-            binspec,
-            colspec,
-            ptr::null_mut(),
-            ptr::null_mut(),
+            urltype
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            infilex
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            outfile
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            extspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            rowfilterx
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            binspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            colspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            None,
+            None,
             status,
         )
     }
@@ -4531,15 +4545,31 @@ pub unsafe fn ffifile_safer(
     unsafe {
         ffifile2_safer(
             url,
-            urltype,
-            infilex,
-            outfile,
-            extspec,
-            rowfilterx,
-            binspec,
-            colspec,
-            pixfilter,
-            ptr::null_mut(),
+            urltype
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            infilex
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            outfile
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            extspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            rowfilterx
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            binspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            colspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            pixfilter
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            None,
             status,
         )
     }
@@ -4569,8 +4599,35 @@ pub unsafe extern "C" fn ffifile2(
         let status = status.as_mut().expect(NULL_MSG);
 
         ffifile2_safer(
-            url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter,
-            compspec, status,
+            url,
+            urltype
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            infilex
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            outfile
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            extspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            rowfilterx
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            binspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            colspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            pixfilter
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            compspec
+                .as_mut()
+                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+            status,
         )
     }
 }
@@ -4587,1137 +4644,1137 @@ pub unsafe extern "C" fn ffifile2(
 /// the column specifier,
 /// and the image pixel filtering specifier.
 /// A null pointer (0) may be be specified for any of the output string arguments that are not needed. Null strings will be returned for any components that are not present in the input file name. The calling routine must allocate sufficient memory to hold the returned character strings. Allocating the string lengths equal to FLEN_FILENAME is guaranteed to be safe. These routines are mainly for internal use by other CFITSIO routines.
-pub unsafe fn ffifile2_safer(
-    url: &[c_char],          /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
-    pixfilter: *mut c_char,  /* pixel filter expression */
-    compspec: *mut c_char,   /* image compression specification */
+pub fn ffifile2_safer(
+    url: &[c_char],                        /* input filename */
+    mut urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
+    mut infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
+    mut outfile: Option<&mut [c_char]>,    /* optional output file name            */
+    mut extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
+    mut rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
+    mut binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
+    mut colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
+    mut pixfilter: Option<&mut [c_char]>,  /* pixel filter expression */
+    mut compspec: Option<&mut [c_char]>,   /* image compression specification */
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut infilelen = 0;
-        let mut plus_ext = 0;
-        let mut ptr2: *mut c_char = ptr::null_mut();
-        let mut ptr3: *mut c_char = ptr::null_mut();
-        let mut ptr4: *mut c_char = ptr::null_mut();
-        let mut hasAt;
-        let mut hasDot;
-        let mut hasOper;
-        let mut followingOper;
-        let mut spaceTerm;
-        let mut rowFilter;
-        let mut colStart;
-        let mut binStart;
-        let mut pixStart;
-        let mut compStart;
+    
+    let mut infilelen = 0;
+    let mut plus_ext = 0;
+    let mut ptr2: *mut c_char = ptr::null_mut();
+    let mut ptr3: *mut c_char = ptr::null_mut();
+    let mut ptr4: *mut c_char = ptr::null_mut();
+    let mut hasAt;
+    let mut hasDot;
+    let mut hasOper;
+    let mut followingOper;
+    let mut spaceTerm;
+    let mut rowFilter;
+    let mut colStart;
+    let mut binStart;
+    let mut pixStart;
+    let mut compStart;
 
-        if *status > 0 {
-            return *status;
+    if *status > 0 {
+        return *status;
+    }
+
+    /* Initialize null strings */
+    if let Some(ref mut s) = infilex {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = urltype {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = outfile {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = extspec {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = binspec {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = colspec {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = rowfilterx {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = pixfilter {
+        s[0] = 0;
+    }
+    if let Some(ref mut s) = compspec {
+        s[0] = 0;
+    }
+
+    let mut slen = strlen_safe(url);
+
+    if slen == 0 {
+        /* blank filename ?? */
+        return *status;
+    }
+
+    // TEMP HEAP ALLOCATION
+    /* allocate memory for 3 strings, each as long as the input url */
+    let mut holding_tank = Vec::new();
+    if holding_tank.try_reserve_exact(3 * (slen + 1)).is_err() {
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        holding_tank.resize(3 * (slen + 1), 0);
+    }
+
+    // Split the 1 vec into 3 mutables slices
+    let (infile, rowfilter) = holding_tank.split_at_mut(slen + 1);
+    let (rowfilter, tmpstr) = rowfilter.split_at_mut(slen + 1);
+
+    let mut ptr1 = url;
+    let mut ptr1_index = 0;
+
+    /* -------------------------------------------------------- */
+    /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
+    /* --------------------------------------------------------- */
+
+    if ptr1[0] == bb(b'-')
+        && (ptr1[1] == 0 || ptr1[1] == bb(b' ') || ptr1[1] == bb(b'[') || ptr1[1] == bb(b'('))
+    {
+        /* "-" means read file from stdin. Also support "- ",        */
+        /* "-[extname]" and '-(outfile.fits)" but exclude disk file  */
+        /* names that begin with a minus sign, e.g., "-55d33m.fits"  */
+
+        if let Some(ref mut s) = urltype {
+            unsafe { strcat(s.as_mut_ptr(), c"stdin://".as_ptr()); }
         }
 
-        /* Initialize null strings */
-        if !infilex.is_null() {
-            *infilex = 0;
+        ptr1_index += 1;
+    } else if fits_strncasecmp(ptr1, cs!(c"stdin"), 5) == 0 {
+        if let Some(ref mut s) = urltype {
+            unsafe { strcat(s.as_mut_ptr(), c"stdin://".as_ptr()); }
         }
-        if !urltype.is_null() {
-            *urltype = 0;
-        }
-        if !outfile.is_null() {
-            *outfile = 0;
-        }
-        if !extspec.is_null() {
-            *extspec = 0;
-        }
-        if !binspec.is_null() {
-            *binspec = 0;
-        }
-        if !colspec.is_null() {
-            *colspec = 0;
-        }
-        if !rowfilterx.is_null() {
-            *rowfilterx = 0;
-        }
-        if !pixfilter.is_null() {
-            *pixfilter = 0;
-        }
-        if !compspec.is_null() {
-            *compspec = 0;
+        ptr1_index += 5;
+    } else {
+        let mut ptr2 = strstr_safe(ptr1, cs!(c"://"));
+        let ptr3 = strstr_safe(ptr1, cs!(c"("));
+        if ptr3.is_some() && ptr2.is_some() && (ptr3.unwrap() < ptr2.unwrap()) {
+            /* the urltype follows a '(' character, so it must apply */
+            /* to the output file, and is not the urltype of the input file */
+            ptr2 = None; /* so reset pointer to zero */
         }
 
-        let mut slen = strlen_safe(url);
-
-        if slen == 0 {
-            /* blank filename ?? */
-            return *status;
-        }
-
-        // TEMP HEAP ALLOCATION
-        /* allocate memory for 3 strings, each as long as the input url */
-        let mut holding_tank = Vec::new();
-        if holding_tank.try_reserve_exact(3 * (slen + 1)).is_err() {
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            holding_tank.resize(3 * (slen + 1), 0);
-        }
-
-        // Split the 1 vec into 3 mutables slices
-        let (infile, rowfilter) = holding_tank.split_at_mut(slen + 1);
-        let (rowfilter, tmpstr) = rowfilter.split_at_mut(slen + 1);
-
-        let mut ptr1 = url;
-        let mut ptr1_index = 0;
-
-        /* -------------------------------------------------------- */
-        /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
-        /* --------------------------------------------------------- */
-
-        if ptr1[0] == bb(b'-')
-            && (ptr1[1] == 0 || ptr1[1] == bb(b' ') || ptr1[1] == bb(b'[') || ptr1[1] == bb(b'('))
-        {
-            /* "-" means read file from stdin. Also support "- ",        */
-            /* "-[extname]" and '-(outfile.fits)" but exclude disk file  */
-            /* names that begin with a minus sign, e.g., "-55d33m.fits"  */
-
-            if !urltype.is_null() {
-                strcat(urltype, c"stdin://".as_ptr());
+        if let Some(ptr2) = ptr2 {
+            /* copy the explicit urltype string */
+            if (ptr2 + 3) >= MAX_PREFIX_LEN {
+                ffpmsg_str("Name of urltype is too long.");
+                *status = URL_PARSE_ERROR;
+                return *status;
             }
 
-            ptr1_index += 1;
-        } else if fits_strncasecmp(ptr1, cs!(c"stdin"), 5) == 0 {
-            if !urltype.is_null() {
-                strcat(urltype, c"stdin://".as_ptr());
+            if let Some(ref mut s) = urltype {
+                unsafe { strncat(s.as_mut_ptr(), ptr1.as_ptr(), ptr2 + 3); }
+            }
+            ptr1_index += ptr2 + 3;
+        } else if strncmp_safe(ptr1, cs!(c"ftp:"), 4) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"ftp://".as_ptr()); }
+            }
+            ptr1_index += 4;
+        } else if strncmp_safe(ptr1, cs!(c"gsiftp:"), 7) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"gsiftp://".as_ptr()); }
+            }
+            ptr1_index += 7;
+        } else if strncmp_safe(ptr1, cs!(c"http:"), 5) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"http://".as_ptr()); }
+            }
+            ptr1_index += 5;
+        } else if strncmp_safe(ptr1, cs!(c"mem:"), 4) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"mem://".as_ptr()); }
+            }
+            ptr1_index += 4;
+        } else if strncmp_safe(ptr1, cs!(c"shmem:"), 6) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"shmem://".as_ptr()); }
+            }
+            ptr1_index += 6;
+        } else if strncmp_safe(ptr1, cs!(c"file:"), 5) == 0 {
+            /* the 2 //'s are optional */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"file://".as_ptr()); }
             }
             ptr1_index += 5;
         } else {
-            let mut ptr2 = strstr_safe(ptr1, cs!(c"://"));
-            let ptr3 = strstr_safe(ptr1, cs!(c"("));
-            if ptr3.is_some() && ptr2.is_some() && (ptr3.unwrap() < ptr2.unwrap()) {
-                /* the urltype follows a '(' character, so it must apply */
-                /* to the output file, and is not the urltype of the input file */
-                ptr2 = None; /* so reset pointer to zero */
-            }
-
-            if let Some(ptr2) = ptr2 {
-                /* copy the explicit urltype string */
-                if (ptr2 + 3) >= MAX_PREFIX_LEN {
-                    ffpmsg_str("Name of urltype is too long.");
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                if !urltype.is_null() {
-                    strncat(urltype, ptr1.as_ptr(), ptr2 + 3);
-                }
-                ptr1_index += ptr2 + 3;
-            } else if strncmp_safe(ptr1, cs!(c"ftp:"), 4) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"ftp://".as_ptr());
-                }
-                ptr1_index += 4;
-            } else if strncmp_safe(ptr1, cs!(c"gsiftp:"), 7) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"gsiftp://".as_ptr());
-                }
-                ptr1_index += 7;
-            } else if strncmp_safe(ptr1, cs!(c"http:"), 5) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"http://".as_ptr());
-                }
-                ptr1_index += 5;
-            } else if strncmp_safe(ptr1, cs!(c"mem:"), 4) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"mem://".as_ptr());
-                }
-                ptr1_index += 4;
-            } else if strncmp_safe(ptr1, cs!(c"shmem:"), 6) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"shmem://".as_ptr());
-                }
-                ptr1_index += 6;
-            } else if strncmp_safe(ptr1, cs!(c"file:"), 5) == 0 {
-                /* the 2 //'s are optional */
-                if !urltype.is_null() {
-                    strcat(urltype, c"file://".as_ptr());
-                }
-                ptr1_index += 5;
-            } else {
-                /* assume file driver    */
-                if !urltype.is_null() {
-                    strcat(urltype, c"file://".as_ptr());
-                };
+            /* assume file driver    */
+            if let Some(ref mut s) = urltype {
+                unsafe { strcat(s.as_mut_ptr(), c"file://".as_ptr()); }
             };
-        }
-
-        /* ----------------------------------------------------------
-        If this is a http:// type file, then the cgi file name could
-        include the '[' character, which should not be interpreted
-        as part of CFITSIO's Extended File Name Syntax.  Test for this
-        case by seeing if the last character is a ']' or ')'.  If it
-        is not, then just treat the whole input string as the file name
-        and do not attempt to interprete the name using the extended
-        filename syntax.
-        ----------------------------------------------------------- */
-
-        // Advance slice
-        ptr1 = &ptr1[ptr1_index..];
-        ptr1_index = 0;
-
-        if !urltype.is_null() && strncmp(urltype, c"http://".as_ptr(), 7) == 0 {
-            /* test for opening parenthesis or bracket in the file name */
-            if strchr_safe(ptr1, bb(b'(')).is_some() || strchr_safe(ptr1, bb(b'[')).is_some() {
-                slen = strlen_safe(ptr1);
-
-                let mut ptr3_index = slen - 1;
-
-                while ptr1[ptr3_index] == bb(b' ') {
-                    /* ignore trailing blanks */
-                    ptr3_index -= 1;
-                }
-
-                if ptr1[ptr3_index] != bb(b']') && ptr1[ptr3_index] != bb(b')') {
-                    /* name doesn't end with a ']' or ')' so don't try */
-                    /* to parse this unusual string (may be cgi string)  */
-                    if !infilex.is_null() {
-                        if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
-                            ffpmsg_str("Name of file is too long.");
-                            *status = URL_PARSE_ERROR;
-                            return *status;
-                        }
-                        strcpy(infilex, ptr1.as_ptr());
-                    }
-
-                    return *status;
-                };
-            };
-        }
-        /* ----------------------------------------------------------
-        Look for VMS style filenames like:
-             disk:[directory.subdirectory]filename.ext, or
-                  [directory.subdirectory]filename.ext
-
-        Check if the first character is a '[' and urltype != stdin
-        or if there is a ':[' string in the remaining url string. If
-        so, then need to move past this bracket character before
-        search for the opening bracket of a filter specification.
-        ----------------------------------------------------------- */
-        let mut tmptr = ptr1; /* this bracket encloses a VMS directory name */
-        if ptr1[0] == bb(b'[') {
-            if url[0] != bb(b'-') {
-                tmptr = &ptr1[1..]; /* these 2 chars are part of the VMS disk and directory */
-            };
-        } else {
-            let tmp_index = strstr_safe(ptr1, cs!(c":["));
-            if let Some(tmp_index) = tmp_index {
-                tmptr = &ptr1[(tmp_index + 2)..];
-            } else {
-                tmptr = ptr1;
-            };
-        }
-
-        /* ------------------------ */
-        /*  get the input file name */
-        /* ------------------------ */
-        ptr2 = strchr(tmptr.as_ptr(), bb(b'(') as c_int); /* search for opening parenthesis ( */
-        ptr3 = strchr(tmptr.as_ptr(), bb(b'[') as c_int); /* search for opening bracket [ */
-        if !ptr2.is_null() {
-            ptr4 = strchr(ptr2, bb(b')') as c_int); /* search for closing parenthesis ) */
-            while !ptr4.is_null() && !ptr2.is_null() {
-                loop {
-                    ptr4 = ptr4.offset(1); /* find next non-blank char after ')' */
-                    if *ptr4 != bb(b' ') {
-                        break;
-                    }; /* simple case: no [ or ( in the file name */
-                } /* no bracket, so () enclose output file name */
-                if *ptr4 == 0 || *ptr4 == bb(b'[') {
-                    break; /* () enclose output name before bracket */
-                } /* search for closing ) */
-                ptr2 = strchr(ptr2.offset(1), bb(b'(') as c_int); /* error, no closing ) */
-                ptr4 = strchr(ptr4, bb(b')') as c_int);
-            }
-        }
-
-        if std::ptr::eq(ptr2, ptr3) {
-            /* simple case: no [ or ( in the file name */
-            strcat_safe(infile, ptr1);
-        } else if ptr3.is_null() || (!ptr2.is_null() && (ptr2 < ptr3)) {
-            let t = ptr2.offset_from(ptr1.as_ptr());
-            assert!(t >= 0, "Pointer math is bad mkay");
-
-            strncat_safe(infile, ptr1, t as usize);
-
-            ptr2 = ptr2.add(1);
-
-            let p1 = strchr(ptr2, bb(b')') as c_int);
-            if p1.is_null() {
-                *status = URL_PARSE_ERROR;
-                return *status;
-            }
-
-            if !outfile.is_null() {
-                let t = p1.offset_from(ptr2);
-                assert!(t >= 0, "Pointer math is bad mkay");
-                let t = t as usize;
-
-                if t > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-                strncat(outfile, ptr2, t);
-            }
-            /* the opening [ could have been part of output name,    */
-            /*      e.g., file(out[compress])[3][#row > 5]           */
-            /* so search again for opening bracket following the closing ) */
-            ptr3 = strchr(p1, bb(b'[') as c_int); /*   bracket comes first, so there is no output name */
-        } else {
-            let t = ptr3.offset_from(ptr1.as_ptr());
-            assert!(t >= 0, "Pointer math is bad mkay");
-            let t = t as usize;
-            strncat_safe(infile, ptr1, t);
-        }
-
-        /* strip off any trailing blanks in the names */
-        let mut slen = strlen_safe(infile) as isize;
-
-        slen -= 1;
-        while slen > 0 && infile[slen as usize] == bb(b' ') {
-            infile[slen as usize] = 0;
-            slen -= 1;
-        }
-
-        if !outfile.is_null() {
-            slen = strlen(outfile) as isize;
-            slen -= 1;
-            while slen > 0 && *outfile.offset(slen) == bb(b' ') {
-                *outfile.offset(slen) = 0;
-                slen -= 1;
-            }
-        }
-        /* --------------------------------------------- */
-        /* check if this is an IRAF file (.imh extension */
-        /* --------------------------------------------- */
-        let ptr4 = strstr_safe(infile, cs!(c".imh"));
-        /* did the infile name end with c".imh".as_ptr() ? */
-        if let Some(p4) = ptr4
-            && infile[p4] == 0
-            && !urltype.is_null()
-        {
-            strcpy(urltype, c"irafmem://".as_ptr());
         };
+    }
 
-        /* --------------------------------------------- */
-        /* check if the 'filename+n' convention has been */
-        /* used to specifiy which HDU number to open     */
-        /* --------------------------------------------- */
-        let jj = strlen_safe(infile) as isize; /* search backwards for '+' sign */
-        let mut ii: isize = jj as isize - 1;
-        while ii >= 0 {
-            if infile[ii as usize] == bb(b'+') {
-                break; /* limit extension numbers to 5 digits */
-            }; /* pointer to start of sequence */
-            ii -= 1;
-        }
-        /* are all the chars digits? */
+    /* ----------------------------------------------------------
+    If this is a http:// type file, then the cgi file name could
+    include the '[' character, which should not be interpreted
+    as part of CFITSIO's Extended File Name Syntax.  Test for this
+    case by seeing if the last character is a ']' or ')'.  If it
+    is not, then just treat the whole input string as the file name
+    and do not attempt to interprete the name using the extended
+    filename syntax.
+    ----------------------------------------------------------- */
 
-        if ii > 0 && (jj - ii) < 7 {
-            infilelen = ii; /* yes, the '+n' convention was used.  Copy */
-            ii += 1; /* the digits to the output extspec string. */
-            let ptr1 = &infile[(ii as usize)..]; /* delete the extension number */
-            while ii < jj {
-                if !isdigit_safe(infile[ii as usize]) {
-                    break;
-                };
-                ii += 1;
+    // Advance slice
+    ptr1 = &ptr1[ptr1_index..];
+    ptr1_index = 0;
+
+    if let Some(ref urltype_slice) = urltype {
+    if unsafe { strncmp(urltype_slice.as_ptr(), c"http://".as_ptr(), 7) } == 0 {
+        /* test for opening parenthesis or bracket in the file name */
+        if strchr_safe(ptr1, bb(b'(')).is_some() || strchr_safe(ptr1, bb(b'[')).is_some() {
+            slen = strlen_safe(ptr1);
+
+            let mut ptr3_index = slen - 1;
+
+            while ptr1[ptr3_index] == bb(b' ') {
+                /* ignore trailing blanks */
+                ptr3_index -= 1;
             }
-            if ii == jj {
-                plus_ext = 1;
-                if !extspec.is_null() {
-                    if jj - infilelen > FLEN_FILENAME as isize - 1 {
+
+            if ptr1[ptr3_index] != bb(b']') && ptr1[ptr3_index] != bb(b')') {
+                /* name doesn't end with a ']' or ')' so don't try */
+                /* to parse this unusual string (may be cgi string)  */
+                if let Some(ref mut s) = infilex {
+                    if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
+                        ffpmsg_str("Name of file is too long.");
                         *status = URL_PARSE_ERROR;
                         return *status;
                     }
-                    strncpy(extspec, ptr1.as_ptr(), (jj - infilelen) as usize);
+                    unsafe { strcpy(s.as_mut_ptr(), ptr1.as_ptr()); }
                 }
-                infile[infilelen as usize] = 0;
-            };
-        }
-        /* -------------------------------------------------------------------- */
-        /* if '*' was given for the output name expand it to the root file name */
-        /* -------------------------------------------------------------------- */
-        if !outfile.is_null() && *outfile.offset(0) == bb(b'*') {
-            /* scan input name backwards to the first '/' character */
-            let mut ii = jj - 1;
-            while ii >= 0 {
-                if infile[ii as usize] == bb(b'/') || ii == 0 {
-                    if strlen_safe(&infile[((ii + 1) as usize)..]) > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-                    strcpy(outfile, infile[((ii + 1) as usize)..].as_ptr());
-                    break;
-                };
-                ii -= 1
-            }
-        }
-        /* ------------------------------------------ */
-        /* copy strings from local copy to the output */
-        /* ------------------------------------------ */
-        if !infilex.is_null() {
-            if strlen_safe(infile) > FLEN_FILENAME - 1 {
-                *status = URL_PARSE_ERROR;
+
                 return *status;
-            }
-            strcpy(infilex, infile.as_ptr());
+            };
+        };
+    }
+    }
+    /* ----------------------------------------------------------
+    Look for VMS style filenames like:
+         disk:[directory.subdirectory]filename.ext, or
+              [directory.subdirectory]filename.ext
+
+    Check if the first character is a '[' and urltype != stdin
+    or if there is a ':[' string in the remaining url string. If
+    so, then need to move past this bracket character before
+    search for the opening bracket of a filter specification.
+    ----------------------------------------------------------- */
+    let mut tmptr = ptr1; /* this bracket encloses a VMS directory name */
+    if ptr1[0] == bb(b'[') {
+        if url[0] != bb(b'-') {
+            tmptr = &ptr1[1..]; /* these 2 chars are part of the VMS disk and directory */
+        };
+    } else {
+        let tmp_index = strstr_safe(ptr1, cs!(c":["));
+        if let Some(tmp_index) = tmp_index {
+            tmptr = &ptr1[(tmp_index + 2)..];
+        } else {
+            tmptr = ptr1;
+        };
+    }
+
+    /* ------------------------ */
+    /*  get the input file name */
+    /* ------------------------ */
+    ptr2 = unsafe { strchr(tmptr.as_ptr(), bb(b'(') as c_int) }; /* search for opening parenthesis ( */
+    ptr3 = unsafe { strchr(tmptr.as_ptr(), bb(b'[') as c_int) }; /* search for opening bracket [ */
+    if !ptr2.is_null() {
+        ptr4 = unsafe { strchr(ptr2, bb(b')') as c_int) }; /* search for closing parenthesis ) */
+        while !ptr4.is_null() && !ptr2.is_null() {
+            loop {
+                ptr4 = unsafe { ptr4.offset(1) }; /* find next non-blank char after ')' */
+                if unsafe { *ptr4 } != bb(b' ') {
+                    break;
+                }; /* simple case: no [ or ( in the file name */
+            } /* no bracket, so () enclose output file name */
+            if unsafe { *ptr4 } == 0 || unsafe { *ptr4 } == bb(b'[') {
+                break; /* () enclose output name before bracket */
+            } /* search for closing ) */
+            ptr2 = unsafe { strchr(ptr2.offset(1), bb(b'(') as c_int) }; /* error, no closing ) */
+            ptr4 = unsafe { strchr(ptr4, bb(b')') as c_int) };
         }
-        /* ---------------------------------------------------------- */
-        /* if no '[' character in the input string, then we are done. */
-        /* ---------------------------------------------------------- */
-        if ptr3.is_null() {
+    }
+
+    if std::ptr::eq(ptr2, ptr3) {
+        /* simple case: no [ or ( in the file name */
+        strcat_safe(infile, ptr1);
+    } else if ptr3.is_null() || (!ptr2.is_null() && (ptr2 < ptr3)) {
+        let t = unsafe { ptr2.offset_from(ptr1.as_ptr()) };
+        assert!(t >= 0, "Pointer math is bad mkay");
+
+        strncat_safe(infile, ptr1, t as usize);
+
+        ptr2 = unsafe { ptr2.add(1) };
+
+        let p1 = unsafe { strchr(ptr2, bb(b')') as c_int) };
+        if p1.is_null() {
+            *status = URL_PARSE_ERROR;
             return *status;
         }
-        /* ------------------------------------------- */
-        /* see if [ extension specification ] is given */
-        /* ------------------------------------------- */
-        if plus_ext == 0 {
-            /* extension no. not already specified?  Then      */
-            /* first brackets must enclose extension name or # */
-            /* or it encloses a image subsection specification */
-            /* or a raw binary image specifier */
-            /* or a image compression specifier */
-            /* Or, the extension specification may have been */
-            /* omitted and we have to guess what the user intended */
 
-            let mut ptr1 = ptr3.add(1); /* pointer to first char after the [ */
-            let ptr2 = strchr(ptr1, bb(b']') as c_int); /* search for closing ] */
-            if ptr2.is_null() {
-                ffpmsg_str("input file URL is missing closing bracket ']'"); /* error, no closing ] */
+        if let Some(ref mut outfile_slice) = outfile {
+            let t = unsafe { p1.offset_from(ptr2) };
+            assert!(t >= 0, "Pointer math is bad mkay");
+            let t = t as usize;
+
+            if t > FLEN_FILENAME - 1 {
                 *status = URL_PARSE_ERROR;
                 return *status;
             }
-            /* ---------------------------------------------- */
-            /* First, test if this is a rawfile specifier     */
-            /* which looks something like: '[ib512,512:2880]' */
-            /* Test if first character is b,i,j,d,r,f, or u,  */
-            /* and optional second character is b or l,       */
-            /* followed by one or more digits,                */
-            /* finally followed by a ',', ':', or ']'         */
-            /* ---------------------------------------------- */
-            if *ptr1 == bb(b'b')
-                || *ptr1 == bb(b'B')
-                || *ptr1 == bb(b'i')
-                || *ptr1 == bb(b'I')
-                || *ptr1 == bb(b'j')
-                || *ptr1 == bb(b'J')
-                || *ptr1 == bb(b'd')
-                || *ptr1 == bb(b'D')
-                || *ptr1 == bb(b'r')
-                || *ptr1 == bb(b'R')
-                || *ptr1 == bb(b'f')
-                || *ptr1 == bb(b'F')
-                || *ptr1 == bb(b'u')
-                || *ptr1 == bb(b'U')
-            {
-                /* next optional character may be a b or l (for Big or Little) */
-                ptr1 = ptr1.offset(1); /* must have at least 1 digit */
-                if *ptr1 == bb(b'b') || *ptr1 == bb(b'B') || *ptr1 == bb(b'l') || *ptr1 == bb(b'L')
-                {
-                    ptr1 = ptr1.offset(1); /* skip over digits */
-                } /* OK, this looks like a rawfile specifier */
+            unsafe { strncat(outfile_slice.as_mut_ptr(), ptr2, t); }
+        }
+        /* the opening [ could have been part of output name,    */
+        /*      e.g., file(out[compress])[3][#row > 5]           */
+        /* so search again for opening bracket following the closing ) */
+        ptr3 = unsafe { strchr(p1, bb(b'[') as c_int) }; /*   bracket comes first, so there is no output name */
+    } else {
+        let t = unsafe { ptr3.offset_from(ptr1.as_ptr()) };
+        assert!(t >= 0, "Pointer math is bad mkay");
+        let t = t as usize;
+        strncat_safe(infile, ptr1, t);
+    }
 
-                if isdigit_safe(*ptr1) {
-                    while isdigit_safe(*ptr1) {
-                        ptr1 = ptr1.offset(1); /* append the raw array specifier to infilex */
-                    } /* find the closing ] char */
-                    if *ptr1 == bb(b',') || *ptr1 == bb(b':') || *ptr1 == bb(b']') {
-                        if !urltype.is_null() {
-                            if !strstr(urltype, c"stdin".as_ptr()).is_null() {
-                                strcpy(urltype, c"rawstdin://".as_ptr()); /* terminate string after the ] */
-                            } else {
-                                strcpy(urltype, c"rawfile://".as_ptr()); /* the 0 ext number is implicit */
-                            }; /* search for another [ char */
-                        } /* copy any remaining characters into rowfilterx  */
-                        if !infilex.is_null() {
-                            if strlen(infilex) + strlen(ptr3) > FLEN_FILENAME - 1 {
-                                *status = URL_PARSE_ERROR; /* overwrite the ] with null terminator */
-                                return *status; /* finished parsing, so return */
-                            } /* end of rawfile specifier test */
-                            strcat(infilex, ptr3);
-                            let ptr1 = strchr(infilex, bb(b']') as c_int);
-                            if !ptr1.is_null() {
-                                *ptr1.offset(1) = 0;
-                            };
-                        }
-                        if !extspec.is_null() {
-                            strcpy(extspec, cast_slice(b"0\0").as_ptr());
-                        }
-                        let tmptr = strchr(ptr2.offset(1), bb(b'[') as c_int);
-                        if !tmptr.is_null() && !rowfilterx.is_null() {
-                            if strlen(rowfilterx) + strlen(tmptr.offset(1)) > FLEN_FILENAME - 1 {
+    /* strip off any trailing blanks in the names */
+    let mut slen = strlen_safe(infile) as isize;
+
+    slen -= 1;
+    while slen > 0 && infile[slen as usize] == bb(b' ') {
+        infile[slen as usize] = 0;
+        slen -= 1;
+    }
+
+    if let Some(ref mut outfile_slice) = outfile {
+        slen = unsafe { strlen(outfile_slice.as_ptr()) } as isize;
+        slen -= 1;
+        while slen > 0 && outfile_slice[slen as usize] == bb(b' ') {
+            outfile_slice[slen as usize] = 0;
+            slen -= 1;
+        }
+    }
+    /* --------------------------------------------- */
+    /* check if this is an IRAF file (.imh extension */
+    /* --------------------------------------------- */
+    let ptr4 = strstr_safe(infile, cs!(c".imh"));
+    /* did the infile name end with c".imh".as_ptr() ? */
+    if let Some(p4) = ptr4 {
+        if infile[p4] == 0 {
+            if let Some(ref mut s) = urltype {
+                unsafe { strcpy(s.as_mut_ptr(), c"irafmem://".as_ptr()); }
+            }
+        }
+    }
+
+    /* --------------------------------------------- */
+    /* check if the 'filename+n' convention has been */
+    /* used to specifiy which HDU number to open     */
+    /* --------------------------------------------- */
+    let jj = strlen_safe(infile) as isize; /* search backwards for '+' sign */
+    let mut ii: isize = jj as isize - 1;
+    while ii >= 0 {
+        if infile[ii as usize] == bb(b'+') {
+            break; /* limit extension numbers to 5 digits */
+        }; /* pointer to start of sequence */
+        ii -= 1;
+    }
+    /* are all the chars digits? */
+
+    if ii > 0 && (jj - ii) < 7 {
+        infilelen = ii; /* yes, the '+n' convention was used.  Copy */
+        ii += 1; /* the digits to the output extspec string. */
+        let ptr1 = &infile[(ii as usize)..]; /* delete the extension number */
+        while ii < jj {
+            if !isdigit_safe(infile[ii as usize]) {
+                break;
+            };
+            ii += 1;
+        }
+        if ii == jj {
+            plus_ext = 1;
+            if let Some(ref mut s) = extspec {
+                if jj - infilelen > FLEN_FILENAME as isize - 1 {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                unsafe { strncpy(s.as_mut_ptr(), ptr1.as_ptr(), (jj - infilelen) as usize); }
+            }
+            infile[infilelen as usize] = 0;
+        };
+    }
+    /* -------------------------------------------------------------------- */
+    /* if '*' was given for the output name expand it to the root file name */
+    /* -------------------------------------------------------------------- */
+    if let Some(ref mut outfile_slice) = outfile {
+    if outfile_slice[0] == bb(b'*') {
+        /* scan input name backwards to the first '/' character */
+        let mut ii = jj - 1;
+        while ii >= 0 {
+            if infile[ii as usize] == bb(b'/') || ii == 0 {
+                if strlen_safe(&infile[((ii + 1) as usize)..]) > FLEN_FILENAME - 1 {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                unsafe { strcpy(outfile_slice.as_mut_ptr(), infile[((ii + 1) as usize)..].as_ptr()); }
+                break;
+            };
+            ii -= 1
+        }
+    }
+    }
+    /* ------------------------------------------ */
+    /* copy strings from local copy to the output */
+    /* ------------------------------------------ */
+    if let Some(ref mut s) = infilex {
+        if strlen_safe(infile) > FLEN_FILENAME - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        unsafe { strcpy(s.as_mut_ptr(), infile.as_ptr()); }
+    }
+    /* ---------------------------------------------------------- */
+    /* if no '[' character in the input string, then we are done. */
+    /* ---------------------------------------------------------- */
+    if ptr3.is_null() {
+        return *status;
+    }
+    /* ------------------------------------------- */
+    /* see if [ extension specification ] is given */
+    /* ------------------------------------------- */
+    if plus_ext == 0 {
+        /* extension no. not already specified?  Then      */
+        /* first brackets must enclose extension name or # */
+        /* or it encloses a image subsection specification */
+        /* or a raw binary image specifier */
+        /* or a image compression specifier */
+        /* Or, the extension specification may have been */
+        /* omitted and we have to guess what the user intended */
+
+        let mut ptr1 = unsafe { ptr3.add(1) }; /* pointer to first char after the [ */
+        let ptr2 = unsafe { strchr(ptr1, bb(b']') as c_int) }; /* search for closing ] */
+        if ptr2.is_null() {
+            ffpmsg_str("input file URL is missing closing bracket ']'"); /* error, no closing ] */
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        /* ---------------------------------------------- */
+        /* First, test if this is a rawfile specifier     */
+        /* which looks something like: '[ib512,512:2880]' */
+        /* Test if first character is b,i,j,d,r,f, or u,  */
+        /* and optional second character is b or l,       */
+        /* followed by one or more digits,                */
+        /* finally followed by a ',', ':', or ']'         */
+        /* ---------------------------------------------- */
+        if unsafe { *ptr1 } == bb(b'b')
+            || unsafe { *ptr1 } == bb(b'B')
+            || unsafe { *ptr1 } == bb(b'i')
+            || unsafe { *ptr1 } == bb(b'I')
+            || unsafe { *ptr1 } == bb(b'j')
+            || unsafe { *ptr1 } == bb(b'J')
+            || unsafe { *ptr1 } == bb(b'd')
+            || unsafe { *ptr1 } == bb(b'D')
+            || unsafe { *ptr1 } == bb(b'r')
+            || unsafe { *ptr1 } == bb(b'R')
+            || unsafe { *ptr1 } == bb(b'f')
+            || unsafe { *ptr1 } == bb(b'F')
+            || unsafe { *ptr1 } == bb(b'u')
+            || unsafe { *ptr1 } == bb(b'U')
+        {
+            /* next optional character may be a b or l (for Big or Little) */
+            ptr1 = unsafe { ptr1.offset(1) }; /* must have at least 1 digit */
+            if unsafe { *ptr1 } == bb(b'b') || unsafe { *ptr1 } == bb(b'B') || unsafe { *ptr1 } == bb(b'l') || unsafe { *ptr1 } == bb(b'L') {
+                ptr1 = unsafe { ptr1.offset(1) }; /* skip over digits */
+            } /* OK, this looks like a rawfile specifier */
+
+            if isdigit_safe(unsafe { *ptr1 }) {
+                while isdigit_safe(unsafe { *ptr1 }) {
+                    ptr1 = unsafe { ptr1.offset(1) }; /* append the raw array specifier to infilex */
+                } /* find the closing ] char */
+                if unsafe { *ptr1 } == bb(b',') || unsafe { *ptr1 } == bb(b':') || unsafe { *ptr1 } == bb(b']') {
+                    if let Some(ref mut s) = urltype {
+                        if unsafe { !strstr(s.as_ptr(), c"stdin".as_ptr()).is_null() } {
+                            unsafe { strcpy(s.as_mut_ptr(), c"rawstdin://".as_ptr()); } /* terminate string after the ] */
+                        } else {
+                            unsafe { strcpy(s.as_mut_ptr(), c"rawfile://".as_ptr()); } /* the 0 ext number is implicit */
+                        }; /* search for another [ char */
+                    } /* copy any remaining characters into rowfilterx  */
+                    if let Some(ref mut s) = infilex {
+                        if unsafe { strlen(s.as_ptr()) + strlen(ptr3) } > FLEN_FILENAME - 1 {
+                            *status = URL_PARSE_ERROR; /* overwrite the ] with null terminator */
+                            return *status; /* finished parsing, so return */
+                        } /* end of rawfile specifier test */
+                        unsafe { strcat(s.as_mut_ptr(), ptr3); }
+                        let ptr1 = unsafe { strchr(s.as_ptr(), bb(b']') as c_int) };
+                        if !ptr1.is_null() {
+                            unsafe { *ptr1.offset(1) = 0; }
+                        };
+                    }
+                    if let Some(ref mut s) = extspec {
+                        unsafe { strcpy(s.as_mut_ptr(), cast_slice(b"0\0").as_ptr()); }
+                    }
+                    let tmptr = unsafe { strchr(ptr2.offset(1), bb(b'[') as c_int) };
+                    if !tmptr.is_null() {
+                        if let Some(ref mut s) = rowfilterx {
+                            if unsafe { strlen(s.as_ptr()) + strlen(tmptr.offset(1)) } > FLEN_FILENAME - 1 {
                                 *status = URL_PARSE_ERROR;
                                 return *status;
                             }
-                            strcat(rowfilterx, tmptr.offset(1));
-                            let tmptr = strchr(rowfilterx, bb(b']') as c_int);
+                            unsafe { strcat(s.as_mut_ptr(), tmptr.offset(1)); }
+                            let tmptr = unsafe { strchr(s.as_ptr(), bb(b']') as c_int) };
                             if !tmptr.is_null() {
-                                *tmptr = 0;
+                                unsafe { *tmptr = 0; }
                             };
                         }
-                        return *status;
-                    };
-                };
-            }
-            /* -------------------------------------------------------- */
-            /* Not a rawfile, so next, test if this is an image section */
-            /* i.e., an integer followed by a ':' or a '*' or '-*'      */
-            /* -------------------------------------------------------- */
-            ptr1 = ptr3.offset(1); /* reset pointer to first char after the [ */
-            let mut tmptr = ptr1; /* skip leading blanks */
-            while *tmptr == bb(b' ') {
-                tmptr = tmptr.offset(1); /* skip over leading digits */
-            } /* this is an image section specifier */
-            while isdigit_safe(*tmptr) {
-                tmptr = tmptr.offset(1);
-            }
-            if *tmptr == bb(b':') || *tmptr == bb(b'*') || *tmptr == bb(b'-') {
-                strcat(rowfilter.as_mut_ptr(), ptr3);
-                /*
-                don't want to assume 0 extension any more; may imply an image extension.
-                    if (extspec)
-                       strcpy(extspec, "0");
-                */
-            } else {
-                /* -----------------------------------------------------------------
-                Not an image section or rawfile spec so may be an extension spec.
-
-                Examples of valid extension specifiers:
-                   [3]                - 3rd extension; 0 = primary array
-                   [events]           - events extension
-                   [events, 2]        - events extension, with EXTVER = 2
-                   [events,2]         - spaces are optional
-                   [events, 3, b]     - same as above, plus XTENSION = 'BINTABLE'
-                   [PICS; colName(12)] - an image in row 12 of the colName column
-                                             in the PICS table extension
-                   [PICS; colName(exposure > 1000)] - as above, but find image in
-                                 first row with with exposure column value > 1000.
-                   [Rate Table] - extension name can contain spaces!
-                   [Rate Table;colName(exposure>1000)]
-
-                Examples of other types of specifiers (Not extension specifiers)
-
-                   [bin]  !!! this is ambiguous, and can't be distinguished from
-                              a valid extension specifier
-                   [bini X=1:512:16]  (also binb, binj, binr, and bind are allowed)
-                   [binr (X,Y) = 5]
-                   [bin @binfilter.txt]
-
-                   [col Time;rate]
-                   [col PI=PHA * 1.1]
-                   [col -Time; status]
-
-                   [X > 5]
-                   [X>5]
-                   [@filter.txt]
-                   [StatusCol]  !!! this is ambiguous, and can't be distinguished
-                              from a valid extension specifier
-                   [StatusCol==0]
-                   [StatusCol || x>6]
-                   [gtifilter()]
-                   [regfilter(c"region.reg".as_ptr())]
-
-                   [compress Rice]
-
-                There will always be some ambiguity between an extension name and
-                a boolean row filtering expression, (as in a couple of the above
-                examples).  If there is any doubt, the expression should be treated
-                as an extension specification;  The user can always add an explicit
-                expression specifier to override this interpretation.
-
-                The following decision logic will be used:
-
-                1) locate the first token, terminated with a space, comma,
-                   semi-colon, or closing bracket.
-
-                2) the token is not part of an extension specifier if any of
-                   the following is true:
-
-                   - if the token begins with '@' and contains a '.'
-                   - if the token contains an operator: = > < || &&
-                   - if the token begins with c"gtifilter(" or "regfilter(".as_ptr()
-                   - if the token is terminated by a space and is followed by
-                      additional characters (not a ']')  AND any of the following:
-                        - the token is 'col'
-                        - the token is 3 or 4 chars long and begins with 'bin'
-                        - the second token begins with an operator:
-                            ! = < > | & + - * / %
-
-
-                3) otherwise, the string is assumed to be an extension specifier
-
-                ----------------------------------------------------------------- */
-                tmptr = ptr1; /* test for leading @ symbol */
-                while *tmptr == bb(b' ') {
-                    tmptr = tmptr.offset(1); /* parse the first token of the expression */
-                } /* a space char? */
-                hasAt = 0; /* skip spaces */
-                hasDot = 0; /* is this the end? */
-                hasOper = 0; /* 1st token is terminated by space */
-                followingOper = 0; /* test if this is a column or binning specifier */
-                spaceTerm = 0; /* check if next character is an operator */
-                rowFilter = 0; /* test if this is NOT an extension specifier */
-                colStart = 0; /* this is (probably) not an extension specifier */
-                binStart = 0; /* so copy all chars to filter spec string */
-                pixStart = 0; /* this appears to be a legit extension specifier */
-                compStart = 0; /* copy the extension specification */
-                if *tmptr == bb(b'@') {
-                    hasAt = 1; /* copy any remaining chars to filter spec string */
-                } /* end of  if (!plus_ext)     */
-
-                let _tp = cast_slice(CStr::from_ptr(tmptr).to_bytes_with_nul());
-
-                if fits_strncasecmp(_tp, cs!(c"col "), 4) == 0 {
-                    colStart = 1;
-                }
-                if fits_strncasecmp(_tp, cs!(c"bin"), 3) == 0 {
-                    binStart = 1;
-                }
-                if fits_strncasecmp(_tp, cs!(c"pix"), 3) == 0 {
-                    pixStart = 1;
-                }
-                if fits_strncasecmp(_tp, cs!(c"compress "), 9) == 0
-                    || fits_strncasecmp(_tp, cs!(c"compress]"), 9) == 0
-                {
-                    compStart = 1;
-                }
-                if fits_strncasecmp(_tp, cs!(c"gtifilter("), 10) == 0
-                    || fits_strncasecmp(_tp, cs!(c"regfilter("), 10) == 0
-                {
-                    rowFilter = 1;
-                } else {
-                    let mut ii = 0;
-                    let t = ptr2.offset_from(ptr1);
-                    while ii < t + 1 {
-                        if *tmptr == bb(b'.') {
-                            hasDot = 1;
-                        } else if *tmptr == bb(b'=')
-                            || *tmptr == bb(b'>')
-                            || *tmptr == bb(b'<')
-                            || (*tmptr == bb(b'|') && *tmptr.offset(1) == bb(b'|'))
-                            || (*tmptr == bb(b'&') && *tmptr.offset(1) == bb(b'&'))
-                        {
-                            hasOper = 1;
-                        } else if *tmptr == bb(b',') || *tmptr == bb(b';') || *tmptr == bb(b']') {
-                            break;
-                        } else if *tmptr == bb(b' ') {
-                            while *tmptr == bb(b' ') {
-                                tmptr = tmptr.offset(1);
-                            }
-                            if *tmptr == bb(b']') {
-                                break;
-                            }
-                            spaceTerm = 1;
-                            if colStart != 0 || (ii <= 4 && (binStart != 0 || pixStart != 0)) {
-                                rowFilter = 1;
-                            } else if *tmptr == bb(b'=')
-                                || *tmptr == bb(b'>')
-                                || *tmptr == bb(b'<')
-                                || *tmptr == bb(b'|')
-                                || *tmptr == bb(b'&')
-                                || *tmptr == bb(b'!')
-                                || *tmptr == bb(b'+')
-                                || *tmptr == bb(b'-')
-                                || *tmptr == bb(b'*')
-                                || *tmptr == bb(b'/')
-                                || *tmptr == bb(b'%')
-                            {
-                                followingOper = 1;
-                            }
-                            break;
-                        };
-                        {
-                            ii += 1;
-                            tmptr = tmptr.offset(1)
-                        }
                     }
-                }
-                if rowFilter != 0
-                    || (pixStart != 0 && spaceTerm != 0)
-                    || (hasAt != 0 && hasDot != 0)
-                    || hasOper != 0
-                    || compStart != 0
-                    || (spaceTerm != 0 && followingOper != 0)
-                {
-                    strcat(rowfilter.as_mut_ptr(), ptr3);
-                } else {
-                    if !extspec.is_null() {
-                        let t = ptr2.offset_from(ptr1);
-                        assert!(t >= 0, "Pointer math is bad mkay");
-                        if t as usize > FLEN_FILENAME - 1 {
-                            *status = URL_PARSE_ERROR;
-                            return *status;
-                        }
-
-                        strncat(extspec, ptr1, t as usize);
-                    }
-                    strcat(rowfilter.as_mut_ptr(), ptr2.offset(1));
+                    return *status;
                 };
             };
+        }
+        /* -------------------------------------------------------- */
+        /* Not a rawfile, so next, test if this is an image section */
+        /* i.e., an integer followed by a ':' or a '*' or '-*'      */
+        /* -------------------------------------------------------- */
+        ptr1 = unsafe { ptr3.offset(1) }; /* reset pointer to first char after the [ */
+        let mut tmptr = ptr1; /* skip leading blanks */
+        while unsafe { *tmptr } == bb(b' ') {
+            tmptr = unsafe { tmptr.offset(1) }; /* skip over leading digits */
+        } /* this is an image section specifier */
+        while isdigit_safe(unsafe { *tmptr }) {
+            tmptr = unsafe { tmptr.offset(1) };
+        }
+        if unsafe { *tmptr } == bb(b':') || unsafe { *tmptr } == bb(b'*') || unsafe { *tmptr } == bb(b'-') {
+            unsafe { strcat(rowfilter.as_mut_ptr(), ptr3) };
+            /*
+            don't want to assume 0 extension any more; may imply an image extension.
+                if (extspec)
+                   strcpy(extspec, "0");
+            */
         } else {
-            /* ------------------------------------------------------------------ */
-            /* already have extension, so this must be a filter spec of some sort */
-            /* ------------------------------------------------------------------ */
-            strcat(rowfilter.as_mut_ptr(), ptr3);
-        }
+            /* -----------------------------------------------------------------
+            Not an image section or rawfile spec so may be an extension spec.
 
-        /* strip off any trailing blanks from filter */
-        slen = strlen_safe(rowfilter) as isize;
-        slen -= 1;
-        while slen >= 0 && rowfilter[slen as usize] == bb(b' ') {
-            rowfilter[slen as usize] = 0;
-        }
+            Examples of valid extension specifiers:
+               [3]                - 3rd extension; 0 = primary array
+               [events]           - events extension
+               [events, 2]        - events extension, with EXTVER = 2
+               [events,2]         - spaces are optional
+               [events, 3, b]     - same as above, plus XTENSION = 'BINTABLE'
+               [PICS; colName(12)] - an image in row 12 of the colName column
+                                         in the PICS table extension
+               [PICS; colName(exposure > 1000)] - as above, but find image in
+                             first row with with exposure column value > 1000.
+               [Rate Table] - extension name can contain spaces!
+               [Rate Table;colName(exposure>1000)]
 
-        if rowfilter[0] == 0 {
-            return *status; /* nothing left to parse */
-        }
+            Examples of other types of specifiers (Not extension specifiers)
 
-        /* ------------------------------------------------ */
-        /* does the filter contain a binning specification? */
-        /* ------------------------------------------------ */
+               [bin]  !!! this is ambiguous, and can't be distinguished from
+                          a valid extension specifier
+               [bini X=1:512:16]  (also binb, binj, binr, and bind are allowed)
+               [binr (X,Y) = 5]
+               [bin @binfilter.txt]
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[bin")); /* search for "[bin" */
+               [col Time;rate]
+               [col PI=PHA * 1.1]
+               [col -Time; status]
 
-        if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(c"[BIN")); /* search for "[BIN" */
-        }
+               [X > 5]
+               [X>5]
+               [@filter.txt]
+               [StatusCol]  !!! this is ambiguous, and can't be distinguished
+                          from a valid extension specifier
+               [StatusCol==0]
+               [StatusCol || x>6]
+               [gtifilter()]
+               [regfilter(c"region.reg".as_ptr())]
 
-        if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(c"[Bin")); /* search for "[Bin" */
-        }
+               [compress Rice]
 
-        if ptr1.is_some() {
-            let p1 = ptr1.unwrap();
-            let mut p2 = p1 + 4; /* end of the '[bin' string */
-            if rowfilter[p2] == bb(b'b')
-                || rowfilter[p2] == bb(b'i')
-                || rowfilter[p2] == bb(b'j')
-                || rowfilter[p2] == bb(b'r')
-                || rowfilter[p2] == bb(b'd')
+            There will always be some ambiguity between an extension name and
+            a boolean row filtering expression, (as in a couple of the above
+            examples).  If there is any doubt, the expression should be treated
+            as an extension specification;  The user can always add an explicit
+            expression specifier to override this interpretation.
+
+            The following decision logic will be used:
+
+            1) locate the first token, terminated with a space, comma,
+               semi-colon, or closing bracket.
+
+            2) the token is not part of an extension specifier if any of
+               the following is true:
+
+               - if the token begins with '@' and contains a '.'
+               - if the token contains an operator: = > < || &&
+               - if the token begins with c"gtifilter(" or "regfilter(".as_ptr()
+               - if the token is terminated by a space and is followed by
+                  additional characters (not a ']')  AND any of the following:
+                    - the token is 'col'
+                    - the token is 3 or 4 chars long and begins with 'bin'
+                    - the second token begins with an operator:
+                        ! = < > | & + - * / %
+
+
+            3) otherwise, the string is assumed to be an extension specifier
+
+            ----------------------------------------------------------------- */
+            tmptr = ptr1; /* test for leading @ symbol */
+            while unsafe { *tmptr } == bb(b' ') {
+                tmptr = unsafe { tmptr.offset(1) }; /* parse the first token of the expression */
+            } /* a space char? */
+            hasAt = 0; /* skip spaces */
+            hasDot = 0; /* is this the end? */
+            hasOper = 0; /* 1st token is terminated by space */
+            followingOper = 0; /* test if this is a column or binning specifier */
+            spaceTerm = 0; /* check if next character is an operator */
+            rowFilter = 0; /* test if this is NOT an extension specifier */
+            colStart = 0; /* this is (probably) not an extension specifier */
+            binStart = 0; /* so copy all chars to filter spec string */
+            pixStart = 0; /* this appears to be a legit extension specifier */
+            compStart = 0; /* copy the extension specification */
+            if unsafe { *tmptr } == bb(b'@') {
+                hasAt = 1; /* copy any remaining chars to filter spec string */
+            } /* end of  if (!plus_ext)     */
+
+            let _tp = cast_slice(unsafe { CStr::from_ptr(tmptr) }.to_bytes_with_nul());
+
+            if fits_strncasecmp(_tp, cs!(c"col "), 4) == 0 {
+                colStart = 1;
+            }
+            if fits_strncasecmp(_tp, cs!(c"bin"), 3) == 0 {
+                binStart = 1;
+            }
+            if fits_strncasecmp(_tp, cs!(c"pix"), 3) == 0 {
+                pixStart = 1;
+            }
+            if fits_strncasecmp(_tp, cs!(c"compress "), 9) == 0
+                || fits_strncasecmp(_tp, cs!(c"compress]"), 9) == 0
             {
-                p2 += 1; /* skip the datatype code letter */
+                compStart = 1;
             }
-            if rowfilter[p2] != bb(b' ') && rowfilter[p2] != bb(b']') {
-                ptr1 = None; /* bin string must be followed by space or ] */
-            };
-        }
-
-        if let Some(p1) = ptr1 {
-            /* found the binning string */
-            if !binspec.is_null() {
-                if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                strcpy(binspec, rowfilter[(p1 + 1)..].as_ptr());
-                let _bs = CStr::from_ptr(binspec);
-                let _bs_len = _bs.to_bytes_with_nul().len();
-                let binspec = slice::from_raw_parts_mut(binspec, _bs_len);
-
-                let ptr2 = fits_find_match_delim(binspec, bb(b']'));
-                if let Some(mut p2) = ptr2 {
-                    p2 -= 1;
-                    binspec[p2] = 0;
-
-                    p2 -= 1;
-                    if binspec[p2] == bb(b' ') {
-                        binspec[p2] = 0;
+            if fits_strncasecmp(_tp, cs!(c"gtifilter("), 10) == 0
+                || fits_strncasecmp(_tp, cs!(c"regfilter("), 10) == 0
+            {
+                rowFilter = 1;
+            } else {
+                let mut ii = 0;
+                let t = unsafe { ptr2.offset_from(ptr1) };
+                while ii < t + 1 {
+                    if unsafe { *tmptr } == bb(b'.') {
+                        hasDot = 1;
+                    } else if unsafe { *tmptr } == bb(b'=')
+                        || unsafe { *tmptr } == bb(b'>')
+                        || unsafe { *tmptr } == bb(b'<')
+                        || (unsafe { *tmptr } == bb(b'|') && unsafe { *tmptr.offset(1) } == bb(b'|'))
+                        || (unsafe { *tmptr } == bb(b'&') && unsafe { *tmptr.offset(1) } == bb(b'&'))
+                    {
+                        hasOper = 1;
+                    } else if unsafe { *tmptr } == bb(b',') || unsafe { *tmptr } == bb(b';') || unsafe { *tmptr } == bb(b']') {
+                        break;
+                    } else if unsafe { *tmptr } == bb(b' ') {
+                        while unsafe { *tmptr } == bb(b' ') {
+                            tmptr = unsafe { tmptr.offset(1) };
+                        }
+                        if unsafe { *tmptr } == bb(b']') {
+                            break;
+                        }
+                        spaceTerm = 1;
+                        if colStart != 0 || (ii <= 4 && (binStart != 0 || pixStart != 0)) {
+                            rowFilter = 1;
+                        } else if unsafe { *tmptr } == bb(b'=')
+                            || unsafe { *tmptr } == bb(b'>')
+                            || unsafe { *tmptr } == bb(b'<')
+                            || unsafe { *tmptr } == bb(b'|')
+                            || unsafe { *tmptr } == bb(b'&')
+                            || unsafe { *tmptr } == bb(b'!')
+                            || unsafe { *tmptr } == bb(b'+')
+                            || unsafe { *tmptr } == bb(b'-')
+                            || unsafe { *tmptr } == bb(b'*')
+                            || unsafe { *tmptr } == bb(b'/')
+                            || unsafe { *tmptr } == bb(b'%')
+                        {
+                            followingOper = 1;
+                        }
+                        break;
                     };
-                } else {
-                    ffpmsg_str("input file URL is missing closing bracket ']'");
-                    ffpmsg_slice(rowfilter);
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                };
+                    {
+                        ii += 1;
+                        tmptr = unsafe { tmptr.offset(1) }
+                    }
+                }
+            }
+            if rowFilter != 0
+                || (pixStart != 0 && spaceTerm != 0)
+                || (hasAt != 0 && hasDot != 0)
+                || hasOper != 0
+                || compStart != 0
+                || (spaceTerm != 0 && followingOper != 0)
+            {
+                unsafe { strcat(rowfilter.as_mut_ptr(), ptr3); }
+            } else {
+                if let Some(ref mut s) = extspec {
+                    let t = unsafe { ptr2.offset_from(ptr1) };
+                    assert!(t >= 0, "Pointer math is bad mkay");
+                    if t as usize > FLEN_FILENAME - 1 {
+                        *status = URL_PARSE_ERROR;
+                        return *status;
+                    }
+
+                    unsafe { strncat(s.as_mut_ptr(), ptr1, t as usize); }
+                }
+                unsafe { strcat(rowfilter.as_mut_ptr(), ptr2.offset(1)); }
+            };
+        };
+    } else {
+        /* ------------------------------------------------------------------ */
+        /* already have extension, so this must be a filter spec of some sort */
+        /* ------------------------------------------------------------------ */
+        unsafe { strcat(rowfilter.as_mut_ptr(), ptr3); }
+    }
+
+    /* strip off any trailing blanks from filter */
+    slen = strlen_safe(rowfilter) as isize;
+    slen -= 1;
+    while slen >= 0 && rowfilter[slen as usize] == bb(b' ') {
+        rowfilter[slen as usize] = 0;
+    }
+
+    if rowfilter[0] == 0 {
+        return *status; /* nothing left to parse */
+    }
+
+    /* ------------------------------------------------ */
+    /* does the filter contain a binning specification? */
+    /* ------------------------------------------------ */
+
+    let mut ptr1 = strstr_safe(rowfilter, cs!(c"[bin")); /* search for "[bin" */
+
+    if ptr1.is_none() {
+        ptr1 = strstr_safe(rowfilter, cs!(c"[BIN")); /* search for "[BIN" */
+    }
+
+    if ptr1.is_none() {
+        ptr1 = strstr_safe(rowfilter, cs!(c"[Bin")); /* search for "[Bin" */
+    }
+
+    if ptr1.is_some() {
+        let p1 = ptr1.unwrap();
+        let mut p2 = p1 + 4; /* end of the '[bin' string */
+        if rowfilter[p2] == bb(b'b')
+            || rowfilter[p2] == bb(b'i')
+            || rowfilter[p2] == bb(b'j')
+            || rowfilter[p2] == bb(b'r')
+            || rowfilter[p2] == bb(b'd')
+        {
+            p2 += 1; /* skip the datatype code letter */
+        }
+        if rowfilter[p2] != bb(b' ') && rowfilter[p2] != bb(b']') {
+            ptr1 = None; /* bin string must be followed by space or ] */
+        };
+    }
+
+    if let Some(p1) = ptr1 {
+        /* found the binning string */
+        if let Some(ref mut binspec_slice) = binspec {
+            if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return *status;
             }
 
-            /* delete the binning spec from the row filter string */
-            let ptr2 = fits_find_match_delim(&mut rowfilter[(p1 + 1)..], bb(b']'));
-            if let Some(mut p2) = ptr2 {
-                p2 = p2 + p1 + 1;
+            unsafe { strcpy(binspec_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr()); }
+            let binspec = binspec_slice;
 
-                strcpy_safe(tmpstr, &rowfilter[p2..]); /* copy any chars after the binspec */
-                strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
+            let ptr2 = fits_find_match_delim(binspec, bb(b']'));
+            if let Some(mut p2) = ptr2 {
+                p2 -= 1;
+                binspec[p2] = 0;
+
+                p2 -= 1;
+                if binspec[p2] == bb(b' ') {
+                    binspec[p2] = 0;
+                };
             } else {
                 ffpmsg_str("input file URL is missing closing bracket ']'");
                 ffpmsg_slice(rowfilter);
-                *status = URL_PARSE_ERROR; /* error, no closing ] */
+                *status = URL_PARSE_ERROR;
                 return *status;
             };
         }
 
-        /* --------------------------------------------------------- */
-        /* does the filter contain a column selection specification? */
-        /* --------------------------------------------------------- */
+        /* delete the binning spec from the row filter string */
+        let ptr2 = fits_find_match_delim(&mut rowfilter[(p1 + 1)..], bb(b']'));
+        if let Some(mut p2) = ptr2 {
+            p2 = p2 + p1 + 1;
 
-        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
+            strcpy_safe(tmpstr, &rowfilter[p2..]); /* copy any chars after the binspec */
+            strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
+        } else {
+            ffpmsg_str("input file URL is missing closing bracket ']'");
+            ffpmsg_slice(rowfilter);
+            *status = URL_PARSE_ERROR; /* error, no closing ] */
+            return *status;
+        };
+    }
+
+    /* --------------------------------------------------------- */
+    /* does the filter contain a column selection specification? */
+    /* --------------------------------------------------------- */
+
+    let mut ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
+    if ptr1.is_none() {
+        ptr1 = strstr_safe(rowfilter, cs!(c"[COL "));
+        if ptr1.is_none() {
+            ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
+        };
+    }
+
+    hasAt = 0;
+
+    while ptr1.is_some() {
+        let p1 = ptr1.unwrap();
+
+        /* find the end of the column specifier */
+        let mut p2 = p1 + 5;
+        /* Scan past any whitespace and check for @filename */
+        while rowfilter[p2] == bb(b' ') {
+            p2 += 1; /* error, no closing ] */
+        } /* start of a literal string */
+
+        if rowfilter[p2] == bb(b'@') {
+            hasAt = 1; /* find closing quote */
+        } /* error, no closing ] */
+
+        while rowfilter[p2] != bb(b']') {
+            if rowfilter[p2] == 0 {
+                ffpmsg_str("input file URL is missing closing bracket ']'"); /* set of nested square brackets */
+                /* find closing bracket */
+                *status = URL_PARSE_ERROR; /* error, no closing ] */
+                return *status; /* continue search for the closing bracket character */
+            } /* copy the column specifier to output string */
+
+            if rowfilter[p2] == bb(b'\\') {
+                let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\')); /* Pre-existing colspec, append with ";" */
+                if _ptr2.is_none() {
+                    ffpmsg_str("literal string in input file URL is missing closing single quote");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                } else {
+                    p2 += _ptr2.unwrap();
+                }
+            }
+            if rowfilter[p2] == bb(b'[') {
+                let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
+                if _ptr2.is_none() {
+                    ffpmsg_str("nested brackets in input file URL is missing closing bracket");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                } else {
+                    p2 += _ptr2.unwrap();
+                }
+            }
+
+            p2 += 1;
+        }
+
+        let collen = p2 - p1 - 1;
+
+        if let Some(ref mut colspec_slice) = colspec {
+            /* copy the column specifier to output string */
+
+            if collen + unsafe { strlen(colspec_slice.as_ptr()) } > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            if colspec_slice[0] == 0 {
+                unsafe { strncpy(colspec_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr(), collen); }
+                colspec_slice[collen] = 0;
+            } else {
+                unsafe { strcat(colspec_slice.as_mut_ptr(), c";".as_ptr()); }
+                unsafe { strncat(colspec_slice.as_mut_ptr(), rowfilter[(p1 + 5)..].as_ptr(), collen - 4); }
+                /* Note that strncat always null-terminates the destination string */
+
+                /* Special error checking here.  We can't allow there to be a
+                col @filename.txt includes if there are multiple col expressions */
+                if hasAt != 0 {
+                    ffpmsg_str("input URL multiple column filter cannot use @filename.txt");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                };
+            }
+
+            let mut collen = unsafe { strlen(colspec_slice.as_ptr()) } as isize;
+            collen -= 1;
+            while colspec_slice[collen as usize] == bb(b' ') {
+                colspec_slice[collen as usize] = 0; /* strip trailing blanks */
+            }
+        }
+
+        /* delete the column selection spec from the row filter string */
+        strcpy_safe(tmpstr, &rowfilter[(p2 + 1)..]); /* copy any chars after the colspec */
+        strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
+
+        /* Check for additional column specifiers */
+        ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
         if ptr1.is_none() {
             ptr1 = strstr_safe(rowfilter, cs!(c"[COL "));
-            if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
+        }
+        if ptr1.is_none() {
+            ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
+        };
+    }
+
+    /* --------------------------------------------------------- */
+    /* does the filter contain a pixel filter specification?     */
+    /* --------------------------------------------------------- */
+
+    let mut ptr1 = strstr_safe(rowfilter, cs!(c"[pix"));
+    if ptr1.is_none() {
+        ptr1 = strstr_safe(rowfilter, cs!(c"[PIX"));
+        if ptr1.is_none() {
+            ptr1 = strstr_safe(rowfilter, cs!(c"[Pix"));
+        };
+    }
+
+    let mut p2 = 0;
+    if ptr1.is_some() {
+        let p1 = ptr1.unwrap();
+        p2 = p1 + 4; /* end of the '[pix' string */
+
+        if rowfilter[p2] == bb(b'b')
+            || rowfilter[p2] == bb(b'i')
+            || rowfilter[p2] == bb(b'j')
+            || rowfilter[p2] == bb(b'B')
+            || rowfilter[p2] == bb(b'I')
+            || rowfilter[p2] == bb(b'J')
+            || rowfilter[p2] == bb(b'r')
+            || rowfilter[p2] == bb(b'd')
+            || rowfilter[p2] == bb(b'R')
+            || rowfilter[p2] == bb(b'D')
+        {
+            p2 += 1 /* skip the datatype code letter */
+        }
+        if rowfilter[p2] == bb(b'1') {
+            p2 += 1
+        }
+        if rowfilter[p2] != bb(b' ') {
+            ptr1 = None;
+        };
+    }
+
+    if ptr1.is_some() {
+        let p1 = ptr1.unwrap();
+
+        while rowfilter[p2] != bb(b']') {
+            if rowfilter[p2] == 0 {
+                ffpmsg_str("input file URL is missing closing bracket ']'"); /* copy the column specifier to output string */
+
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            if rowfilter[p2] == bb(b'\\') {
+                let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\'));
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
+                    ffpmsg_str("literal string in input file URL is missing closing single quote");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+            }
+
+            if rowfilter[p2] == bb(b'[') {
+                let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
+                if _ptr2.is_none() {
+                    ffpmsg_str("nested brackets in input file URL is missing closing bracket");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                } else {
+                    p2 += _ptr2.unwrap();
+                }
+            }
+
+            p2 += 1;
+        }
+
+        let mut collen = p2 - p1 - 1;
+
+        if let Some(ref mut pixfilter_slice) = pixfilter {
+            if collen as usize > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+            unsafe { strncpy(pixfilter_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr(), collen); }
+            pixfilter_slice[collen] = 0;
+
+            collen -= 1;
+            while pixfilter_slice[collen as usize] == bb(b' ') {
+                pixfilter_slice[collen as usize] = 0;
+            }
+        }
+        /* delete the pixel filter from the row filter string */
+        strcpy_safe(tmpstr, &rowfilter[(p2 + 1)..]); /* copy any chars after the pixel filter */
+        strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
+    }
+
+    /* ------------------------------------------------------------ */
+    /* does the filter contain an image compression specification?  */
+    /* ------------------------------------------------------------ */
+
+    let mut ptr1 = strstr_safe(rowfilter, cs!(c"[compress")); /* end of the '[compress' string */
+
+    if ptr1.is_some() {
+        let p2 = ptr1.unwrap() + 9; /* compress string must be followed by space or ] */
+        if rowfilter[p2] != bb(b' ') && rowfilter[p2] != bb(b']') {
+            ptr1 = None;
+        };
+    }
+
+    if ptr1.is_some() {
+        let p1 = ptr1.unwrap();
+
+        /* found the compress string */
+        if let Some(ref mut compspec_slice) = compspec {
+            if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR; /* delete trailing spaces */
+                return *status; /* error, no closing ] */
+            }
+
+            unsafe { strcpy(compspec_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr()); }
+
+            let mut ptr2 = unsafe { strchr(compspec_slice.as_ptr(), bb(b']') as c_int) };
+            if !ptr2.is_null() {
+                unsafe { *ptr2 = 0; }
+                unsafe {
+                    ptr2 = ptr2.offset(-1);
+                    if *ptr2 == bb(b' ') {
+                        *ptr2 = 0;
+                    }
+                }
+            } else {
+                ffpmsg_str("input file URL is missing closing bracket ']'");
+                ffpmsg_slice(rowfilter);
+                *status = URL_PARSE_ERROR;
+                return *status;
             };
         }
 
+        /* delete the compression spec from the row filter string */
+        let ptr2 = strchr_safe(&rowfilter[p1..], bb(b']'));
+        strcpy_safe(tmpstr, &rowfilter[(p1 + ptr2.unwrap() + 1)..]); /* copy any chars after the binspec */
+        strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
+    }
+
+    /* copy the remaining string to the rowfilter output... should only */
+    /* contain a rowfilter expression of the form c"[expr]".as_ptr()
+     */
+    if let Some(ref mut rowfilterx_slice) = rowfilterx {
+    if rowfilter[0] != 0 {
         hasAt = 0;
 
-        while ptr1.is_some() {
-            let p1 = ptr1.unwrap();
+        /* Check for multiple expressions, which would appear as c"[expr][expr]...".as_ptr() */
+        let mut p1 = 0; // rowfilter;
+        let mut p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap_or(0);
 
-            /* find the end of the column specifier */
-            let mut p2 = p1 + 5;
-            /* Scan past any whitespace and check for @filename */
-            while rowfilter[p2] == bb(b' ') {
-                p2 += 1; /* error, no closing ] */
-            } /* start of a literal string */
-
-            if rowfilter[p2] == bb(b'@') {
-                hasAt = 1; /* find closing quote */
-            } /* error, no closing ] */
-
-            while rowfilter[p2] != bb(b']') {
-                if rowfilter[p2] == 0 {
-                    ffpmsg_str("input file URL is missing closing bracket ']'"); /* set of nested square brackets */
-                    /* find closing bracket */
-                    *status = URL_PARSE_ERROR; /* error, no closing ] */
-                    return *status; /* continue search for the closing bracket character */
-                } /* copy the column specifier to output string */
-
-                if rowfilter[p2] == bb(b'\\') {
-                    let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\')); /* Pre-existing colspec, append with ";" */
-                    if _ptr2.is_none() {
-                        ffpmsg_str(
-                            "literal string in input file URL is missing closing single quote",
-                        );
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    } else {
-                        p2 += _ptr2.unwrap();
-                    }
-                }
-                if rowfilter[p2] == bb(b'[') {
-                    let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                    if _ptr2.is_none() {
-                        ffpmsg_str("nested brackets in input file URL is missing closing bracket");
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    } else {
-                        p2 += _ptr2.unwrap();
-                    }
-                }
-
-                p2 += 1;
+        while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
+            /* Advance past any white space */
+            let mut p3 = p1 + 1;
+            while rowfilter[p3] == bb(b' ') {
+                p3 += 1;
             }
 
-            let collen = p2 - p1 - 1;
-
-            if !colspec.is_null() {
-                /* copy the column specifier to output string */
-
-                if collen + strlen(colspec) > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                if *colspec == 0 {
-                    strncpy(colspec, rowfilter[(p1 + 1)..].as_ptr(), collen);
-                    *colspec.add(collen) = 0;
-                } else {
-                    strcat(colspec, c";".as_ptr());
-                    strncat(colspec, rowfilter[(p1 + 5)..].as_ptr(), collen - 4);
-                    /* Note that strncat always null-terminates the destination string */
-
-                    /* Special error checking here.  We can't allow there to be a
-                    col @filename.txt includes if there are multiple col expressions */
-                    if hasAt != 0 {
-                        ffpmsg_str("input URL multiple column filter cannot use @filename.txt");
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    };
-                }
-
-                let mut collen = strlen(colspec) as isize;
-                collen -= 1;
-                while *colspec.offset(collen) == bb(b' ') {
-                    *colspec.offset(collen) = 0; /* strip trailing blanks */
-                }
+            /* Check for @filename.txt */
+            if rowfilter[p3] == bb(b'@') {
+                hasAt = 1;
             }
 
-            /* delete the column selection spec from the row filter string */
-            strcpy_safe(tmpstr, &rowfilter[(p2 + 1)..]); /* copy any chars after the colspec */
-            strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
-
-            /* Check for additional column specifiers */
-            ptr1 = strstr_safe(rowfilter, cs!(c"[col "));
-            if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(c"[COL "));
-            }
-            if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(c"[Col "));
-            };
-        }
-
-        /* --------------------------------------------------------- */
-        /* does the filter contain a pixel filter specification?     */
-        /* --------------------------------------------------------- */
-
-        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[pix"));
-        if ptr1.is_none() {
-            ptr1 = strstr_safe(rowfilter, cs!(c"[PIX"));
-            if ptr1.is_none() {
-                ptr1 = strstr_safe(rowfilter, cs!(c"[Pix"));
-            };
-        }
-
-        let mut p2 = 0;
-        if ptr1.is_some() {
-            let p1 = ptr1.unwrap();
-            p2 = p1 + 4; /* end of the '[pix' string */
-
-            if rowfilter[p2] == bb(b'b')
-                || rowfilter[p2] == bb(b'i')
-                || rowfilter[p2] == bb(b'j')
-                || rowfilter[p2] == bb(b'B')
-                || rowfilter[p2] == bb(b'I')
-                || rowfilter[p2] == bb(b'J')
-                || rowfilter[p2] == bb(b'r')
-                || rowfilter[p2] == bb(b'd')
-                || rowfilter[p2] == bb(b'R')
-                || rowfilter[p2] == bb(b'D')
-            {
-                p2 += 1 /* skip the datatype code letter */
-            }
-            if rowfilter[p2] == bb(b'1') {
-                p2 += 1
-            }
-            if rowfilter[p2] != bb(b' ') {
-                ptr1 = None;
-            };
-        }
-
-        if ptr1.is_some() {
-            let p1 = ptr1.unwrap();
-
-            while rowfilter[p2] != bb(b']') {
-                if rowfilter[p2] == 0 {
-                    ffpmsg_str("input file URL is missing closing bracket ']'"); /* copy the column specifier to output string */
-
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                if rowfilter[p2] == bb(b'\\') {
-                    let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\'));
-                    if let Some(_ptr2) = _ptr2 {
-                        p2 += _ptr2;
-                    } else {
-                        ffpmsg_str(
-                            "literal string in input file URL is missing closing single quote",
-                        );
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-                }
-
-                if rowfilter[p2] == bb(b'[') {
-                    let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                    if _ptr2.is_none() {
-                        ffpmsg_str("nested brackets in input file URL is missing closing bracket");
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    } else {
-                        p2 += _ptr2.unwrap();
-                    }
-                }
-
-                p2 += 1;
-            }
-
-            let mut collen = p2 - p1 - 1;
-
-            if !pixfilter.is_null() {
-                if collen as usize > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-                strncpy(pixfilter, rowfilter[(p1 + 1)..].as_ptr(), collen);
-                *pixfilter.add(collen) = 0;
-
-                collen -= 1;
-                while *pixfilter.add(collen) == bb(b' ') {
-                    *pixfilter.add(collen) = 0;
-                }
-            }
-            /* delete the pixel filter from the row filter string */
-            strcpy_safe(tmpstr, &rowfilter[(p2 + 1)..]); /* copy any chars after the pixel filter */
-            strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
-        }
-
-        /* ------------------------------------------------------------ */
-        /* does the filter contain an image compression specification?  */
-        /* ------------------------------------------------------------ */
-
-        let mut ptr1 = strstr_safe(rowfilter, cs!(c"[compress")); /* end of the '[compress' string */
-
-        if ptr1.is_some() {
-            let p2 = ptr1.unwrap() + 9; /* compress string must be followed by space or ] */
-            if rowfilter[p2] != bb(b' ') && rowfilter[p2] != bb(b']') {
-                ptr1 = None;
-            };
-        }
-
-        if ptr1.is_some() {
-            let p1 = ptr1.unwrap();
-
-            /* found the compress string */
-            if !compspec.is_null() {
-                if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR; /* delete trailing spaces */
-                    return *status; /* error, no closing ] */
-                }
-
-                strcpy(compspec, rowfilter[(p1 + 1)..].as_ptr());
-
-                let mut ptr2 = strchr(compspec, bb(b']') as c_int);
-                if !ptr2.is_null() {
-                    *ptr2 = 0;
-                    if *{
-                        ptr2 = ptr2.offset(-1);
-                        ptr2
-                    } == bb(b' ')
-                    {
-                        *ptr2 = 0;
-                    };
-                } else {
-                    ffpmsg_str("input file URL is missing closing bracket ']'");
-                    ffpmsg_slice(rowfilter);
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                };
-            }
-
-            /* delete the compression spec from the row filter string */
-            let ptr2 = strchr_safe(&rowfilter[p1..], bb(b']'));
-            strcpy_safe(tmpstr, &rowfilter[(p1 + ptr2.unwrap() + 1)..]); /* copy any chars after the binspec */
-            strcpy_safe(&mut rowfilter[p1..], tmpstr); /* overwrite binspec */
-        }
-
-        /* copy the remaining string to the rowfilter output... should only */
-        /* contain a rowfilter expression of the form c"[expr]".as_ptr()
-         */
-        if !rowfilterx.is_null() && rowfilter[0] != 0 {
-            hasAt = 0;
-
-            /* Check for multiple expressions, which would appear as c"[expr][expr]...".as_ptr() */
-            let mut p1 = 0; // rowfilter;
-            let mut p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap_or(0);
-
-            while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
-                /* Advance past any white space */
-                let mut p3 = p1 + 1;
-                while rowfilter[p3] == bb(b' ') {
-                    p3 += 1;
-                }
-
-                /* Check for @filename.txt */
-                if rowfilter[p3] == bb(b'@') {
-                    hasAt = 1;
-                }
-
-                /* Add expression of the form c"((expr))&&".as_ptr(), note the addition of 6 characters */
-                if (strlen(rowfilterx) + (p2 - p1) + 6) > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Special error checking here.  We can't allow there to be a
-                @filename.txt includes if there are multiple row expressions */
-                if *rowfilterx != 0 && hasAt != 0 {
-                    ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Append the expression */
-                strcat(rowfilterx, c"((".as_ptr());
-                strncat(rowfilterx, rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1);
-                /* Note that strncat always null-terminates the destination string */
-                strcat(rowfilterx, c"))&&".as_ptr());
-
-                /* Advance to next expression */
-                p1 = p2 + 1;
-
-                p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap() - p1;
-            }
-
-            /* At final iteration, ptr1 points to beginning [ and ptr2 to ending ] */
-            let p2 = strlen_safe(rowfilter) - 1;
-            if rowfilter[p1] == bb(b'[') && rowfilter[p2] == bb(b']') {
-                /* Check for @include in final position */
-                let mut p3 = p1 + 1;
-                while rowfilter[p3] == bb(b' ') {
-                    p3 += 1;
-                }
-
-                if rowfilter[p3] == bb(b'@') {
-                    hasAt = 1;
-                }
-
-                /* Check for overflow; add extra 4 characters if we have pre-existing expression */
-                if strlen(rowfilterx) + (p2 - p1 + (if *rowfilterx != 0 { 4 } else { 0 }))
-                    > FLEN_FILENAME - 1
-                {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Special error checking here.  We can't allow there to be a
-                @filename.txt includes if there are multiple row expressions */
-                if *rowfilterx != 0 && hasAt != 0 {
-                    ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
-
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                if *rowfilterx != 0 {
-                    /* A pre-existing row filter: we bracket by ((expr)) to be sure */
-                    strcat(rowfilterx, c"((".as_ptr());
-
-                    strncat(rowfilterx, rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1);
-                    strcat(rowfilterx, c"))".as_ptr());
-                } else {
-                    /* We have only one filter, so just copy the expression alone.
-                    This will be the most typical case */
-
-                    strncat(rowfilterx, rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1);
-                };
-            } else {
-                ffpmsg_str("input file URL lacks valid row filter expression");
+            /* Add expression of the form c"((expr))&&".as_ptr(), note the addition of 6 characters */
+            if (unsafe { strlen(rowfilterx_slice.as_ptr()) } + (p2 - p1) + 6) > FLEN_FILENAME - 1 {
                 *status = URL_PARSE_ERROR;
-            };
+                return *status;
+            }
+
+            /* Special error checking here.  We can't allow there to be a
+            @filename.txt includes if there are multiple row expressions */
+            if rowfilterx_slice[0] != 0 && hasAt != 0 {
+                ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* Append the expression */
+            unsafe { strcat(rowfilterx_slice.as_mut_ptr(), c"((".as_ptr()); }
+            unsafe { strncat(rowfilterx_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1); }
+            /* Note that strncat always null-terminates the destination string */
+            unsafe { strcat(rowfilterx_slice.as_mut_ptr(), c"))&&".as_ptr()); }
+
+            /* Advance to next expression */
+            p1 = p2 + 1;
+
+            p2 = strstr_safe(rowfilter, cs!(c"][")).unwrap() - p1;
         }
 
-        *status
+        /* At final iteration, ptr1 points to beginning [ and ptr2 to ending ] */
+        let p2 = strlen_safe(rowfilter) - 1;
+        if rowfilter[p1] == bb(b'[') && rowfilter[p2] == bb(b']') {
+            /* Check for @include in final position */
+            let mut p3 = p1 + 1;
+            while rowfilter[p3] == bb(b' ') {
+                p3 += 1;
+            }
+
+            if rowfilter[p3] == bb(b'@') {
+                hasAt = 1;
+            }
+
+            /* Check for overflow; add extra 4 characters if we have pre-existing expression */
+            if unsafe { strlen(rowfilterx_slice.as_ptr()) } + (p2 - p1 + (if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
+                > FLEN_FILENAME - 1
+            {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* Special error checking here.  We can't allow there to be a
+            @filename.txt includes if there are multiple row expressions */
+            if rowfilterx_slice[0] != 0 && hasAt != 0 {
+                ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
+
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            if rowfilterx_slice[0] != 0 {
+                /* A pre-existing row filter: we bracket by ((expr)) to be sure */
+                unsafe { strcat(rowfilterx_slice.as_mut_ptr(), c"((".as_ptr()); }
+
+                unsafe { strncat(rowfilterx_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1); }
+                unsafe { strcat(rowfilterx_slice.as_mut_ptr(), c"))".as_ptr()); }
+            } else {
+                /* We have only one filter, so just copy the expression alone.
+                This will be the most typical case */
+
+                unsafe { strncat(rowfilterx_slice.as_mut_ptr(), rowfilter[(p1 + 1)..].as_ptr(), p2 - p1 - 1); }
+            };
+        } else {
+            ffpmsg_str("input file URL lacks valid row filter expression");
+            *status = URL_PARSE_ERROR;
+        };
     }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7874,7 +7931,21 @@ mod tests {
 
     // Tests for ffifile2_safer function
     // Helper function to create test buffers and call ffifile2_safer
-    fn call_ffifile2_safer(input: &str) -> (c_int, c_int, String, String, String, String, String, String, String, String, String) {
+    fn call_ffifile2_safer(
+        input: &str,
+    ) -> (
+        c_int,
+        c_int,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+    ) {
         unsafe {
             let infile = str_to_c_array(input);
             let mut urltype = create_buffer(MAX_PREFIX_LEN);
@@ -7890,15 +7961,15 @@ mod tests {
 
             let result = ffifile2_safer(
                 &infile,
-                urltype.as_mut_ptr(),
-                infilex.as_mut_ptr(),
-                outfile.as_mut_ptr(),
-                extspec.as_mut_ptr(),
-                rowfilterx.as_mut_ptr(),
-                binspec.as_mut_ptr(),
-                colspec.as_mut_ptr(),
-                pixfilter.as_mut_ptr(),
-                compspec.as_mut_ptr(),
+                Some(&mut urltype[..]),
+                Some(&mut infilex[..]),
+                Some(&mut outfile[..]),
+                Some(&mut extspec[..]),
+                Some(&mut rowfilterx[..]),
+                Some(&mut binspec[..]),
+                Some(&mut colspec[..]),
+                Some(&mut pixfilter[..]),
+                Some(&mut compspec[..]),
                 &mut status,
             );
 
@@ -7920,7 +7991,19 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_basic_file_url() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter, compspec) = call_ffifile2_safer("file://test.fits");
+        let (
+            result,
+            status,
+            urltype,
+            infilex,
+            outfile,
+            extspec,
+            rowfilterx,
+            binspec,
+            colspec,
+            pixfilter,
+            compspec,
+        ) = call_ffifile2_safer("file://test.fits");
 
         // Expected behavior based on C cfitsio output
         assert_eq!(result, 0);
@@ -7938,7 +8021,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_http_url() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("http://example.com/data.fits");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("http://example.com/data.fits");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "http://");
@@ -7948,7 +8032,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_output_spec() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("input.fits(output.fits)");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("input.fits(output.fits)");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -7958,7 +8043,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_extension_name() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits[EVENTS]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -7969,7 +8055,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_extension_number() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[2]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits[2]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -7980,7 +8067,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_image_section() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[1:100,1:50]");
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("test.fits[1:100,1:50]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -7991,7 +8079,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_row_filter() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS][#row > 100 && #row < 200]");
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("test.fits[EVENTS][#row > 100 && #row < 200]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8003,7 +8092,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_row_range_syntax() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) = call_ffifile2_safer("test.fits[1:100]");
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("test.fits[1:100]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8014,7 +8104,10 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_complex_filename() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, colspec, _, _) = call_ffifile2_safer("http://example.com/data.fits.gz[EVENTS,2](output.fits)[col TIME,ENERGY][#row>10]");
+        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, _, colspec, _, _) =
+            call_ffifile2_safer(
+                "http://example.com/data.fits.gz[EVENTS,2](output.fits)[col TIME,ENERGY][#row>10]",
+            );
         assert_eq!(result, 125);
         assert_eq!(status, 125);
         assert_eq!(urltype, "http://");
@@ -8026,7 +8119,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_gz_extension() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("data.fits.gz");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("data.fits.gz");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8036,7 +8130,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_stdout() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("-");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("-");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "stdin://");
@@ -8056,7 +8151,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_invalid_bracket() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("test.fits[unclosed");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits[unclosed");
         assert_eq!(result, 125);
         assert_eq!(status, 125);
         assert_eq!(urltype, "file://");
@@ -8066,7 +8162,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_mem_protocol() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("mem://testfile");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("mem://testfile");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "mem://");
@@ -8076,7 +8173,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_column_filtering() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("test.fits[EVENTS][col TIME,ENERGY,PHA]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) =
+            call_ffifile2_safer("test.fits[EVENTS][col TIME,ENERGY,PHA]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8089,7 +8187,8 @@ mod tests {
     // Tests for output file specification (parentheses syntax)
     #[test]
     fn test_ffifile2_safer_with_output_file_memory() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("remote.fits.gz(mem://)");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("remote.fits.gz(mem://)");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8099,7 +8198,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_with_local_copy() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("data.fits.gz(temp.fits)");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("data.fits.gz(temp.fits)");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8110,7 +8210,8 @@ mod tests {
     // Tests for extension specification with version and type
     #[test]
     fn test_ffifile2_safer_extension_with_version() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS,2]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits[EVENTS,2]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8121,7 +8222,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_extension_with_type() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits[EVENTS,2,B]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits[EVENTS,2,B]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8132,7 +8234,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_plus_notation() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) = call_ffifile2_safer("test.fits+1");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, _, _, _) =
+            call_ffifile2_safer("test.fits+1");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8144,7 +8247,8 @@ mod tests {
     // Tests for image sectioning with different syntaxes
     #[test]
     fn test_ffifile2_safer_image_section_with_step() {
-        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[1:512:2,2:512:2]");
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("image.fits[1:512:2,2:512:2]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8155,7 +8259,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_image_section_with_wildcard() {
-        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[*,512:256]");
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("image.fits[*,512:256]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8166,7 +8271,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_image_section_flip_axis() {
-        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) = call_ffifile2_safer("image.fits[*,-*]");
+        let (result, status, urltype, infilex, outfile, _, rowfilterx, _, _, _, _) =
+            call_ffifile2_safer("image.fits[*,-*]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8178,7 +8284,8 @@ mod tests {
     // Tests for compression specification
     #[test]
     fn test_ffifile2_safer_compression_default() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress]");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) =
+            call_ffifile2_safer("output.fits[compress]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8189,7 +8296,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_compression_with_algorithm() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress GZIP]");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) =
+            call_ffifile2_safer("output.fits[compress GZIP]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8200,7 +8308,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_compression_with_tile_size() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) = call_ffifile2_safer("output.fits[compress Rice 100,100]");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, compspec) =
+            call_ffifile2_safer("output.fits[compress Rice 100,100]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8212,7 +8321,8 @@ mod tests {
     // Tests for binning specification
     #[test]
     fn test_ffifile2_safer_binning_specification() {
-        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) = call_ffifile2_safer("table.fits[EVENTS][bin X=1:1024:2,Y=1:1024:2]");
+        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) =
+            call_ffifile2_safer("table.fits[EVENTS][bin X=1:1024:2,Y=1:1024:2]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8224,7 +8334,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_simple_binning() {
-        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) = call_ffifile2_safer("table.fits[EVENTS][bin X,Y]");
+        let (result, status, urltype, infilex, outfile, extspec, _, binspec, _, _, _) =
+            call_ffifile2_safer("table.fits[EVENTS][bin X,Y]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8237,7 +8348,8 @@ mod tests {
     // Tests for column manipulation
     #[test]
     fn test_ffifile2_safer_column_deletion() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("table.fits[EVENTS][col -TIME, Good == STATUS]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) =
+            call_ffifile2_safer("table.fits[EVENTS][col -TIME, Good == STATUS]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8249,7 +8361,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_column_wildcards() {
-        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) = call_ffifile2_safer("table.fits[EVENTS][col *TIME*, RATE]");
+        let (result, status, urltype, infilex, outfile, extspec, _, _, colspec, _, _) =
+            call_ffifile2_safer("table.fits[EVENTS][col *TIME*, RATE]");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "file://");
@@ -8262,7 +8375,21 @@ mod tests {
     // Tests for very complex combinations
     #[test]
     fn test_ffifile2_safer_ultra_complex() {
-        let (result, status, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter, compspec) = call_ffifile2_safer("ftp://server.com/data.fits.gz[EVENTS,2,B](output.fits)[col TIME,PHA][#row > 100][bin X,Y=1:1024:16][pix X*2][compress GZIP 64,64]");
+        let (
+            result,
+            status,
+            urltype,
+            infilex,
+            outfile,
+            extspec,
+            rowfilterx,
+            binspec,
+            colspec,
+            pixfilter,
+            compspec,
+        ) = call_ffifile2_safer(
+            "ftp://server.com/data.fits.gz[EVENTS,2,B](output.fits)[col TIME,PHA][#row > 100][bin X,Y=1:1024:16][pix X*2][compress GZIP 64,64]",
+        );
         assert_eq!(result, 125);
         assert_eq!(status, 125);
         assert_eq!(urltype, "ftp://");
@@ -8274,7 +8401,8 @@ mod tests {
     // Tests for FTP and HTTPS protocols
     #[test]
     fn test_ffifile2_safer_ftp_protocol() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("ftp://archive.stsci.edu/pub/hlsp/test.fits");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("ftp://archive.stsci.edu/pub/hlsp/test.fits");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "ftp://");
@@ -8284,7 +8412,8 @@ mod tests {
 
     #[test]
     fn test_ffifile2_safer_https_protocol() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("https://fits.gsfc.nasa.gov/samples/test.fits.gz");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("https://fits.gsfc.nasa.gov/samples/test.fits.gz");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "https://");
@@ -8295,7 +8424,8 @@ mod tests {
     // Tests for shared memory protocol
     #[test]
     fn test_ffifile2_safer_shmem_protocol() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("shmem://shm_12345");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("shmem://shm_12345");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "shmem://");
@@ -8306,7 +8436,8 @@ mod tests {
     // Tests for gsiftp protocol
     #[test]
     fn test_ffifile2_safer_gsiftp_protocol() {
-        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) = call_ffifile2_safer("gsiftp://gridftp.server.edu/data/test.fits");
+        let (result, status, urltype, infilex, outfile, _, _, _, _, _, _) =
+            call_ffifile2_safer("gsiftp://gridftp.server.edu/data/test.fits");
         assert_eq!(result, 0);
         assert_eq!(status, 0);
         assert_eq!(urltype, "gsiftp://");
