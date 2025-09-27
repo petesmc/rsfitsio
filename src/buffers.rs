@@ -739,7 +739,7 @@ pub unsafe extern "C" fn ffflus(
 /*--------------------------------------------------------------------------*/
 /// Flush all the data in the current FITS file to disk. This ensures that if
 /// the program subsequently dies, the disk FITS file will be closed correctly.
-pub  fn ffflus_safe(
+pub fn ffflus_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {

@@ -49,14 +49,14 @@ pub unsafe extern "C" fn ffcopy(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
 
-        ffcopy_safer(infptr, outfptr, morekeys, status)
+        ffcopy_safe(infptr, outfptr, morekeys, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// copy the CHDU from infptr to the CHDU of outfptr.
 /// This will also allocate space in the output header for MOREKY keywords
-pub fn ffcopy_safer(
+pub fn ffcopy_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     morekeys: c_int,        /* I - reserve space in output header   */
@@ -151,14 +151,14 @@ pub fn ffcpfl_safe(
         /* copy any previous HDUs */
         for ii in 1..(hdunum) {
             ffmahd_safe(infptr, ii, None, status);
-            ffcopy_safer(infptr, outfptr, 0, status);
+            ffcopy_safe(infptr, outfptr, 0, status);
         }
     }
 
     if current != 0 && (*status <= 0) {
         /* copy current HDU */
         ffmahd_safe(infptr, hdunum, None, status);
-        ffcopy_safer(infptr, outfptr, 0, status);
+        ffcopy_safe(infptr, outfptr, 0, status);
     }
 
     if following != 0 && (*status <= 0) {
@@ -173,7 +173,7 @@ pub fn ffcpfl_safe(
                 break;
             }
 
-            if ffcopy_safer(infptr, outfptr, 0, status) != 0 {
+            if ffcopy_safe(infptr, outfptr, 0, status) != 0 {
                 break; /* quit on unexpected error */
             }
 

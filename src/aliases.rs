@@ -978,7 +978,7 @@ pub mod rust_api {
     pub use crate::putkey::ffcrimll_safe as fits_create_imgll;
     pub use crate::putkey::ffcrtb_safe as fits_create_tbl;
 
-    pub use crate::edithdu::ffcopy_safer as fits_copy_hdu;
+    pub use crate::edithdu::ffcopy_safe as fits_copy_hdu;
     pub use crate::edithdu::ffcpdt_safe as fits_copy_data;
     pub use crate::edithdu::ffcpfl_safe as fits_copy_file;
     pub use crate::edithdu::ffcphd_safe as fits_copy_header;

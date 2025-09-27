@@ -5141,7 +5141,7 @@ pub fn ffpknjj_safe(
         }
         jj += 1;
     }
-    return *status;
+    *status
 }
 
 #[cfg(test)]

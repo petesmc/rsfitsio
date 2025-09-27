@@ -51,7 +51,7 @@ use crate::aliases::rust_api::fits_read_key_dbl;
 use crate::cfileio::{STREAM_DRIVER, ffinit_safe, fftrun, urltype2driver};
 use crate::cfileio::{ffclos_safe, ffurlt_safe};
 use crate::editcol::ffirow_safe;
-use crate::edithdu::ffcopy_safer;
+use crate::edithdu::ffcopy_safe;
 use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::getkey::{
@@ -7838,7 +7838,7 @@ pub fn ffcmph_safe(
 
     let mut tptr = tptr.expect(NULL_MSG);
 
-    if ffcopy_safer(fptr, &mut tptr, 0, status) != 0 {
+    if ffcopy_safe(fptr, &mut tptr, 0, status) != 0 {
         int_snprintf!(
             &mut message,
             FLEN_ERRMSG,

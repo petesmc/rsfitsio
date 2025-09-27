@@ -95,9 +95,7 @@ use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_s
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
 use crate::region::{SAORegion, fits_free_region};
-use crate::wrappers::{
-    strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe,
-};
+use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;

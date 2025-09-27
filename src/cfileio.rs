@@ -43,7 +43,7 @@ use crate::drvrsmem::{
     smem_read, smem_remove, smem_seek, smem_setoptions, smem_shutdown, smem_size, smem_write,
 };
 use crate::editcol::ffdcol_safe;
-use crate::edithdu::ffcopy_safer;
+use crate::edithdu::ffcopy_safe;
 use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe};
 use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
@@ -2500,7 +2500,7 @@ pub(crate) unsafe fn ffedit_columns(
                         break;
                     }
 
-                    ffcopy_safer(fptr, &mut newptr, 0, status);
+                    ffcopy_safe(fptr, &mut newptr, 0, status);
                     ii += 1;
                 }
 
@@ -2514,9 +2514,9 @@ pub(crate) unsafe fn ffedit_columns(
             } else {
                 /* only copy the primary array and the designated table extension */
                 ffmahd_safe(fptr, 1, None, status);
-                ffcopy_safer(fptr, &mut newptr, 0, status);
+                ffcopy_safe(fptr, &mut newptr, 0, status);
                 ffmahd_safe(fptr, hdunum, None, status);
-                ffcopy_safer(fptr, &mut newptr, 0, status);
+                ffcopy_safe(fptr, &mut newptr, 0, status);
                 if *status > 0 {
                     ffclos_safe(newptr, status);
                     ffpmsg_str("failed to copy all HDUs from input file (ffedit_columns)");
@@ -4826,35 +4826,35 @@ pub fn ffifile2_safe(
     ptr1 = &ptr1[ptr1_index..];
     ptr1_index = 0;
 
-    if let Some(ref urltype_slice) = urltype {
-        if strncmp_safe(urltype_slice, cs!(c"http://"), 7) == 0 {
-            /* test for opening parenthesis or bracket in the file name */
-            if strchr_safe(ptr1, bb(b'(')).is_some() || strchr_safe(ptr1, bb(b'[')).is_some() {
-                slen = strlen_safe(ptr1);
+    if let Some(ref urltype_slice) = urltype
+        && strncmp_safe(urltype_slice, cs!(c"http://"), 7) == 0
+    {
+        /* test for opening parenthesis or bracket in the file name */
+        if strchr_safe(ptr1, bb(b'(')).is_some() || strchr_safe(ptr1, bb(b'[')).is_some() {
+            slen = strlen_safe(ptr1);
 
-                let mut ptr3_index = slen - 1;
+            let mut ptr3_index = slen - 1;
 
-                while ptr1[ptr3_index] == bb(b' ') {
-                    /* ignore trailing blanks */
-                    ptr3_index -= 1;
+            while ptr1[ptr3_index] == bb(b' ') {
+                /* ignore trailing blanks */
+                ptr3_index -= 1;
+            }
+
+            if ptr1[ptr3_index] != bb(b']') && ptr1[ptr3_index] != bb(b')') {
+                /* name doesn't end with a ']' or ')' so don't try */
+                /* to parse this unusual string (may be cgi string)  */
+                if let Some(ref mut s) = infilex {
+                    if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
+                        ffpmsg_str("Name of file is too long.");
+                        *status = URL_PARSE_ERROR;
+                        return *status;
+                    }
+                    strcpy_safe(s, ptr1);
                 }
 
-                if ptr1[ptr3_index] != bb(b']') && ptr1[ptr3_index] != bb(b')') {
-                    /* name doesn't end with a ']' or ')' so don't try */
-                    /* to parse this unusual string (may be cgi string)  */
-                    if let Some(ref mut s) = infilex {
-                        if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
-                            ffpmsg_str("Name of file is too long.");
-                            *status = URL_PARSE_ERROR;
-                            return *status;
-                        }
-                        strcpy_safe(s, ptr1);
-                    }
-
-                    return *status;
-                };
+                return *status;
             };
-        }
+        };
     }
     /* ----------------------------------------------------------
     Look for VMS style filenames like:
@@ -4977,12 +4977,11 @@ pub fn ffifile2_safe(
     /* --------------------------------------------- */
     let ptr4 = strstr_safe(&infile, cs!(c".imh"));
     /* did the infile name end with c".imh" ? */
-    if let Some(p4) = ptr4 {
-        if infile[p4] == 0 {
-            if let Some(ref mut s) = urltype {
-                strcpy_safe(s, cs!(c"irafmem://"));
-            }
-        }
+    if let Some(p4) = ptr4
+        && infile[p4] == 0
+        && let Some(ref mut s) = urltype
+    {
+        strcpy_safe(s, cs!(c"irafmem://"));
     }
 
     /* --------------------------------------------- */
@@ -5024,21 +5023,21 @@ pub fn ffifile2_safe(
     /* -------------------------------------------------------------------- */
     /* if '*' was given for the output name expand it to the root file name */
     /* -------------------------------------------------------------------- */
-    if let Some(ref mut outfile_slice) = outfile {
-        if outfile_slice[0] == bb(b'*') {
-            /* scan input name backwards to the first '/' character */
-            let mut ii = jj - 1;
-            while ii >= 0 {
-                if infile[ii as usize] == bb(b'/') || ii == 0 {
-                    if strlen_safe(&infile[((ii + 1) as usize)..]) > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-                    strcpy_safe(outfile_slice, &infile[((ii + 1) as usize)..]);
-                    break;
-                };
-                ii -= 1
-            }
+    if let Some(ref mut outfile_slice) = outfile
+        && outfile_slice[0] == bb(b'*')
+    {
+        /* scan input name backwards to the first '/' character */
+        let mut ii = jj - 1;
+        while ii >= 0 {
+            if infile[ii as usize] == bb(b'/') || ii == 0 {
+                if strlen_safe(&infile[((ii + 1) as usize)..]) > FLEN_FILENAME - 1 {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                strcpy_safe(outfile_slice, &infile[((ii + 1) as usize)..]);
+                break;
+            };
+            ii -= 1
         }
     }
     /* ------------------------------------------ */
@@ -5141,21 +5140,21 @@ pub fn ffifile2_safe(
                         strcpy_safe(s, cast_slice(b"0\0"));
                     }
                     let tmptr_next = strchr_safe(&tmptr[(ptr2_abs + 1)..], bb(b'['));
-                    if let Some(next_bracket) = tmptr_next {
-                        if let Some(ref mut s) = rowfilterx {
-                            let next_abs = ptr2_abs + 1 + next_bracket;
-                            if strlen_safe(s) + strlen_safe(&tmptr[(next_abs + 1)..])
-                                > FLEN_FILENAME - 1
-                            {
-                                *status = URL_PARSE_ERROR;
-                                return *status;
-                            }
-                            strcat_safe(s, &tmptr[(next_abs + 1)..]);
-                            let tmptr_close = strchr_safe(s, bb(b']'));
-                            if let Some(idx) = tmptr_close {
-                                s[idx] = 0;
-                            };
+                    if let Some(next_bracket) = tmptr_next
+                        && let Some(ref mut s) = rowfilterx
+                    {
+                        let next_abs = ptr2_abs + 1 + next_bracket;
+                        if strlen_safe(s) + strlen_safe(&tmptr[(next_abs + 1)..])
+                            > FLEN_FILENAME - 1
+                        {
+                            *status = URL_PARSE_ERROR;
+                            return *status;
                         }
+                        strcat_safe(s, &tmptr[(next_abs + 1)..]);
+                        let tmptr_close = strchr_safe(s, bb(b']'));
+                        if let Some(idx) = tmptr_close {
+                            s[idx] = 0;
+                        };
                     }
                     return *status;
                 };
@@ -5412,7 +5411,7 @@ pub fn ffifile2_safe(
 
     if let Some(p1) = ptr1 {
         /* found the binning string */
-        if let Some(binspec_slice) = binspec.as_deref_mut() {
+        if let Some(binspec_slice) = binspec {
             if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
                 *status = URL_PARSE_ERROR;
                 return *status;
@@ -5703,99 +5702,99 @@ pub fn ffifile2_safe(
     /* copy the remaining string to the rowfilter output... should only */
     /* contain a rowfilter expression of the form c"[expr]"
      */
-    if let Some(ref mut rowfilterx_slice) = rowfilterx {
-        if rowfilter[0] != 0 {
-            hasAt = 0;
+    if let Some(ref mut rowfilterx_slice) = rowfilterx
+        && rowfilter[0] != 0
+    {
+        hasAt = 0;
 
-            /* Check for multiple expressions, which would appear as c"[expr][expr]..." */
-            let mut p1 = 0; // rowfilter;
-            let mut p2 = strstr_safe(&rowfilter, cs!(c"][")).unwrap_or(0);
+        /* Check for multiple expressions, which would appear as c"[expr][expr]..." */
+        let mut p1 = 0; // rowfilter;
+        let mut p2 = strstr_safe(&rowfilter, cs!(c"][")).unwrap_or(0);
 
-            while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
-                /* Advance past any white space */
-                let mut p3 = p1 + 1;
-                while rowfilter[p3] == bb(b' ') {
-                    p3 += 1;
-                }
-
-                /* Check for @filename.txt */
-                if rowfilter[p3] == bb(b'@') {
-                    hasAt = 1;
-                }
-
-                /* Add expression of the form c"((expr))&&", note the addition of 6 characters */
-                if (strlen_safe(rowfilterx_slice) + (p2 - p1) + 6) > FLEN_FILENAME - 1 {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Special error checking here.  We can't allow there to be a
-                @filename.txt includes if there are multiple row expressions */
-                if rowfilterx_slice[0] != 0 && hasAt != 0 {
-                    ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Append the expression */
-                strcat_safe(rowfilterx_slice, cs!(c"(("));
-                strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
-                /* Note that strncat always null-terminates the destination string */
-                strcat_safe(rowfilterx_slice, cs!(c"))&&"));
-
-                /* Advance to next expression */
-                p1 = p2 + 1;
-
-                p2 = strstr_safe(&rowfilter, cs!(c"][")).unwrap() - p1;
+        while (rowfilter[p1] == bb(b'[')) && p2 > 2 {
+            /* Advance past any white space */
+            let mut p3 = p1 + 1;
+            while rowfilter[p3] == bb(b' ') {
+                p3 += 1;
             }
 
-            /* At final iteration, ptr1 points to beginning [ and ptr2 to ending ] */
-            let p2 = strlen_safe(&rowfilter) - 1;
-            if rowfilter[p1] == bb(b'[') && rowfilter[p2] == bb(b']') {
-                /* Check for @include in final position */
-                let mut p3 = p1 + 1;
-                while rowfilter[p3] == bb(b' ') {
-                    p3 += 1;
-                }
+            /* Check for @filename.txt */
+            if rowfilter[p3] == bb(b'@') {
+                hasAt = 1;
+            }
 
-                if rowfilter[p3] == bb(b'@') {
-                    hasAt = 1;
-                }
-
-                /* Check for overflow; add extra 4 characters if we have pre-existing expression */
-                if strlen_safe(rowfilterx_slice)
-                    + (p2 - p1 + (if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
-                    > FLEN_FILENAME - 1
-                {
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                /* Special error checking here.  We can't allow there to be a
-                @filename.txt includes if there are multiple row expressions */
-                if rowfilterx_slice[0] != 0 && hasAt != 0 {
-                    ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
-
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-
-                if rowfilterx_slice[0] != 0 {
-                    /* A pre-existing row filter: we bracket by ((expr)) to be sure */
-                    strcat_safe(rowfilterx_slice, cs!(c"(("));
-                    strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
-                    strcat_safe(rowfilterx_slice, cs!(c"))"));
-                } else {
-                    /* We have only one filter, so just copy the expression alone.
-                    This will be the most typical case */
-
-                    strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
-                };
-            } else {
-                ffpmsg_str("input file URL lacks valid row filter expression");
+            /* Add expression of the form c"((expr))&&", note the addition of 6 characters */
+            if (strlen_safe(rowfilterx_slice) + (p2 - p1) + 6) > FLEN_FILENAME - 1 {
                 *status = URL_PARSE_ERROR;
-            };
+                return *status;
+            }
+
+            /* Special error checking here.  We can't allow there to be a
+            @filename.txt includes if there are multiple row expressions */
+            if rowfilterx_slice[0] != 0 && hasAt != 0 {
+                ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* Append the expression */
+            strcat_safe(rowfilterx_slice, cs!(c"(("));
+            strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
+            /* Note that strncat always null-terminates the destination string */
+            strcat_safe(rowfilterx_slice, cs!(c"))&&"));
+
+            /* Advance to next expression */
+            p1 = p2 + 1;
+
+            p2 = strstr_safe(&rowfilter, cs!(c"][")).unwrap() - p1;
         }
+
+        /* At final iteration, ptr1 points to beginning [ and ptr2 to ending ] */
+        let p2 = strlen_safe(&rowfilter) - 1;
+        if rowfilter[p1] == bb(b'[') && rowfilter[p2] == bb(b']') {
+            /* Check for @include in final position */
+            let mut p3 = p1 + 1;
+            while rowfilter[p3] == bb(b' ') {
+                p3 += 1;
+            }
+
+            if rowfilter[p3] == bb(b'@') {
+                hasAt = 1;
+            }
+
+            /* Check for overflow; add extra 4 characters if we have pre-existing expression */
+            if strlen_safe(rowfilterx_slice)
+                + (p2 - p1 + (if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
+                > FLEN_FILENAME - 1
+            {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* Special error checking here.  We can't allow there to be a
+            @filename.txt includes if there are multiple row expressions */
+            if rowfilterx_slice[0] != 0 && hasAt != 0 {
+                ffpmsg_str("input URL multiple row filter cannot use @filename.txt");
+
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            if rowfilterx_slice[0] != 0 {
+                /* A pre-existing row filter: we bracket by ((expr)) to be sure */
+                strcat_safe(rowfilterx_slice, cs!(c"(("));
+                strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
+                strcat_safe(rowfilterx_slice, cs!(c"))"));
+            } else {
+                /* We have only one filter, so just copy the expression alone.
+                This will be the most typical case */
+
+                strncat_safe(rowfilterx_slice, &rowfilter[(p1 + 1)..], p2 - p1 - 1);
+            };
+        } else {
+            ffpmsg_str("input file URL lacks valid row filter expression");
+            *status = URL_PARSE_ERROR;
+        };
     }
 
     *status
@@ -7142,7 +7141,7 @@ pub(crate) fn ffoptplt(
     }
 
     /* try opening template */
-    ffopen_safe(&mut tptr, &tempname, READONLY, &mut tstatus);
+    ffopen_safe(&mut tptr, tempname, READONLY, &mut tstatus);
 
     if tstatus != 0 {
         /* not a FITS file, so treat it as an ASCII template */
@@ -7187,7 +7186,7 @@ pub(crate) fn ffoptplt(
     }
 
     ffmahd_safe(fptr, 1, None, status); /* move to the primary array */
-    return *status;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
