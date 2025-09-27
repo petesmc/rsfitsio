@@ -66,7 +66,7 @@ fn tanh(x: f64) -> f64 {
 use crate::c_types::{
     c_char, c_double, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_void,
 };
-use crate::cfileio::{ffclos_safer, ffexts_safer, ffopen_safe};
+use crate::cfileio::{ffclos_safe, ffexts_safer, ffopen_safe};
 use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
@@ -7794,7 +7794,7 @@ fn New_GTI(
         if samefile != 0 {
             ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
         } else {
-            ffclos_safer(Box::from_raw(fptr), &mut lParse.status);
+            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
         }
         n
     }

@@ -61,7 +61,7 @@ use bytemuck::{cast, cast_slice, cast_slice_mut};
 use pliocomp::{pl_l2pi, pl_p2li};
 
 use crate::fitscore::{
-    ffcmrk_safe, ffcrhd_safer, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
+    ffcmrk_safe, ffcrhd_safe, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
     ffgisz_safe, ffgkcl_safe, ffmahd_safe, ffpmrk_safe, ffpmsg_cstr, ffpmsg_slice, ffpmsg_str,
     ffpsvc_safe, ffpxsz, ffrdef_safe, fits_is_compressed_image_safe, fits_strcasecmp,
     fits_strncasecmp, fits_translate_keywords_safer,
@@ -69,7 +69,7 @@ use crate::fitscore::{
 use crate::getkey::{ffdtdm_safe, ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgrec_safe};
 use crate::modkey::{ffikyj_safe, ffucrd_safe};
 use crate::putkey::{
-    ffcrim_safer, ffcrtb_safer, ffpdat_safe, ffpkye_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe,
+    ffcrim_safe, ffcrtb_safer, ffpdat_safe, ffpkye_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe,
     ffpkys_safe, ffprec_safe,
 };
 use crate::quantize::{
@@ -1289,13 +1289,13 @@ pub fn fits_img_compress_safe(
     /* contains the compressed image.  If necessary, create a dummy primary */
     /* array, which much precede the binary table extension. */
 
-    unsafe { ffcrhd_safer(outfptr, status) }; /* this does nothing if the output file is empty */
+    unsafe { ffcrhd_safe(outfptr, status) }; /* this does nothing if the output file is empty */
 
     if (outfptr.Fptr).curhdu == 0 {
         /* have to create dummy primary array */
 
-        unsafe { ffcrim_safer(outfptr, 16, 0, &[], status) };
-        unsafe { ffcrhd_safer(outfptr, status) };
+        unsafe { ffcrim_safe(outfptr, 16, 0, &[], status) };
+        unsafe { ffcrhd_safe(outfptr, status) };
     } else {
         /* unset any compress parameter preferences that may have been
         set when closing the previous HDU in the output file */
@@ -5564,7 +5564,7 @@ unsafe fn fits_decompress_img_safer(
         }
 
         /* create an empty output image with the correct dimensions */
-        if ffcrim_safer(
+        if ffcrim_safe(
             outfptr,
             (infptr.Fptr).zbitpix,
             (infptr.Fptr).zndim,
@@ -5796,7 +5796,7 @@ pub unsafe fn fits_img_decompress_header_safer(
             tstatus = 0;
             if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
                 /* create an empty output image with the correct dimensions */
-                if ffcrim_safer(
+                if ffcrim_safe(
                     outfptr,
                     (infptr.Fptr).zbitpix,
                     (infptr.Fptr).zndim,
@@ -5817,7 +5817,7 @@ pub unsafe fn fits_img_decompress_header_safer(
                     /* have to write the required keywords manually */
 
                     /* create an empty output image with the correct dimensions */
-                    if ffcrim_safer(
+                    if ffcrim_safe(
                         outfptr,
                         (infptr.Fptr).zbitpix,
                         (infptr.Fptr).zndim,
@@ -5841,7 +5841,7 @@ pub unsafe fn fits_img_decompress_header_safer(
                         /* we need to write a null primary array before uncompressing the */
                         /* image extension */
 
-                        ffcrim_safer(outfptr, 8, 0, &naxes, status); /* naxes is not used */
+                        ffcrim_safe(outfptr, 8, 0, &naxes, status); /* naxes is not used */
 
                         /* now create the empty extension to uncompress into */
                         if fits_create_hdu(outfptr, status) > 0 {

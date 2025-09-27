@@ -85,7 +85,7 @@ fn writeimage() {
     /* in this case.                                                */
 
     if let Some(ref mut fptr_box) = fptr {
-        if unsafe { fits_create_img(fptr_box, bitpix, naxis as c_int, &naxes, &mut status) } != 0 {
+        if fits_create_img(fptr_box, bitpix, naxis as c_int, &naxes, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -134,7 +134,7 @@ fn writeimage() {
     }
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             /* close the file */
             printerror(status);
         }
@@ -277,7 +277,7 @@ fn writeascii() {
     }
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             /* close the FITS file */
             printerror(status);
         }
@@ -428,7 +428,7 @@ fn writebintable() {
     }
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             /* close the FITS file */
             printerror(status);
         }
@@ -476,7 +476,7 @@ fn copyhdu() {
 
     /* copy the primary array from the input file to the output file */
     if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
-        if unsafe { fits_copy_hdu(infptr_box, outfptr_box, morekeys, &mut status) } != 0 {
+        if fits_copy_hdu(infptr_box, outfptr_box, morekeys, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -490,19 +490,19 @@ fn copyhdu() {
 
     /* copy 3rd HDU from the input file to the output file (to 2nd HDU) */
     if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
-        if unsafe { fits_copy_hdu(infptr_box, outfptr_box, morekeys, &mut status) } != 0 {
+        if fits_copy_hdu(infptr_box, outfptr_box, morekeys, &mut status) != 0 {
             printerror(status);
         }
     }
 
     let mut close_status = 0;
     if let Some(outfptr_box) = outfptr {
-        if unsafe { fits_close_file(outfptr_box, &mut close_status) } != 0 {
+        if fits_close_file(outfptr_box, &mut close_status) != 0 {
             printerror(close_status);
         }
     }
     if let Some(infptr_box) = infptr {
-        if unsafe { fits_close_file(infptr_box, &mut status) } != 0 {
+        if fits_close_file(infptr_box, &mut status) != 0 {
             /* close files */
             printerror(status);
         }
@@ -574,7 +574,7 @@ fn selectrows() {
 
     /* create new extension in the output file */
     if let Some(ref mut outfptr_box) = outfptr {
-        if unsafe { fits_create_hdu(outfptr_box, &mut status) } != 0 {
+        if fits_create_hdu(outfptr_box, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -693,12 +693,12 @@ fn selectrows() {
 
     let mut close_status = 0;
     if let Some(outfptr_box) = outfptr {
-        if unsafe { fits_close_file(outfptr_box, &mut close_status) } != 0 {
+        if fits_close_file(outfptr_box, &mut close_status) != 0 {
             printerror(close_status);
         }
     }
     if let Some(infptr_box) = infptr {
-        if unsafe { fits_close_file(infptr_box, &mut status) } != 0 {
+        if fits_close_file(infptr_box, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -747,7 +747,7 @@ fn readheader() {
                 printerror(status);
             }
 
-            let card_str = unsafe { CStr::from_ptr(card.as_ptr() as *const c_char) };
+            let card_str = CStr::from_bytes_until_nul(&card).unwrap();
             println!("{}", card_str.to_string_lossy()); /* print the keyword card */
         }
         println!("END\n"); /* terminate listing with END */
@@ -762,7 +762,7 @@ fn readheader() {
     }
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -863,7 +863,7 @@ fn readimage() {
     println!("\nMin and max image pixels =  {datamin:.0}, {datamax:.0}");
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             printerror(status);
         }
     }
@@ -950,12 +950,15 @@ fn readtable() {
             }
         }
 
-        let ttype0 =
-            unsafe { CStr::from_ptr(ttype_vecs[0].as_ptr() as *const c_char) }.to_string_lossy();
-        let ttype1 =
-            unsafe { CStr::from_ptr(ttype_vecs[1].as_ptr() as *const c_char) }.to_string_lossy();
-        let ttype2 =
-            unsafe { CStr::from_ptr(ttype_vecs[2].as_ptr() as *const c_char) }.to_string_lossy();
+        let ttype0 = CStr::from_bytes_until_nul(&ttype_vecs[0])
+            .unwrap()
+            .to_string_lossy();
+        let ttype1 = CStr::from_bytes_until_nul(&ttype_vecs[1])
+            .unwrap()
+            .to_string_lossy();
+        let ttype2 = CStr::from_bytes_until_nul(&ttype_vecs[2])
+            .unwrap()
+            .to_string_lossy();
         println!(" Row  {ttype0:>10} {ttype1:>10} {ttype2:>10}");
 
         /*  read the columns */
@@ -1006,7 +1009,8 @@ fn readtable() {
         }
 
         for ii in 0..6 {
-            let name_str = unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }
+            let name_str = CStr::from_bytes_until_nul(&name_vecs[ii])
+                .unwrap()
                 .to_string_lossy();
             println!(
                 "{:5} {:>10} {:>10} {:>10.2}",
@@ -1019,7 +1023,7 @@ fn readtable() {
     }
 
     if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(fptr_box, &mut status) } != 0 {
+        if fits_close_file(fptr_box, &mut status) != 0 {
             printerror(status);
         }
     }

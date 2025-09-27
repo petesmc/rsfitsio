@@ -1,39 +1,26 @@
-#![allow(deprecated)]
-
 use std::ffi::CString;
 
-use std::{process::ExitCode, ptr};
+use std::process::ExitCode;
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, cast_slice_mut};
 
 use rsfitsio::c_types::{FILE, c_char};
-use rsfitsio::fitscore::fits_is_compressed_image;
-use rsfitsio::{STDERR, cs};
+use rsfitsio::{NullValue, STDERR, cs};
 
 use rsfitsio::fitsio::{
     BYTE_IMG, DOUBLE_IMG, END_OF_FILE, FLOAT_IMG, IMAGE_HDU, LONG_IMG, LONGLONG, READONLY,
     SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TINT, TSHORT, TYP_CMPRS_KEY,
 };
 use rsfitsio::wrappers::{strchr_safe, strcpy_safe};
-use rsfitsio::{aliases::rust_api::fits_open_file, fitsio::fitsfile};
-
-use rsfitsio::cfileio::ffclos as fits_close_file;
-use rsfitsio::cfileio::ffinit as fits_create_file;
-use rsfitsio::cfileio::ffrprt as fits_report_error;
-use rsfitsio::edithdu::ffcopy as fits_copy_hdu;
-use rsfitsio::fitscore::ffghdn as fits_get_hdu_num;
-use rsfitsio::fitscore::ffghdt as fits_get_hdu_type;
-use rsfitsio::fitscore::ffgipr as fits_get_img_param;
-use rsfitsio::fitscore::ffgkcl as fits_get_keyclass;
-use rsfitsio::fitscore::ffmrhd as fits_movrel_hdu;
-use rsfitsio::getcol::ffgpv as fits_read_img;
-use rsfitsio::getkey::ffgcrd as fits_read_card;
-use rsfitsio::getkey::ffghsp as fits_get_hdrspace;
-use rsfitsio::getkey::ffgrec as fits_read_record;
-use rsfitsio::putcol::ffppr as fits_write_img;
-use rsfitsio::putkey::ffcrim as fits_create_img;
-use rsfitsio::putkey::ffprec as fits_write_record;
-use rsfitsio::scalnull::ffpscl as fits_set_bscale;
+use rsfitsio::{
+    aliases::rust_api::{
+        fits_close_file, fits_copy_hdu, fits_create_file, fits_create_img, fits_get_hdrspace,
+        fits_get_hdu_num, fits_get_hdu_type, fits_get_img_param, fits_get_keyclass,
+        fits_is_compressed_image, fits_movrel_hdu, fits_open_file, fits_read_card, fits_read_img,
+        fits_read_record, fits_report_error, fits_set_bscale, fits_write_img, fits_write_record,
+    },
+    fitsio::fitsfile,
+};
 
 pub fn main() -> ExitCode {
     /* FITS file pointers defined in fitsio.h */
@@ -147,7 +134,7 @@ pub fn main() -> ExitCode {
             READONLY,
             &mut status,
         );
-        fits_create_file(&mut outfptr, outfile.as_ptr(), &mut status);
+        fits_create_file(&mut outfptr, outfile.to_bytes_with_nul(), &mut status);
 
         if status != 0 {
             #[cfg(windows)]
@@ -192,9 +179,9 @@ pub fn main() -> ExitCode {
                 fits_get_img_param(
                     infptr.as_mut(),
                     9,
-                    &mut bitpix,
-                    &mut naxis,
-                    naxes.as_mut_ptr(),
+                    Some(&mut bitpix),
+                    Some(&mut naxis),
+                    Some(&mut naxes),
                     &mut status,
                 );
 
@@ -214,35 +201,30 @@ pub fn main() -> ExitCode {
                 fits_copy_hdu(infptr.as_mut(), outfptr.as_mut(), 0, &mut status);
             } else {
                 /* Explicitly create new image, to support compression */
-                fits_create_img(outfptr.as_mut(), bitpix, naxis, naxes.as_ptr(), &mut status);
+                fits_create_img(outfptr.as_mut(), bitpix, naxis, &naxes, &mut status);
                 if status != 0 {
-                    fits_report_error(STDERR!() as *mut _ as *mut FILE, status);
+                    fits_report_error(STDERR!(), status);
                     return ExitCode::from(status as u8);
                 }
 
                 if fits_is_compressed_image(outfptr.as_mut(), &mut status) != 0 {
                     /* write default EXTNAME keyword if it doesn't already exist */
                     tstatus = 0;
-                    fits_read_card(
-                        infptr.as_mut(),
-                        c"EXTNAME".as_ptr(),
-                        card.as_mut_ptr(),
-                        &mut tstatus,
-                    );
+                    fits_read_card(infptr.as_mut(), cs!(c"EXTNAME"), &mut card, &mut tstatus);
 
                     if tstatus != 0 {
                         strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"));
-                        fits_write_record(outfptr.as_mut(), card.as_ptr(), &mut status);
+                        fits_write_record(outfptr.as_mut(), &mut card, &mut status);
                     }
                 }
 
                 /* copy all the user keywords (not the structural keywords) */
-                fits_get_hdrspace(infptr.as_mut(), &mut nkeys, ptr::null_mut(), &mut status);
+                fits_get_hdrspace(infptr.as_mut(), Some(&mut nkeys), None, &mut status);
 
                 for ii in 1..=nkeys {
-                    fits_read_record(infptr.as_mut(), ii, card.as_mut_ptr(), &mut status);
-                    if fits_get_keyclass(card.as_mut_ptr()) > TYP_CMPRS_KEY {
-                        fits_write_record(outfptr.as_mut(), card.as_ptr(), &mut status);
+                    fits_read_record(infptr.as_mut(), ii, Some(&mut card), &mut status);
+                    if fits_get_keyclass(&card) > TYP_CMPRS_KEY {
+                        fits_write_record(outfptr.as_mut(), &mut card, &mut status);
                     }
                 }
 
@@ -303,9 +285,9 @@ pub fn main() -> ExitCode {
                         datatype,
                         first,
                         npix as LONGLONG,
-                        &nulval as *const _ as *const _,
-                        array.as_mut_ptr() as *mut _ as *mut _,
-                        &mut anynul as *mut _ as *mut _,
+                        Some(NullValue::Float(nulval)),
+                        cast_slice_mut(&mut array),
+                        Some(&mut anynul),
                         &mut status,
                     );
 
@@ -314,7 +296,7 @@ pub fn main() -> ExitCode {
                         datatype,
                         first,
                         npix as LONGLONG,
-                        array.as_ptr() as *const _,
+                        cast_slice(&array),
                         &mut status,
                     );
                     totpix -= npix;
@@ -325,7 +307,7 @@ pub fn main() -> ExitCode {
             if single != 0 {
                 break;
             } /* quit if only copying a single HDU */
-            fits_movrel_hdu(infptr.as_mut(), 1, ptr::null_mut(), &mut status); /* try to move to next HDU */
+            fits_movrel_hdu(infptr.as_mut(), 1, None, &mut status); /* try to move to next HDU */
 
             hdupos += 1;
         }
@@ -334,8 +316,8 @@ pub fn main() -> ExitCode {
             status = 0; /* Reset after normal error */
         }
 
-        fits_close_file(Some(outfptr), &mut status);
-        fits_close_file(Some(infptr), &mut status);
+        fits_close_file(outfptr, &mut status);
+        fits_close_file(infptr, &mut status);
 
         /* if error occurred, print out error message */
         if status != 0 {

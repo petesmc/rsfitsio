@@ -49,7 +49,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use crate::BL;
 use crate::aliases::rust_api::fits_read_key_dbl;
 use crate::cfileio::{STREAM_DRIVER, ffinit_safe, fftrun, urltype2driver};
-use crate::cfileio::{ffclos_safer, ffurlt_safe};
+use crate::cfileio::{ffclos_safe, ffurlt_safe};
 use crate::editcol::ffirow_safe;
 use crate::edithdu::ffcopy_safer;
 use crate::fitsio::*;
@@ -7846,7 +7846,7 @@ pub unsafe fn ffcmph_safer(
                 "Failed to create copy of the heap",
             );
             ffpmsg_slice(&message);
-            ffclos_safer(tptr, status);
+            ffclos_safe(tptr, status);
             return *status;
         }
 
@@ -7859,7 +7859,7 @@ pub unsafe fn ffcmph_safer(
                 "Failed to allocate buffer to copy the heap",
             );
             ffpmsg_slice(&message);
-            ffclos_safer(tptr, status);
+            ffclos_safe(tptr, status);
 
             *status = MEMORY_ALLOCATION;
             return *status;
@@ -7965,7 +7965,7 @@ pub unsafe fn ffcmph_safer(
                 fptr.Fptr.heapsize += nbytes as LONGLONG; /* update heapsize */
 
                 if *status > 0 {
-                    ffclos_safer(tptr, status);
+                    ffclos_safe(tptr, status);
                     return *status;
                 };
 
@@ -7975,7 +7975,7 @@ pub unsafe fn ffcmph_safer(
             jj += 1
         }
 
-        ffclos_safer(tptr, status);
+        ffclos_safe(tptr, status);
 
         /* delete any empty blocks at the end of the HDU */
         let headstart = fptr.Fptr.get_headstart_as_slice();
@@ -8510,79 +8510,79 @@ pub fn ffpdes_safe(
 /// close the current HDU.  If we have write access to the file, then:
 /// - write the END keyword and pad header with blanks if necessary
 /// - check the data fill values, and rewrite them if not correct
-pub(crate) unsafe fn ffchdu(
+pub(crate) fn ffchdu(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut stdriver = -1; // -1 so that if stream driver not found, it doesn't default
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut stdriver = -1; // -1 so that if stream driver not found, it doesn't default
 
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-            /* no need to do any further updating of the HDU */
-        } else if fptr.Fptr.writemode == 1 {
-            urltype2driver(cs!(c"stream://"), &mut stdriver);
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        /* no need to do any further updating of the HDU */
+    } else if fptr.Fptr.writemode == 1 {
+        urltype2driver(cs!(c"stream://"), &mut stdriver);
 
-            /* don't rescan header in special case of writing to stdout */
-            if fptr.Fptr.driver != stdriver {
-                ffrdef_safe(fptr, status);
-            }
-            if fptr.Fptr.heapsize > 0 {
-                ffuptf(fptr, status); /* update the variable length TFORM values */
-            }
-
-            ffpdfl(fptr, status); /* insure correct data fill values */
+        /* don't rescan header in special case of writing to stdout */
+        if fptr.Fptr.driver != stdriver {
+            ffrdef_safe(fptr, status);
+        }
+        if fptr.Fptr.heapsize > 0 {
+            ffuptf(fptr, status); /* update the variable length TFORM values */
         }
 
-        if fptr.Fptr.open_count == 1 {
-            /* free memory for the CHDU structure only if no other files are using it */
-            if !fptr.Fptr.tableptr.is_null() {
+        ffpdfl(fptr, status); /* insure correct data fill values */
+    }
+
+    if fptr.Fptr.open_count == 1 {
+        /* free memory for the CHDU structure only if no other files are using it */
+        if !fptr.Fptr.tableptr.is_null() {
+            // HEAP DEALLOCATION
+            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
+            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
+            if let Some((l, c)) = alloc {
                 // HEAP DEALLOCATION
-                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-                if let Some((l, c)) = alloc {
-                    // HEAP DEALLOCATION
-                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
-                } else {
-                    let _ = Vec::from_raw_parts(
+                let _ = unsafe { Vec::from_raw_parts(fptr.Fptr.tableptr, l, c) };
+            } else {
+                let _ = unsafe {
+                    Vec::from_raw_parts(
                         fptr.Fptr.tableptr,
                         fptr.Fptr.tfield as usize,
                         fptr.Fptr.tfield as usize,
-                    );
-                }
-
-                fptr.Fptr.tableptr = ptr::null_mut();
-
-                /* free the tile-compressed image cache, if it exists */
-                if !fptr.Fptr.tilerow.is_null() {
-                    // HEAP DEALLOCATION
-                    let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-                    let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
-                    drop(tilestruct_lock);
-
-                    fptr.Fptr.tileanynull = ptr::null_mut();
-                    fptr.Fptr.tiletype = ptr::null_mut();
-                    fptr.Fptr.tiledatasize = ptr::null_mut();
-                    fptr.Fptr.tilenullarray = ptr::null_mut();
-                    fptr.Fptr.tiledata = ptr::null_mut();
-                    fptr.Fptr.tilerow = ptr::null_mut();
+                    )
                 };
-            };
-        }
+            }
 
-        if *status > 0 && *status != NO_CLOSE_ERROR {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "Error while closing HDU number {} (ffchdu).",
-                fptr.Fptr.curhdu,
-            );
-            ffpmsg_slice(&message);
-        }
-        *status
+            fptr.Fptr.tableptr = ptr::null_mut();
+
+            /* free the tile-compressed image cache, if it exists */
+            if !fptr.Fptr.tilerow.is_null() {
+                // HEAP DEALLOCATION
+                let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+                let _ = tilestruct_lock.remove_entry(&(&raw const fptr.Fptr as usize));
+                drop(tilestruct_lock);
+
+                fptr.Fptr.tileanynull = ptr::null_mut();
+                fptr.Fptr.tiletype = ptr::null_mut();
+                fptr.Fptr.tiledatasize = ptr::null_mut();
+                fptr.Fptr.tilenullarray = ptr::null_mut();
+                fptr.Fptr.tiledata = ptr::null_mut();
+                fptr.Fptr.tilerow = ptr::null_mut();
+            };
+        };
     }
+
+    if *status > 0 && *status != NO_CLOSE_ERROR {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Error while closing HDU number {} (ffchdu).",
+            fptr.Fptr.curhdu,
+        );
+        ffpmsg_slice(&message);
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9230,76 +9230,74 @@ pub unsafe extern "C" fn ffcrhd(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffcrhd_safer(fptr, status)
+        ffcrhd_safe(fptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Create Header Data unit:  Create, initialize, and move the i/o pointer
 /// to a new extension appended to the end of the FITS file.
-pub unsafe fn ffcrhd_safer(
+pub fn ffcrhd_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut tstatus: c_int = 0;
-        let bytepos: LONGLONG;
+    let mut tstatus: c_int = 0;
+    let bytepos: LONGLONG;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /* If the current header is empty, we don't have to do anything */
-        let h = fptr.Fptr.get_headstart_as_slice();
-        if fptr.Fptr.headend == h[fptr.Fptr.curhdu as usize] {
-            return *status;
-        }
-
-        while ffmrhd_safe(fptr, 1, None, &mut tstatus) == 0 {} /* move to end of file */
-
-        if fptr.Fptr.maxhdu == fptr.Fptr.MAXHDU {
-            /* allocate more space for the headstart array */
-            // HEAP ALLOCATION
-            let l = fptr.Fptr.MAXHDU as usize + 1;
-            let mut vo = Vec::from_raw_parts(fptr.Fptr.headstart, l, l);
-
-            if vo.try_reserve_exact(1000).is_err() {
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            } else {
-                let (p, l, c) = vec_into_raw_parts(vo);
-                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-                fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = p;
-            }
-        }
-
-        if ffchdu(fptr, status) <= 0 {
-            /* close the current HDU */
-
-            let h = fptr.Fptr.get_headstart_as_slice();
-            bytepos = h[fptr.Fptr.maxhdu as usize + 1]; /* last */
-            ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status); /* move file ptr to it */
-            fptr.Fptr.maxhdu += 1; /* increment the known number of HDUs */
-            fptr.Fptr.curhdu = fptr.Fptr.maxhdu; /* set current HDU loc */
-            fptr.HDUposition = fptr.Fptr.maxhdu; /* set current HDU loc */
-            fptr.Fptr.nextkey = bytepos; /* next keyword = start of header */
-            fptr.Fptr.headend = bytepos; /* end of header */
-            fptr.Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* start data unit undefined */
-
-            /* any other needed resets */
-
-            /* reset the dithering offset that may have been calculated for the */
-            /* previous HDU back to the requested default value */
-            fptr.Fptr.dither_seed = fptr.Fptr.request_dither_seed;
-        }
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /* If the current header is empty, we don't have to do anything */
+    let h = fptr.Fptr.get_headstart_as_slice();
+    if fptr.Fptr.headend == h[fptr.Fptr.curhdu as usize] {
+        return *status;
+    }
+
+    while ffmrhd_safe(fptr, 1, None, &mut tstatus) == 0 {} /* move to end of file */
+
+    if fptr.Fptr.maxhdu == fptr.Fptr.MAXHDU {
+        /* allocate more space for the headstart array */
+        // HEAP ALLOCATION
+        let l = fptr.Fptr.MAXHDU as usize + 1;
+        let mut vo = unsafe { Vec::from_raw_parts(fptr.Fptr.headstart, l, l) };
+
+        if vo.try_reserve_exact(1000).is_err() {
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        } else {
+            let (p, l, c) = vec_into_raw_parts(vo);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+            fptr.Fptr.MAXHDU += 1000;
+            fptr.Fptr.headstart = p;
+        }
+    }
+
+    if ffchdu(fptr, status) <= 0 {
+        /* close the current HDU */
+
+        let h = fptr.Fptr.get_headstart_as_slice();
+        bytepos = h[fptr.Fptr.maxhdu as usize + 1]; /* last */
+        ffmbyt_safe(fptr, bytepos, IGNORE_EOF, status); /* move file ptr to it */
+        fptr.Fptr.maxhdu += 1; /* increment the known number of HDUs */
+        fptr.Fptr.curhdu = fptr.Fptr.maxhdu; /* set current HDU loc */
+        fptr.HDUposition = fptr.Fptr.maxhdu; /* set current HDU loc */
+        fptr.Fptr.nextkey = bytepos; /* next keyword = start of header */
+        fptr.Fptr.headend = bytepos; /* end of header */
+        fptr.Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* start data unit undefined */
+
+        /* any other needed resets */
+
+        /* reset the dithering offset that may have been calculated for the */
+        /* previous HDU back to the requested default value */
+        fptr.Fptr.dither_seed = fptr.Fptr.request_dither_seed;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

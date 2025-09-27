@@ -685,9 +685,9 @@ mod tests {
 
     use crate::cs;
     use bytemuck::cast_slice;
-    use cfileio::{ffclos_safer, ffinit_safe};
+    use cfileio::{ffclos_safe, ffinit_safe};
 
-    use putkey::ffcrim_safer;
+    use putkey::ffcrim_safe;
     use tempfile::Builder;
 
     use crate::{
@@ -734,7 +734,7 @@ mod tests {
 
                 let mut fptr = fptr.unwrap();
 
-                status = ffcrim_safer(&mut fptr, bitpix, naxis, &NAXES, &mut status);
+                status = ffcrim_safe(&mut fptr, bitpix, naxis, &NAXES, &mut status);
                 assert_eq!(status, 0);
 
                 for jj in 0..(NAXES[1] as usize) {
@@ -773,7 +773,7 @@ mod tests {
                 );
                 assert_eq!(status, 0);
 
-                ffclos_safer(fptr, &mut status); /* close the file */
+                ffclos_safe(fptr, &mut status); /* close the file */
                 assert_eq!(status, 0);
             });
         }

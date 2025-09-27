@@ -11,7 +11,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::NullValue;
 use crate::aliases::rust_api::{fits_clear_errmark, fits_write_errmark};
-use crate::cfileio::{ffclos_safer, ffopen_safe};
+use crate::cfileio::{ffclos_safe, ffopen_safe};
 use crate::fitscore::{
     ffgcno_safe, ffmnhd_safe, ffpmsg_slice, ffpmsg_str, fits_strcasecmp, fits_strncasecmp,
 };
@@ -2407,7 +2407,7 @@ pub(crate) unsafe fn fits_read_fits_region(
             *Rgn = Some(aRgn);
         }
 
-        ffclos_safer(fptr, status);
+        ffclos_safe(fptr, status);
 
         *status
     }

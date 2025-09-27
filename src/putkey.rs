@@ -19,7 +19,7 @@ use crate::c_types::*;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::fitscore::{
-    ffbnfm_safe, ffcrhd_safer, ffgabc_safe, ffgthd_safe, ffiblk, ffkeyn_safe, ffmahd_safe,
+    ffbnfm_safe, ffcrhd_safe, ffgabc_safe, ffgthd_safe, ffiblk, ffkeyn_safe, ffmahd_safe,
     ffmkky_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, fftkey_safe, ffupch_safe, fits_strncasecmp,
 };
 use crate::getkey::ffgkys_safe;
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn ffcrim(
             false => slice::from_raw_parts(naxes, naxis as usize),
         };
 
-        ffcrim_safer(fptr, bitpix, naxis, naxes, status)
+        ffcrim_safe(fptr, bitpix, naxis, naxes, status)
     }
 }
 
@@ -64,43 +64,41 @@ pub unsafe extern "C" fn ffcrim(
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
-pub unsafe fn ffcrim_safer(
+pub fn ffcrim_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
     naxes: &[c_long],    /* I - size of each axis           */
     status: &mut c_int,  /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
-
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /* create new extension if current header is not empty */
-        let h = fptr.Fptr.get_headstart_as_slice();
-        if fptr.Fptr.headend != h[fptr.Fptr.curhdu as usize] {
-            ffcrhd_safer(fptr, status);
-        }
-
-        /* write the required header keywords */
-        ffphpr_safe(
-            fptr,
-            TRUE as c_int,
-            bitpix,
-            naxis,
-            naxes,
-            0,
-            1,
-            TRUE as c_int,
-            status,
-        );
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /* create new extension if current header is not empty */
+    let h = fptr.Fptr.get_headstart_as_slice();
+    if fptr.Fptr.headend != h[fptr.Fptr.curhdu as usize] {
+        ffcrhd_safe(fptr, status);
+    }
+
+    /* write the required header keywords */
+    ffphpr_safe(
+        fptr,
+        TRUE as c_int,
+        bitpix,
+        naxis,
+        naxes,
+        0,
+        1,
+        TRUE as c_int,
+        status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -150,7 +148,7 @@ pub unsafe fn ffcrimll_safer(
         /* create new extension if current header is not empty */
         let headstart = fptr.Fptr.get_headstart_as_slice();
         if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
-            ffcrhd_safer(fptr, status);
+            ffcrhd_safe(fptr, status);
         }
 
         /* write the required header keywords */
@@ -234,13 +232,13 @@ pub unsafe fn ffcrtb_safer(
         /* create new extension if current header is not empty */
         let headstart = fptr.Fptr.get_headstart_as_slice();
         if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
-            ffcrhd_safer(fptr, status);
+            ffcrhd_safe(fptr, status);
         }
 
         if fptr.Fptr.curhdu == 0 {
             /* have to create dummy primary array */
-            ffcrim_safer(fptr, 16, 0, &[], status);
-            ffcrhd_safer(fptr, status);
+            ffcrim_safe(fptr, 16, 0, &[], status);
+            ffcrhd_safe(fptr, status);
         }
 
         if tbltype == BINARY_TBL {

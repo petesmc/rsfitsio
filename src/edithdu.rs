@@ -6,7 +6,7 @@ use crate::{
     cs,
     editcol::ffcprw_safe,
     fitscore::{
-        ffbnfm_safe, ffcmsg_safe, ffcrhd_safer, ffdblk, ffgabc_safe, ffgext, ffghadll_safe,
+        ffbnfm_safe, ffcmsg_safe, ffcrhd_safe, ffdblk, ffgabc_safe, ffgext, ffghadll_safe,
         ffghdn_safe, ffgidm_safe, ffhdef_safe, ffiblk, ffkeyn_safe, ffmahd_safe, ffpdfl,
         ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safer, ffwend,
     },
@@ -17,7 +17,7 @@ use crate::{
     modkey::{ffdkey_safe, ffikyj_safe, ffukyj_safe},
     nullable_slice_cstr,
     putkey::{
-        ffcrim_safer, ffcrimll_safer, ffcrtb_safer, ffphbn_safe, ffphpr_safe, ffphprll_safe,
+        ffcrim_safe, ffcrimll_safer, ffcrtb_safer, ffphbn_safe, ffphpr_safe, ffphprll_safe,
         ffphtb_safe, ffpkyj_safe, ffpkyl_safe, ffpkys_safe, ffprec_safe,
     },
     wrappers::{strcpy_safe, strncat_safe},
@@ -56,49 +56,47 @@ pub unsafe extern "C" fn ffcopy(
 /*--------------------------------------------------------------------------*/
 /// copy the CHDU from infptr to the CHDU of outfptr.
 /// This will also allocate space in the output header for MOREKY keywords
-pub unsafe fn ffcopy_safer(
+pub fn ffcopy_safer(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     morekeys: c_int,        /* I - reserve space in output header   */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut nspace: c_int = 0;
+    let mut nspace: c_int = 0;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if ffcphd_safer(infptr, outfptr, status) > 0 {
-            /* copy the header keywords */
-            return *status;
-        }
-
-        if morekeys > 0 {
-            ffhdef_safe(outfptr, morekeys, status); /* reserve space for more keywords */
-        } else {
-            if ffghsp_safe(infptr, None, Some(&mut nspace), status) > 0 {
-                /* get existing space */
-                return *status;
-            }
-            if nspace > 0 {
-                ffhdef_safe(outfptr, nspace, status); /* preserve same amount of space */
-                if nspace >= 35 {
-                    /* There is at least 1 full empty FITS block in the header. */
-                    /* Physically write the END keyword at the beginning of the */
-                    /* last block to preserve this extra space now rather than */
-                    /* later.  This is needed by the stream: driver which cannot */
-                    /* seek back to the header to write the END keyword later. */
-
-                    ffwend(outfptr, status);
-                }
-            }
-        }
-
-        ffcpdt_safe(infptr, outfptr, status); /* now copy the data unit */
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if ffcphd_safe(infptr, outfptr, status) > 0 {
+        /* copy the header keywords */
+        return *status;
+    }
+
+    if morekeys > 0 {
+        ffhdef_safe(outfptr, morekeys, status); /* reserve space for more keywords */
+    } else {
+        if ffghsp_safe(infptr, None, Some(&mut nspace), status) > 0 {
+            /* get existing space */
+            return *status;
+        }
+        if nspace > 0 {
+            ffhdef_safe(outfptr, nspace, status); /* preserve same amount of space */
+            if nspace >= 35 {
+                /* There is at least 1 full empty FITS block in the header. */
+                /* Physically write the END keyword at the beginning of the */
+                /* last block to preserve this extra space now rather than */
+                /* later.  This is needed by the stream: driver which cannot */
+                /* seek back to the header to write the END keyword later. */
+
+                ffwend(outfptr, status);
+            }
+        }
+    }
+
+    ffcpdt_safe(infptr, outfptr, status); /* now copy the data unit */
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -127,13 +125,13 @@ pub unsafe extern "C" fn ffcpfl(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
 
-        ffcpfl_safer(infptr, outfptr, previous, current, following, status)
+        ffcpfl_safe(infptr, outfptr, previous, current, following, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// copy all or part of the input file to the output file.
-pub unsafe fn ffcpfl_safer(
+pub fn ffcpfl_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     previous: c_int,        /* I - copy any previous HDUs?   */
@@ -141,52 +139,50 @@ pub unsafe fn ffcpfl_safer(
     following: c_int,       /* I - copy any following HDUs?   */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut hdunum = 0;
+    let mut hdunum = 0;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        ffghdn_safe(infptr, &mut hdunum);
+    ffghdn_safe(infptr, &mut hdunum);
 
-        if previous != 0 {
-            /* copy any previous HDUs */
-            for ii in 1..(hdunum) {
-                ffmahd_safe(infptr, ii, None, status);
-                ffcopy_safer(infptr, outfptr, 0, status);
-            }
-        }
-
-        if current != 0 && (*status <= 0) {
-            /* copy current HDU */
-            ffmahd_safe(infptr, hdunum, None, status);
+    if previous != 0 {
+        /* copy any previous HDUs */
+        for ii in 1..(hdunum) {
+            ffmahd_safe(infptr, ii, None, status);
             ffcopy_safer(infptr, outfptr, 0, status);
         }
-
-        if following != 0 && (*status <= 0) {
-            /* copy any remaining HDUs */
-            let mut ii = hdunum + 1;
-            loop {
-                if ffmahd_safe(infptr, ii, None, status) != 0 {
-                    /* reset expected end of file status */
-                    if *status == END_OF_FILE {
-                        *status = 0;
-                    }
-                    break;
-                }
-
-                if ffcopy_safer(infptr, outfptr, 0, status) != 0 {
-                    break; /* quit on unexpected error */
-                }
-
-                ii += 1;
-            }
-        }
-
-        ffmahd_safe(infptr, hdunum, None, status); /* restore initial position */
-        *status
     }
+
+    if current != 0 && (*status <= 0) {
+        /* copy current HDU */
+        ffmahd_safe(infptr, hdunum, None, status);
+        ffcopy_safer(infptr, outfptr, 0, status);
+    }
+
+    if following != 0 && (*status <= 0) {
+        /* copy any remaining HDUs */
+        let mut ii = hdunum + 1;
+        loop {
+            if ffmahd_safe(infptr, ii, None, status) != 0 {
+                /* reset expected end of file status */
+                if *status == END_OF_FILE {
+                    *status = 0;
+                }
+                break;
+            }
+
+            if ffcopy_safer(infptr, outfptr, 0, status) != 0 {
+                break; /* quit on unexpected error */
+            }
+
+            ii += 1;
+        }
+    }
+
+    ffmahd_safe(infptr, hdunum, None, status); /* restore initial position */
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -212,179 +208,187 @@ pub unsafe extern "C" fn ffcphd(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
 
-        ffcphd_safer(infptr, outfptr, status)
+        ffcphd_safe(infptr, outfptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// copy the header keywords from infptr to outfptr.
-pub unsafe fn ffcphd_safer(
+pub fn ffcphd_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut nkeys: c_int = 0;
-        let mut inPrim: c_int = 0;
-        let mut outPrim: c_int = 0;
-        let mut naxis: c_long = 0;
-        let naxes: [c_long; 1] = [0; 1];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut nkeys: c_int = 0;
+    let mut inPrim: c_int = 0;
+    let mut outPrim: c_int = 0;
+    let mut naxis: c_long = 0;
+    let naxes: [c_long; 1] = [0; 1];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
-        if *status > 0 {
-            return *status;
-        }
-
-        /* set the input pointer to the correct HDU */
-        if infptr.HDUposition != infptr.Fptr.curhdu {
-            ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
-        }
-
-        if ffghsp_safe(infptr, Some(&mut nkeys), None, status) > 0 {
-            /* get no. of keywords */
-            return *status;
-        }
-
-        /* create a memory buffer to hold the header records */
-        let mut tmpbuff2: Vec<c_char> = Vec::new();
-        vec![0 as c_char; nkeys as usize * FLEN_CARD];
-
-        if tmpbuff2
-            .try_reserve_exact(nkeys as usize * FLEN_CARD)
-            .is_err()
-        {
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            tmpbuff2.resize(nkeys as usize * FLEN_CARD, 0);
-        }
-
-        /* read all of the header records in the input HDU */
-        for ii in 0..(nkeys as usize) {
-            ffgrec_safe(
-                infptr,
-                ii as c_int + 1,
-                Some(&mut tmpbuff2[(ii * FLEN_CARD)..]),
-                status,
-            );
-        }
-
-        if infptr.HDUposition == 0 {
-            /* set flag if this is the Primary HDU */
-            inPrim = 1;
-        }
-
-        /* if input is an image hdu, get the number of axes */
-        naxis = -1; /* negative if HDU is a table */
-
-        if infptr.Fptr.hdutype == IMAGE_HDU {
-            ffgkyj_safe(infptr, cs!(c"NAXIS"), &mut naxis, None, status);
-        }
-        /* set the output pointer to the correct HDU */
-        if outfptr.HDUposition != outfptr.Fptr.curhdu {
-            ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
-        }
-        /* check if output header is empty; if not create new empty HDU */
-        let headstart = outfptr.Fptr.get_headstart_as_slice()[outfptr.Fptr.curhdu as usize];
-        if outfptr.Fptr.headend != headstart {
-            ffcrhd_safer(outfptr, status);
-        }
-        if outfptr.HDUposition == 0 {
-            if naxis < 0 {
-                /* the input HDU is a table, so we have to create */
-                /* a dummy Primary array before copying it to the output */
-                ffcrim_safer(outfptr, 8, 0, &naxes, status);
-                ffcrhd_safer(outfptr, status); /* create new empty HDU */
-            } else {
-                /* set flag that this is the Primary HDU */
-                outPrim = 1;
-            }
-        }
-
-        if *status > 0 {
-            /* check for errors before proceeding */
-            return *status;
-        }
-
-        if inPrim == 1 && outPrim == 0 {
-            /* copying from primary array to image extension */
-            strcpy_safe(&mut comm, cs!(c"IMAGE extension"));
-            ffpkys_safe(
-                outfptr,
-                cs!(c"XTENSION"),
-                cs!(c"IMAGE"),
-                Some(&comm),
-                status,
-            );
-
-            /* copy BITPIX through NAXISn keywords */
-            for ii in 1..(3 + naxis as usize) {
-                let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                ffprec_safe(outfptr, card, status);
-            }
-
-            strcpy_safe(&mut comm, cs!(c"number of random group parameters"));
-            ffpkyj_safe(outfptr, cs!(c"PCOUNT"), 0, Some(&comm), status);
-
-            strcpy_safe(&mut comm, cs!(c"number of random groups"));
-            ffpkyj_safe(outfptr, cs!(c"GCOUNT"), 1, Some(&comm), status);
-
-            /* copy remaining keywords, excluding EXTEND, and reference COMMENT keywords */
-            for ii in (3 + naxis as usize)..(nkeys as usize) {
-                let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                if FSTRNCMP(card, cs!(c"EXTEND  "), 8) > 0
-                    && FSTRNCMP(
-                        card,
-                        cs!(c"COMMENT   FITS (Flexible Image Transport System) format is"),
-                        58,
-                    ) > 0
-                    && FSTRNCMP(
-                        card,
-                        cs!(c"COMMENT   and Astrophysics', volume 376, page 3"),
-                        47,
-                    ) > 0
-                {
-                    ffprec_safe(outfptr, card, status);
-                }
-            }
-        } else if inPrim == 0 && outPrim == 1 {
-            /* copying between image extension and primary array */
-            strcpy_safe(&mut comm, cs!(c"file does conform to FITS standard"));
-            ffpkyl_safe(outfptr, cs!(c"SIMPLE"), TRUE as c_int, Some(&comm), status);
-
-            /* copy BITPIX through NAXISn keywords */
-            for ii in 1..(3 + naxis as usize) {
-                let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                ffprec_safe(outfptr, card, status);
-            }
-
-            /* add the EXTEND keyword */
-            strcpy_safe(&mut comm, cs!(c"FITS dataset may contain extensions"));
-            ffpkyl_safe(outfptr, cs!(c"EXTEND"), TRUE as c_int, Some(&comm), status);
-
-            /* write standard block of self-documentating comments */
-            ffprec_safe(outfptr, cs!(c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"), status);
-            ffprec_safe(outfptr, cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"), status);
-
-            /* copy remaining keywords, excluding pcount, gcount */
-            for ii in (3 + naxis as usize)..(nkeys as usize) {
-                let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                if FSTRNCMP(card, cs!(c"PCOUNT  "), 8) > 0
-                    && FSTRNCMP(card, cs!(c"GCOUNT  "), 8) > 0
-                {
-                    ffprec_safe(outfptr, card, status);
-                }
-            }
-        } else {
-            /* input and output HDUs are same type; simply copy all keywords */
-            for ii in 0..(nkeys as usize) {
-                let card = &tmpbuff2[(ii * FLEN_CARD)..];
-                ffprec_safe(outfptr, card, status);
-            }
-        }
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    /* set the input pointer to the correct HDU */
+    if infptr.HDUposition != infptr.Fptr.curhdu {
+        ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
+    }
+
+    if ffghsp_safe(infptr, Some(&mut nkeys), None, status) > 0 {
+        /* get no. of keywords */
+        return *status;
+    }
+
+    /* create a memory buffer to hold the header records */
+    let mut tmpbuff2: Vec<c_char> = Vec::new();
+    vec![0 as c_char; nkeys as usize * FLEN_CARD];
+
+    if tmpbuff2
+        .try_reserve_exact(nkeys as usize * FLEN_CARD)
+        .is_err()
+    {
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        tmpbuff2.resize(nkeys as usize * FLEN_CARD, 0);
+    }
+
+    /* read all of the header records in the input HDU */
+    for ii in 0..(nkeys as usize) {
+        ffgrec_safe(
+            infptr,
+            ii as c_int + 1,
+            Some(&mut tmpbuff2[(ii * FLEN_CARD)..]),
+            status,
+        );
+    }
+
+    if infptr.HDUposition == 0 {
+        /* set flag if this is the Primary HDU */
+        inPrim = 1;
+    }
+
+    /* if input is an image hdu, get the number of axes */
+    naxis = -1; /* negative if HDU is a table */
+
+    if infptr.Fptr.hdutype == IMAGE_HDU {
+        ffgkyj_safe(infptr, cs!(c"NAXIS"), &mut naxis, None, status);
+    }
+
+    /* set the output pointer to the correct HDU */
+    if outfptr.HDUposition != outfptr.Fptr.curhdu {
+        ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
+    }
+
+    /* check if output header is empty; if not create new empty HDU */
+    let headstart = outfptr.Fptr.get_headstart_as_slice()[outfptr.Fptr.curhdu as usize];
+    if outfptr.Fptr.headend != headstart {
+        ffcrhd_safe(outfptr, status);
+    }
+    if outfptr.HDUposition == 0 {
+        if naxis < 0 {
+            /* the input HDU is a table, so we have to create */
+            /* a dummy Primary array before copying it to the output */
+            ffcrim_safe(outfptr, 8, 0, &naxes, status);
+            ffcrhd_safe(outfptr, status); /* create new empty HDU */
+        } else {
+            /* set flag that this is the Primary HDU */
+            outPrim = 1;
+        }
+    }
+
+    if *status > 0 {
+        /* check for errors before proceeding */
+        return *status;
+    }
+
+    if inPrim == 1 && outPrim == 0 {
+        /* copying from primary array to image extension */
+        strcpy_safe(&mut comm, cs!(c"IMAGE extension"));
+        ffpkys_safe(
+            outfptr,
+            cs!(c"XTENSION"),
+            cs!(c"IMAGE"),
+            Some(&comm),
+            status,
+        );
+
+        /* copy BITPIX through NAXISn keywords */
+        for ii in 1..(3 + naxis as usize) {
+            let card = &tmpbuff2[(ii * FLEN_CARD)..];
+            ffprec_safe(outfptr, card, status);
+        }
+
+        strcpy_safe(&mut comm, cs!(c"number of random group parameters"));
+        ffpkyj_safe(outfptr, cs!(c"PCOUNT"), 0, Some(&comm), status);
+
+        strcpy_safe(&mut comm, cs!(c"number of random groups"));
+        ffpkyj_safe(outfptr, cs!(c"GCOUNT"), 1, Some(&comm), status);
+
+        /* copy remaining keywords, excluding EXTEND, and reference COMMENT keywords */
+        for ii in (3 + naxis as usize)..(nkeys as usize) {
+            let card = &tmpbuff2[(ii * FLEN_CARD)..];
+            if FSTRNCMP(card, cs!(c"EXTEND  "), 8) > 0
+                && FSTRNCMP(
+                    card,
+                    cs!(c"COMMENT   FITS (Flexible Image Transport System) format is"),
+                    58,
+                ) > 0
+                && FSTRNCMP(
+                    card,
+                    cs!(c"COMMENT   and Astrophysics', volume 376, page 3"),
+                    47,
+                ) > 0
+            {
+                ffprec_safe(outfptr, card, status);
+            }
+        }
+    } else if inPrim == 0 && outPrim == 1 {
+        /* copying between image extension and primary array */
+        strcpy_safe(&mut comm, cs!(c"file does conform to FITS standard"));
+        ffpkyl_safe(outfptr, cs!(c"SIMPLE"), TRUE as c_int, Some(&comm), status);
+
+        /* copy BITPIX through NAXISn keywords */
+        for ii in 1..(3 + naxis as usize) {
+            let card = &tmpbuff2[(ii * FLEN_CARD)..];
+            ffprec_safe(outfptr, card, status);
+        }
+
+        /* add the EXTEND keyword */
+        strcpy_safe(&mut comm, cs!(c"FITS dataset may contain extensions"));
+        ffpkyl_safe(outfptr, cs!(c"EXTEND"), TRUE as c_int, Some(&comm), status);
+
+        /* write standard block of self-documentating comments */
+        ffprec_safe(
+            outfptr,
+            cs!(
+                c"COMMENT   FITS (Flexible Image Transport System) format is defined in 'Astronomy"
+            ),
+            status,
+        );
+        ffprec_safe(
+            outfptr,
+            cs!(c"COMMENT   and Astrophysics', volume 376, page 359; bibcode: 2001A&A...376..359H"),
+            status,
+        );
+
+        /* copy remaining keywords, excluding pcount, gcount */
+        for ii in (3 + naxis as usize)..(nkeys as usize) {
+            let card = &tmpbuff2[(ii * FLEN_CARD)..];
+            if FSTRNCMP(card, cs!(c"PCOUNT  "), 8) > 0 && FSTRNCMP(card, cs!(c"GCOUNT  "), 8) > 0 {
+                ffprec_safe(outfptr, card, status);
+            }
+        }
+    } else {
+        /* input and output HDUs are same type; simply copy all keywords */
+        for ii in 0..(nkeys as usize) {
+            let card = &tmpbuff2[(ii * FLEN_CARD)..];
+            ffprec_safe(outfptr, card, status);
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -427,7 +431,7 @@ pub unsafe fn ffcpht_safer(
         }
 
         /* Copy the header only */
-        ffcphd_safer(infptr, outfptr, status);
+        ffcphd_safe(infptr, outfptr, status);
         /* Note that we now have a copied header that describes the table,
         and that is the current header, but the original number of table
         rows and heap area sizes are still there. */

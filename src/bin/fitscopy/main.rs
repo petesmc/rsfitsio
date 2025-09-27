@@ -8,12 +8,12 @@ use rsfitsio::fitsio::READONLY;
 
 use rsfitsio::STDERR;
 
-use rsfitsio::{aliases::rust_api::fits_open_file, fitsio::fitsfile};
-
-use rsfitsio::cfileio::ffclos as fits_close_file;
-use rsfitsio::cfileio::ffinit as fits_create_file;
-use rsfitsio::cfileio::ffrprt as fits_report_error;
-use rsfitsio::edithdu::ffcpfl as fits_copy_file;
+use rsfitsio::{
+    aliases::rust_api::{
+        fits_close_file, fits_copy_file, fits_create_file, fits_open_file, fits_report_error,
+    },
+    fitsio::fitsfile,
+};
 
 pub fn main() -> ExitCode {
     /* FITS file pointers defined in fitsio.h */
@@ -61,35 +61,35 @@ pub fn main() -> ExitCode {
     let infile = CString::new(args[1].clone()).unwrap();
     let outfile = CString::new(args[2].clone()).unwrap();
 
-    unsafe {
-        /* Open the input file */
-        if fits_open_file(
-            &mut infptr,
-            cast_slice(infile.to_bytes_with_nul()),
-            READONLY,
-            &mut status,
-        ) == 0
-        {
-            /* Create the output file */
-            if fits_create_file(&mut outfptr, outfile.as_ptr(), &mut status) == 0 {
-                /* copy the previous, current, and following HDUs */
-                fits_copy_file(
-                    infptr.as_deref_mut().unwrap(),
-                    outfptr.as_deref_mut().unwrap(),
-                    1,
-                    1,
-                    1,
-                    &mut status,
-                );
+    /* Open the input file */
+    if fits_open_file(
+        &mut infptr,
+        cast_slice(infile.to_bytes_with_nul()),
+        READONLY,
+        &mut status,
+    ) == 0
+    {
+        /* Create the output file */
+        if fits_create_file(&mut outfptr, outfile.as_bytes_with_nul(), &mut status) == 0 {
+            /* copy the previous, current, and following HDUs */
+            fits_copy_file(
+                infptr.as_deref_mut().unwrap(),
+                outfptr.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                &mut status,
+            );
 
-                fits_close_file(outfptr, &mut status);
-            }
-
-            fits_close_file(infptr, &mut status);
+            fits_close_file(outfptr.unwrap(), &mut status);
         }
 
-        /* if error occured, print out error message */
-        if status != 0 {
+        fits_close_file(infptr.unwrap(), &mut status);
+    }
+
+    /* if error occured, print out error message */
+    if status != 0 {
+        unsafe {
             fits_report_error(STDERR!(), status);
         }
     }

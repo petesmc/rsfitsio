@@ -25,14 +25,14 @@ use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, rea
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use crate::cfileio::ffclos_safer;
+use crate::cfileio::ffclos_safe;
 use crate::cfileio::{MAX_PREFIX_LEN, ffimem_safer};
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::iraffits::iraf2mem;
-use crate::putkey::ffcrim_safer;
+use crate::putkey::ffcrim_safe;
 use crate::swapproc::{ffswap2, ffswap4, ffswap8};
 use crate::wrappers::*;
 use crate::zcompress::{compress2file_from_mem, uncompress2mem, uncompress2mem_from_mem};
@@ -1078,10 +1078,10 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
         let mut fptr = fptr.unwrap();
 
         /* write the required header keywords */
-        ffcrim_safer(&mut fptr, datatype, naxis, &dim, &mut status);
+        ffcrim_safe(&mut fptr, datatype, naxis, &dim, &mut status);
 
         /* close the FITS file, but keep the memory allocated */
-        ffclos_safer(fptr, &mut status);
+        ffclos_safe(fptr, &mut status);
 
         if status > 0 {
             ffpmsg_str("failed to write basic image header (mem_rawfile_open)");

@@ -656,6 +656,9 @@ pub mod c_api {
     pub use crate::cfileio::ffihtps as fits_init_https;
     pub use crate::cfileio::ffvhtps as fits_verbose_https;
 
+    // Exposed by no aliases
+    pub use crate::fitscore::fits_is_compressed_image;
+
     pub mod unofficial {
         use crate::c_types::{c_int, c_long, c_void};
         use crate::fitsio::{FITSfile, LONGLONG};
@@ -750,17 +753,17 @@ pub mod rust_api {
 
     pub use crate::buffers::ffflsh_safe as fits_flush_buffer;
     pub use crate::buffers::ffflus_safer as fits_flush_file;
-    pub use crate::cfileio::ffclos_safer as fits_close_file;
+    pub use crate::cfileio::ffclos_safe as fits_close_file;
     pub use crate::cfileio::ffdelt_safer as fits_delete_file;
     pub use crate::cfileio::ffdkinit_safer as fits_create_diskfile;
     pub use crate::cfileio::ffdkopn_safer as fits_open_diskfile;
     pub use crate::cfileio::ffdopn_safer as fits_open_data;
-    pub use crate::cfileio::ffeopn_safer as fits_open_extlist;
+    pub use crate::cfileio::ffeopn_safe as fits_open_extlist;
     pub use crate::cfileio::ffimem_safer as fits_create_memfile;
     pub use crate::cfileio::ffinit_safe as fits_create_file;
     pub use crate::cfileio::ffiopn_safer as fits_open_image;
     pub use crate::cfileio::ffreopen_safer as fits_reopen_file;
-    pub use crate::cfileio::fftopn_safer as fits_open_table;
+    pub use crate::cfileio::fftopn_safe as fits_open_table;
     pub use crate::cfileio::fftplt_safer as fits_create_template;
     pub use crate::cfileio::ffurlt_safe as fits_url_type;
     pub use crate::fitscore::ffflmd_safe as fits_file_mode;
@@ -966,19 +969,19 @@ pub mod rust_api {
     pub use crate::edithdu::ffiimg_safer as fits_insert_img;
     pub use crate::edithdu::ffiimgll_safer as fits_insert_imgll;
     pub use crate::edithdu::ffitab_safe as fits_insert_atbl;
-    pub use crate::fitscore::ffcrhd_safer as fits_create_hdu;
+    pub use crate::fitscore::ffcrhd_safe as fits_create_hdu;
     pub use crate::fitscore::ffmahd_safe as fits_movabs_hdu;
     pub use crate::fitscore::ffmnhd_safe as fits_movnam_hdu;
     pub use crate::fitscore::ffmrhd_safe as fits_movrel_hdu;
     pub use crate::fitscore::ffthdu_safe as fits_get_num_hdus;
-    pub use crate::putkey::ffcrim_safer as fits_create_img;
+    pub use crate::putkey::ffcrim_safe as fits_create_img;
     pub use crate::putkey::ffcrimll_safer as fits_create_imgll;
     pub use crate::putkey::ffcrtb_safer as fits_create_tbl;
 
     pub use crate::edithdu::ffcopy_safer as fits_copy_hdu;
     pub use crate::edithdu::ffcpdt_safe as fits_copy_data;
-    pub use crate::edithdu::ffcpfl_safer as fits_copy_file;
-    pub use crate::edithdu::ffcphd_safer as fits_copy_header;
+    pub use crate::edithdu::ffcpfl_safe as fits_copy_file;
+    pub use crate::edithdu::ffcphd_safe as fits_copy_header;
     pub use crate::edithdu::ffcpht_safer as fits_copy_hdutab;
     pub use crate::edithdu::ffdhdu_safer as fits_delete_hdu;
     pub use crate::edithdu::ffwrhdu_safer as fits_write_hdu;
@@ -1352,4 +1355,7 @@ pub mod rust_api {
     pub use crate::cfileio::ffchtps_safer as fits_cleanup_https;
     pub use crate::cfileio::ffihtps_safer as fits_init_https;
     pub use crate::cfileio::ffvhtps_safer as fits_verbose_https;
+
+    // Exposed by no aliases
+    pub use crate::fitscore::fits_is_compressed_image_safe as fits_is_compressed_image;
 }

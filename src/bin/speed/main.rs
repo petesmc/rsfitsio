@@ -1,5 +1,7 @@
 #![allow(deprecated)]
 
+// Purposed keep using the C API so that we can switch out the linked library to test speed
+
 use std::ffi::CString;
 use std::fs::{File, remove_file};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};

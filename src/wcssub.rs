@@ -17,7 +17,7 @@ use crate::fitsio::*;
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkey_safe, ffgkyd_safe, ffgkyj_safe, ffgkys_safe, ffgtdm_safe, ffh2st_safe};
 use crate::histo::fits_write_keys_histo_safe;
-use crate::putkey::{ffcrim_safer, ffi2c};
+use crate::putkey::{ffcrim_safe, ffi2c};
 use crate::wrappers::*;
 use crate::{bb, cs};
 
@@ -1039,7 +1039,7 @@ pub unsafe fn ffgtcs_safer(
         let mut tptr = tptr.unwrap();
 
         /* create a temporary image; the datatype and size are not important */
-        ffcrim_safer(&mut tptr, 32, 2, &naxes, status);
+        ffcrim_safe(&mut tptr, 32, 2, &naxes, status);
 
         /* now copy the relevant keywords from the table to the image */
         fits_copy_pixlist2image_safe(fptr, &mut tptr, 9, 2, &colnum, status);

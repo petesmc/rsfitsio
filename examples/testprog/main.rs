@@ -7,11 +7,11 @@ use std::{ffi::CStr, process::ExitCode};
 
 use bytemuck::cast_slice;
 
-use libc::{c_int, c_long, c_short, c_uchar, free, malloc, strcpy};
+use libc::{free, malloc, strcpy};
 
 use rsfitsio::aliases::c_api::fits_open_file;
 use rsfitsio::buffers::{ffflus, ffgtbb, ffptbb};
-use rsfitsio::c_types::{c_char, c_ulong};
+use rsfitsio::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_ulong};
 use rsfitsio::cfileio::{ffdelt, ffinit};
 use rsfitsio::checksum::{ffdsum, ffesum, ffgcks, ffpcks, ffupck, ffvcks};
 use rsfitsio::cs;
