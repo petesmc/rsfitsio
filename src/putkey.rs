@@ -120,7 +120,7 @@ pub unsafe extern "C" fn ffcrimll(
 
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        ffcrimll_safer(fptr, bitpix, naxis, naxes, status)
+        ffcrimll_safe(fptr, bitpix, naxis, naxes, status)
     }
 }
 
@@ -129,43 +129,41 @@ pub unsafe extern "C" fn ffcrimll(
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
-pub unsafe fn ffcrimll_safer(
+pub fn ffcrimll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
     naxes: &[LONGLONG],  /* I - size of each axis           */
     status: &mut c_int,  /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
-
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /* create new extension if current header is not empty */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
-            ffcrhd_safe(fptr, status);
-        }
-
-        /* write the required header keywords */
-        ffphprll_safe(
-            fptr,
-            TRUE as c_int,
-            bitpix,
-            naxis,
-            naxes,
-            0,
-            1,
-            TRUE as c_int,
-            status,
-        );
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /* create new extension if current header is not empty */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
+        ffcrhd_safe(fptr, status);
+    }
+
+    /* write the required header keywords */
+    ffphprll_safe(
+        fptr,
+        TRUE as c_int,
+        bitpix,
+        naxis,
+        naxes,
+        0,
+        1,
+        TRUE as c_int,
+        status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -191,7 +189,7 @@ pub unsafe extern "C" fn ffcrtb(
 
         nullable_slice_cstr!(extnm);
 
-        ffcrtb_safer(
+        ffcrtb_safe(
             fptr,
             tbltype,
             naxis2,
@@ -207,7 +205,7 @@ pub unsafe extern "C" fn ffcrtb(
 
 /*--------------------------------------------------------------------------*/
 /// Create a table extension in a FITS file.
-pub unsafe fn ffcrtb_safer(
+pub fn ffcrtb_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     tbltype: c_int,              /* I - type of table to create                  */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
@@ -218,43 +216,41 @@ pub unsafe fn ffcrtb_safer(
     extnm: Option<&[c_char]>,    /* I - value of EXTNAME keyword, if any         */
     status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
-    unsafe {
-        let naxis1: LONGLONG = 0;
+    let naxis1: LONGLONG = 0;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        /* create new extension if current header is not empty */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
-            ffcrhd_safe(fptr, status);
-        }
-
-        if fptr.Fptr.curhdu == 0 {
-            /* have to create dummy primary array */
-            ffcrim_safe(fptr, 16, 0, &[], status);
-            ffcrhd_safe(fptr, status);
-        }
-
-        if tbltype == BINARY_TBL {
-            /* write the required header keywords. This will write PCOUNT = 0 */
-            ffphbn_safe(fptr, naxis2, tfields, ttype, tform, tunit, extnm, 0, status);
-        } else if tbltype == ASCII_TBL {
-            /* write the required header keywords */
-            /* default values for naxis1 and tbcol will be calculated */
-            ffphtb_safe(
-                fptr, naxis1, naxis2, tfields, ttype, None, tform, tunit, extnm, status,
-            );
-        } else {
-            *status = NOT_TABLE;
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    /* create new extension if current header is not empty */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    if fptr.Fptr.headend != headstart[fptr.Fptr.curhdu as usize] {
+        ffcrhd_safe(fptr, status);
+    }
+
+    if fptr.Fptr.curhdu == 0 {
+        /* have to create dummy primary array */
+        ffcrim_safe(fptr, 16, 0, &[], status);
+        ffcrhd_safe(fptr, status);
+    }
+
+    if tbltype == BINARY_TBL {
+        /* write the required header keywords. This will write PCOUNT = 0 */
+        ffphbn_safe(fptr, naxis2, tfields, ttype, tform, tunit, extnm, 0, status);
+    } else if tbltype == ASCII_TBL {
+        /* write the required header keywords */
+        /* default values for naxis1 and tbcol will be calculated */
+        ffphtb_safe(
+            fptr, naxis1, naxis2, tfields, ttype, None, tform, tunit, extnm, status,
+        );
+    } else {
+        *status = NOT_TABLE;
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4943,7 +4939,7 @@ pub unsafe extern "C" fn ffverifydate(
     status: *mut c_int, /* IO - error status */
 ) -> c_int {
     unsafe {
-        let status = status.as_mut().expect("Null status pointer");
+        let status = status.as_mut().expect(NULL_MSG);
         ffverifydate_safe(year, month, day, status)
     }
 }
@@ -5040,7 +5036,8 @@ pub fn ffverifydate_safe(
 }
 
 /*--------------------------------------------------------------------------*/
-/// Put a sequence of numeric keywords with LONGLONG values  
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknjj(
     fptr: *mut fitsfile,        /* I - FITS file pointer */
@@ -5052,36 +5049,99 @@ pub unsafe extern "C" fn ffpknjj(
     status: *mut c_int,         /* IO - error status */
 ) -> c_int {
     unsafe {
-        let status = status.as_mut().expect("Null status pointer");
-        let fptr = fptr.as_mut().expect("Null file pointer");
-        let keyroot = CStr::from_ptr(keyroot);
+        let status = status.as_mut().expect(NULL_MSG);
+        let fptr = fptr.as_mut().expect(NULL_MSG);
         let value = slice::from_raw_parts(value, nkey as usize);
-        let comm = if comm.is_null() {
-            None
-        } else {
-            Some(slice::from_raw_parts(comm, nkey as usize))
+
+        let comm = match comm.is_null() {
+            true => None,
+            false => Some(slice::from_raw_parts(comm, nkey as usize)),
         };
 
-        ffpknjj_safer(fptr, keyroot, nstart, nkey, value, comm, status)
+        let mut v_comm = Vec::new();
+
+        if let Some(comm) = comm {
+            for item in comm {
+                let comm_item = slice::from_raw_parts(*item, FLEN_COMMENT);
+                v_comm.push(comm_item);
+            }
+        }
+
+        raw_to_slice!(keyroot);
+
+        ffpknjj_safe(
+            fptr,
+            keyroot,
+            nstart,
+            nkey,
+            value,
+            if comm.is_some() { Some(&v_comm) } else { None },
+            status,
+        )
     }
 }
 
-/// Put a sequence of numeric keywords with LONGLONG values (safe version)
-pub fn ffpknjj_safer(
-    _fptr: &mut fitsfile,            /* I - FITS file pointer */
-    keyroot: &CStr,                  /* I - root name of keywords */
-    nstart: c_int,                   /* I - starting index number */
-    nkey: c_int,                     /* I - number of keywords to write */
-    _value: &[LONGLONG],             /* I - array of keyword values */
-    _comm: Option<&[*const c_char]>, /* I - array of keyword comments */
-    _status: &mut c_int,             /* IO - error status */
+/*--------------------------------------------------------------------------*/
+/// Write (put) an indexed array of keywords with index numbers between
+/// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+pub fn ffpknjj_safe(
+    fptr: &mut fitsfile,        /* I - FITS file pointer */
+    keyroot: &[c_char],         /* I - root name of keywords */
+    nstart: c_int,              /* I - starting index number */
+    nkey: c_int,                /* I - number of keywords to write */
+    value: &[LONGLONG],         /* I - array of keyword values */
+    comm: Option<&[&[c_char]]>, /* I - array of keyword comments */
+    status: &mut c_int,         /* IO - error status */
 ) -> c_int {
-    todo!(
-        "ffpknjj: Put {} LONGLONG keywords starting from {} with root {}",
-        nkey,
-        nstart,
-        keyroot.to_string_lossy()
-    )
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut ii: c_int;
+    let mut jj: c_int;
+    let mut repeat: c_int;
+    let mut len: usize;
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+    /* check if first comment string is to be repeated for all the keywords */
+    /* by looking to see if the last non-blank character is a '&' char      */
+
+    repeat = 0;
+
+    if let Some(comm) = comm {
+        len = strlen_safe(comm[0]);
+
+        while len > 0 && comm[0][len - 1] == bb(b' ') {
+            len -= 1; /* ignore trailing blanks */
+        }
+
+        if len > 0 && comm[0][len - 1] == bb(b'&') {
+            len = cmp::min(len, FLEN_COMMENT);
+            tcomment[0] = 0;
+            strncat_safe(&mut tcomment, comm[0], len - 1); /* don't copy the final '&' char */
+            repeat = 1;
+        }
+    } else {
+        repeat = 1;
+        tcomment[0] = 0;
+    }
+
+    let mut jj = nstart;
+    for ii in 0..nkey as usize {
+        ffkeyn_safe(keyroot, jj, &mut keyname, status);
+        if repeat != 0 {
+            ffpkyj_safe(fptr, &keyname, value[ii], Some(&tcomment), status);
+        } else {
+            ffpkyj_safe(fptr, &keyname, value[ii], Some(comm.unwrap()[ii]), status);
+        }
+
+        if *status > 0 {
+            return *status;
+        }
+        jj += 1;
+    }
+    return *status;
 }
 
 #[cfg(test)]

@@ -45,82 +45,71 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
                 // Create image HDU
-                unsafe {
-                    fits_create_img(fptr_box, BYTE_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, BYTE_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create BYTE_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
                 // Write image data normally - pixels with value NULL_VALUE should be treated as nulls
-                unsafe {
-                    fits_write_img(
-                        fptr_box,
-                        TBYTE,
-                        1,
-                        nelements as LONGLONG,
-                        cast_slice(&write_data),
-                        &mut status,
-                    );
-                }
+                fits_write_img(
+                    fptr_box,
+                    TBYTE,
+                    1,
+                    nelements as LONGLONG,
+                    cast_slice(&write_data),
+                    &mut status,
+                );
+
                 assert_eq!(status, 0, "Failed to write BYTE_IMG data");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             // Read back the data with null substitution
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_uchar> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TBYTE,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::UByte(SUBSTITUTE_VALUE)), // Don't substitute null values yet
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TBYTE,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::UByte(SUBSTITUTE_VALUE)), // Don't substitute null values yet
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read BYTE_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -146,9 +135,7 @@ mod tests {
             }
 
             // Close file
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -185,80 +172,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, SHORT_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, SHORT_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create SHORT_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_sht(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_sht(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write SHORT_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_short> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TSHORT,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::Short(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TSHORT,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::Short(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read SHORT_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -283,9 +258,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -322,80 +295,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, USHORT_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, USHORT_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create USHORT_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_usht(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_usht(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write USHORT_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<u16> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TUSHORT,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::UShort(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TUSHORT,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::UShort(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read USHORT_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -420,9 +381,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -459,80 +418,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, LONG_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, LONG_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create LONG_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_lng(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_lng(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write LONG_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_long> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TLONG,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::Long(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TLONG,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::Long(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read LONG_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -557,9 +504,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -596,80 +541,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, LONGLONG_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, LONGLONG_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create LONGLONG_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_lnglng(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_lnglng(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write LONGLONG_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_longlong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TLONGLONG,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::LONGLONG(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TLONGLONG,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::LONGLONG(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read LONGLONG_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -694,9 +627,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -727,68 +658,58 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, FLOAT_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, FLOAT_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create FLOAT_IMG");
 
-                unsafe {
-                    fits_write_imgnull_flt(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_flt(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write FLOAT_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_float> = vec![0.0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TFLOAT,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::Float(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TFLOAT,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::Float(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read FLOAT_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -818,9 +739,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -851,68 +770,58 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, DOUBLE_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, DOUBLE_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create DOUBLE_IMG");
 
-                unsafe {
-                    fits_write_imgnull_dbl(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_dbl(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write DOUBLE_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_double> = vec![0.0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TDOUBLE,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::Double(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TDOUBLE,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::Double(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read DOUBLE_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -942,9 +851,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -981,80 +888,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, SBYTE_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, SBYTE_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create SBYTE_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        (NULL_VALUE as i32 + 128) as LONGLONG, // Convert to stored unsigned value
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    (NULL_VALUE as i32 + 128) as LONGLONG, // Convert to stored unsigned value
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_sbyt(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_sbyt(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write SBYTE_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<i8> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TSBYTE,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::Byte(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TSBYTE,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::Byte(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read SBYTE_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -1079,9 +974,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -1118,80 +1011,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, ULONG_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, ULONG_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create ULONG_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_ulng(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_ulng(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write ULONG_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_ulong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TULONG,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::ULong(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TULONG,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::ULong(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read ULONG_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -1216,9 +1097,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }
@@ -1255,80 +1134,68 @@ mod tests {
 
             // Create FITS file and write image
             let filename_cstr = CString::new(filename).unwrap();
-            unsafe {
-                fits_create_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    &mut status,
-                );
-            }
+            fits_create_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                &mut status,
+            );
+
             assert_eq!(status, 0, "Failed to create file");
 
             if let Some(ref mut fptr_box) = fptr {
-                unsafe {
-                    fits_create_img(fptr_box, ULONGLONG_IMG, naxis as c_int, &naxes, &mut status);
-                }
+                fits_create_img(fptr_box, ULONGLONG_IMG, naxis as c_int, &naxes, &mut status);
+
                 assert_eq!(status, 0, "Failed to create ULONGLONG_IMG");
 
                 // Set BLANK keyword to define null value for integer image
-                unsafe {
-                    fits_update_key_lng(
-                        fptr_box,
-                        cs!(c"BLANK"),
-                        NULL_VALUE as LONGLONG,
-                        None,
-                        &mut status,
-                    );
-                }
+                fits_update_key_lng(
+                    fptr_box,
+                    cs!(c"BLANK"),
+                    NULL_VALUE as LONGLONG,
+                    None,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to set BLANK keyword");
 
-                unsafe {
-                    fits_write_imgnull_ulnglng(
-                        fptr_box,
-                        1, // group
-                        1, // firstelem
-                        nelements as LONGLONG,
-                        &write_data,
-                        NULL_VALUE,
-                        &mut status,
-                    );
-                }
+                fits_write_imgnull_ulnglng(
+                    fptr_box,
+                    1, // group
+                    1, // firstelem
+                    nelements as LONGLONG,
+                    &write_data,
+                    NULL_VALUE,
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to write ULONGLONG_IMG data with nulls");
             }
 
             // Close and reopen for reading
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file");
 
             fptr = None;
-            unsafe {
-                fits_open_file(
-                    &mut fptr,
-                    cast_slice(filename_cstr.to_bytes_with_nul()),
-                    READWRITE,
-                    &mut status,
-                );
-            }
+            fits_open_file(
+                &mut fptr,
+                cast_slice(filename_cstr.to_bytes_with_nul()),
+                READWRITE,
+                &mut status,
+            );
             assert_eq!(status, 0, "Failed to open file for reading");
 
             if let Some(ref mut fptr_box) = fptr {
                 let mut read_data: Vec<c_ulonglong> = vec![0; nelements];
                 let mut anynull: c_int = 0;
 
-                unsafe {
-                    fits_read_img(
-                        fptr_box,
-                        TULONGLONG,
-                        1,
-                        nelements as LONGLONG,
-                        Some(NullValue::ULONGLONG(SUBSTITUTE_VALUE)),
-                        cast_slice_mut(&mut read_data),
-                        Some(&mut anynull),
-                        &mut status,
-                    );
-                }
+                fits_read_img(
+                    fptr_box,
+                    TULONGLONG,
+                    1,
+                    nelements as LONGLONG,
+                    Some(NullValue::ULONGLONG(SUBSTITUTE_VALUE)),
+                    cast_slice_mut(&mut read_data),
+                    Some(&mut anynull),
+                    &mut status,
+                );
                 assert_eq!(status, 0, "Failed to read ULONGLONG_IMG data");
                 assert_eq!(anynull, 1, "Should have detected null values");
 
@@ -1353,9 +1220,7 @@ mod tests {
                 }
             }
 
-            unsafe {
-                fits_close_file(fptr.take().unwrap(), &mut status);
-            }
+            fits_close_file(fptr.take().unwrap(), &mut status);
             assert_eq!(status, 0, "Failed to close file after reading");
         });
     }

@@ -177,9 +177,7 @@ fn readtable(filename: &str, query: &str, expected_rows: usize) {
     }
 
     if let Some(fptr_box) = fptr {
-        unsafe {
-            fits_close_file(fptr_box, &mut status);
-        }
+        fits_close_file(fptr_box, &mut status);
         assert_eq!(status, 0);
     }
 }

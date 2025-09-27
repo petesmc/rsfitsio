@@ -17,7 +17,7 @@ use crate::{
     modkey::{ffdkey_safe, ffikyj_safe, ffukyj_safe},
     nullable_slice_cstr,
     putkey::{
-        ffcrim_safe, ffcrimll_safer, ffcrtb_safer, ffphbn_safe, ffphpr_safe, ffphprll_safe,
+        ffcrim_safe, ffcrimll_safe, ffcrtb_safe, ffphbn_safe, ffphpr_safe, ffphprll_safe,
         ffphtb_safe, ffpkyj_safe, ffpkyl_safe, ffpkys_safe, ffprec_safe,
     },
     wrappers::{strcpy_safe, strncat_safe},
@@ -409,7 +409,7 @@ pub unsafe extern "C" fn ffcpht(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
 
-        ffcpht_safer(infptr, outfptr, firstrow, nrows, status)
+        ffcpht_safe(infptr, outfptr, firstrow, nrows, status)
     }
 }
 
@@ -418,40 +418,38 @@ pub unsafe extern "C" fn ffcpht(
 /// copy a limited row range.  All header keywords from the input
 /// table are copied directly, but NAXSI2 and PCOUNT are set to their
 /// correct values.
-pub unsafe fn ffcpht_safer(
+pub fn ffcpht_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
     firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
     nrows: LONGLONG,        /* I - number of rows to copy  */
     status: &mut c_int,     /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            return *status;
-        }
-
-        /* Copy the header only */
-        ffcphd_safe(infptr, outfptr, status);
-        /* Note that we now have a copied header that describes the table,
-        and that is the current header, but the original number of table
-        rows and heap area sizes are still there. */
-
-        /* Zero out the size-related keywords */
-        if *status == 0 {
-            ffukyj_safe(outfptr, cs!(c"NAXIS2"), 0, None, status); /* NAXIS2 = 0 */
-            ffukyj_safe(outfptr, cs!(c"PCOUNT"), 0, None, status); /* PCOUNT = 0 */
-            /* Update the internal structure variables within CFITSIO now
-            that we have a valid table header */
-            ffrdef_safe(outfptr, status);
-        }
-
-        /* OK now that we have a pristine HDU, copy the requested rows */
-        if *status == 0 && nrows > 0 {
-            ffcprw_safe(infptr, outfptr, firstrow, nrows, status);
-        }
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    /* Copy the header only */
+    ffcphd_safe(infptr, outfptr, status);
+    /* Note that we now have a copied header that describes the table,
+    and that is the current header, but the original number of table
+    rows and heap area sizes are still there. */
+
+    /* Zero out the size-related keywords */
+    if *status == 0 {
+        ffukyj_safe(outfptr, cs!(c"NAXIS2"), 0, None, status); /* NAXIS2 = 0 */
+        ffukyj_safe(outfptr, cs!(c"PCOUNT"), 0, None, status); /* PCOUNT = 0 */
+        /* Update the internal structure variables within CFITSIO now
+        that we have a valid table header */
+        ffrdef_safe(outfptr, status);
+    }
+
+    /* OK now that we have a pristine HDU, copy the requested rows */
+    if *status == 0 && nrows > 0 {
+        ffcprw_safe(infptr, outfptr, firstrow, nrows, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -609,40 +607,38 @@ pub unsafe extern "C" fn ffiimg(
 
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        ffiimg_safer(fptr, bitpix, naxis, naxes, status)
+        ffiimg_safe(fptr, bitpix, naxis, naxes, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// insert an IMAGE extension following the current HDU
-pub unsafe fn ffiimg_safer(
+pub fn ffiimg_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
     naxes: &[c_long],    /* I - size of each axis           */
     status: &mut c_int,  /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut tnaxes: [LONGLONG; 99] = [0; 99];
+    let mut tnaxes: [LONGLONG; 99] = [0; 99];
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if naxis > 99 {
-            ffpmsg_str("NAXIS value is too large (>99)  (ffiimg)");
-            *status = BAD_NAXIS;
-            return *status;
-        }
-
-        for i in 0..(naxis as usize) {
-            tnaxes[i] = naxes[i] as LONGLONG;
-        }
-
-        ffiimgll_safer(fptr, bitpix, naxis, &tnaxes, status);
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if naxis > 99 {
+        ffpmsg_str("NAXIS value is too large (>99)  (ffiimg)");
+        *status = BAD_NAXIS;
+        return *status;
+    }
+
+    for i in 0..(naxis as usize) {
+        tnaxes[i] = naxes[i] as LONGLONG;
+    }
+
+    ffiimgll_safe(fptr, bitpix, naxis, &tnaxes, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -661,238 +657,236 @@ pub unsafe extern "C" fn ffiimgll(
 
         let naxes = slice::from_raw_parts(naxes, naxis as usize);
 
-        ffiimgll_safer(fptr, bitpix, naxis, naxes, status)
+        ffiimgll_safe(fptr, bitpix, naxis, naxes, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// insert an IMAGE extension following the current HDU
-pub unsafe fn ffiimgll_safer(
+pub fn ffiimgll_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     bitpix: c_int,       /* I - bits per pixel              */
     naxis: c_int,        /* I - number of axes in the array */
     naxes: &[LONGLONG],  /* I - size of each axis           */
     status: &mut c_int,  /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut bytlen: c_int = 0;
-        let mut nexthdu: c_int = 0;
-        let mut maxhdu: c_int = 0;
-        let mut onaxis: c_int = 0;
+    let mut bytlen: c_int = 0;
+    let mut nexthdu: c_int = 0;
+    let mut maxhdu: c_int = 0;
+    let mut onaxis: c_int = 0;
 
-        let mut npixels: LONGLONG;
-        let newstart: LONGLONG;
+    let mut npixels: LONGLONG;
+    let newstart: LONGLONG;
 
-        let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut naxiskey: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut naxiskey: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    maxhdu = fptr.Fptr.maxhdu;
+
+    if *status != PREPEND_PRIMARY {
+        /* if the current header is completely empty ...  */
+        /* or, if we are at the end of the file, ... */
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        if (fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize])
+            || (((fptr.Fptr.curhdu) == maxhdu)
+                && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
+        {
+            /* then simply append new image extension */
+            ffcrimll_safe(fptr, bitpix, naxis, naxes, status);
+            return *status;
+        }
+    }
+
+    if bitpix == 8 {
+        bytlen = 1;
+    } else if bitpix == 16 {
+        bytlen = 2;
+    } else if bitpix == 32 || bitpix == -32 {
+        bytlen = 4;
+    } else if bitpix == 64 || bitpix == -64 {
+        bytlen = 8;
+    } else {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "Illegal value for BITPIX keyword: {}",
+            bitpix,
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_BITPIX; /* illegal bitpix value */
+        return *status;
+    }
+
+    if naxis < 0 || naxis > 999 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "Illegal value for NAXIS keyword: {}",
+            naxis,
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_NAXIS;
+        return *status;
+    }
+
+    for ii in 0..(naxis as usize) {
+        if naxes[ii] < 0 {
+            int_snprintf!(
+                &mut errmsg,
+                FLEN_ERRMSG,
+                "Illegal value for NAXIS{} keyword: {}",
+                ii + 1,
+                naxes[ii] as c_long,
+            );
+
+            ffpmsg_slice(&errmsg);
+            *status = BAD_NAXES;
+            return *status;
+        }
+    }
+
+    /* calculate number of pixels in the image */
+    if naxis == 0 {
+        npixels = 0;
+    } else {
+        npixels = naxes[0];
+    }
+
+    for ii in 1..(naxis as usize) {
+        npixels *= naxes[ii];
+    }
+
+    let datasize: LONGLONG = npixels * bytlen as LONGLONG; /* size of image in bytes */
+    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + 1) as c_long; /* +1 for the header */
+
+    if fptr.Fptr.writemode == READWRITE
+    /* must have write access */
+    {
+        /* close the CHDU */
+        ffrdef_safe(fptr, status); /* scan header to redefine structure */
+        ffpdfl(fptr, status); /* insure correct data file values */
+    } else {
+        *status = READONLY_FILE;
+        return *status;
+    }
+
+    if *status == PREPEND_PRIMARY {
+        /* inserting a new primary array; the current primary */
+        /* array must be transformed into an image extension. */
+
+        *status = 0;
+        ffmahd_safe(fptr, 1, None, status); /* move to the primary array */
+
+        ffgidm_safe(fptr, &mut onaxis, status);
+        if onaxis > 0 {
+            ffkeyn_safe(cs!(c"NAXIS"), onaxis, &mut naxiskey, status);
+        } else {
+            strcpy_safe(&mut naxiskey, cs!(c"NAXIS"));
+        }
+
+        ffgcrd_safe(fptr, &naxiskey, &mut card, status); /* read last NAXIS keyword */
+
+        ffikyj_safe(
+            fptr,
+            cs!(c"PCOUNT"),
+            0,
+            Some(cs!(c"required keyword")),
+            status,
+        ); /* add PCOUNT and */
+        ffikyj_safe(
+            fptr,
+            cs!(c"GCOUNT"),
+            1,
+            Some(cs!(c"required keyword")),
+            status,
+        ); /* GCOUNT keywords */
 
         if *status > 0 {
             return *status;
         }
 
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        }
-
-        maxhdu = fptr.Fptr.maxhdu;
-
-        if *status != PREPEND_PRIMARY {
-            /* if the current header is completely empty ...  */
-            /* or, if we are at the end of the file, ... */
-            let headstart = fptr.Fptr.get_headstart_as_slice();
-            if (fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize])
-                || (((fptr.Fptr.curhdu) == maxhdu)
-                    && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
-            {
-                /* then simply append new image extension */
-                ffcrimll_safer(fptr, bitpix, naxis, naxes, status);
-                return *status;
-            }
-        }
-
-        if bitpix == 8 {
-            bytlen = 1;
-        } else if bitpix == 16 {
-            bytlen = 2;
-        } else if bitpix == 32 || bitpix == -32 {
-            bytlen = 4;
-        } else if bitpix == 64 || bitpix == -64 {
-            bytlen = 8;
-        } else {
-            int_snprintf!(
-                &mut errmsg,
-                FLEN_ERRMSG,
-                "Illegal value for BITPIX keyword: {}",
-                bitpix,
-            );
-            ffpmsg_slice(&errmsg);
-            *status = BAD_BITPIX; /* illegal bitpix value */
-            return *status;
-        }
-
-        if naxis < 0 || naxis > 999 {
-            int_snprintf!(
-                &mut errmsg,
-                FLEN_ERRMSG,
-                "Illegal value for NAXIS keyword: {}",
-                naxis,
-            );
-            ffpmsg_slice(&errmsg);
-            *status = BAD_NAXIS;
-            return *status;
-        }
-
-        for ii in 0..(naxis as usize) {
-            if naxes[ii] < 0 {
-                int_snprintf!(
-                    &mut errmsg,
-                    FLEN_ERRMSG,
-                    "Illegal value for NAXIS{} keyword: {}",
-                    ii + 1,
-                    naxes[ii] as c_long,
-                );
-
-                ffpmsg_slice(&errmsg);
-                *status = BAD_NAXES;
-                return *status;
-            }
-        }
-
-        /* calculate number of pixels in the image */
-        if naxis == 0 {
-            npixels = 0;
-        } else {
-            npixels = naxes[0];
-        }
-
-        for ii in 1..(naxis as usize) {
-            npixels *= naxes[ii];
-        }
-
-        let datasize: LONGLONG = npixels * bytlen as LONGLONG; /* size of image in bytes */
-        let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + 1) as c_long; /* +1 for the header */
-
-        if fptr.Fptr.writemode == READWRITE
-        /* must have write access */
-        {
-            /* close the CHDU */
-            ffrdef_safe(fptr, status); /* scan header to redefine structure */
-            ffpdfl(fptr, status); /* insure correct data file values */
-        } else {
-            *status = READONLY_FILE;
-            return *status;
-        }
-
-        if *status == PREPEND_PRIMARY {
-            /* inserting a new primary array; the current primary */
-            /* array must be transformed into an image extension. */
-
+        if ffdkey_safe(fptr, cs!(c"EXTEND"), status) != 0 {
+            /* delete the EXTEND keyword */
             *status = 0;
-            ffmahd_safe(fptr, 1, None, status); /* move to the primary array */
-
-            ffgidm_safe(fptr, &mut onaxis, status);
-            if onaxis > 0 {
-                ffkeyn_safe(cs!(c"NAXIS"), onaxis, &mut naxiskey, status);
-            } else {
-                strcpy_safe(&mut naxiskey, cs!(c"NAXIS"));
-            }
-
-            ffgcrd_safe(fptr, &naxiskey, &mut card, status); /* read last NAXIS keyword */
-
-            ffikyj_safe(
-                fptr,
-                cs!(c"PCOUNT"),
-                0,
-                Some(cs!(c"required keyword")),
-                status,
-            ); /* add PCOUNT and */
-            ffikyj_safe(
-                fptr,
-                cs!(c"GCOUNT"),
-                1,
-                Some(cs!(c"required keyword")),
-                status,
-            ); /* GCOUNT keywords */
-
-            if *status > 0 {
-                return *status;
-            }
-
-            if ffdkey_safe(fptr, cs!(c"EXTEND"), status) != 0 {
-                /* delete the EXTEND keyword */
-                *status = 0;
-            }
-
-            /* redefine internal structure for this HDU */
-            ffrdef_safe(fptr, status);
-
-            /* insert space for the primary array */
-            if ffiblk(fptr, nblocks, -1, status) > 0 {
-                /* insert the blocks */
-                return *status;
-            }
-
-            nexthdu = 0; /* number of the new hdu */
-            newstart = 0; /* starting addr of HDU */
-        } else {
-            let headstart = fptr.Fptr.get_headstart_as_slice();
-            nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
-            newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
-
-            fptr.Fptr.hdutype = IMAGE_HDU; /* so that correct fill value is used */
-            /* ffiblk also increments headstart for all following HDUs */
-            if ffiblk(fptr, nblocks, 1, status) > 0 {
-                /* insert the blocks */
-                return *status;
-            }
         }
-
-        (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
-
-        let maxhdu = fptr.Fptr.maxhdu as usize;
-        let curhdu = fptr.Fptr.curhdu as usize;
-        let mut ii = maxhdu;
-        let headstart = fptr.Fptr.get_headstart_as_mut_slice();
-        while ii > curhdu {
-            headstart[ii + 1] = headstart[ii]; /* incre start addr */
-            ii -= 1;
-        }
-
-        if nexthdu == 0 {
-            headstart[1] = (nblocks * BL!()) as LONGLONG; /* start of the old Primary array */
-        }
-
-        headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
-
-        /* set default parameters for this new empty HDU */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        let hs_item = headstart[nexthdu as usize];
-
-        fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
-        fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
-        fptr.Fptr.nextkey = hs_item;
-        fptr.Fptr.headend = hs_item;
-        fptr.Fptr.datastart = (hs_item) + BL!();
-        fptr.Fptr.hdutype = IMAGE_HDU; /* might need to be reset... */
-
-        /* write the required header keywords */
-        ffphprll_safe(
-            fptr,
-            TRUE as c_int,
-            bitpix,
-            naxis,
-            naxes,
-            0,
-            1,
-            TRUE as c_int,
-            status,
-        );
 
         /* redefine internal structure for this HDU */
         ffrdef_safe(fptr, status);
-        *status
+
+        /* insert space for the primary array */
+        if ffiblk(fptr, nblocks, -1, status) > 0 {
+            /* insert the blocks */
+            return *status;
+        }
+
+        nexthdu = 0; /* number of the new hdu */
+        newstart = 0; /* starting addr of HDU */
+    } else {
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        nexthdu = (fptr.Fptr.curhdu) + 1; /* number of the next (new) hdu */
+        newstart = headstart[nexthdu as usize]; /* save starting addr of HDU */
+
+        fptr.Fptr.hdutype = IMAGE_HDU; /* so that correct fill value is used */
+        /* ffiblk also increments headstart for all following HDUs */
+        if ffiblk(fptr, nblocks, 1, status) > 0 {
+            /* insert the blocks */
+            return *status;
+        }
     }
+
+    (fptr.Fptr.maxhdu) += 1; /* increment known number of HDUs in the file */
+
+    let maxhdu = fptr.Fptr.maxhdu as usize;
+    let curhdu = fptr.Fptr.curhdu as usize;
+    let mut ii = maxhdu;
+    let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+    while ii > curhdu {
+        headstart[ii + 1] = headstart[ii]; /* incre start addr */
+        ii -= 1;
+    }
+
+    if nexthdu == 0 {
+        headstart[1] = (nblocks * BL!()) as LONGLONG; /* start of the old Primary array */
+    }
+
+    headstart[nexthdu as usize] = newstart; /* set starting addr of HDU */
+
+    /* set default parameters for this new empty HDU */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    let hs_item = headstart[nexthdu as usize];
+
+    fptr.Fptr.curhdu = nexthdu; /* we are now located at the next HDU */
+    fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
+    fptr.Fptr.nextkey = hs_item;
+    fptr.Fptr.headend = hs_item;
+    fptr.Fptr.datastart = (hs_item) + BL!();
+    fptr.Fptr.hdutype = IMAGE_HDU; /* might need to be reset... */
+
+    /* write the required header keywords */
+    ffphprll_safe(
+        fptr,
+        TRUE as c_int,
+        bitpix,
+        naxis,
+        naxes,
+        0,
+        1,
+        TRUE as c_int,
+        status,
+    );
+
+    /* redefine internal structure for this HDU */
+    ffrdef_safe(fptr, status);
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -983,19 +977,17 @@ pub fn ffitab_safe(
             && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
     {
         /* then simply append new image extension */
-        unsafe {
-            ffcrtb_safer(
-                fptr,
-                ASCII_TBL,
-                naxis2,
-                tfields,
-                v_ttype,
-                v_tform,
-                v_tunit,
-                Some(&extnm),
-                status,
-            )
-        };
+        ffcrtb_safe(
+            fptr,
+            ASCII_TBL,
+            naxis2,
+            tfields,
+            v_ttype,
+            v_tform,
+            v_tunit,
+            Some(&extnm),
+            status,
+        );
         return *status;
     }
 
@@ -1213,19 +1205,17 @@ pub fn ffibin_safe(
    (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize ) )
     {
         /* then simply append new image extension */
-        unsafe {
-            ffcrtb_safer(
-                fptr,
-                BINARY_TBL,
-                naxis2,
-                tfields,
-                v_ttype,
-                v_tform,
-                v_tunit,
-                Some(&extnm),
-                status,
-            )
-        };
+        ffcrtb_safe(
+            fptr,
+            BINARY_TBL,
+            naxis2,
+            tfields,
+            v_ttype,
+            v_tform,
+            v_tunit,
+            Some(&extnm),
+            status,
+        );
         return *status;
     }
 

@@ -223,19 +223,17 @@ fn writeascii() {
         let ttype_opts: Vec<Option<&[c_char]>> = ttype.iter().map(|s| Some(*s)).collect();
         let tunit_opts: Vec<Option<&[c_char]>> = tunit.iter().map(|s| Some(*s)).collect();
 
-        if unsafe {
-            fits_create_tbl(
-                fptr_box,
-                ASCII_TBL,
-                nrows,
-                tfields,
-                &ttype_opts,
-                &tform,
-                Some(&tunit_opts),
-                Some(cast_slice(extname_cstr.to_bytes_with_nul())),
-                &mut status,
-            )
-        } != 0
+        if fits_create_tbl(
+            fptr_box,
+            ASCII_TBL,
+            nrows,
+            tfields,
+            &ttype_opts,
+            &tform,
+            Some(&tunit_opts),
+            Some(cast_slice(extname_cstr.to_bytes_with_nul())),
+            &mut status,
+        ) != 0
         {
             printerror(status);
         }
@@ -488,19 +486,17 @@ fn writebintable() {
         let ttype_opts: Vec<Option<&[c_char]>> = ttype.iter().map(|s| Some(*s)).collect();
         let tunit_opts: Vec<Option<&[c_char]>> = tunit.iter().map(|s| Some(*s)).collect();
 
-        if unsafe {
-            fits_create_tbl(
-                fptr_box,
-                BINARY_TBL,
-                nrows,
-                tfields,
-                &ttype_opts,
-                &tform,
-                Some(&tunit_opts),
-                Some(cast_slice(extname_cstr.to_bytes_with_nul())),
-                &mut status,
-            )
-        } != 0
+        if fits_create_tbl(
+            fptr_box,
+            BINARY_TBL,
+            nrows,
+            tfields,
+            &ttype_opts,
+            &tform,
+            Some(&tunit_opts),
+            Some(cast_slice(extname_cstr.to_bytes_with_nul())),
+            &mut status,
+        ) != 0
         {
             printerror(status);
         }
@@ -1621,7 +1617,7 @@ fn read_binary_table() {
     let expected_planets = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn"];
     // For logical values, FITS uses 1 for T and 0 for F when stored internally
     let expected_active: [c_char; 6] = [1, 1, 1, 1, 1, 0]; // 1=T, 0=F
-    let expected_flags: [c_uchar; 6] = [
+    let _expected_flags: [c_uchar; 6] = [
         0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001,
     ];
     let expected_category: [c_uchar; 6] = [1, 2, 3, 4, 5, 6];

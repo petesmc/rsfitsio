@@ -76,7 +76,7 @@ use crate::eval_l::{
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, gtifilt_fct, regfilt_fct};
 use crate::fitscore::{
-    ffcmph_safer, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
+    ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
 };
 use crate::fitscore::{ffpmsg_slice, ffpmsg_str, ffrdef_safe};
@@ -95,7 +95,9 @@ use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_s
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
 use crate::region::{SAORegion, fits_free_region};
-use crate::wrappers::{strcat, strcpy, strlen, strlen_safe, strncpy_safe};
+use crate::wrappers::{
+    strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe,
+};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
@@ -661,7 +663,7 @@ pub fn ffsrow_safe(
         FREE!(Info.dataPtr);
         ffcprs(&mut lParse);
 
-        ffcmph_safer(outfptr, status); /* compress heap, deleting any orphaned data */
+        ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
         *status
     }
 }
@@ -904,383 +906,372 @@ pub fn ffcalc_rng_safe(
     end: &[c_long],         /* I - Row range info                   */
     status: &mut c_int,     /* O - Error status                     */
 ) -> c_int {
-    unsafe {
-        let mut Info: parseInfo = Default::default();
-        let mut naxis: c_int = 0;
-        let constant: c_int;
-        let mut typecode: c_int = 0;
-        let mut newNullKwd: c_int = 0;
-        let mut nelem: c_long = 0;
-        let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
-        let mut repeat: c_long = 0;
-        let mut width: c_long = 0;
-        let col_cnt: c_int;
-        let mut colNo: c_int;
-        let result: &mut Node;
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut tform: [c_char; 16] = [0; 16];
-        let mut nullKwd: [c_char; 9] = [0; 9];
-        let mut tdimKwd: [c_char; 9] = [0; 9];
-        let mut lParse: ParseData = ParseData::default();
+    let mut Info: parseInfo = Default::default();
+    let mut naxis: c_int = 0;
+    let constant: c_int;
+    let mut typecode: c_int = 0;
+    let mut newNullKwd: c_int = 0;
+    let mut nelem: c_long = 0;
+    let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+    let col_cnt: c_int;
+    let mut colNo: c_int;
+    let result: &mut Node;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tform: [c_char; 16] = [0; 16];
+    let mut nullKwd: [c_char; 9] = [0; 9];
+    let mut tdimKwd: [c_char; 9] = [0; 9];
+    let mut lParse: ParseData = ParseData::default();
 
-        let mut parInfo = parInfo;
+    let mut parInfo = parInfo;
 
-        if *status != 0 {
-            return *status;
-        }
+    if *status != 0 {
+        return *status;
+    }
 
-        if ffiprs(
-            infptr,
-            0,
-            expr,
-            MAXDIMS,
-            &mut Info.datatype,
-            &mut nelem,
-            &mut naxis,
-            &mut naxes,
-            &mut lParse,
-            status,
-        ) != 0
-        {
-            ffcprs(&mut lParse);
-            return *status;
-        }
-        if nelem < 0 {
-            constant = 1;
-            nelem = -nelem;
+    if ffiprs(
+        infptr,
+        0,
+        expr,
+        MAXDIMS,
+        &mut Info.datatype,
+        &mut nelem,
+        &mut naxis,
+        &mut naxes,
+        &mut lParse,
+        status,
+    ) != 0
+    {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    if nelem < 0 {
+        constant = 1;
+        nelem = -nelem;
+    } else {
+        constant = 0;
+    }
+
+    Info.parseData = &mut lParse;
+    /*  Case (1): If column exists put it there  */
+
+    colNo = 0;
+    ffpmrk_safe(); /* prevent lack of column name from sullying the stack */
+    ffgcno_safe(outfptr, CASEINSEN as c_int, parName, &mut colNo, status);
+    ffcmsg_safe();
+    if *status == 0 {
+        /*  Output column doesn't exist.  Test for keyword. */
+
+        /* Case (2): Does parName indicate result should be put into keyword */
+
+        *status = 0;
+        if parName[0] == b'#' as c_char {
+            if constant == 0 {
+                ffcprs(&mut lParse);
+                ffpmsg_str("Cannot put tabular result into keyword (ffcalc)");
+                *status = PARSE_BAD_TYPE;
+                return *status;
+            }
+            let parName = &parName[1..]; /* Advance past '#' */
+            if (fits_strcasecmp(parName, cs!(c"HISTORY")) == 0
+                || fits_strcasecmp(parName, cs!(c"COMMENT")) == 0)
+                && Info.datatype != TSTRING
+            {
+                ffcprs(&mut lParse);
+                ffpmsg_str("HISTORY and COMMENT values must be strings (ffcalc)");
+                *status = PARSE_BAD_TYPE;
+                return *status;
+            }
+        } else if constant != 0 {
+            /* Case (3): Does a keyword named parName already exist */
+
+            if ffgcrd_safe(outfptr, parName, &mut card, status) == KEY_NO_EXIST {
+                colNo = -1;
+            } else if *status != 0 {
+                ffcprs(&mut lParse);
+                return *status;
+            }
         } else {
-            constant = 0;
+            colNo = -1;
         }
 
-        Info.parseData = &mut lParse;
-        /*  Case (1): If column exists put it there  */
-
-        colNo = 0;
-        ffpmrk_safe(); /* prevent lack of column name from sullying the stack */
-        ffgcno_safe(outfptr, CASEINSEN as c_int, parName, &mut colNo, status);
-        ffcmsg_safe();
-        if *status == 0 {
-            /*  Output column doesn't exist.  Test for keyword. */
-
-            /* Case (2): Does parName indicate result should be put into keyword */
+        if colNo < 0 {
+            /* Case (4): Create new column */
 
             *status = 0;
-            if parName[0] == b'#' as c_char {
-                if constant == 0 {
-                    ffcprs(&mut lParse);
-                    ffpmsg_str("Cannot put tabular result into keyword (ffcalc)");
-                    *status = PARSE_BAD_TYPE;
-                    return *status;
+            ffgncl_safe(outfptr, &mut colNo, status);
+            colNo += 1;
+            if parInfo.is_empty() || parInfo[0] == 0 {
+                /*  Figure out best default column type  */
+                if lParse.hdutype == BINARY_TBL {
+                    int_snprintf!(&mut tform, 15, "{}", nelem);
+                    match Info.datatype {
+                        TLOGICAL => {
+                            strcat_safe(&mut tform, cs!(c"L"));
+                        }
+                        TLONG => {
+                            strcat_safe(&mut tform, cs!(c"J"));
+                        }
+                        TDOUBLE => {
+                            strcat_safe(&mut tform, cs!(c"D"));
+                        }
+                        TSTRING => {
+                            strcat_safe(&mut tform, cs!(c"A"));
+                        }
+                        TBIT => {
+                            strcat_safe(&mut tform, cs!(c"X"));
+                        }
+                        TLONGLONG => {
+                            strcat_safe(&mut tform, cs!(c"K"));
+                        }
+                        _ => {}
+                    }
+                } else {
+                    match Info.datatype {
+                        TLOGICAL => {
+                            ffcprs(&mut lParse);
+                            ffpmsg_str("Cannot create LOGICAL column in ASCII table");
+                            *status = NOT_BTABLE;
+                            return *status;
+                        }
+                        TLONG => {
+                            strcpy_safe(&mut tform, cs!(c"I11"));
+                        }
+                        TDOUBLE => {
+                            strcpy_safe(&mut tform, cs!(c"D23.15"));
+                        }
+                        TSTRING | TBIT => {
+                            int_snprintf!(&mut tform, 16, "A{}", nelem);
+                        }
+                        _ => {}
+                    }
                 }
-                let parName = &parName[1..]; /* Advance past '#' */
-                if (fits_strcasecmp(parName, cs!(c"HISTORY")) == 0
-                    || fits_strcasecmp(parName, cs!(c"COMMENT")) == 0)
-                    && Info.datatype != TSTRING
-                {
-                    ffcprs(&mut lParse);
-                    ffpmsg_str("HISTORY and COMMENT values must be strings (ffcalc)");
-                    *status = PARSE_BAD_TYPE;
-                    return *status;
+                parInfo = &tform;
+            } else if !((parInfo[0] as u8) as char).is_ascii_digit() && lParse.hdutype == BINARY_TBL
+            {
+                if Info.datatype == TBIT && parInfo[0] == b'B' as c_char {
+                    nelem = (nelem + 7) / 8;
                 }
-            } else if constant != 0 {
-                /* Case (3): Does a keyword named parName already exist */
+                int_snprintf!(
+                    &mut tform,
+                    16,
+                    "{}{}",
+                    nelem,
+                    std::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
+                );
+                parInfo = &tform;
+            }
+            fficol_safe(outfptr, colNo, parName, parInfo, status);
 
-                if ffgcrd_safe(outfptr, parName, &mut card, status) == KEY_NO_EXIST {
-                    colNo = -1;
-                } else if *status != 0 {
-                    ffcprs(&mut lParse);
-                    return *status;
-                }
-            } else {
-                colNo = -1;
+            if naxis > 1 {
+                ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
             }
 
-            if colNo < 0 {
-                /* Case (4): Create new column */
+            /*  Setup TNULLn keyword in case NULLs are encountered  */
 
+            ffkeyn_safe(cs!(c"TNULL"), colNo, &mut nullKwd, status);
+            if ffgcrd_safe(outfptr, &nullKwd, &mut card, status) == KEY_NO_EXIST {
                 *status = 0;
-                ffgncl_safe(outfptr, &mut colNo, status);
-                colNo += 1;
-                if parInfo.is_empty() || parInfo[0] == 0 {
-                    /*  Figure out best default column type  */
-                    if lParse.hdutype == BINARY_TBL {
-                        int_snprintf!(&mut tform, 15, "{}", nelem);
-                        match Info.datatype {
-                            TLOGICAL => {
-                                strcat(tform.as_mut_ptr(), (c"L").as_ptr());
-                            }
-                            TLONG => {
-                                strcat(tform.as_mut_ptr(), (c"J").as_ptr());
-                            }
-                            TDOUBLE => {
-                                strcat(tform.as_mut_ptr(), (c"D").as_ptr());
-                            }
-                            TSTRING => {
-                                strcat(tform.as_mut_ptr(), (c"A").as_ptr());
-                            }
-                            TBIT => {
-                                strcat(tform.as_mut_ptr(), (c"X").as_ptr());
-                            }
-                            TLONGLONG => {
-                                strcat(tform.as_mut_ptr(), (c"K").as_ptr());
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        match Info.datatype {
-                            TLOGICAL => {
-                                ffcprs(&mut lParse);
-                                ffpmsg_str("Cannot create LOGICAL column in ASCII table");
-                                *status = NOT_BTABLE;
-                                return *status;
-                            }
-                            TLONG => {
-                                strcpy(tform.as_mut_ptr(), (c"I11").as_ptr());
-                            }
-                            TDOUBLE => {
-                                strcpy(tform.as_mut_ptr(), (c"D23.15").as_ptr());
-                            }
-                            TSTRING | TBIT => {
-                                int_snprintf!(&mut tform, 16, "A{}", nelem);
-                            }
-                            _ => {}
-                        }
-                    }
-                    parInfo = &tform;
-                } else if !((parInfo[0] as u8) as char).is_ascii_digit()
-                    && lParse.hdutype == BINARY_TBL
-                {
-                    if Info.datatype == TBIT && parInfo[0] == b'B' as c_char {
-                        nelem = (nelem + 7) / 8;
-                    }
-                    int_snprintf!(
-                        &mut tform,
-                        16,
-                        "{}{}",
-                        nelem,
-                        std::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
+                if lParse.hdutype == BINARY_TBL {
+                    let mut nullVal: LONGLONG = 0;
+                    fits_binary_tform(
+                        parInfo,
+                        Some(&mut typecode),
+                        Some(&mut repeat),
+                        Some(&mut width),
+                        status,
                     );
-                    parInfo = &tform;
-                }
-                fficol_safe(outfptr, colNo, parName, parInfo, status);
-
-                if naxis > 1 {
-                    ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
-                }
-
-                /*  Setup TNULLn keyword in case NULLs are encountered  */
-
-                ffkeyn_safe(cs!(c"TNULL"), colNo, &mut nullKwd, status);
-                if ffgcrd_safe(outfptr, &nullKwd, &mut card, status) == KEY_NO_EXIST {
-                    *status = 0;
-                    if lParse.hdutype == BINARY_TBL {
-                        let mut nullVal: LONGLONG = 0;
-                        fits_binary_tform(
-                            parInfo,
-                            Some(&mut typecode),
-                            Some(&mut repeat),
-                            Some(&mut width),
-                            status,
-                        );
-                        if typecode == TBYTE {
-                            nullVal = UCHAR_MAX;
-                        } else if typecode == TSHORT {
-                            nullVal = SHRT_MIN;
-                        } else if typecode == TINT {
+                    if typecode == TBYTE {
+                        nullVal = UCHAR_MAX;
+                    } else if typecode == TSHORT {
+                        nullVal = SHRT_MIN;
+                    } else if typecode == TINT {
+                        nullVal = INT_MIN;
+                    } else if typecode == TLONG {
+                        if std::mem::size_of::<c_long>() == 8 && std::mem::size_of::<c_int>() == 4 {
                             nullVal = INT_MIN;
-                        } else if typecode == TLONG {
-                            if std::mem::size_of::<c_long>() == 8
-                                && std::mem::size_of::<c_int>() == 4
-                            {
-                                nullVal = INT_MIN;
-                            } else {
-                                nullVal = LONG_MIN;
-                            }
-                        } else if typecode == TLONGLONG {
-                            nullVal = LONGLONG_MIN;
+                        } else {
+                            nullVal = LONG_MIN;
                         }
+                    } else if typecode == TLONGLONG {
+                        nullVal = LONGLONG_MIN;
+                    }
 
-                        if nullVal != 0 {
-                            ffpkyj_safe(
-                                outfptr,
-                                &nullKwd,
-                                nullVal,
-                                Some(cs!(c"Null value")),
-                                status,
-                            );
-                            fits_set_btblnull(outfptr, colNo, nullVal, status);
-                            newNullKwd = 1;
-                        }
-                    } else if lParse.hdutype == ASCII_TBL {
-                        ffpkys_safe(
-                            outfptr,
-                            &nullKwd,
-                            cs!(c"NULL"),
-                            Some(cs!(c"Null value string")),
-                            status,
-                        );
-                        fits_set_atblnull(outfptr, colNo, cs!(c"NULL"), status);
+                    if nullVal != 0 {
+                        ffpkyj_safe(outfptr, &nullKwd, nullVal, Some(cs!(c"Null value")), status);
+                        fits_set_btblnull(outfptr, colNo, nullVal, status);
                         newNullKwd = 1;
                     }
+                } else if lParse.hdutype == ASCII_TBL {
+                    ffpkys_safe(
+                        outfptr,
+                        &nullKwd,
+                        cs!(c"NULL"),
+                        Some(cs!(c"Null value string")),
+                        status,
+                    );
+                    fits_set_atblnull(outfptr, colNo, cs!(c"NULL"), status);
+                    newNullKwd = 1;
                 }
             }
-        } else if *status != 0 {
+        }
+    } else if *status != 0 {
+        ffcprs(&mut lParse);
+        return *status;
+    } else {
+        /********************************************************/
+        /*  Check if a TDIM keyword should be written/updated.  */
+        /********************************************************/
+
+        ffkeyn_safe(cs!(c"TDIM"), colNo, &mut tdimKwd, status);
+        ffgcrd_safe(outfptr, &tdimKwd, &mut card, status);
+        if *status == 0 {
+            /*  TDIM exists, so update it with result's dimension  */
+            ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
+        } else if *status == KEY_NO_EXIST {
+            /*  TDIM does not exist, so clear error stack and     */
+            /*  write a TDIM only if result is multi-dimensional  */
+            *status = 0;
+            ffcmsg_safe();
+            if naxis > 1 {
+                ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
+            }
+        }
+        if *status != 0 {
+            /*  Either some other error happened in ffgcrd   */
+            /*  or one happened in ffptdm                    */
             ffcprs(&mut lParse);
             return *status;
-        } else {
-            /********************************************************/
-            /*  Check if a TDIM keyword should be written/updated.  */
-            /********************************************************/
-
-            ffkeyn_safe(cs!(c"TDIM"), colNo, &mut tdimKwd, status);
-            ffgcrd_safe(outfptr, &tdimKwd, &mut card, status);
-            if *status == 0 {
-                /*  TDIM exists, so update it with result's dimension  */
-                ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
-            } else if *status == KEY_NO_EXIST {
-                /*  TDIM does not exist, so clear error stack and     */
-                /*  write a TDIM only if result is multi-dimensional  */
-                *status = 0;
-                ffcmsg_safe();
-                if naxis > 1 {
-                    ffptdm_safe(outfptr, colNo, naxis, &naxes[..naxis as usize], status);
-                }
-            }
-            if *status != 0 {
-                /*  Either some other error happened in ffgcrd   */
-                /*  or one happened in ffptdm                    */
-                ffcprs(&mut lParse);
-                return *status;
-            }
         }
-
-        if colNo > 0 {
-            /*  Output column exists (now)... put results into it  */
-
-            let mut anyNull: c_int = 0;
-            let mut nPerLp: c_int;
-            let mut i: c_int;
-            let mut totaln: c_long = 0;
-
-            ffgkyj_safe(infptr, cs!(c"NAXIS2"), &mut totaln, None, status);
-
-            /*************************************/
-            /* Create new iterator Output Column */
-            /*************************************/
-
-            col_cnt = lParse.nCols;
-            if fits_parser_allocateCol(&mut lParse, col_cnt, status) != 0 {
-                ffcprs(&mut lParse);
-                return *status;
-            }
-
-            fits_iter_set_by_num_safe(
-                &mut lParse.colData[col_cnt as usize],
-                outfptr,
-                colNo,
-                0,
-                OutputCol,
-            );
-
-            lParse.nCols += 1;
-
-            for i in 0..nRngs {
-                Info.dataPtr = std::ptr::null_mut();
-                Info.maxRows = end[i as usize] - start[i as usize] + 1;
-
-                /*
-                   If there is only 1 range, and it includes all the rows,
-                   and there are 10 or more rows, then set nPerLp = 0 so
-                   that the iterator function will dynamically choose the
-                   most efficient number of rows to process in each loop.
-                   Otherwise, set nPerLp to the number of rows in this range.
-                */
-
-                if (Info.maxRows >= 10) && (nRngs == 1) && (start[0] == 1) && (end[0] == totaln) {
-                    nPerLp = 0;
-                } else {
-                    nPerLp = Info.maxRows as c_int;
-                }
-
-                let colData_slice = &mut lParse.colData[..];
-                if ffiter_safe(
-                    lParse.nCols,
-                    colData_slice,
-                    start[i as usize] - 1,
-                    nPerLp as c_long,
-                    fits_parser_workfn,
-                    &Info as *const _ as *mut c_void,
-                    status,
-                ) == -1
-                {
-                    *status = 0;
-                } else if *status != 0 {
-                    ffcprs(&mut lParse);
-                    return *status;
-                }
-                if Info.anyNull != 0 {
-                    anyNull = 1;
-                }
-            }
-
-            if newNullKwd != 0 && anyNull == 0 {
-                ffdkey_safe(outfptr, &nullKwd, status);
-            }
-        } else {
-            /* Put constant result into keyword */
-
-            result = &mut lParse.Nodes[lParse.resultNode as usize];
-            match Info.datatype {
-                TDOUBLE => {
-                    ffukyd_safe(
-                        outfptr,
-                        parName,
-                        unsafe { result.value.data.dbl },
-                        15,
-                        Some(parInfo),
-                        status,
-                    );
-                }
-                TLONG => {
-                    ffukyj_safe(
-                        outfptr,
-                        parName,
-                        unsafe { result.value.data.lng } as LONGLONG,
-                        Some(parInfo),
-                        status,
-                    );
-                }
-                TLOGICAL => {
-                    ffukyl_safe(
-                        outfptr,
-                        parName,
-                        unsafe { result.value.data.log } as i32,
-                        Some(parInfo),
-                        status,
-                    );
-                }
-                TBIT | TSTRING => {
-                    if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
-                        ffphis_safe(outfptr, unsafe { &result.value.data.astr }, status);
-                    } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
-                        ffpcom_safe(outfptr, unsafe { &result.value.data.astr }, status);
-                    } else {
-                        ffukys_safe(
-                            outfptr,
-                            parName,
-                            unsafe { &result.value.data.astr },
-                            Some(parInfo),
-                            status,
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        ffcprs(&mut lParse);
-        *status
     }
+
+    if colNo > 0 {
+        /*  Output column exists (now)... put results into it  */
+
+        let mut anyNull: c_int = 0;
+        let mut nPerLp: c_int;
+        let mut i: c_int;
+        let mut totaln: c_long = 0;
+
+        ffgkyj_safe(infptr, cs!(c"NAXIS2"), &mut totaln, None, status);
+
+        /*************************************/
+        /* Create new iterator Output Column */
+        /*************************************/
+
+        col_cnt = lParse.nCols;
+        if fits_parser_allocateCol(&mut lParse, col_cnt, status) != 0 {
+            ffcprs(&mut lParse);
+            return *status;
+        }
+
+        fits_iter_set_by_num_safe(
+            &mut lParse.colData[col_cnt as usize],
+            outfptr,
+            colNo,
+            0,
+            OutputCol,
+        );
+
+        lParse.nCols += 1;
+
+        for i in 0..nRngs {
+            Info.dataPtr = std::ptr::null_mut();
+            Info.maxRows = end[i as usize] - start[i as usize] + 1;
+
+            /*
+               If there is only 1 range, and it includes all the rows,
+               and there are 10 or more rows, then set nPerLp = 0 so
+               that the iterator function will dynamically choose the
+               most efficient number of rows to process in each loop.
+               Otherwise, set nPerLp to the number of rows in this range.
+            */
+
+            if (Info.maxRows >= 10) && (nRngs == 1) && (start[0] == 1) && (end[0] == totaln) {
+                nPerLp = 0;
+            } else {
+                nPerLp = Info.maxRows as c_int;
+            }
+
+            let colData_slice = &mut lParse.colData[..];
+            if ffiter_safe(
+                lParse.nCols,
+                colData_slice,
+                start[i as usize] - 1,
+                nPerLp as c_long,
+                fits_parser_workfn,
+                &Info as *const _ as *mut c_void,
+                status,
+            ) == -1
+            {
+                *status = 0;
+            } else if *status != 0 {
+                ffcprs(&mut lParse);
+                return *status;
+            }
+            if Info.anyNull != 0 {
+                anyNull = 1;
+            }
+        }
+
+        if newNullKwd != 0 && anyNull == 0 {
+            ffdkey_safe(outfptr, &nullKwd, status);
+        }
+    } else {
+        /* Put constant result into keyword */
+
+        result = &mut lParse.Nodes[lParse.resultNode as usize];
+        match Info.datatype {
+            TDOUBLE => {
+                ffukyd_safe(
+                    outfptr,
+                    parName,
+                    unsafe { result.value.data.dbl },
+                    15,
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TLONG => {
+                ffukyj_safe(
+                    outfptr,
+                    parName,
+                    unsafe { result.value.data.lng } as LONGLONG,
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TLOGICAL => {
+                ffukyl_safe(
+                    outfptr,
+                    parName,
+                    unsafe { result.value.data.log } as i32,
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TBIT | TSTRING => {
+                if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
+                    ffphis_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
+                    ffpcom_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                } else {
+                    ffukys_safe(
+                        outfptr,
+                        parName,
+                        unsafe { &result.value.data.astr },
+                        Some(parInfo),
+                        status,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ffcprs(&mut lParse);
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

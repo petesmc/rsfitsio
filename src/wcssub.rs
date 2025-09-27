@@ -6,7 +6,7 @@ use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 
 use bytemuck::cast_slice;
 
-use crate::cfileio::ffdelt_safer;
+use crate::cfileio::ffdelt_safe;
 use crate::cfileio::ffinit_safe;
 
 use crate::fitscore::{
@@ -991,7 +991,7 @@ pub unsafe extern "C" fn ffgtcs(
         let rot = rot.as_mut().expect(NULL_MSG);
         let ptype = ptype.as_mut().expect(NULL_MSG);
 
-        ffgtcs_safer(
+        ffgtcs_safe(
             fptr, xcol, ycol, xrval, yrval, xrpix, yrpix, xinc, yinc, rot, ptype, status,
         )
     }
@@ -1004,7 +1004,7 @@ pub unsafe extern "C" fn ffgtcs(
 /// from the image file.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
-pub unsafe fn ffgtcs_safer(
+pub fn ffgtcs_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer           */
     xcol: c_int,             /* I - column containing the RA coordinate  */
     ycol: c_int,             /* I - column containing the DEC coordinate */
@@ -1018,55 +1018,53 @@ pub unsafe fn ffgtcs_safer(
     ptype: &mut [c_char; 5], /* O - type of projection ('-sin') */
     status: &mut c_int,      /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut colnum: [c_int; 2] = [0; 2];
-        let mut naxes: [c_long; 2] = [0; 2];
+    let mut colnum: [c_int; 2] = [0; 2];
+    let mut naxes: [c_long; 2] = [0; 2];
 
-        let mut tptr: Option<Box<fitsfile>> = None;
+    let mut tptr: Option<Box<fitsfile>> = None;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        colnum[0] = xcol;
-        colnum[1] = ycol;
-        naxes[0] = 10;
-        naxes[1] = 10;
-
-        /* create temporary  FITS file, in memory */
-        ffinit_safe(&mut tptr, cs!(c"mem://"), status);
-
-        let mut tptr = tptr.unwrap();
-
-        /* create a temporary image; the datatype and size are not important */
-        ffcrim_safe(&mut tptr, 32, 2, &naxes, status);
-
-        /* now copy the relevant keywords from the table to the image */
-        fits_copy_pixlist2image_safe(fptr, &mut tptr, 9, 2, &colnum, status);
-
-        /* write default WCS keywords, if they are not present */
-        fits_write_keys_histo_safe(fptr, &mut tptr, 2, &colnum, status);
-
-        if *status > 0 {
-            return *status;
-        }
-
-        /* read the WCS keyword values from the temporary image */
-        ffgics_safe(
-            &mut tptr, xrval, yrval, xrpix, yrpix, xinc, yinc, rot, ptype, status,
-        );
-
-        if *status > 0 {
-            ffpmsg_str("ffgtcs could not find all the celestial coordinate keywords");
-            *status = NO_WCS_KEY;
-            return *status;
-        }
-
-        /* delete the temporary file */
-        ffdelt_safer(&mut Some(tptr), status);
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    colnum[0] = xcol;
+    colnum[1] = ycol;
+    naxes[0] = 10;
+    naxes[1] = 10;
+
+    /* create temporary  FITS file, in memory */
+    ffinit_safe(&mut tptr, cs!(c"mem://"), status);
+
+    let mut tptr = tptr.unwrap();
+
+    /* create a temporary image; the datatype and size are not important */
+    ffcrim_safe(&mut tptr, 32, 2, &naxes, status);
+
+    /* now copy the relevant keywords from the table to the image */
+    fits_copy_pixlist2image_safe(fptr, &mut tptr, 9, 2, &colnum, status);
+
+    /* write default WCS keywords, if they are not present */
+    fits_write_keys_histo_safe(fptr, &mut tptr, 2, &colnum, status);
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* read the WCS keyword values from the temporary image */
+    ffgics_safe(
+        &mut tptr, xrval, yrval, xrpix, yrpix, xinc, yinc, rot, ptype, status,
+    );
+
+    if *status > 0 {
+        ffpmsg_str("ffgtcs could not find all the celestial coordinate keywords");
+        *status = NO_WCS_KEY;
+        return *status;
+    }
+
+    /* delete the temporary file */
+    ffdelt_safe(&mut Some(tptr), status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

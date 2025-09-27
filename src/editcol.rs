@@ -14,9 +14,9 @@ use crate::c_types::{c_char, c_int, c_long, c_longlong, c_ulonglong};
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::fitscore::{
-    ffasfm_safe, ffbnfm_safe, ffc2ii, ffcmph_safer, ffdblk, ffeqty_safe, ffgdesll_safe,
-    ffgtcl_safe, ffiblk, ffkeyn_safe, ffmahd_safe, ffmkky_safe, ffnkey_safe, ffpdes_safe,
-    ffrdef_safe, ffupch_safe,
+    ffasfm_safe, ffbnfm_safe, ffc2ii, ffcmph_safe, ffdblk, ffeqty_safe, ffgdesll_safe, ffgtcl_safe,
+    ffiblk, ffkeyn_safe, ffmahd_safe, ffmkky_safe, ffnkey_safe, ffpdes_safe, ffrdef_safe,
+    ffupch_safe,
 };
 use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
 use crate::getcold::{ffgcvd_safe, ffgcvm_safe};
@@ -623,9 +623,7 @@ pub fn ffdrow_safe(
 
     /* Update the heap data, if any.  This will remove any orphaned data */
     /* that was only pointed to by the rows that have been deleted */
-    unsafe {
-        ffcmph_safer(fptr, status);
-    }
+    ffcmph_safe(fptr, status);
     *status
 }
 
@@ -906,9 +904,7 @@ pub fn ffdrws_safe(
 
     /* Update the heap data, if any.  This will remove any orphaned data */
     /* that was only pointed to by the rows that have been deleted */
-    unsafe {
-        ffcmph_safer(fptr, status);
-    }
+    ffcmph_safe(fptr, status);
 
     *status
 }
@@ -1058,9 +1054,7 @@ pub fn ffdrwsll_safe(
 
     /* Update the heap data, if any.  This will remove any orphaned data */
     /* that was only pointed to by the rows that have been deleted */
-    unsafe {
-        ffcmph_safer(fptr, status);
-    }
+    ffcmph_safe(fptr, status);
 
     *status
 }

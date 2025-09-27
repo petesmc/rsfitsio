@@ -79,7 +79,7 @@ use crate::region::{MY_PI, SAORegion, WCSdata, fits_in_region, fits_read_rgnfile
 use crate::simplerng::{
     simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform, simplerng_srand,
 };
-use crate::wcssub::ffgtcs_safer;
+use crate::wcssub::ffgtcs_safe;
 use crate::wrappers::strncpy_safe;
 use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
 use crate::{atoi, cs, int_snprintf};
@@ -7955,7 +7955,7 @@ fn New_REG(
             if Xcol > 0 && Ycol > 0 {
                 tstat = 0;
                 let fptr = lParse.def_fptr.as_mut().unwrap();
-                ffgtcs_safer(
+                ffgtcs_safe(
                     fptr,
                     Xcol,
                     Ycol,

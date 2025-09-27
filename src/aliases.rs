@@ -725,8 +725,8 @@ pub mod rust_api {
     use super::*;
 
     pub use crate::cfileio::ffexist_safer as fits_file_exists;
-    pub use crate::cfileio::ffifile_safer as fits_parse_input_filename;
-    pub use crate::cfileio::ffiurl_safer as fits_parse_input_url;
+    pub use crate::cfileio::ffifile_safe as fits_parse_input_filename;
+    pub use crate::cfileio::ffiurl_safe as fits_parse_input_url;
     pub use crate::cfileio::ffrtnm_safe as fits_parse_rootname;
 
     pub use crate::cfileio::ffextn_safer as fits_parse_extnum;
@@ -752,9 +752,9 @@ pub mod rust_api {
     }
 
     pub use crate::buffers::ffflsh_safe as fits_flush_buffer;
-    pub use crate::buffers::ffflus_safer as fits_flush_file;
+    pub use crate::buffers::ffflus_safe as fits_flush_file;
     pub use crate::cfileio::ffclos_safe as fits_close_file;
-    pub use crate::cfileio::ffdelt_safer as fits_delete_file;
+    pub use crate::cfileio::ffdelt_safe as fits_delete_file;
     pub use crate::cfileio::ffdkinit_safer as fits_create_diskfile;
     pub use crate::cfileio::ffdkopn_safer as fits_open_diskfile;
     pub use crate::cfileio::ffdopn_safer as fits_open_data;
@@ -966,8 +966,8 @@ pub mod rust_api {
     pub use crate::editcol::ffrsim_safe as fits_resize_img;
     pub use crate::editcol::ffrsimll_safe as fits_resize_imgll;
     pub use crate::edithdu::ffibin_safe as fits_insert_btbl;
-    pub use crate::edithdu::ffiimg_safer as fits_insert_img;
-    pub use crate::edithdu::ffiimgll_safer as fits_insert_imgll;
+    pub use crate::edithdu::ffiimg_safe as fits_insert_img;
+    pub use crate::edithdu::ffiimgll_safe as fits_insert_imgll;
     pub use crate::edithdu::ffitab_safe as fits_insert_atbl;
     pub use crate::fitscore::ffcrhd_safe as fits_create_hdu;
     pub use crate::fitscore::ffmahd_safe as fits_movabs_hdu;
@@ -975,14 +975,14 @@ pub mod rust_api {
     pub use crate::fitscore::ffmrhd_safe as fits_movrel_hdu;
     pub use crate::fitscore::ffthdu_safe as fits_get_num_hdus;
     pub use crate::putkey::ffcrim_safe as fits_create_img;
-    pub use crate::putkey::ffcrimll_safer as fits_create_imgll;
-    pub use crate::putkey::ffcrtb_safer as fits_create_tbl;
+    pub use crate::putkey::ffcrimll_safe as fits_create_imgll;
+    pub use crate::putkey::ffcrtb_safe as fits_create_tbl;
 
     pub use crate::edithdu::ffcopy_safer as fits_copy_hdu;
     pub use crate::edithdu::ffcpdt_safe as fits_copy_data;
     pub use crate::edithdu::ffcpfl_safe as fits_copy_file;
     pub use crate::edithdu::ffcphd_safe as fits_copy_header;
-    pub use crate::edithdu::ffcpht_safer as fits_copy_hdutab;
+    pub use crate::edithdu::ffcpht_safe as fits_copy_hdutab;
     pub use crate::edithdu::ffdhdu_safer as fits_delete_hdu;
     pub use crate::edithdu::ffwrhdu_safer as fits_write_hdu;
 
@@ -1293,7 +1293,7 @@ pub mod rust_api {
     pub use crate::getcolb::ffgextn_safe as fits_read_ext;
     pub use crate::putcolb::ffpextn_safe as fits_write_ext;
 
-    pub use crate::fitscore::ffcmph_safer as fits_compress_heap;
+    pub use crate::fitscore::ffcmph_safe as fits_compress_heap;
     pub use crate::fitscore::ffpdes_safe as fits_write_descript;
     pub use crate::fitscore::fftheap_safe as fits_test_heap;
 
@@ -1314,7 +1314,7 @@ pub mod rust_api {
 
     pub use crate::wcssub::ffgics_safe as fits_read_img_coord;
     pub use crate::wcssub::ffgicsa_safe as fits_read_img_coord_version;
-    pub use crate::wcssub::ffgtcs_safer as fits_read_tbl_coord;
+    pub use crate::wcssub::ffgtcs_safe as fits_read_tbl_coord;
     pub use crate::wcsutil::ffwldp_safe as fits_pix_to_world;
     pub use crate::wcsutil::ffxypx_safe as fits_world_to_pix;
 

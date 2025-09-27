@@ -732,40 +732,38 @@ pub unsafe extern "C" fn ffflus(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffflus_safer(fptr, status)
+        ffflus_safe(fptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Flush all the data in the current FITS file to disk. This ensures that if
 /// the program subsequently dies, the disk FITS file will be closed correctly.
-pub unsafe fn ffflus_safer(
+pub  fn ffflus_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer                       */
     status: &mut c_int,  /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut hdunum: c_int = 0;
-        let mut hdutype: c_int = 0;
+    let mut hdunum: c_int = 0;
+    let mut hdutype: c_int = 0;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        ffghdn_safe(fptr, &mut hdunum); /* get the current HDU number */
-
-        if ffchdu(fptr, status) > 0 {
-            /* close out the current HDU */
-            ffpmsg_str("ffflus could not close the current HDU.");
-        }
-
-        ffflsh_safe(fptr, false, status); /* flush any modified IO buffers to disk */
-
-        if ffgext(fptr, hdunum - 1, Some(&mut hdutype), status) > 0 {
-            /* reopen HDU */
-            ffpmsg_str("ffflus could not reopen the current HDU.");
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    ffghdn_safe(fptr, &mut hdunum); /* get the current HDU number */
+
+    if ffchdu(fptr, status) > 0 {
+        /* close out the current HDU */
+        ffpmsg_str("ffflus could not close the current HDU.");
+    }
+
+    ffflsh_safe(fptr, false, status); /* flush any modified IO buffers to disk */
+
+    if ffgext(fptr, hdunum - 1, Some(&mut hdutype), status) > 0 {
+        /* reopen HDU */
+        ffpmsg_str("ffflus could not reopen the current HDU.");
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

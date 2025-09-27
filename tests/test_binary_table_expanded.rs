@@ -83,9 +83,7 @@ fn readtable_expanded_with_status(
 
     if let Some(fptr_box) = fptr {
         let mut close_status = 0;
-        unsafe {
-            fits_close_file(fptr_box, &mut close_status);
-        }
+        fits_close_file(fptr_box, &mut close_status);
         assert_eq!(close_status, 0);
     }
 }

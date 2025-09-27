@@ -69,7 +69,7 @@ use crate::fitscore::{
 use crate::getkey::{ffdtdm_safe, ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgrec_safe};
 use crate::modkey::{ffikyj_safe, ffucrd_safe};
 use crate::putkey::{
-    ffcrim_safe, ffcrtb_safer, ffpdat_safe, ffpkye_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe,
+    ffcrim_safe, ffcrtb_safe, ffpdat_safe, ffpkye_safe, ffpkyg_safe, ffpkyj_safe, ffpkyl_safe,
     ffpkys_safe, ffprec_safe,
 };
 use crate::quantize::{
@@ -1289,13 +1289,13 @@ pub fn fits_img_compress_safe(
     /* contains the compressed image.  If necessary, create a dummy primary */
     /* array, which much precede the binary table extension. */
 
-    unsafe { ffcrhd_safe(outfptr, status) }; /* this does nothing if the output file is empty */
+    ffcrhd_safe(outfptr, status); /* this does nothing if the output file is empty */
 
     if (outfptr.Fptr).curhdu == 0 {
         /* have to create dummy primary array */
 
-        unsafe { ffcrim_safe(outfptr, 16, 0, &[], status) };
-        unsafe { ffcrhd_safe(outfptr, status) };
+        ffcrim_safe(outfptr, 16, 0, &[], status);
+        ffcrhd_safe(outfptr, status);
     } else {
         /* unset any compress parameter preferences that may have been
         set when closing the previous HDU in the output file */
@@ -1699,19 +1699,17 @@ pub(crate) fn imcomp_init_table(
     let ttype_vec = ttype.iter().map(|&f| Some(f)).collect::<Vec<_>>();
     let tform_vec = tform.iter().map(|f| f.as_slice()).collect::<Vec<_>>();
     let tunit_vec = tunit.iter().map(|&f| Some(f)).collect::<Vec<_>>();
-    unsafe {
-        ffcrtb_safer(
-            outfptr,
-            BINARY_TBL,
-            nrows as LONGLONG,
-            ncols,
-            &ttype_vec,
-            &tform_vec,
-            Some(&(tunit_vec)),
-            None,
-            status,
-        );
-    }
+    ffcrtb_safe(
+        outfptr,
+        BINARY_TBL,
+        nrows as LONGLONG,
+        ncols,
+        &ttype_vec,
+        &tform_vec,
+        Some(&(tunit_vec)),
+        None,
+        status,
+    );
 
     /* Add standard header keywords. */
     ffpkyl_safe(
@@ -5528,7 +5526,7 @@ pub unsafe extern "C" fn fits_decompress_img(
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_decompress_img_safer(infptr, outfptr, status)
+        fits_decompress_img_safe(infptr, outfptr, status)
     }
 }
 
@@ -5536,152 +5534,150 @@ pub unsafe extern "C" fn fits_decompress_img(
 /// THIS IS AN OBSOLETE ROUTINE.  USE fits_img_decompress instead!!!
 ///
 /// This routine decompresses the whole image and writes it to the output file.
-unsafe fn fits_decompress_img_safer(
+fn fits_decompress_img_safe(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut datatype: c_int = 0;
-        let mut byte_per_pix: usize = 0;
-        let mut anynul: c_int = 0;
-        let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut imgsize: usize = 0;
-        let mut memsize: usize = 0;
-        let mut fnulval: f32 = 0.0;
-        let mut dnulval: f64 = 0.0;
+    let mut datatype: c_int = 0;
+    let mut byte_per_pix: usize = 0;
+    let mut anynul: c_int = 0;
+    let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut imgsize: usize = 0;
+    let mut memsize: usize = 0;
+    let mut fnulval: f32 = 0.0;
+    let mut dnulval: f64 = 0.0;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        if fits_is_compressed_image_safe(infptr, status) == 0 {
-            ffpmsg_str("CHDU is not a compressed image (fits_decompress_img)");
-            *status = DATA_DECOMPRESSION_ERR;
-            return *status;
-        }
+    if fits_is_compressed_image_safe(infptr, status) == 0 {
+        ffpmsg_str("CHDU is not a compressed image (fits_decompress_img)");
+        *status = DATA_DECOMPRESSION_ERR;
+        return *status;
+    }
 
-        /* create an empty output image with the correct dimensions */
-        if ffcrim_safe(
+    /* create an empty output image with the correct dimensions */
+    if ffcrim_safe(
+        outfptr,
+        (infptr.Fptr).zbitpix,
+        (infptr.Fptr).zndim,
+        &(infptr.Fptr).znaxis,
+        status,
+    ) > 0
+    {
+        ffpmsg_str("error creating output decompressed image HDU");
+        return *status;
+    }
+
+    /* Copy the table header to the image header. */
+    if imcomp_copy_imheader(infptr, outfptr, status) > 0 {
+        ffpmsg_str("error copying header of compressed image");
+        return *status;
+    }
+
+    /* force a rescan of the output header keywords, then reset the scaling */
+    /* in case the BSCALE and BZERO keywords are present, so that the       */
+    /* decompressed values won't be scaled when written to the output image */
+    ffrdef_safe(outfptr, status);
+    ffpscl_safe(outfptr, 1.0, 0.0, status);
+    ffpscl_safe(infptr, 1.0, 0.0, status);
+
+    /* initialize; no null checking is needed for integer images */
+    let mut nullcheck = NullCheckType::None;
+    let mut nulladdr = NullValue::Float(fnulval);
+
+    /* determine datatype for image */
+    if (infptr.Fptr).zbitpix == BYTE_IMG {
+        datatype = TBYTE;
+        byte_per_pix = 1;
+    } else if (infptr.Fptr).zbitpix == SHORT_IMG {
+        datatype = TSHORT;
+        byte_per_pix = mem::size_of::<c_short>();
+    } else if (infptr.Fptr).zbitpix == LONG_IMG {
+        datatype = TINT;
+        byte_per_pix = mem::size_of::<c_int>();
+    } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
+        /* In the case of float images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        fnulval = FLOATNULLVALUE;
+        nulladdr = NullValue::Float(fnulval);
+        datatype = TFLOAT;
+        byte_per_pix = mem::size_of::<f32>();
+    } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
+        /* In the case of double images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        dnulval = DOUBLENULLVALUE;
+        nulladdr = NullValue::Double(dnulval);
+        datatype = TDOUBLE;
+        byte_per_pix = mem::size_of::<f64>();
+    }
+
+    /* calculate size of the image (in pixels) */
+    imgsize = 1;
+    for ii in 0..((infptr.Fptr).zndim as usize) {
+        imgsize *= (infptr.Fptr).znaxis[ii] as usize;
+        fpixel[ii] = 1; /* Set first and last pixel to */
+        lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
+        inc[ii] = 1;
+    }
+    /* Calc equivalent number of double pixels same size as whole the image. */
+    /* We use double datatype to force the memory to be aligned properly */
+    memsize = ((imgsize * byte_per_pix) - 1) / mem::size_of::<f64>() + 1;
+
+    /* allocate memory for the image */
+    let mut data: Vec<f64> = Vec::new();
+    if data.try_reserve_exact(memsize).is_err() {
+        ffpmsg_str("Couldn't allocate memory for the uncompressed image");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        data.resize(memsize, 0.0);
+    }
+
+    /* uncompress the entire image into memory */
+    /* This routine should be enhanced sometime to only need enough */
+    /* memory to uncompress one tile at a time.  */
+    fits_read_compressed_img(
+        infptr,
+        datatype,
+        &fpixel,
+        &lpixel,
+        &inc,
+        nullcheck,
+        &Some(nulladdr.clone()),
+        cast_slice_mut(&mut data),
+        None,
+        Some(&mut anynul),
+        status,
+    );
+
+    /* write the image to the output file */
+    if anynul != 0 {
+        fits_write_imgnull(
             outfptr,
-            (infptr.Fptr).zbitpix,
-            (infptr.Fptr).zndim,
-            &(infptr.Fptr).znaxis,
-            status,
-        ) > 0
-        {
-            ffpmsg_str("error creating output decompressed image HDU");
-            return *status;
-        }
-
-        /* Copy the table header to the image header. */
-        if imcomp_copy_imheader(infptr, outfptr, status) > 0 {
-            ffpmsg_str("error copying header of compressed image");
-            return *status;
-        }
-
-        /* force a rescan of the output header keywords, then reset the scaling */
-        /* in case the BSCALE and BZERO keywords are present, so that the       */
-        /* decompressed values won't be scaled when written to the output image */
-        ffrdef_safe(outfptr, status);
-        ffpscl_safe(outfptr, 1.0, 0.0, status);
-        ffpscl_safe(infptr, 1.0, 0.0, status);
-
-        /* initialize; no null checking is needed for integer images */
-        let mut nullcheck = NullCheckType::None;
-        let mut nulladdr = NullValue::Float(fnulval);
-
-        /* determine datatype for image */
-        if (infptr.Fptr).zbitpix == BYTE_IMG {
-            datatype = TBYTE;
-            byte_per_pix = 1;
-        } else if (infptr.Fptr).zbitpix == SHORT_IMG {
-            datatype = TSHORT;
-            byte_per_pix = mem::size_of::<c_short>();
-        } else if (infptr.Fptr).zbitpix == LONG_IMG {
-            datatype = TINT;
-            byte_per_pix = mem::size_of::<c_int>();
-        } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
-            /* In the case of float images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            fnulval = FLOATNULLVALUE;
-            nulladdr = NullValue::Float(fnulval);
-            datatype = TFLOAT;
-            byte_per_pix = mem::size_of::<f32>();
-        } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
-            /* In the case of double images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            dnulval = DOUBLENULLVALUE;
-            nulladdr = NullValue::Double(dnulval);
-            datatype = TDOUBLE;
-            byte_per_pix = mem::size_of::<f64>();
-        }
-
-        /* calculate size of the image (in pixels) */
-        imgsize = 1;
-        for ii in 0..((infptr.Fptr).zndim as usize) {
-            imgsize *= (infptr.Fptr).znaxis[ii] as usize;
-            fpixel[ii] = 1; /* Set first and last pixel to */
-            lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
-            inc[ii] = 1;
-        }
-        /* Calc equivalent number of double pixels same size as whole the image. */
-        /* We use double datatype to force the memory to be aligned properly */
-        memsize = ((imgsize * byte_per_pix) - 1) / mem::size_of::<f64>() + 1;
-
-        /* allocate memory for the image */
-        let mut data: Vec<f64> = Vec::new();
-        if data.try_reserve_exact(memsize).is_err() {
-            ffpmsg_str("Couldn't allocate memory for the uncompressed image");
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            data.resize(memsize, 0.0);
-        }
-
-        /* uncompress the entire image into memory */
-        /* This routine should be enhanced sometime to only need enough */
-        /* memory to uncompress one tile at a time.  */
-        fits_read_compressed_img(
-            infptr,
             datatype,
-            &fpixel,
-            &lpixel,
-            &inc,
-            nullcheck,
-            &Some(nulladdr.clone()),
-            cast_slice_mut(&mut data),
-            None,
-            Some(&mut anynul),
+            1,
+            imgsize as LONGLONG,
+            cast_slice(&data),
+            Some(nulladdr.clone()),
             status,
         );
-
-        /* write the image to the output file */
-        if anynul != 0 {
-            fits_write_imgnull(
-                outfptr,
-                datatype,
-                1,
-                imgsize as LONGLONG,
-                cast_slice(&data),
-                Some(nulladdr.clone()),
-                status,
-            );
-        } else {
-            fits_write_img(
-                outfptr,
-                datatype,
-                1,
-                imgsize as LONGLONG,
-                cast_slice(&data),
-                status,
-            );
-        }
-
-        *status
+    } else {
+        fits_write_img(
+            outfptr,
+            datatype,
+            1,
+            imgsize as LONGLONG,
+            cast_slice(&data),
+            status,
+        );
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

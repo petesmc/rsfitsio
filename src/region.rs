@@ -20,7 +20,7 @@ use crate::getcol::ffgcv_safe;
 use crate::getcold::ffgcvd_safe;
 use crate::getcols::ffgcvs_safe;
 use crate::getkey::{ffgky_safe, ffgtdm_safe};
-use crate::wcssub::ffgtcs_safer;
+use crate::wcssub::ffgtcs_safe;
 use crate::wcsutil::{ffwldp_safe, ffxypx_safe};
 use crate::{KeywordDatatypeMut, bb, cs};
 use crate::{int_snprintf, wrappers::*};
@@ -136,17 +136,13 @@ pub(crate) fn fits_read_rgnfile(
 
     fits_write_errmark();
 
-    // SAFETY: TODO
-    let retval = unsafe { ffopen_safe(&mut fptr, filename, READONLY, &mut tstatus) };
+    let retval = ffopen_safe(&mut fptr, filename, READONLY, &mut tstatus);
     if retval != 0 {
         fits_clear_errmark();
         fits_read_ascii_region(filename, wcs, Rgn, status);
     } else {
-        // SAFETY: TODO
-        unsafe {
-            let fptr = fptr.unwrap();
-            fits_read_fits_region(fptr, wcs, Rgn, status);
-        }
+        let fptr = fptr.unwrap();
+        fits_read_fits_region(fptr, wcs, Rgn, status);
     }
 
     *status
@@ -1762,415 +1758,512 @@ pub(crate) fn fits_setup_shape(newShape: &mut RgnShape) {
 /// in the "SAORegion" structure.  If it is nonNULL, use wcs to convert the
 /// region coordinates to pixels.  Return an error if region is in degrees
 /// but no WCS data is provided.
-pub(crate) unsafe fn fits_read_fits_region(
+pub(crate) fn fits_read_fits_region(
     mut fptr: Box<fitsfile>,
     wcs: &WCSdata,
     Rgn: &mut Option<Box<SAORegion>>,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut icol: [c_int; 6] = [0; 6];
-        let mut idum: c_int = 0;
-        let mut anynul: c_int = 0;
-        let mut npos: c_int;
-        let mut dotransform: bool = false;
-        let mut got_component: bool = true;
-        let mut tstatus: c_int = 0;
-        let mut icsize: [c_long; 6] = [0; 6];
+    let mut icol: [c_int; 6] = [0; 6];
+    let mut idum: c_int = 0;
+    let mut anynul: c_int = 0;
+    let mut npos: c_int;
+    let mut dotransform: bool = false;
+    let mut got_component: bool = true;
+    let mut tstatus: c_int = 0;
+    let mut icsize: [c_long; 6] = [0; 6];
 
-        let mut X: f64;
-        let mut Y: f64;
-        let mut Theta: f64;
-        let mut Xsave: f64 = 0.0;
-        let mut Ysave: f64 = 0.0;
-        let mut Xpos: f64 = 0.0;
-        let mut Ypos: f64 = 0.0;
-        let mut coords: &mut [f64];
+    let mut X: f64;
+    let mut Y: f64;
+    let mut Theta: f64;
+    let mut Xsave: f64 = 0.0;
+    let mut Ysave: f64 = 0.0;
+    let mut Xpos: f64 = 0.0;
+    let mut Ypos: f64 = 0.0;
+    let mut coords: &mut [f64];
 
-        let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let colname: [&[u8; FLEN_VALUE]; 6] = [
-            b"X                                                                     \0",
-            b"Y                                                                     \0",
-            b"SHAPE                                                                 \0",
-            b"R                                                                     \0",
-            b"ROTANG                                                                \0",
-            b"COMPONENT                                                             \0",
-        ];
-        let shapename: [&[u8; FLEN_VALUE]; 17] = [
-            b"POINT                                                                 \0",
-            b"CIRCLE                                                                \0",
-            b"ELLIPSE                                                               \0",
-            b"ANNULUS                                                               \0",
-            b"ELLIPTANNULUS                                                         \0",
-            b"BOX                                                                   \0",
-            b"ROTBOX                                                                \0",
-            b"BOXANNULUS                                                            \0",
-            b"RECTANGLE                                                             \0",
-            b"ROTRECTANGLE                                                          \0",
-            b"POLYGON                                                               \0",
-            b"PIE                                                                   \0",
-            b"SECTOR                                                                \0",
-            b"DIAMOND                                                               \0",
-            b"RHOMBUS                                                               \0",
-            b"ROTDIAMOND                                                            \0",
-            b"ROTRHOMBUS                                                            \0",
-        ];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let colname: [&[u8; FLEN_VALUE]; 6] = [
+        b"X                                                                     \0",
+        b"Y                                                                     \0",
+        b"SHAPE                                                                 \0",
+        b"R                                                                     \0",
+        b"ROTANG                                                                \0",
+        b"COMPONENT                                                             \0",
+    ];
+    let shapename: [&[u8; FLEN_VALUE]; 17] = [
+        b"POINT                                                                 \0",
+        b"CIRCLE                                                                \0",
+        b"ELLIPSE                                                               \0",
+        b"ANNULUS                                                               \0",
+        b"ELLIPTANNULUS                                                         \0",
+        b"BOX                                                                   \0",
+        b"ROTBOX                                                                \0",
+        b"BOXANNULUS                                                            \0",
+        b"RECTANGLE                                                             \0",
+        b"ROTRECTANGLE                                                          \0",
+        b"POLYGON                                                               \0",
+        b"PIE                                                                   \0",
+        b"SECTOR                                                                \0",
+        b"DIAMOND                                                               \0",
+        b"RHOMBUS                                                               \0",
+        b"ROTDIAMOND                                                            \0",
+        b"ROTRHOMBUS                                                            \0",
+    ];
 
-        let shapetype: [ShapeType; 17] = [
-            ShapeType::Point,
-            ShapeType::Circle,
-            ShapeType::Ellipse,
-            ShapeType::Annulus,
-            ShapeType::ElliptAnnulus,
-            ShapeType::Box,
-            ShapeType::Box,
-            ShapeType::BoxAnnulus,
-            ShapeType::Rectangle,
-            ShapeType::Rectangle,
-            ShapeType::Poly,
-            ShapeType::Sector,
-            ShapeType::Sector,
-            ShapeType::Diamond,
-            ShapeType::Diamond,
-            ShapeType::Diamond,
-            ShapeType::Diamond,
-        ];
+    let shapetype: [ShapeType; 17] = [
+        ShapeType::Point,
+        ShapeType::Circle,
+        ShapeType::Ellipse,
+        ShapeType::Annulus,
+        ShapeType::ElliptAnnulus,
+        ShapeType::Box,
+        ShapeType::Box,
+        ShapeType::BoxAnnulus,
+        ShapeType::Rectangle,
+        ShapeType::Rectangle,
+        ShapeType::Poly,
+        ShapeType::Sector,
+        ShapeType::Sector,
+        ShapeType::Diamond,
+        ShapeType::Diamond,
+        ShapeType::Diamond,
+        ShapeType::Diamond,
+    ];
 
-        let mut aRgn: &mut SAORegion;
-        let newShape: &mut RgnShape;
+    let mut aRgn: &mut SAORegion;
+    let newShape: &mut RgnShape;
 
-        let mut regwcs: Box<WCSdata> = Box::default();
+    let mut regwcs: Box<WCSdata> = Box::default();
 
-        if *status != 0 {
-            return *status;
-        }
+    if *status != 0 {
+        return *status;
+    }
 
-        let aRgn = box_try_new(SAORegion::default());
+    let aRgn = box_try_new(SAORegion::default());
 
-        if aRgn.is_err() {
-            ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        }
+    if aRgn.is_err() {
+        ffpmsg_str("Couldn't allocate memory to hold Region file contents.");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
 
-        let mut aRgn = aRgn.unwrap();
+    let mut aRgn = aRgn.unwrap();
 
-        aRgn.nShapes = 0;
-        aRgn.Shapes = Vec::new();
-        if wcs.exists {
-            aRgn.wcs = *wcs;
-        } else {
-            aRgn.wcs.exists = false;
-        }
+    aRgn.nShapes = 0;
+    aRgn.Shapes = Vec::new();
+    if wcs.exists {
+        aRgn.wcs = *wcs;
+    } else {
+        aRgn.wcs.exists = false;
+    }
 
-        /* See if we are already positioned to a region extension, else */
-        /* move to the REGION extension (file is already open). */
+    /* See if we are already positioned to a region extension, else */
+    /* move to the REGION extension (file is already open). */
 
-        tstatus = 0;
+    tstatus = 0;
 
-        for i in 0..5 {
-            ffgcno_safe(
-                &mut fptr,
-                CASEINSEN as c_int,
-                cast_slice(colname[i]),
-                &mut icol[i],
-                &mut tstatus,
-            );
-        }
-
-        if tstatus != 0 {
-            /* couldn't find the required columns, so search for "REGION" extension */
-            if ffmnhd_safe(&mut fptr, BINARY_TBL, cs!(c"REGION"), 1, status) != 0 {
-                ffpmsg_str("Could not move to REGION extension.");
-                fits_free_region(aRgn);
-                return *status;
-            }
-        }
-
-        /* get the number of shapes and allocate memory */
-
-        if ffgky_safe(
+    for i in 0..5 {
+        ffgcno_safe(
             &mut fptr,
-            KeywordDatatypeMut::TINT(&mut aRgn.nShapes),
-            cs!(c"NAXIS2"),
-            Some(&mut comment),
-            status,
-        ) != 0
-        {
-            ffpmsg_str("Could not read NAXIS2 keyword.");
+            CASEINSEN as c_int,
+            cast_slice(colname[i]),
+            &mut icol[i],
+            &mut tstatus,
+        );
+    }
+
+    if tstatus != 0 {
+        /* couldn't find the required columns, so search for "REGION" extension */
+        if ffmnhd_safe(&mut fptr, BINARY_TBL, cs!(c"REGION"), 1, status) != 0 {
+            ffpmsg_str("Could not move to REGION extension.");
             fits_free_region(aRgn);
             return *status;
         }
+    }
 
-        if aRgn
-            .Shapes
-            .try_reserve_exact(aRgn.nShapes as usize)
-            .is_err()
-        {
-            ffpmsg_str("Failed to allocate memory for Region data");
-            *status = MEMORY_ALLOCATION;
-            fits_free_region(aRgn);
-            return *status;
-        } else {
-            aRgn.Shapes
-                .resize(aRgn.nShapes as usize, RgnShape::default());
-        }
+    /* get the number of shapes and allocate memory */
 
-        /* get the required column numbers */
+    if ffgky_safe(
+        &mut fptr,
+        KeywordDatatypeMut::TINT(&mut aRgn.nShapes),
+        cs!(c"NAXIS2"),
+        Some(&mut comment),
+        status,
+    ) != 0
+    {
+        ffpmsg_str("Could not read NAXIS2 keyword.");
+        fits_free_region(aRgn);
+        return *status;
+    }
 
-        for i in 0..5 {
-            if ffgcno_safe(
-                &mut fptr,
-                CASEINSEN as c_int,
-                cast_slice(colname[i]),
-                &mut icol[i],
-                status,
-            ) != 0
-            {
-                ffpmsg_str("Could not find column.");
-                fits_free_region(aRgn);
-                return *status;
-            }
-        }
+    if aRgn
+        .Shapes
+        .try_reserve_exact(aRgn.nShapes as usize)
+        .is_err()
+    {
+        ffpmsg_str("Failed to allocate memory for Region data");
+        *status = MEMORY_ALLOCATION;
+        fits_free_region(aRgn);
+        return *status;
+    } else {
+        aRgn.Shapes
+            .resize(aRgn.nShapes as usize, RgnShape::default());
+    }
 
-        /* try to get the optional column numbers */
+    /* get the required column numbers */
 
+    for i in 0..5 {
         if ffgcno_safe(
             &mut fptr,
             CASEINSEN as c_int,
-            cast_slice(colname[5]),
-            &mut icol[5],
+            cast_slice(colname[i]),
+            &mut icol[i],
             status,
         ) != 0
         {
-            got_component = false;
+            ffpmsg_str("Could not find column.");
+            fits_free_region(aRgn);
+            return *status;
+        }
+    }
+
+    /* try to get the optional column numbers */
+
+    if ffgcno_safe(
+        &mut fptr,
+        CASEINSEN as c_int,
+        cast_slice(colname[5]),
+        &mut icol[5],
+        status,
+    ) != 0
+    {
+        got_component = false;
+    }
+
+    /* if there was input WCS then read the WCS info for the region in case they */
+    /* are different and we have to transform */
+
+    dotransform = false;
+    if aRgn.wcs.exists {
+        let tmp_regwcs = box_try_new(WCSdata::default());
+        if tmp_regwcs.is_err() {
+            ffpmsg_str("Failed to allocate memory for Region WCS data");
+            *status = MEMORY_ALLOCATION;
+            fits_free_region(aRgn);
+            return *status;
+        }
+        regwcs = tmp_regwcs.unwrap();
+
+        regwcs.exists = true;
+
+        if ffgtcs_safe(
+            &mut fptr,
+            icol[0],
+            icol[1],
+            &mut regwcs.xrefval,
+            &mut regwcs.yrefval,
+            &mut regwcs.xrefpix,
+            &mut regwcs.yrefpix,
+            &mut regwcs.xinc,
+            &mut regwcs.yinc,
+            &mut regwcs.rot,
+            &mut regwcs.dtype,
+            status,
+        ) != 0
+        {
+            regwcs.exists = false;
+            *status = 0;
         }
 
-        /* if there was input WCS then read the WCS info for the region in case they */
-        /* are different and we have to transform */
+        if regwcs.exists
+            && wcs.exists
+            && (f64::abs(regwcs.xrefval - wcs.xrefval) > 1.0e-6
+                || f64::abs(regwcs.yrefval - wcs.yrefval) > 1.0e-6
+                || f64::abs(regwcs.xrefpix - wcs.xrefpix) > 1.0e-6
+                || f64::abs(regwcs.yrefpix - wcs.yrefpix) > 1.0e-6
+                || f64::abs(regwcs.xinc - wcs.xinc) > 1.0e-6
+                || f64::abs(regwcs.yinc - wcs.yinc) > 1.0e-6
+                || f64::abs(regwcs.rot - wcs.rot) > 1.0e-6
+                || strcmp_safe(&regwcs.dtype, &wcs.dtype) == 0)
+        {
+            dotransform = true;
+        }
+    }
 
-        dotransform = false;
-        if aRgn.wcs.exists {
-            let tmp_regwcs = box_try_new(WCSdata::default());
-            if tmp_regwcs.is_err() {
-                ffpmsg_str("Failed to allocate memory for Region WCS data");
+    /* get the sizes of the X, Y, R, and ROTANG vectors */
+
+    for i in 0..6 {
+        if ffgtdm_safe(&mut fptr, icol[i], 1, &mut idum, &mut icsize[i..], status) != 0 {
+            ffpmsg_str("Could not find vector size of column.");
+            fits_free_region(aRgn);
+            return *status;
+        }
+    }
+
+    let mut cvalue: Vec<c_char> = vec![0; FLEN_VALUE + 1];
+
+    /* loop over the shapes - note 1-based counting for rows in FITS files */
+
+    #[allow(clippy::never_loop)]
+    // Clippy thinks this never loops because aRgn.nShapes could be 0.
+    for i in 1..=(aRgn.nShapes) {
+        newShape = &mut aRgn.Shapes[i as usize - 1];
+        for j in 0..8 {
+            newShape.genericParams.p[j] = 0.0;
+        }
+        newShape.genericParams.a = 0.0;
+        newShape.genericParams.b = 0.0;
+        newShape.genericParams.sinT = 0.0;
+        newShape.genericParams.cosT = 0.0;
+
+        /* get the shape */
+
+        if ffgcvs_safe(
+            &mut fptr,
+            icol[2],
+            i as LONGLONG,
+            1,
+            1,
+            Some(cs!(c" ")),
+            &mut [&mut cvalue],
+            Some(&mut anynul),
+            status,
+        ) != 0
+        {
+            ffpmsg_str("Could not read shape.");
+            fits_free_region(aRgn);
+            return *status;
+        }
+
+        /* set include or exclude */
+
+        newShape.sign = 1;
+        let mut cvalue2 = 0; // Index into cvalue
+        if strncmp_safe(&cvalue, cs!(c"!"), 1) == 0 {
+            newShape.sign = 0;
+            cvalue2 += 1;
+        }
+
+        /* set the shape type */
+        for j in 0..17 {
+            if strcmp_safe(&cvalue[cvalue2..], cast_slice(shapename[j])) == 0 {
+                newShape.shape = shapetype[j].clone();
+            }
+        }
+
+        /* allocate memory for polygon case and set coords pointer */
+
+        if newShape.shape == ShapeType::Poly {
+            if newShape
+                .polyParams
+                .Pts
+                .try_reserve_exact(2 * icsize[0] as usize)
+                .is_err()
+            {
+                ffpmsg_str("Could not allocate memory to hold polygon parameters");
                 *status = MEMORY_ALLOCATION;
                 fits_free_region(aRgn);
                 return *status;
+            } else {
+                newShape.polyParams.Pts.resize(2 * icsize[0] as usize, 0.0);
             }
-            regwcs = tmp_regwcs.unwrap();
 
-            regwcs.exists = true;
+            newShape.polyParams.nPts = 2 * icsize[0] as c_int;
+        }
 
-            if ffgtcs_safer(
+        if newShape.shape == ShapeType::Poly {
+            coords = &mut newShape.polyParams.Pts;
+        } else {
+            coords = &mut newShape.genericParams.p;
+        }
+
+        /* read X and Y. Polygon and Rectangle require special cases */
+
+        npos = 1;
+        if newShape.shape == ShapeType::Poly {
+            npos = newShape.polyParams.nPts / 2;
+        }
+        if newShape.shape == ShapeType::Rectangle {
+            npos = 2;
+        }
+
+        let mut ci = 0; // coords index
+        let mut j = 0;
+        while j < npos {
+            if ffgcvd_safe(
                 &mut fptr,
                 icol[0],
-                icol[1],
-                &mut regwcs.xrefval,
-                &mut regwcs.yrefval,
-                &mut regwcs.xrefpix,
-                &mut regwcs.yrefpix,
-                &mut regwcs.xinc,
-                &mut regwcs.yinc,
-                &mut regwcs.rot,
-                &mut regwcs.dtype,
-                status,
-            ) != 0
-            {
-                regwcs.exists = false;
-                *status = 0;
-            }
-
-            if regwcs.exists
-                && wcs.exists
-                && (f64::abs(regwcs.xrefval - wcs.xrefval) > 1.0e-6
-                    || f64::abs(regwcs.yrefval - wcs.yrefval) > 1.0e-6
-                    || f64::abs(regwcs.xrefpix - wcs.xrefpix) > 1.0e-6
-                    || f64::abs(regwcs.yrefpix - wcs.yrefpix) > 1.0e-6
-                    || f64::abs(regwcs.xinc - wcs.xinc) > 1.0e-6
-                    || f64::abs(regwcs.yinc - wcs.yinc) > 1.0e-6
-                    || f64::abs(regwcs.rot - wcs.rot) > 1.0e-6
-                    || strcmp_safe(&regwcs.dtype, &wcs.dtype) == 0)
-            {
-                dotransform = true;
-            }
-        }
-
-        /* get the sizes of the X, Y, R, and ROTANG vectors */
-
-        for i in 0..6 {
-            if ffgtdm_safe(&mut fptr, icol[i], 1, &mut idum, &mut icsize[i..], status) != 0 {
-                ffpmsg_str("Could not find vector size of column.");
-                fits_free_region(aRgn);
-                return *status;
-            }
-        }
-
-        let mut cvalue: Vec<c_char> = vec![0; FLEN_VALUE + 1];
-
-        /* loop over the shapes - note 1-based counting for rows in FITS files */
-
-        #[allow(clippy::never_loop)]
-        // Clippy thinks this never loops because aRgn.nShapes could be 0.
-        for i in 1..=(aRgn.nShapes) {
-            newShape = &mut aRgn.Shapes[i as usize - 1];
-            for j in 0..8 {
-                newShape.genericParams.p[j] = 0.0;
-            }
-            newShape.genericParams.a = 0.0;
-            newShape.genericParams.b = 0.0;
-            newShape.genericParams.sinT = 0.0;
-            newShape.genericParams.cosT = 0.0;
-
-            /* get the shape */
-
-            if ffgcvs_safe(
-                &mut fptr,
-                icol[2],
                 i as LONGLONG,
+                j as LONGLONG + 1,
                 1,
-                1,
-                Some(cs!(c" ")),
-                &mut [&mut cvalue],
+                DOUBLENULLVALUE,
+                &mut coords[ci..],
                 Some(&mut anynul),
                 status,
             ) != 0
             {
-                ffpmsg_str("Could not read shape.");
+                ffpmsg_str("Failed to read X column for polygon region");
                 fits_free_region(aRgn);
                 return *status;
             }
 
-            /* set include or exclude */
+            if coords[ci] == DOUBLENULLVALUE {
+                /* check for null value end of array marker */
+                npos = j;
+                newShape.polyParams.nPts = npos * 2;
+                break;
+            }
+            ci += 1;
 
-            newShape.sign = 1;
-            let mut cvalue2 = 0; // Index into cvalue
-            if strncmp_safe(&cvalue, cs!(c"!"), 1) == 0 {
-                newShape.sign = 0;
-                cvalue2 += 1;
+            if ffgcvd_safe(
+                &mut fptr,
+                icol[1],
+                i as LONGLONG,
+                j as LONGLONG + 1,
+                1,
+                DOUBLENULLVALUE,
+                &mut coords[ci..],
+                Some(&mut anynul),
+                status,
+            ) != 0
+            {
+                ffpmsg_str("Failed to read Y column for polygon region");
+                fits_free_region(aRgn);
+                return *status;
             }
 
-            /* set the shape type */
-            for j in 0..17 {
-                if strcmp_safe(&cvalue[cvalue2..], cast_slice(shapename[j])) == 0 {
-                    newShape.shape = shapetype[j].clone();
-                }
+            if coords[ci] == DOUBLENULLVALUE {
+                /* check for null value end of array marker */
+                npos = j;
+                newShape.polyParams.nPts = npos * 2;
+                ci -= 1;
+                break;
+            }
+            ci += 1;
+
+            if j == 0 {
+                /* save the first X and Y coordinate */
+                Xsave = coords[ci - 2];
+                Ysave = coords[ci - 1];
+            } else if (Xsave == coords[ci]) && (Ysave == coords[ci - 1]) {
+                /* if point has same coordinate as first point, this marks the end of the array */
+                npos = j + 1;
+                newShape.polyParams.nPts = npos * 2;
+                break;
             }
 
-            /* allocate memory for polygon case and set coords pointer */
+            j += 1;
+        }
 
-            if newShape.shape == ShapeType::Poly {
-                if newShape
-                    .polyParams
-                    .Pts
-                    .try_reserve_exact(2 * icsize[0] as usize)
-                    .is_err()
-                {
-                    ffpmsg_str("Could not allocate memory to hold polygon parameters");
-                    *status = MEMORY_ALLOCATION;
+        /* transform positions if the region and input wcs differ */
+
+        if dotransform {
+            ci -= npos as usize * 2;
+            Xsave = coords[ci];
+            Ysave = coords[ci + 1];
+            for j in 0..npos {
+                ffwldp_safe(
+                    coords[ci + 2 * j as usize],
+                    coords[ci + (2 * j as usize) + 1],
+                    regwcs.xrefval,
+                    regwcs.yrefval,
+                    regwcs.xrefpix,
+                    regwcs.yrefpix,
+                    regwcs.xinc,
+                    regwcs.yinc,
+                    regwcs.rot,
+                    &regwcs.dtype,
+                    &mut Xpos,
+                    &mut Ypos,
+                    status,
+                );
+
+                let mut tmpxpix = 0.0;
+                let mut tmpypix = 0.0;
+
+                ffxypx_safe(
+                    Xpos,
+                    Ypos,
+                    wcs.xrefval,
+                    wcs.yrefval,
+                    wcs.xrefpix,
+                    wcs.yrefpix,
+                    wcs.xinc,
+                    wcs.yinc,
+                    wcs.rot,
+                    &wcs.dtype,
+                    &mut tmpxpix,
+                    &mut tmpypix,
+                    status,
+                );
+
+                coords[ci + (2 * j as usize)] = tmpxpix;
+                coords[ci + (2 * j as usize) + 1] = tmpypix;
+
+                if *status != 0 {
+                    ffpmsg_str("Failed to transform coordinates");
                     fits_free_region(aRgn);
                     return *status;
-                } else {
-                    newShape.polyParams.Pts.resize(2 * icsize[0] as usize, 0.0);
                 }
-
-                newShape.polyParams.nPts = 2 * icsize[0] as c_int;
             }
+            ci += npos as usize * 2;
+        }
 
-            if newShape.shape == ShapeType::Poly {
-                coords = &mut newShape.polyParams.Pts;
-            } else {
-                coords = &mut newShape.genericParams.p;
+        /* read R. Circle requires one number; Box, Diamond, Ellipse, Annulus, Sector
+        and Panda two; Boxannulus and Elliptannulus four; Point, Rectangle and
+        Polygon none. */
+
+        npos = 0;
+        match newShape.shape {
+            ShapeType::Circle => {
+                npos = 1;
             }
-
-            /* read X and Y. Polygon and Rectangle require special cases */
-
-            npos = 1;
-            if newShape.shape == ShapeType::Poly {
-                npos = newShape.polyParams.nPts / 2;
-            }
-            if newShape.shape == ShapeType::Rectangle {
+            ShapeType::Box
+            | ShapeType::Diamond
+            | ShapeType::Ellipse
+            | ShapeType::Annulus
+            | ShapeType::Sector => {
                 npos = 2;
             }
+            ShapeType::BoxAnnulus | ShapeType::ElliptAnnulus => {
+                npos = 4;
+            }
+            _ => {}
+        }
 
-            let mut ci = 0; // coords index
-            let mut j = 0;
-            while j < npos {
-                if ffgcvd_safe(
-                    &mut fptr,
-                    icol[0],
-                    i as LONGLONG,
-                    j as LONGLONG + 1,
-                    1,
-                    DOUBLENULLVALUE,
-                    &mut coords[ci..],
-                    Some(&mut anynul),
-                    status,
-                ) != 0
-                {
-                    ffpmsg_str("Failed to read X column for polygon region");
-                    fits_free_region(aRgn);
-                    return *status;
-                }
-
-                if coords[ci] == DOUBLENULLVALUE {
-                    /* check for null value end of array marker */
-                    npos = j;
-                    newShape.polyParams.nPts = npos * 2;
-                    break;
-                }
-                ci += 1;
-
-                if ffgcvd_safe(
-                    &mut fptr,
-                    icol[1],
-                    i as LONGLONG,
-                    j as LONGLONG + 1,
-                    1,
-                    DOUBLENULLVALUE,
-                    &mut coords[ci..],
-                    Some(&mut anynul),
-                    status,
-                ) != 0
-                {
-                    ffpmsg_str("Failed to read Y column for polygon region");
-                    fits_free_region(aRgn);
-                    return *status;
-                }
-
-                if coords[ci] == DOUBLENULLVALUE {
-                    /* check for null value end of array marker */
-                    npos = j;
-                    newShape.polyParams.nPts = npos * 2;
-                    ci -= 1;
-                    break;
-                }
-                ci += 1;
-
-                if j == 0 {
-                    /* save the first X and Y coordinate */
-                    Xsave = coords[ci - 2];
-                    Ysave = coords[ci - 1];
-                } else if (Xsave == coords[ci]) && (Ysave == coords[ci - 1]) {
-                    /* if point has same coordinate as first point, this marks the end of the array */
-                    npos = j + 1;
-                    newShape.polyParams.nPts = npos * 2;
-                    break;
-                }
-
-                j += 1;
+        if npos > 0 {
+            if ffgcvd_safe(
+                &mut fptr,
+                icol[3],
+                i as LONGLONG,
+                1,
+                npos.into(),
+                0.0,
+                &mut coords[ci..],
+                Some(&mut anynul),
+                status,
+            ) != 0
+            {
+                ffpmsg_str("Failed to read R column for region");
+                fits_free_region(aRgn);
+                return *status;
             }
 
-            /* transform positions if the region and input wcs differ */
+            /* transform lengths if the region and input wcs differ */
 
             if dotransform {
-                ci -= npos as usize * 2;
-                Xsave = coords[ci];
-                Ysave = coords[ci + 1];
                 for j in 0..npos {
+                    if newShape.shape == ShapeType::Poly {
+                        coords = &mut newShape.polyParams.Pts;
+                    } else {
+                        coords = &mut newShape.genericParams.p;
+                    }
+                    Y = Ysave + (coords[ci]);
+                    X = Xsave;
                     ffwldp_safe(
-                        coords[ci + 2 * j as usize],
-                        coords[ci + (2 * j as usize) + 1],
+                        X,
+                        Y,
                         regwcs.xrefval,
                         regwcs.yrefval,
                         regwcs.xrefpix,
@@ -2183,10 +2276,6 @@ pub(crate) unsafe fn fits_read_fits_region(
                         &mut Ypos,
                         status,
                     );
-
-                    let mut tmpxpix = 0.0;
-                    let mut tmpypix = 0.0;
-
                     ffxypx_safe(
                         Xpos,
                         Ypos,
@@ -2198,217 +2287,121 @@ pub(crate) unsafe fn fits_read_fits_region(
                         wcs.yinc,
                         wcs.rot,
                         &wcs.dtype,
-                        &mut tmpxpix,
-                        &mut tmpypix,
+                        &mut X,
+                        &mut Y,
                         status,
                     );
-
-                    coords[ci + (2 * j as usize)] = tmpxpix;
-                    coords[ci + (2 * j as usize) + 1] = tmpypix;
-
                     if *status != 0 {
                         ffpmsg_str("Failed to transform coordinates");
                         fits_free_region(aRgn);
                         return *status;
                     }
-                }
-                ci += npos as usize * 2;
-            }
 
-            /* read R. Circle requires one number; Box, Diamond, Ellipse, Annulus, Sector
-            and Panda two; Boxannulus and Elliptannulus four; Point, Rectangle and
-            Polygon none. */
-
-            npos = 0;
-            match newShape.shape {
-                ShapeType::Circle => {
-                    npos = 1;
-                }
-                ShapeType::Box
-                | ShapeType::Diamond
-                | ShapeType::Ellipse
-                | ShapeType::Annulus
-                | ShapeType::Sector => {
-                    npos = 2;
-                }
-                ShapeType::BoxAnnulus | ShapeType::ElliptAnnulus => {
-                    npos = 4;
-                }
-                _ => {}
-            }
-
-            if npos > 0 {
-                if ffgcvd_safe(
-                    &mut fptr,
-                    icol[3],
-                    i as LONGLONG,
-                    1,
-                    npos.into(),
-                    0.0,
-                    &mut coords[ci..],
-                    Some(&mut anynul),
-                    status,
-                ) != 0
-                {
-                    ffpmsg_str("Failed to read R column for region");
-                    fits_free_region(aRgn);
-                    return *status;
-                }
-
-                /* transform lengths if the region and input wcs differ */
-
-                if dotransform {
-                    for j in 0..npos {
-                        if newShape.shape == ShapeType::Poly {
-                            coords = &mut newShape.polyParams.Pts;
-                        } else {
-                            coords = &mut newShape.genericParams.p;
-                        }
-                        Y = Ysave + (coords[ci]);
-                        X = Xsave;
-                        ffwldp_safe(
-                            X,
-                            Y,
-                            regwcs.xrefval,
-                            regwcs.yrefval,
-                            regwcs.xrefpix,
-                            regwcs.yrefpix,
-                            regwcs.xinc,
-                            regwcs.yinc,
-                            regwcs.rot,
-                            &regwcs.dtype,
-                            &mut Xpos,
-                            &mut Ypos,
-                            status,
+                    if newShape.shape == ShapeType::Poly {
+                        newShape.polyParams.Pts[ci] = f64::sqrt(
+                            f64::powi(X - newShape.genericParams.p[0], 2)
+                                + f64::powi(Y - newShape.genericParams.p[1], 2),
                         );
-                        ffxypx_safe(
-                            Xpos,
-                            Ypos,
-                            wcs.xrefval,
-                            wcs.yrefval,
-                            wcs.xrefpix,
-                            wcs.yrefpix,
-                            wcs.xinc,
-                            wcs.yinc,
-                            wcs.rot,
-                            &wcs.dtype,
-                            &mut X,
-                            &mut Y,
-                            status,
-                        );
-                        if *status != 0 {
-                            ffpmsg_str("Failed to transform coordinates");
-                            fits_free_region(aRgn);
-                            return *status;
-                        }
-
-                        if newShape.shape == ShapeType::Poly {
-                            newShape.polyParams.Pts[ci] = f64::sqrt(
-                                f64::powi(X - newShape.genericParams.p[0], 2)
-                                    + f64::powi(Y - newShape.genericParams.p[1], 2),
-                            );
-                        } else {
-                            coords[ci] = f64::sqrt(
-                                f64::powi(X - coords[0], 2) + f64::powi(Y - coords[1], 2),
-                            );
-                        }
-
-                        ci += 1;
+                    } else {
+                        coords[ci] =
+                            f64::sqrt(f64::powi(X - coords[0], 2) + f64::powi(Y - coords[1], 2));
                     }
-                } else {
-                    ci += npos as usize;
-                }
-            }
 
-            /* read ROTANG. Requires two values for Boxannulus, Elliptannulus, Sector,
-            Panda; one for Box, Diamond, Ellipse; and none for Circle, Point, Annulus,
-            Rectangle, Polygon */
-
-            npos = 0;
-            match newShape.shape {
-                ShapeType::Box | ShapeType::Diamond | ShapeType::Ellipse => {
-                    npos = 1;
-                    break;
-                }
-                ShapeType::BoxAnnulus | ShapeType::ElliptAnnulus | ShapeType::Sector => {
-                    npos = 2;
-                    break;
-                }
-                _ => {
-                    break;
-                }
-            }
-
-            if npos > 0 {
-                if ffgcvd_safe(
-                    &mut fptr,
-                    icol[4],
-                    i as LONGLONG,
-                    1,
-                    npos as LONGLONG,
-                    0.0,
-                    &mut coords[ci..],
-                    Some(&mut anynul),
-                    status,
-                ) != 0
-                {
-                    ffpmsg_str("Failed to read ROTANG column for region");
-                    fits_free_region(aRgn);
-                    return *status;
-                }
-
-                /* transform angles if the region and input wcs differ */
-
-                if dotransform {
-                    Theta = (wcs.rot) - (regwcs.rot);
-                    for j in 0..npos {
-                        coords[ci] += Theta;
-                        ci += 1;
-                    }
-                } else {
-                    ci += npos as usize;
-                }
-            }
-
-            /* read the component number */
-
-            if got_component {
-                if ffgcv_safe(
-                    &mut fptr,
-                    TINT,
-                    icol[5],
-                    i as LONGLONG,
-                    1,
-                    1,
-                    Some(NullValue::Int(0)),
-                    cast_slice_mut(&mut [(newShape.comp as usize)]),
-                    Some(&mut anynul),
-                    status,
-                ) != 0
-                {
-                    ffpmsg_str("Failed to read COMPONENT column for region");
-                    fits_free_region(aRgn);
-                    return *status;
+                    ci += 1;
                 }
             } else {
-                newShape.comp = 1;
+                ci += npos as usize;
+            }
+        }
+
+        /* read ROTANG. Requires two values for Boxannulus, Elliptannulus, Sector,
+        Panda; one for Box, Diamond, Ellipse; and none for Circle, Point, Annulus,
+        Rectangle, Polygon */
+
+        npos = 0;
+        match newShape.shape {
+            ShapeType::Box | ShapeType::Diamond | ShapeType::Ellipse => {
+                npos = 1;
+                break;
+            }
+            ShapeType::BoxAnnulus | ShapeType::ElliptAnnulus | ShapeType::Sector => {
+                npos = 2;
+                break;
+            }
+            _ => {
+                break;
+            }
+        }
+
+        if npos > 0 {
+            if ffgcvd_safe(
+                &mut fptr,
+                icol[4],
+                i as LONGLONG,
+                1,
+                npos as LONGLONG,
+                0.0,
+                &mut coords[ci..],
+                Some(&mut anynul),
+                status,
+            ) != 0
+            {
+                ffpmsg_str("Failed to read ROTANG column for region");
+                fits_free_region(aRgn);
+                return *status;
             }
 
-            /* do some precalculations to speed up tests */
+            /* transform angles if the region and input wcs differ */
 
-            fits_setup_shape(newShape);
-
-            /* end loop over shapes */
+            if dotransform {
+                Theta = (wcs.rot) - (regwcs.rot);
+                for j in 0..npos {
+                    coords[ci] += Theta;
+                    ci += 1;
+                }
+            } else {
+                ci += npos as usize;
+            }
         }
 
-        if *status != 0 {
-            fits_free_region(aRgn);
+        /* read the component number */
+
+        if got_component {
+            if ffgcv_safe(
+                &mut fptr,
+                TINT,
+                icol[5],
+                i as LONGLONG,
+                1,
+                1,
+                Some(NullValue::Int(0)),
+                cast_slice_mut(&mut [(newShape.comp as usize)]),
+                Some(&mut anynul),
+                status,
+            ) != 0
+            {
+                ffpmsg_str("Failed to read COMPONENT column for region");
+                fits_free_region(aRgn);
+                return *status;
+            }
         } else {
-            *Rgn = Some(aRgn);
+            newShape.comp = 1;
         }
 
-        ffclos_safe(fptr, status);
+        /* do some precalculations to speed up tests */
 
-        *status
+        fits_setup_shape(newShape);
+
+        /* end loop over shapes */
     }
+
+    if *status != 0 {
+        fits_free_region(aRgn);
+    } else {
+        *Rgn = Some(aRgn);
+    }
+
+    ffclos_safe(fptr, status);
+
+    *status
 }

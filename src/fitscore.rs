@@ -7766,249 +7766,245 @@ pub unsafe extern "C" fn ffcmph(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffcmph_safer(fptr, status)
+        ffcmph_safe(fptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// compress the binary table heap by reordering the contents heap and
 /// recovering any unused space
-pub unsafe fn ffcmph_safer(
+pub fn ffcmph_safe(
     fptr: &mut fitsfile, /* I -FITS file pointer                         */
     status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
-    unsafe {
-        let mut typecode = 0;
-        let mut pixsize;
-        let mut valid = 0;
-        let mut ii: LONGLONG;
-        let mut buffsize = 10000;
-        let mut nbytes: usize;
-        let mut unused: LONGLONG = 0;
-        let mut overlap: LONGLONG = 0;
-        let mut repeat: LONGLONG = 0;
-        let mut offset: LONGLONG = 0;
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut pcount: LONGLONG = 0;
-        let mut endpos: LONGLONG;
-        let t2heapsize: LONGLONG;
-        let mut nblock;
+    let mut typecode = 0;
+    let mut pixsize;
+    let mut valid = 0;
+    let mut ii: LONGLONG;
+    let mut buffsize = 10000;
+    let mut nbytes: usize;
+    let mut unused: LONGLONG = 0;
+    let mut overlap: LONGLONG = 0;
+    let mut repeat: LONGLONG = 0;
+    let mut offset: LONGLONG = 0;
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut pcount: LONGLONG = 0;
+    let mut endpos: LONGLONG;
+    let t2heapsize: LONGLONG;
+    let mut nblock;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        /* get information about the current heap */
-        fftheap_safe(
-            fptr,
-            None,
-            Some(&mut unused),
-            Some(&mut overlap),
-            Some(&mut valid),
-            status,
+    /* get information about the current heap */
+    fftheap_safe(
+        fptr,
+        None,
+        Some(&mut unused),
+        Some(&mut overlap),
+        Some(&mut valid),
+        status,
+    );
+
+    if valid == 0 {
+        /* bad heap pointers */
+        *status = BAD_HEAP_PTR;
+        return *status;
+    }
+
+    /* return if this is not a binary table HDU or if the heap is OK as is */
+    if fptr.Fptr.hdutype != BINARY_TBL
+        || fptr.Fptr.heapsize == 0
+        || (unused == 0 && overlap == 0)
+        || *status > 0
+    {
+        return *status;
+    }
+
+    let mut tptr: Option<Box<fitsfile>> = None;
+
+    /* copy the current HDU to a temporary file in memory */
+    if ffinit_safe(&mut tptr, cs!(c"mem://tempheapfile"), status) != 0 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Failed to create temporary file for the heap",
         );
+        ffpmsg_slice(&message);
+        return *status;
+    }
 
-        if valid == 0 {
-            /* bad heap pointers */
-            *status = BAD_HEAP_PTR;
-            return *status;
-        }
+    let mut tptr = tptr.expect(NULL_MSG);
 
-        /* return if this is not a binary table HDU or if the heap is OK as is */
-        if fptr.Fptr.hdutype != BINARY_TBL
-            || fptr.Fptr.heapsize == 0
-            || (unused == 0 && overlap == 0)
-            || *status > 0
-        {
-            return *status;
-        }
+    if ffcopy_safer(fptr, &mut tptr, 0, status) != 0 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Failed to create copy of the heap",
+        );
+        ffpmsg_slice(&message);
+        ffclos_safe(tptr, status);
+        return *status;
+    }
 
-        let mut tptr: Option<Box<fitsfile>> = None;
+    let mut buffer: Vec<c_char> = Vec::new(); /* allocate initial buffer */
 
-        /* copy the current HDU to a temporary file in memory */
-        if ffinit_safe(&mut tptr, cs!(c"mem://tempheapfile"), status) != 0 {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "Failed to create temporary file for the heap",
-            );
-            ffpmsg_slice(&message);
-            return *status;
-        }
-
-        let mut tptr = tptr.expect(NULL_MSG);
-
-        if ffcopy_safer(fptr, &mut tptr, 0, status) != 0 {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "Failed to create copy of the heap",
-            );
-            ffpmsg_slice(&message);
-            ffclos_safe(tptr, status);
-            return *status;
-        }
-
-        let mut buffer: Vec<c_char> = Vec::new(); /* allocate initial buffer */
-
-        if buffer.try_reserve_exact(buffsize).is_err() {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "Failed to allocate buffer to copy the heap",
-            );
-            ffpmsg_slice(&message);
-            ffclos_safe(tptr, status);
-
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            buffer.resize(buffsize, 0)
-        }
-
-        let readheapstart = tptr.Fptr.datastart + tptr.Fptr.heapstart;
-        let writeheapstart = fptr.Fptr.datastart + fptr.Fptr.heapstart;
-
-        let t1heapsize = fptr.Fptr.heapsize; /* save original heap size */
-        fptr.Fptr.heapsize = 0; /* reset heap to zero */
-
-        /* loop over all cols */
-        let mut jj = 1;
-        while jj <= fptr.Fptr.tfield && *status <= 0 {
-            ffgtcl_safe(&mut tptr, jj, Some(&mut typecode), None, None, status);
-
-            if typecode > 0 {
-                continue; /* ignore fixed length columns */
-            }
-
-            pixsize = -typecode / 10;
-
-            /* copy heap data, row by row */
-            ii = 1;
-            while ii as LONGLONG <= fptr.Fptr.numrows {
-                ffgdesll_safe(
-                    &mut tptr,
-                    jj,
-                    ii,
-                    Some(&mut repeat),
-                    Some(&mut offset),
-                    status,
-                );
-                if typecode == -TBIT {
-                    nbytes = ((repeat + 7) / 8) as usize;
-                } else {
-                    nbytes = (repeat as usize) * pixsize as usize;
-                }
-
-                /* increase size of buffer if necessary to read whole array */
-                if (nbytes) > buffsize {
-                    let additional = nbytes - buffer.capacity();
-                    if buffer.try_reserve_exact(additional).is_err() {
-                        *status = MEMORY_ALLOCATION;
-                    } else {
-                        buffsize = nbytes;
-                        buffer.resize(nbytes, 0);
-                    };
-                }
-
-                /* If this is not the last HDU in the file, then check if */
-                /* extending the heap would overwrite the following header. */
-                /* If so, then have to insert more blocks. */
-                if (fptr.Fptr.lasthdu) == 0 {
-                    endpos = writeheapstart + fptr.Fptr.heapsize + (nbytes as LONGLONG);
-                    let headstart = fptr.Fptr.get_headstart_as_slice();
-                    if endpos > headstart[(fptr.Fptr.curhdu + 1) as usize] {
-                        /* calc the number of blocks that need to be added */
-                        nblock = (((endpos - 1 - headstart[(fptr.Fptr.curhdu + 1) as usize])
-                            / BL!())
-                            + 1) as c_long;
-
-                        if ffiblk(fptr, nblock, 1, status) > 0 {
-                            /* insert blocks */
-                            int_snprintf!(
-                                &mut message,
-                                FLEN_ERRMSG,
-                                "Failed to extend the size of the variable length heap by {} blocks.",
-                                nblock,
-                            );
-                            ffpmsg_slice(&message);
-                        };
-                    };
-                }
-
-                /* read arrray of bytes from temporary copy */
-                ffmbyt_safe(&mut tptr, readheapstart + offset, REPORT_EOF, status);
-                ffgbyt(
-                    &mut tptr,
-                    nbytes as LONGLONG,
-                    cast_slice_mut(&mut buffer),
-                    status,
-                );
-
-                /* write arrray of bytes back to original file */
-                ffmbyt_safe(
-                    fptr,
-                    writeheapstart + fptr.Fptr.heapsize,
-                    IGNORE_EOF,
-                    status,
-                );
-                ffpbyt(
-                    fptr,
-                    nbytes as LONGLONG,
-                    cast_slice_mut(&mut buffer),
-                    status,
-                );
-
-                /* write descriptor */
-                ffpdes_safe(fptr, jj, ii as LONGLONG, repeat, fptr.Fptr.heapsize, status);
-                fptr.Fptr.heapsize += nbytes as LONGLONG; /* update heapsize */
-
-                if *status > 0 {
-                    ffclos_safe(tptr, status);
-                    return *status;
-                };
-
-                ii += 1
-            }
-
-            jj += 1
-        }
-
+    if buffer.try_reserve_exact(buffsize).is_err() {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Failed to allocate buffer to copy the heap",
+        );
+        ffpmsg_slice(&message);
         ffclos_safe(tptr, status);
 
-        /* delete any empty blocks at the end of the HDU */
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        nblock = ((headstart[(fptr.Fptr.curhdu + 1) as usize]
-            - (writeheapstart + fptr.Fptr.heapsize))
-            / BL!()) as c_long;
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        buffer.resize(buffsize, 0)
+    }
 
-        if nblock > 0 {
-            t2heapsize = fptr.Fptr.heapsize; /* save new heap size */
-            fptr.Fptr.heapsize = t1heapsize; /* restore  original heap size */
-            ffdblk(fptr, nblock, status);
-            fptr.Fptr.heapsize = t2heapsize; /* reset correct heap size */
+    let readheapstart = tptr.Fptr.datastart + tptr.Fptr.heapstart;
+    let writeheapstart = fptr.Fptr.datastart + fptr.Fptr.heapstart;
+
+    let t1heapsize = fptr.Fptr.heapsize; /* save original heap size */
+    fptr.Fptr.heapsize = 0; /* reset heap to zero */
+
+    /* loop over all cols */
+    let mut jj = 1;
+    while jj <= fptr.Fptr.tfield && *status <= 0 {
+        ffgtcl_safe(&mut tptr, jj, Some(&mut typecode), None, None, status);
+
+        if typecode > 0 {
+            continue; /* ignore fixed length columns */
         }
 
-        /* update the PCOUNT value (size of heap) */
-        ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
+        pixsize = -typecode / 10;
 
-        ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
-        if fptr.Fptr.heapsize != pcount {
-            ffmkyj_safe(
-                fptr,
-                cs!(c"PCOUNT"),
-                fptr.Fptr.heapsize,
-                Some(&comm),
+        /* copy heap data, row by row */
+        ii = 1;
+        while ii as LONGLONG <= fptr.Fptr.numrows {
+            ffgdesll_safe(
+                &mut tptr,
+                jj,
+                ii,
+                Some(&mut repeat),
+                Some(&mut offset),
                 status,
             );
+            if typecode == -TBIT {
+                nbytes = ((repeat + 7) / 8) as usize;
+            } else {
+                nbytes = (repeat as usize) * pixsize as usize;
+            }
+
+            /* increase size of buffer if necessary to read whole array */
+            if (nbytes) > buffsize {
+                let additional = nbytes - buffer.capacity();
+                if buffer.try_reserve_exact(additional).is_err() {
+                    *status = MEMORY_ALLOCATION;
+                } else {
+                    buffsize = nbytes;
+                    buffer.resize(nbytes, 0);
+                };
+            }
+
+            /* If this is not the last HDU in the file, then check if */
+            /* extending the heap would overwrite the following header. */
+            /* If so, then have to insert more blocks. */
+            if (fptr.Fptr.lasthdu) == 0 {
+                endpos = writeheapstart + fptr.Fptr.heapsize + (nbytes as LONGLONG);
+                let headstart = fptr.Fptr.get_headstart_as_slice();
+                if endpos > headstart[(fptr.Fptr.curhdu + 1) as usize] {
+                    /* calc the number of blocks that need to be added */
+                    nblock = (((endpos - 1 - headstart[(fptr.Fptr.curhdu + 1) as usize]) / BL!())
+                        + 1) as c_long;
+
+                    if ffiblk(fptr, nblock, 1, status) > 0 {
+                        /* insert blocks */
+                        int_snprintf!(
+                            &mut message,
+                            FLEN_ERRMSG,
+                            "Failed to extend the size of the variable length heap by {} blocks.",
+                            nblock,
+                        );
+                        ffpmsg_slice(&message);
+                    };
+                };
+            }
+
+            /* read arrray of bytes from temporary copy */
+            ffmbyt_safe(&mut tptr, readheapstart + offset, REPORT_EOF, status);
+            ffgbyt(
+                &mut tptr,
+                nbytes as LONGLONG,
+                cast_slice_mut(&mut buffer),
+                status,
+            );
+
+            /* write arrray of bytes back to original file */
+            ffmbyt_safe(
+                fptr,
+                writeheapstart + fptr.Fptr.heapsize,
+                IGNORE_EOF,
+                status,
+            );
+            ffpbyt(
+                fptr,
+                nbytes as LONGLONG,
+                cast_slice_mut(&mut buffer),
+                status,
+            );
+
+            /* write descriptor */
+            ffpdes_safe(fptr, jj, ii as LONGLONG, repeat, fptr.Fptr.heapsize, status);
+            fptr.Fptr.heapsize += nbytes as LONGLONG; /* update heapsize */
+
+            if *status > 0 {
+                ffclos_safe(tptr, status);
+                return *status;
+            };
+
+            ii += 1
         }
 
-        /* rescan new HDU structure */
-        ffrdef_safe(fptr, status);
-
-        *status
+        jj += 1
     }
+
+    ffclos_safe(tptr, status);
+
+    /* delete any empty blocks at the end of the HDU */
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    nblock = ((headstart[(fptr.Fptr.curhdu + 1) as usize] - (writeheapstart + fptr.Fptr.heapsize))
+        / BL!()) as c_long;
+
+    if nblock > 0 {
+        t2heapsize = fptr.Fptr.heapsize; /* save new heap size */
+        fptr.Fptr.heapsize = t1heapsize; /* restore  original heap size */
+        ffdblk(fptr, nblock, status);
+        fptr.Fptr.heapsize = t2heapsize; /* reset correct heap size */
+    }
+
+    /* update the PCOUNT value (size of heap) */
+    ffmaky_safe(fptr, 2, status); /* reset to beginning of header */
+
+    ffgkyjj_safe(fptr, cs!(c"PCOUNT"), &mut pcount, Some(&mut comm), status);
+    if fptr.Fptr.heapsize != pcount {
+        ffmkyj_safe(
+            fptr,
+            cs!(c"PCOUNT"),
+            fptr.Fptr.heapsize,
+            Some(&comm),
+            status,
+        );
+    }
+
+    /* rescan new HDU structure */
+    ffrdef_safe(fptr, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

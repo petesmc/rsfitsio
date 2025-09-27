@@ -220,19 +220,17 @@ fn writeascii() {
         let ttype_opts: Vec<Option<&[c_char]>> = ttype.iter().map(|s| Some(*s)).collect();
         let tunit_opts: Vec<Option<&[c_char]>> = tunit.iter().map(|s| Some(*s)).collect();
 
-        if unsafe {
-            fits_create_tbl(
-                fptr_box,
-                ASCII_TBL,
-                nrows,
-                tfields,
-                &ttype_opts,
-                &tform,
-                Some(&tunit_opts),
-                Some(cast_slice(extname_cstr.to_bytes_with_nul())),
-                &mut status,
-            )
-        } != 0
+        if fits_create_tbl(
+            fptr_box,
+            ASCII_TBL,
+            nrows,
+            tfields,
+            &ttype_opts,
+            &tform,
+            Some(&tunit_opts),
+            Some(cast_slice(extname_cstr.to_bytes_with_nul())),
+            &mut status,
+        ) != 0
         {
             printerror(status);
         }
@@ -371,19 +369,17 @@ fn writebintable() {
         let ttype_opts: Vec<Option<&[c_char]>> = ttype.iter().map(|s| Some(*s)).collect();
         let tunit_opts: Vec<Option<&[c_char]>> = tunit.iter().map(|s| Some(*s)).collect();
 
-        if unsafe {
-            fits_create_tbl(
-                fptr_box,
-                BINARY_TBL,
-                nrows,
-                tfields,
-                &ttype_opts,
-                &tform,
-                Some(&tunit_opts),
-                Some(cast_slice(extname_cstr.to_bytes_with_nul())),
-                &mut status,
-            )
-        } != 0
+        if fits_create_tbl(
+            fptr_box,
+            BINARY_TBL,
+            nrows,
+            tfields,
+            &ttype_opts,
+            &tform,
+            Some(&tunit_opts),
+            Some(cast_slice(extname_cstr.to_bytes_with_nul())),
+            &mut status,
+        ) != 0
         {
             printerror(status);
         }

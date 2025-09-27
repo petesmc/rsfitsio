@@ -209,19 +209,17 @@ pub fn ffomem_safer(
     }
 
     /* parse the input file specification */
-    unsafe {
-        ffiurl_safer(
-            &name[url..],
-            urltype.as_mut_ptr(),
-            infile.as_mut_ptr(),
-            outfile.as_mut_ptr(),
-            extspec.as_mut_ptr(),
-            rowfilter.as_mut_ptr(),
-            binspec.as_mut_ptr(),
-            colspec.as_mut_ptr(),
-            status,
-        );
-    }
+    ffiurl_safe(
+        &name[url..],
+        Some(&mut urltype),
+        Some(&mut infile),
+        Some(&mut outfile),
+        Some(&mut extspec),
+        Some(&mut rowfilter),
+        Some(&mut binspec),
+        Some(&mut colspec),
+        status,
+    );
 
     strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
 
@@ -318,9 +316,7 @@ pub fn ffomem_safer(
             ffpmsg_str("This does not look like a FITS file.");
         }
 
-        unsafe {
-            ffclos_safe(f_fitsfile, status);
-        }
+        ffclos_safe(f_fitsfile, status);
         *fptr = None; /* return null file pointer */
         return *status;
     }
@@ -456,7 +452,7 @@ pub fn ffdkopn_safer(
 
     *status = OPEN_DISK_FILE;
 
-    unsafe { ffopen_safe(fptr, name, mode, status) };
+    ffopen_safe(fptr, name, mode, status);
 
     *status
 }
@@ -936,7 +932,7 @@ pub fn ffopen_safe(
 
             /* call the newer version of this parsing routine that supports 'compspec' */
 
-            ffifile2_safer(
+            ffifile2_safe(
                 url,
                 Some(&mut urltype[..]),
                 Some(&mut infile[..]),
@@ -2001,15 +1997,15 @@ pub(crate) fn fits_already_open(
                 } else {
                     let filename = cast_slice(CStr::from_ptr(oldFptr.filename).to_bytes_with_nul());
 
-                    ffiurl_safer(
+                    ffiurl_safe(
                         filename,
-                        oldurltype.as_mut_ptr(),
-                        oldinfile.as_mut_ptr(),
-                        oldoutfile.as_mut_ptr(),
-                        oldextspec.as_mut_ptr(),
-                        oldrowfilter.as_mut_ptr(),
-                        oldbinspec.as_mut_ptr(),
-                        oldcolspec.as_mut_ptr(),
+                        Some(&mut oldurltype),
+                        Some(&mut oldinfile),
+                        Some(&mut oldoutfile),
+                        Some(&mut oldextspec),
+                        Some(&mut oldrowfilter),
+                        Some(&mut oldbinspec),
+                        Some(&mut oldcolspec),
                         status,
                     );
 
@@ -4440,7 +4436,29 @@ pub unsafe extern "C" fn ffiurl(
 
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffiurl_safer(
+        let urltype = urltype
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let infilex = infilex
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let outfile = outfile
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let extspec = extspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let rowfilterx = rowfilterx
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let binspec = binspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let colspec = colspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+
+        ffiurl_safe(
             url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, status,
         )
     }
@@ -4450,46 +4468,20 @@ pub unsafe extern "C" fn ffiurl(
 /// fits_parse_input_url
 /// parse the input URL into its basic components.
 /// This routine does not support the pixfilter or compspec components.
-pub unsafe fn ffiurl_safer(
-    url: &[c_char],          /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
+pub fn ffiurl_safe(
+    url: &[c_char],                    /* input filename */
+    urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
+    infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
+    outfile: Option<&mut [c_char]>,    /* optional output file name            */
+    extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
+    rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
+    binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
+    colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        ffifile2_safer(
-            url,
-            urltype
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            infilex
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            outfile
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            extspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            rowfilterx
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            binspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            colspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            None,
-            None,
-            status,
-        )
-    }
+    ffifile2_safe(
+        url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, None, None, status,
+    )
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4513,56 +4505,54 @@ pub unsafe extern "C" fn ffifile(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(url);
 
-        ffifile_safer(
+        let urltype = urltype
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let infilex = infilex
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let outfile = outfile
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let extspec = extspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let rowfilterx = rowfilterx
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let binspec = binspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let colspec = colspec
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+        let pixfilter = pixfilter
+            .as_mut()
+            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+
+        ffifile_safe(
             url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter,
             status,
         )
     }
 }
 
-pub unsafe fn ffifile_safer(
-    url: &[c_char],          /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
-    pixfilter: *mut c_char,  /* pixel filter expression */
+pub fn ffifile_safe(
+    url: &[c_char],                    /* input filename */
+    urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
+    infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
+    outfile: Option<&mut [c_char]>,    /* optional output file name            */
+    extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
+    rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
+    binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
+    colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
+    pixfilter: Option<&mut [c_char]>,  /* pixel filter expression */
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        ffifile2_safer(
-            url,
-            urltype
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            infilex
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            outfile
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            extspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            rowfilterx
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            binspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            colspec
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            pixfilter
-                .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
-            None,
-            status,
-        )
-    }
+    ffifile2_safe(
+        url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter, None,
+        status,
+    )
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4588,7 +4578,7 @@ pub unsafe extern "C" fn ffifile2(
 
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffifile2_safer(
+        ffifile2_safe(
             url,
             urltype
                 .as_mut()
@@ -4634,7 +4624,7 @@ pub unsafe extern "C" fn ffifile2(
 /// the column specifier,
 /// and the image pixel filtering specifier.
 /// A null pointer (0) may be be specified for any of the output string arguments that are not needed. Null strings will be returned for any components that are not present in the input file name. The calling routine must allocate sufficient memory to hold the returned character strings. Allocating the string lengths equal to FLEN_FILENAME is guaranteed to be safe. These routines are mainly for internal use by other CFITSIO routines.
-pub fn ffifile2_safer(
+pub fn ffifile2_safe(
     url: &[c_char],                        /* input filename */
     mut urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
     mut infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
@@ -6849,7 +6839,7 @@ pub unsafe extern "C" fn ffdelt(
 
         let mut boxed_fptr = Some(Box::from_raw(fptr));
 
-        let result = ffdelt_safer(&mut (boxed_fptr), status);
+        let result = ffdelt_safe(&mut (boxed_fptr), status);
 
         if result != 0 {
             fptr = ptr::null_mut(); /* set to null to  avoid dangling pointer */
@@ -6861,85 +6851,81 @@ pub unsafe extern "C" fn ffdelt(
 
 /*--------------------------------------------------------------------------*/
 /// close and DELETE the FITS file.
-pub unsafe fn ffdelt_safer(
+pub fn ffdelt_safe(
     fptr: &mut Option<Box<fitsfile>>, /* I - FITS file pointer */
     status: &mut c_int,               /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut basename: Vec<c_char> = Vec::new();
-        let mut slen: c_int = 0;
-        let mut tstatus = NO_CLOSE_ERROR;
-        let mut zerostatus: c_int = 0;
+    let mut basename: Vec<c_char> = Vec::new();
+    let mut slen: c_int = 0;
+    let mut tstatus = NO_CLOSE_ERROR;
+    let mut zerostatus: c_int = 0;
 
-        let local_fptr = fptr.as_deref_mut().unwrap();
+    let local_fptr = fptr.as_deref_mut().unwrap();
 
-        if local_fptr.Fptr.validcode != VALIDSTRUC {
-            /* check for magic value */
-            *status = BAD_FILEPTR;
-            return *status;
-        }
-
-        if *status > 0 {
-            ffchdu(local_fptr, &mut tstatus); /* turn off the error message from ffchdu */
-        } else {
-            ffchdu(local_fptr, status);
-        }
-
-        ffflsh_safe(local_fptr, true, status); /* flush and disassociate IO buffers */
-
-        /* call driver function to actually close the file */
-        //let d = driverTable.lock().unwrap();
-        let d = DRIVER_TABLE.get().unwrap();
-        if (d[local_fptr.Fptr.driver as usize].close)(local_fptr.Fptr.filehandle) != 0
-            && *status <= 0
-        {
-            *status = FILE_NOT_CLOSED; /* report error if no previous error */
-
-            ffpmsg_str("failed to close the following file: (ffdelt)");
-            ffpmsg_cstr(CStr::from_ptr(local_fptr.Fptr.filename));
-        }
-
-        /* call driver function to actually delete the file */
-        if let Some(remove) = d[local_fptr.Fptr.driver as usize].remove {
-            /* parse the input URL to get the base filename */
-            slen = strlen(local_fptr.Fptr.filename) as c_int;
-            if basename.try_reserve_exact((slen + 1) as usize).is_err() {
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            } else {
-                basename.resize((slen + 1) as usize, 0)
-            }
-
-            let url = CStr::from_ptr(local_fptr.Fptr.filename).to_bytes_with_nul();
-
-            ffiurl_safer(
-                cast_slice(url),
-                ptr::null_mut(),
-                basename.as_mut_ptr(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                &mut zerostatus,
-            );
-
-            if remove(&basename) != 0 {
-                ffpmsg_str("failed to delete the following file: (ffdelt)");
-                ffpmsg_cstr(CStr::from_ptr(local_fptr.Fptr.filename));
-                if (*status) == 0 {
-                    *status = FILE_NOT_CLOSED;
-                }
-            }
-        }
-
-        fits_clear_Fptr_safer(&mut local_fptr.Fptr, status); /* clear Fptr address */
-        local_fptr.Fptr.validcode = 0; /* magic value to indicate invalid fptr */
-
-        *fptr = None;
-
-        *status
+    if local_fptr.Fptr.validcode != VALIDSTRUC {
+        /* check for magic value */
+        *status = BAD_FILEPTR;
+        return *status;
     }
+
+    if *status > 0 {
+        ffchdu(local_fptr, &mut tstatus); /* turn off the error message from ffchdu */
+    } else {
+        ffchdu(local_fptr, status);
+    }
+
+    ffflsh_safe(local_fptr, true, status); /* flush and disassociate IO buffers */
+
+    /* call driver function to actually close the file */
+    //let d = driverTable.lock().unwrap();
+    let d = DRIVER_TABLE.get().unwrap();
+    if (d[local_fptr.Fptr.driver as usize].close)(local_fptr.Fptr.filehandle) != 0 && *status <= 0 {
+        *status = FILE_NOT_CLOSED; /* report error if no previous error */
+
+        ffpmsg_str("failed to close the following file: (ffdelt)");
+        ffpmsg_cstr(local_fptr.Fptr.get_filename_as_cstr());
+    }
+
+    /* call driver function to actually delete the file */
+    if let Some(remove) = d[local_fptr.Fptr.driver as usize].remove {
+        /* parse the input URL to get the base filename */
+        slen = strlen_safe(local_fptr.Fptr.get_filename_as_cstr().to_bytes_with_nul()) as c_int;
+        if basename.try_reserve_exact((slen + 1) as usize).is_err() {
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        } else {
+            basename.resize((slen + 1) as usize, 0)
+        }
+
+        let url = local_fptr.Fptr.get_filename_as_cstr().to_bytes_with_nul();
+
+        ffiurl_safe(
+            cast_slice(url),
+            None,
+            Some(&mut basename),
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut zerostatus,
+        );
+
+        if remove(&basename) != 0 {
+            ffpmsg_str("failed to delete the following file: (ffdelt)");
+            ffpmsg_cstr(local_fptr.Fptr.get_filename_as_cstr());
+            if (*status) == 0 {
+                *status = FILE_NOT_CLOSED;
+            }
+        }
+    }
+
+    fits_clear_Fptr_safer(&mut local_fptr.Fptr, status); /* clear Fptr address */
+    local_fptr.Fptr.validcode = 0; /* magic value to indicate invalid fptr */
+
+    *fptr = None;
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7191,17 +7177,13 @@ pub(crate) fn ffoptplt(
             }
 
             ffmrhd_safe(tptr.as_mut(), 1, None, status); /* move to next HDU until error */
-            unsafe {
-                ffcrhd_safe(fptr, status); /* create empty new HDU in output file */
-            }
+            ffcrhd_safe(fptr, status); /* create empty new HDU in output file */
         }
 
         if *status == END_OF_FILE {
             *status = 0; /* expected error condition */
         }
-        unsafe {
-            ffclos_safe(tptr, status); /* close the template file */
-        }
+        ffclos_safe(tptr, status); /* close the template file */
     }
 
     ffmahd_safe(fptr, 1, None, status); /* move to the primary array */
@@ -7829,77 +7811,71 @@ mod tests {
 
     #[test]
     fn test_ffourl_status_propagation() {
-        unsafe {
-            let url = str_to_c_array("myfile.fits");
-            let mut status: c_int = 123; // Pre-existing error
+        let url = str_to_c_array("myfile.fits");
+        let mut status: c_int = 123; // Pre-existing error
 
-            let mut urltype = create_buffer(1);
-            let mut outfile = create_buffer(FLEN_FILENAME);
-            let mut tpltfile = create_buffer(FLEN_FILENAME);
-            let mut compspec = create_buffer(FLEN_FILENAME);
+        let mut urltype = create_buffer(1);
+        let mut outfile = create_buffer(FLEN_FILENAME);
+        let mut tpltfile = create_buffer(FLEN_FILENAME);
+        let mut compspec = create_buffer(FLEN_FILENAME);
 
-            let result = ffourl(
-                &url,
-                &mut urltype,
-                &mut outfile,
-                &mut tpltfile,
-                &mut compspec,
-                &mut status,
-            );
+        let result = ffourl(
+            &url,
+            &mut urltype,
+            &mut outfile,
+            &mut tpltfile,
+            &mut compspec,
+            &mut status,
+        );
 
-            assert_eq!(result, 123);
-            assert_eq!(status, 123);
-        }
+        assert_eq!(result, 123);
+        assert_eq!(status, 123);
     }
 
     #[test]
     fn test_ffourl_missing_closing_paren() {
-        unsafe {
-            let url = str_to_c_array("output.fits(template.fits");
-            let mut urltype = create_buffer(MAX_PREFIX_LEN);
-            let mut outfile = create_buffer(FLEN_FILENAME);
-            let mut tpltfile = create_buffer(FLEN_FILENAME);
-            let mut status: c_int = 0;
+        let url = str_to_c_array("output.fits(template.fits");
+        let mut urltype = create_buffer(MAX_PREFIX_LEN);
+        let mut outfile = create_buffer(FLEN_FILENAME);
+        let mut tpltfile = create_buffer(FLEN_FILENAME);
+        let mut status: c_int = 0;
 
-            let mut compspec = create_buffer(FLEN_FILENAME);
+        let mut compspec = create_buffer(FLEN_FILENAME);
 
-            let result = ffourl(
-                &url,
-                &mut urltype,
-                &mut outfile,
-                &mut tpltfile,
-                &mut compspec,
-                &mut status,
-            );
+        let result = ffourl(
+            &url,
+            &mut urltype,
+            &mut outfile,
+            &mut tpltfile,
+            &mut compspec,
+            &mut status,
+        );
 
-            assert_eq!(result, URL_PARSE_ERROR);
-            assert_eq!(status, URL_PARSE_ERROR);
-        }
+        assert_eq!(result, URL_PARSE_ERROR);
+        assert_eq!(status, URL_PARSE_ERROR);
     }
 
     #[test]
     fn test_ffourl_missing_closing_bracket() {
-        unsafe {
-            let url = str_to_c_array("output.fits[compress");
-            let mut urltype = create_buffer(MAX_PREFIX_LEN);
-            let mut outfile = create_buffer(FLEN_FILENAME);
-            let mut compspec = create_buffer(FLEN_FILENAME);
-            let mut status: c_int = 0;
+        let url = str_to_c_array("output.fits[compress");
+        let mut urltype = create_buffer(MAX_PREFIX_LEN);
+        let mut outfile = create_buffer(FLEN_FILENAME);
+        let mut compspec = create_buffer(FLEN_FILENAME);
+        let mut status: c_int = 0;
 
-            let mut tpltfile = create_buffer(FLEN_FILENAME);
+        let mut tpltfile = create_buffer(FLEN_FILENAME);
 
-            let result = ffourl(
-                &url,
-                &mut urltype,
-                &mut outfile,
-                &mut tpltfile,
-                &mut compspec,
-                &mut status,
-            );
+        let result = ffourl(
+            &url,
+            &mut urltype,
+            &mut outfile,
+            &mut tpltfile,
+            &mut compspec,
+            &mut status,
+        );
 
-            assert_eq!(result, URL_PARSE_ERROR);
-            assert_eq!(status, URL_PARSE_ERROR);
-        }
+        assert_eq!(result, URL_PARSE_ERROR);
+        assert_eq!(status, URL_PARSE_ERROR);
     }
 
     #[test]
@@ -7987,7 +7963,7 @@ mod tests {
             let mut compspec = create_buffer(FLEN_FILENAME);
             let mut status: c_int = 0;
 
-            let result = ffifile2_safer(
+            let result = ffifile2_safe(
                 &infile,
                 Some(&mut urltype[..]),
                 Some(&mut infilex[..]),
