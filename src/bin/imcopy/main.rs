@@ -134,7 +134,7 @@ pub fn main() -> ExitCode {
             READONLY,
             &mut status,
         );
-        fits_create_file(&mut outfptr, outfile.to_bytes_with_nul(), &mut status);
+        fits_create_file(&mut outfptr, cast_slice(outfile.to_bytes_with_nul()), &mut status);
 
         if status != 0 {
             #[cfg(windows)]
