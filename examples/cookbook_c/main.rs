@@ -77,8 +77,8 @@ fn writeimage() {
     /* and BZERO keywords will be automatically written by cfitsio  */
     /* in this case.                                                */
 
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe {
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe {
             fits_create_img(
                 fptr_box.as_mut(),
                 bitpix,
@@ -87,9 +87,8 @@ fn writeimage() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* initialize the values in the image with a linear ramp function */
@@ -101,8 +100,8 @@ fn writeimage() {
     }
 
     /* write the array of unsigned integers to the FITS file */
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe {
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe {
             fits_write_img(
                 fptr_box.as_mut(),
                 TUSHORT,
@@ -112,9 +111,8 @@ fn writeimage() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* write another optional keyword to the header */
@@ -138,11 +136,11 @@ fn writeimage() {
         }
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            /* close the file */
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        /* close the file */
+        printerror(status);
     }
 }
 
@@ -203,8 +201,8 @@ fn writeascii() {
     }
 
     /* append a new empty ASCII table onto the FITS file */
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe {
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe {
             fits_create_tbl(
                 fptr_box.as_mut(),
                 ASCII_TBL,
@@ -217,9 +215,8 @@ fn writeascii() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* write names to the first column (character strings) */
@@ -261,11 +258,11 @@ fn writeascii() {
         }
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            /* close the FITS file */
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        /* close the FITS file */
+        printerror(status);
     }
 }
 
@@ -326,16 +323,16 @@ fn writebintable() {
         printerror(status);
     }
 
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe { fits_movabs_hdu(fptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0 {
-            /* move to 2nd HDU */
-            printerror(status);
-        }
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe { fits_movabs_hdu(fptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0
+    {
+        /* move to 2nd HDU */
+        printerror(status);
     }
 
     /* append a new empty binary table onto the FITS file */
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe {
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe {
             fits_create_tbl(
                 fptr_box.as_mut(),
                 BINARY_TBL,
@@ -348,9 +345,8 @@ fn writebintable() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* write names to the first column (character strings) */
@@ -392,11 +388,11 @@ fn writebintable() {
         }
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            /* close the FITS file */
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        /* close the FITS file */
+        printerror(status);
     }
 }
 
@@ -430,8 +426,8 @@ fn copyhdu() {
     }
 
     /* copy the primary array from the input file to the output file */
-    if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
-        if unsafe {
+    if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr)
+        && unsafe {
             fits_copy_hdu(
                 infptr_box.as_mut(),
                 outfptr_box.as_mut(),
@@ -439,21 +435,20 @@ fn copyhdu() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* move to the 3rd HDU in the input file */
-    if let Some(ref mut infptr_box) = infptr {
-        if unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut infptr_box) = infptr
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0
+    {
+        printerror(status);
     }
 
     /* copy 3rd HDU from the input file to the output file (to 2nd HDU) */
-    if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr) {
-        if unsafe {
+    if let (Some(infptr_box), Some(outfptr_box)) = (&mut infptr, &mut outfptr)
+        && unsafe {
             fits_copy_hdu(
                 infptr_box.as_mut(),
                 outfptr_box.as_mut(),
@@ -461,22 +456,21 @@ fn copyhdu() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     let mut close_status = 0;
-    if let Some(outfptr_box) = outfptr {
-        if unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0 {
-            printerror(close_status);
-        }
+    if let Some(outfptr_box) = outfptr
+        && unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0
+    {
+        printerror(close_status);
     }
-    if let Some(infptr_box) = infptr {
-        if unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0 {
-            /* close files */
-            printerror(status);
-        }
+    if let Some(infptr_box) = infptr
+        && unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0
+    {
+        /* close files */
+        printerror(status);
     }
 }
 
@@ -522,10 +516,10 @@ fn selectrows() {
     }
 
     /* move to the 3rd HDU in the input file (a binary table in this case) */
-    if let Some(ref mut infptr_box) = infptr {
-        if unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut infptr_box) = infptr
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0
+    {
+        printerror(status);
     }
 
     if hdutype != BINARY_TBL {
@@ -534,26 +528,25 @@ fn selectrows() {
     }
 
     /* move to the last (2rd) HDU in the output file */
-    if let Some(ref mut outfptr_box) = outfptr {
-        if unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut outfptr_box) = outfptr
+        && unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0
+    {
+        printerror(status);
     }
 
     /* create new extension in the output file */
-    if let Some(ref mut outfptr_box) = outfptr {
-        if unsafe { fits_create_hdu(outfptr_box.as_mut(), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(ref mut outfptr_box) = outfptr
+        && unsafe { fits_create_hdu(outfptr_box.as_mut(), &mut status) } != 0
+    {
+        printerror(status);
     }
 
     /* get number of keywords */
-    if let Some(ref mut infptr_box) = infptr {
-        if unsafe { fits_get_hdrpos(infptr_box.as_mut(), &mut nkeys, &mut keypos, &mut status) }
+    if let Some(ref mut infptr_box) = infptr
+        && unsafe { fits_get_hdrpos(infptr_box.as_mut(), &mut nkeys, &mut keypos, &mut status) }
             != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* copy all the keywords from the input to the output extension */
@@ -612,8 +605,8 @@ fn selectrows() {
     }
 
     /* read the DENSITY column values */
-    if let Some(ref mut infptr_box) = infptr {
-        if unsafe {
+    if let Some(ref mut infptr_box) = infptr
+        && unsafe {
             fits_read_col(
                 infptr_box.as_mut(),
                 TFLOAT,
@@ -627,9 +620,8 @@ fn selectrows() {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* allocate buffer large enough for 1 row of the table */
@@ -684,15 +676,15 @@ fn selectrows() {
     unsafe { free(buffer as *mut _) };
 
     let mut close_status = 0;
-    if let Some(outfptr_box) = outfptr {
-        if unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0 {
-            printerror(close_status);
-        }
+    if let Some(outfptr_box) = outfptr
+        && unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0
+    {
+        printerror(close_status);
     }
-    if let Some(infptr_box) = infptr {
-        if unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(infptr_box) = infptr
+        && unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 }
 
@@ -756,10 +748,10 @@ fn readheader() {
         printerror(status); /* got an unexpected error                */
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 }
 
@@ -822,8 +814,8 @@ fn readimage() {
         /* float array.   Cfitsio automatically performs the datatype      */
         /* conversion in cases like this.                                  */
 
-        if let Some(ref mut fptr_box) = fptr {
-            if unsafe {
+        if let Some(ref mut fptr_box) = fptr
+            && unsafe {
                 fits_read_img(
                     fptr_box.as_mut(),
                     TFLOAT,
@@ -835,9 +827,8 @@ fn readimage() {
                     &mut status,
                 )
             } != 0
-            {
-                printerror(status);
-            }
+        {
+            printerror(status);
         }
 
         for ii in 0..nbuffer {
@@ -855,10 +846,10 @@ fn readimage() {
 
     println!("\nMin and max image pixels =  {datamin:.0}, {datamax:.0}");
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 }
 
@@ -904,11 +895,10 @@ fn readtable() {
     for hdunum in 2..=3 {
         /*read ASCII, then binary table */
         /* move to the HDU */
-        if let Some(ref mut fptr_box) = fptr {
-            if unsafe { fits_movabs_hdu(fptr_box.as_mut(), hdunum, &mut hdutype, &mut status) } != 0
-            {
-                printerror(status);
-            }
+        if let Some(ref mut fptr_box) = fptr
+            && unsafe { fits_movabs_hdu(fptr_box.as_mut(), hdunum, &mut hdutype, &mut status) } != 0
+        {
+            printerror(status);
         }
 
         if hdutype == ASCII_TBL {
@@ -1005,10 +995,10 @@ fn readtable() {
         unsafe { free(ptr as *mut _) };
     }
 
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 }
 

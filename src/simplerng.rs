@@ -43,7 +43,7 @@ fn simplerng_getstate(u: &mut c_uint, v: &mut c_uint) {
 
 /// srand() equivalent to seed the two state variables
 pub(crate) fn simplerng_srand(seed: c_uint) {
-    fastrand::seed(seed as u64);
+    fastrand::seed(u64::from(seed));
 }
 
 /// Private routine to get uniform deviate
@@ -51,7 +51,7 @@ fn simplerng_getuniform_pr(u: &mut c_uint, v: &mut c_uint) -> f64 {
     /* 0 <= u <= 2^32 */
     let z = simplerng_getuint_pr(u, v);
     /* The magic number is 1/(2^32) and so result is positive and less than 1. */
-    (z as f64) * 0.0000000002328306435996595
+    f64::from(z) * 0.0000000002328306435996595
 }
 
 /// Private routine to get unsigned integer
@@ -185,7 +185,7 @@ fn simplerng_poisson_large(lambda: f64) -> c_int {
         let y: f64 = params.alpha - params.beta * x;
         let temp: f64 = 1.0 + (y).exp();
         let lhs: f64 = y + (v / (temp * temp)).ln();
-        let rhs: f64 = params.k + (n as f64) * (lambda).ln() - simplerng_logfactorial(n);
+        let rhs: f64 = params.k + f64::from(n) * (lambda).ln() - simplerng_logfactorial(n);
         if lhs <= rhs {
             return n;
         };
@@ -457,7 +457,7 @@ fn simplerng_logfactorial(n: c_int) -> f64 {
         return 0.0;
     }
     if n > 254 {
-        let x = (n + 1) as f64;
+        let x = f64::from(n + 1);
         return (x - 0.5) * (x).ln() - x + 0.5 * (2.0 * PI).ln() + 1.0 / (12.0 * x);
     }
     LF[n as usize]

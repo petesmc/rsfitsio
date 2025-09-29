@@ -71,7 +71,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
         (d_stream.avail_out is a uInt type, which might be smaller
         than buffsize's size_t type.)
         */
-        let nPages: libz_rs_sys::uLong = (*buffsize as uLong) / (c_uint::MAX as uLong);
+        let nPages: libz_rs_sys::uLong = (*buffsize as uLong) / uLong::from(c_uint::MAX);
         let mut iPage: uLong = 0;
         let outbuffsize: uInt = if nPages > 0 {
             c_uint::MAX
@@ -160,17 +160,17 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
                     if iPage < nPages {
                         iPage += 1;
                         d_stream.next_out =
-                            (*buffptr).add((iPage * (c_uint::MAX as uLong)) as usize);
+                            (*buffptr).add((iPage * uLong::from(c_uint::MAX)) as usize);
                         if iPage < nPages {
                             d_stream.avail_out = c_uint::MAX;
                         } else {
                             d_stream.avail_out =
-                                ((*buffsize as uLong) % (c_uint::MAX as uLong)) as uInt;
+                                ((*buffsize as uLong) % uLong::from(c_uint::MAX)) as uInt;
                         }
                     } else if let Some(mem_realloc) = mem_realloc {
                         panic!("Realloc function not implemented for uncompress2mem");
-                        *buffptr =
-                            mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
+                        *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR)
+                            as *mut _;
                         if (*buffptr).is_null() {
                             inflateEnd(&mut d_stream);
                             *status = DATA_DECOMPRESSION_ERR;
@@ -295,7 +295,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 
             if let Some(mem_realloc) = mem_realloc {
                 panic!("Realloc function not implemented for uncompress2mem_from_mem");
-                *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
+                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR) as *mut _;
                 if (*buffptr).is_null() {
                     inflateEnd(&mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
@@ -578,7 +578,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
             /* need more space in output buffer */
             if let Some(mem_realloc) = mem_realloc {
                 panic!("Realloc function not implemented for compress2mem_from_mem");
-                *buffptr = mem_realloc(*buffptr as *mut c_void, *buffsize + BUFFINCR) as *mut _;
+                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR) as *mut _;
                 if (*buffptr).is_null() {
                     deflateEnd(&mut c_stream);
                     *status = DATA_COMPRESSION_ERR;
@@ -692,7 +692,7 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
 
         // ####
         if inmemsize > 0 {
-            nPages = 1 + (inmemsize as uLong - 1) / (uInt::MAX as uLong);
+            nPages = 1 + (inmemsize as uLong - 1) / uLong::from(uInt::MAX);
         }
 
         /*
@@ -735,9 +735,9 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
         for iPage in 0..nPages {
             // SAFETY: Converted a const pointer to a mutable pointer, don't know why it needs to be.
             c_stream.next_in =
-                (inmemptr.as_ptr() as *mut u8).add((iPage * uInt::MAX as uLong) as usize);
+                (inmemptr.as_ptr() as *mut u8).add((iPage * uLong::from(uInt::MAX)) as usize);
             c_stream.avail_in = if iPage == nPages - 1 {
-                (inmemsize as uLong - iPage * uInt::MAX as uLong) as uInt
+                (inmemsize as uLong - iPage * uLong::from(uInt::MAX)) as uInt
             } else {
                 uInt::MAX
             };

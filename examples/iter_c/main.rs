@@ -52,8 +52,8 @@ pub fn main() -> ExitCode {
     }
 
     /* create primary HDU */
-    if let Some(ref mut fptr_box) = fptr {
-        if unsafe {
+    if let Some(ref mut fptr_box) = fptr
+        && unsafe {
             fits_create_img(
                 fptr_box.as_mut(),
                 LONG_IMG,
@@ -62,9 +62,8 @@ pub fn main() -> ExitCode {
                 &mut status,
             )
         } != 0
-        {
-            printerror(status);
-        }
+    {
+        printerror(status);
     }
 
     /* define input column structure members for the iterator function */
@@ -97,10 +96,10 @@ pub fn main() -> ExitCode {
     }
 
     /* all done; close the file */
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 
     if status != 0 {

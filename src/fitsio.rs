@@ -187,10 +187,10 @@ pub const OPT_CMT_MBR_DEL: u64 = 11;
 
 pub const VALIDSTRUC: c_int = 555; /* magic value used to identify if structure is valid */
 
-pub const INPUT_COL: u64 = 0; /* flag for input only iterator column       */
-pub const INPUT_OUTPUT_COL: u64 = 1; /* flag for input and output iterator column */
-pub const OUTPUT_COL: u64 = 2; /* flag for output only iterator column      */
-pub const TEMPORARY_COL: u64 = 3; /* flag for temporary iterator column INTERNAL */
+pub const INPUT_COL: c_int = 0; /* flag for input only iterator column       */
+pub const INPUT_OUTPUT_COL: c_int = 1; /* flag for input and output iterator column */
+pub const OUTPUT_COL: c_int = 2; /* flag for output only iterator column      */
+pub const TEMPORARY_COL: c_int = 3; /* flag for temporary iterator column INTERNAL */
 
 /* error status codes */
 
@@ -1111,11 +1111,6 @@ impl Default for iteratorCol {
         }
     }
 }
-
-pub const InputCol: c_int = 0; /* flag for input only iterator column       */
-pub const InputOutputCol: c_int = 1; /* flag for input and output iterator column */
-pub const OutputCol: c_int = 2; /* flag for output only iterator column      */
-pub const TemporaryCol: c_int = 3; /* flag for temporary iterator column INTERNAL */
 
 /*=============================================================================
 *

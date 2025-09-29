@@ -567,8 +567,8 @@ pub fn ffgsvd_safe(
             rstr = 1;
             rstp = 1;
         } else {
-            rstr = colnum as c_long;
-            rstp = colnum as c_long;
+            rstr = c_long::from(colnum);
+            rstp = c_long::from(colnum);
         }
         rinc = 1;
         numcol = 2;
@@ -577,7 +577,7 @@ pub fn ffgsvd_safe(
         rstr = blc[naxis];
         rstp = trc[naxis];
         rinc = inc[naxis];
-        numcol = colnum as c_long;
+        numcol = c_long::from(colnum);
     }
 
     nultyp = NullCheckType::SetPixel;
@@ -822,8 +822,8 @@ pub fn ffgsfd_safe(
             rstr = 1;
             rstp = 1;
         } else {
-            rstr = colnum as c_long;
-            rstp = colnum as c_long;
+            rstr = c_long::from(colnum);
+            rstp = c_long::from(colnum);
         }
         rinc = 1;
         numcol = 2;
@@ -832,7 +832,7 @@ pub fn ffgsfd_safe(
         rstr = blc[naxis];
         rstp = trc[naxis];
         rinc = inc[naxis];
-        numcol = colnum as c_long;
+        numcol = c_long::from(colnum);
     }
 
     nultyp = NullCheckType::SetNullArray;
@@ -1445,7 +1445,7 @@ pub(crate) fn ffgcld(
         return *status;
     }
 
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     incre *= elemincre; /* multiply incre to just get every nth pixel */
 
@@ -1471,13 +1471,13 @@ pub(crate) fn ffgcld(
 
     if nultyp == NullCheckType::SetPixel && nulval == 0.0 {
         nulcheck = NullCheckType::None; /* calling routine does not want to check for nulls */
-    } else if tcode % 10 == 1 && tnull == NULL_UNDEFINED as LONGLONG {
+    } else if tcode % 10 == 1 && tnull == LONGLONG::from(NULL_UNDEFINED) {
         /* if reading an integer column, and  */
         /* if a null value is not defined,    */
 
         nulcheck = NullCheckType::None; /* then do not check for null values. */
     } else if tcode == TSHORT
-        && (tnull > c_short::MAX as LONGLONG || tnull < c_short::MIN as LONGLONG)
+        && (tnull > LONGLONG::from(c_short::MAX) || tnull < LONGLONG::from(c_short::MIN))
     {
         nulcheck = NullCheckType::None; /* Impossible null value */
     } else if tcode == TBYTE && (tnull > 255 || tnull < 0) {
@@ -1496,10 +1496,10 @@ pub(crate) fn ffgcld(
         /* no type convertion required, so read */
         /* data directly into output buffer.    */
 
-        if nelem < (INT32_MAX / 8) as LONGLONG {
+        if nelem < LONGLONG::from(INT32_MAX / 8) {
             maxelem = nelem;
         } else {
-            maxelem = (INT32_MAX / 8) as LONGLONG;
+            maxelem = LONGLONG::from(INT32_MAX / 8);
         }
 
         if nulcheck == NullCheckType::None && scale == 1.0 && zero == 0.0 {
@@ -1842,12 +1842,12 @@ pub(crate) fn fffi1r8(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _; /* copy input */
+                output[ii] = input[ii].into(); /* copy input */
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                output[ii] = (input[ii] as f64) * scale + zero;
+                output[ii] = f64::from(input[ii]) * scale + zero;
             }
         }
     } else {
@@ -1865,7 +1865,7 @@ pub(crate) fn fffi1r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
             }
         } else {
@@ -1879,7 +1879,7 @@ pub(crate) fn fffi1r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = (input[ii] as f64) * scale + zero;
+                    output[ii] = f64::from(input[ii]) * scale + zero;
                 }
             }
         }
@@ -1920,12 +1920,12 @@ pub(crate) fn fffi2r8(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _;
+                output[ii] = input[ii].into();
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                output[ii] = (input[ii] as f64) * scale + zero;
+                output[ii] = f64::from(input[ii]) * scale + zero;
             }
         }
     } else {
@@ -1943,7 +1943,7 @@ pub(crate) fn fffi2r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
             }
         } else {
@@ -1958,7 +1958,7 @@ pub(crate) fn fffi2r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = (input[ii] as f64) * scale + zero;
+                    output[ii] = f64::from(input[ii]) * scale + zero;
                 }
             }
         }
@@ -1998,12 +1998,12 @@ pub(crate) fn fffi4r8(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _;
+                output[ii] = input[ii].into();
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                output[ii] = (input[ii] as f64) * scale + zero;
+                output[ii] = f64::from(input[ii]) * scale + zero;
             }
         }
     } else {
@@ -2021,7 +2021,7 @@ pub(crate) fn fffi4r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
             }
         } else {
@@ -2035,7 +2035,7 @@ pub(crate) fn fffi4r8(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = (input[ii] as f64) * scale + zero;
+                    output[ii] = f64::from(input[ii]) * scale + zero;
                 }
             }
         }
@@ -2184,12 +2184,12 @@ pub(crate) fn fffr4r8(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _;
+                output[ii] = input[ii].into();
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                output[ii] = (input[ii] as f64) * scale + zero;
+                output[ii] = f64::from(input[ii]) * scale + zero;
             }
         }
     } else {
@@ -2221,7 +2221,7 @@ pub(crate) fn fffr4r8(
                         output[ii] = 0.0;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
 
                 sptr += 2;
@@ -2245,7 +2245,7 @@ pub(crate) fn fffr4r8(
                         output[ii] = zero as _;
                     }
                 } else {
-                    output[ii] = (input[ii] as f64) * scale + zero;
+                    output[ii] = f64::from(input[ii]) * scale + zero;
                 }
 
                 sptr += 2;
@@ -2564,7 +2564,7 @@ pub(crate) fn fffstrr8(
             }
 
             while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                val = val * 10.0 + (input[cptr] - chrzero) as f64; /* accumulate the value */
+                val = val * 10.0 + f64::from(input[cptr] - chrzero); /* accumulate the value */
                 cptr += 1;
 
                 while input[cptr] == bb(b' ') {
@@ -2584,7 +2584,7 @@ pub(crate) fn fffstrr8(
                 }
 
                 while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                    val = val * 10.0 + (input[cptr] - chrzero) as f64; /* accumulate the value */
+                    val = val * 10.0 + f64::from(input[cptr] - chrzero); /* accumulate the value */
                     power *= 10.;
                     cptr += 1;
 
@@ -2620,7 +2620,7 @@ pub(crate) fn fffstrr8(
                 }
 
                 while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                    exponent = exponent * 10 + (input[cptr] - chrzero) as c_int; /* accumulate exp */
+                    exponent = exponent * 10 + c_int::from(input[cptr] - chrzero); /* accumulate exp */
                     cptr += 1;
 
                     while input[cptr] == bb(b' ') {
@@ -2656,7 +2656,7 @@ pub(crate) fn fffstrr8(
                 /* if no explicit decimal, use implied */
                 power = implipower;
             }
-            dvalue = (sign as f64 * val / power) * 10.0_f64.powi(esign * exponent);
+            dvalue = (f64::from(sign) * val / power) * 10.0_f64.powi(esign * exponent);
 
             output[ii] = dvalue * scale + zero; /* apply the scaling */
         }

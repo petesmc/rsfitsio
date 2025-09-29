@@ -137,7 +137,7 @@ pub fn ffpcls_safe(
             colnum,
             firstrow,
             1,
-            nchar as LONGLONG,
+            LONGLONG::from(nchar),
             1,
             &mut scale,
             &mut zero,
@@ -162,7 +162,7 @@ pub fn ffpcls_safe(
         /* simply move to write position, then write the string */
         let arr = array[0];
         ffmbyt_safe(fptr, startpos, IGNORE_EOF, status);
-        ffpbyt(fptr, nchar as LONGLONG, cast_slice(arr), status);
+        ffpbyt(fptr, LONGLONG::from(nchar), cast_slice(arr), status);
 
         if *status > 0 {
             /* test for error during previous write operation */
@@ -241,7 +241,7 @@ pub fn ffpcls_safe(
            will fit in the buffer space or to the number of pixels that remain
            in the current vector, which ever is smaller.
         */
-        ntodo = cmp::min(remain, maxelem as LONGLONG) as c_long;
+        ntodo = cmp::min(remain, LONGLONG::from(maxelem)) as c_long;
         ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
         wrtptr = startpos + (rownum * rowlen) + (elemnum * incre as LONGLONG);

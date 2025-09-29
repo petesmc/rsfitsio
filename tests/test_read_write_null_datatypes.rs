@@ -528,7 +528,7 @@ mod tests {
                     if i == j {
                         write_data[index] = NULL_VALUE;
                     } else {
-                        let val = ((i - 25) as c_longlong * 100000 + (j - 25) as c_longlong * 1000);
+                        let val = (i - 25) as c_longlong * 100000 + (j - 25) as c_longlong * 1000;
                         // Avoid NULL_VALUE in non-diagonal positions
                         write_data[index] = if val == NULL_VALUE {
                             NULL_VALUE + 1
@@ -651,7 +651,7 @@ mod tests {
                     if i == j {
                         write_data[index] = f32::NAN; // Use NaN for null values
                     } else {
-                        write_data[index] = ((i - 25) as f32 * 10.0 + (j - 25) as f32 * 1.0);
+                        write_data[index] = (i - 25) as f32 * 10.0 + (j - 25) as f32 * 1.0;
                     }
                 }
             }
@@ -763,7 +763,7 @@ mod tests {
                     if i == j {
                         write_data[index] = f64::NAN; // Use NaN for null values
                     } else {
-                        write_data[index] = ((i - 25) as f64 * 100.0 + (j - 25) as f64 * 10.0);
+                        write_data[index] = (i - 25) as f64 * 100.0 + (j - 25) as f64 * 10.0;
                     }
                 }
             }
@@ -1121,7 +1121,7 @@ mod tests {
                     if i == j {
                         write_data[index] = NULL_VALUE;
                     } else {
-                        let val = ((i as c_ulonglong + j as c_ulonglong) * 100000);
+                        let val = (i as c_ulonglong + j as c_ulonglong) * 100000;
                         // Avoid NULL_VALUE in non-diagonal positions
                         write_data[index] = if val == NULL_VALUE {
                             NULL_VALUE + 1

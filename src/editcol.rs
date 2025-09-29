@@ -247,14 +247,16 @@ pub fn ffrsimll_safe(
         for ii in 0..(onaxis as usize) {
             oldsize *= onaxes[ii];
         }
-        oldsize =
-            (oldsize + pcount as LONGLONG) * (gcount as LONGLONG) * (obitpix.abs() / 8) as LONGLONG;
+        oldsize = (oldsize + pcount as LONGLONG)
+            * (gcount as LONGLONG)
+            * LONGLONG::from(obitpix.abs() / 8);
     }
 
     oldsize = (oldsize + BL!() - 1) / BL!(); /* old size, in blocks */
 
-    newsize =
-        (newsize + pcount as LONGLONG) * (gcount as LONGLONG) * (longbitpix.abs() / 8) as LONGLONG;
+    newsize = (newsize + pcount as LONGLONG)
+        * (gcount as LONGLONG)
+        * LONGLONG::from(longbitpix.abs() / 8);
     newsize = (newsize + BL!() - 1) / BL!(); /* new size, in blocks */
 
     if newsize > oldsize {
@@ -282,7 +284,7 @@ pub fn ffrsimll_safe(
         ffmkyj_safe(
             fptr,
             cs!(c"BITPIX"),
-            longbitpix as LONGLONG,
+            LONGLONG::from(longbitpix),
             Some(&comment),
             status,
         );
@@ -290,7 +292,7 @@ pub fn ffrsimll_safe(
 
     if naxis != onaxis {
         /* update NAXIS value */
-        longval = naxis as c_long;
+        longval = c_long::from(naxis);
         ffmkyj_safe(
             fptr,
             cs!(c"NAXIS"),
@@ -1643,7 +1645,7 @@ pub fn fficls_safe(
                 delbyte += repeat as LONGLONG;
             } else {
                 /* numerical data type */
-                delbyte += (datacode as LONGLONG / 10) * repeat as LONGLONG;
+                delbyte += (LONGLONG::from(datacode) / 10) * repeat as LONGLONG;
             }
         }
     }
@@ -1727,7 +1729,7 @@ pub fn fficls_safe(
     ffmkyj_safe(
         fptr,
         cs!(c"TFIELDS"),
-        (tfields + ncols) as _,
+        (tfields + ncols).into(),
         Some(cs!(c"&")),
         status,
     );
@@ -3129,7 +3131,7 @@ pub fn ffcprw_safe(
             // let c = infptr.Fptr.get_tableptr_as_slice();
 
             for icol in 0..(infptr.Fptr.tfield as usize) {
-                if iVarCol < nInVarCols as LONGLONG
+                if iVarCol < LONGLONG::from(nInVarCols)
                     && inVarCols[iVarCol as usize] == (icol + 1) as c_int
                 {
                     /* Copy from a variable length column */
@@ -3425,7 +3427,7 @@ pub fn ffcpsr_safe(
             // let c = infptr.Fptr.get_tableptr_as_slice();
 
             for icol in 0..(infptr.Fptr.tfield as usize) {
-                if iVarCol < (nInVarCols as LONGLONG)
+                if iVarCol < LONGLONG::from(nInVarCols)
                     && inVarCols[iVarCol as usize] == (icol + 1) as c_int
                 {
                     /* Copy from a variable length column */
@@ -3759,7 +3761,7 @@ pub fn ffdcol_safe(
     ffmkyj_safe(
         fptr,
         cs!(c"TFIELDS"),
-        ((fptr.Fptr.tfield) - 1) as LONGLONG,
+        LONGLONG::from((fptr.Fptr.tfield) - 1),
         Some(cs!(c"&")),
         status,
     );
@@ -4171,13 +4173,14 @@ pub fn ffkshf_safe(
                 tstatus = 0;
                 ffc2ii(&q, &mut ivalue, status);
 
-                if tstatus == 0 && ivalue >= (colmin as c_long) && ivalue <= (colmax as c_long) {
-                    if incre <= 0 && ivalue == colmin as c_long {
+                if tstatus == 0 && ivalue >= c_long::from(colmin) && ivalue <= c_long::from(colmax)
+                {
+                    if incre <= 0 && ivalue == c_long::from(colmin) {
                         ffdrec_safe(fptr, nrec as c_int, status); /* delete keyword */
                         nkeys -= 1;
                         nrec -= 1;
                     } else {
-                        ivalue += incre as c_long;
+                        ivalue += c_long::from(incre);
                         q[0] = 0;
                         strncat_safe(&mut q, &rec, i1);
 

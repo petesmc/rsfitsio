@@ -326,7 +326,7 @@ pub(crate) fn ffgcll(
          limit the number of pixels to read at one time to the number that
          remain in the current vector.
         */
-        ntodo = cmp::min(ntodo as LONGLONG, maxelem as LONGLONG) as c_long;
+        ntodo = cmp::min(ntodo as LONGLONG, LONGLONG::from(maxelem)) as c_long;
         ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
         readptr = startpos + (rowlen * rownum) + (elemnum * incre as LONGLONG);

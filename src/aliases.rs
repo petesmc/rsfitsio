@@ -676,7 +676,7 @@ pub mod c_api {
             unsafe {
                 let fptr = fptr.as_mut().expect(NULL_MSG);
                 let status = status.as_mut().expect(NULL_MSG);
-                let buffer = core::slice::from_raw_parts_mut(buffer as *mut u8, nbytes as usize);
+                let buffer = core::slice::from_raw_parts_mut(buffer.cast::<u8>(), nbytes as usize);
 
                 crate::cfileio::ffread(fptr, nbytes, buffer, status)
             }
@@ -711,8 +711,10 @@ pub mod c_api {
             unsafe {
                 let fptr = fptr.as_mut().expect(NULL_MSG);
                 let status = status.as_mut().expect(NULL_MSG);
-                let buffer =
-                    core::slice::from_raw_parts_mut(buffer as *mut u8, (ngroups * gsize) as usize);
+                let buffer = core::slice::from_raw_parts_mut(
+                    buffer.cast::<u8>(),
+                    (ngroups * gsize) as usize,
+                );
 
                 crate::buffers::ffgbytoff(fptr, gsize, ngroups, offset, buffer, status)
             }

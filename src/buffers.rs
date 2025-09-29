@@ -456,7 +456,8 @@ pub(crate) fn ffgbyt(
             nread = cmp::min(ntodo, nspace);
 
             /* copy bytes from IO buffer to user's buffer */
-            let _from = ((fptr.Fptr.curbuf as LONGLONG * IOBUFLEN) + bufpos as LONGLONG) as usize;
+            let _from =
+                ((LONGLONG::from(fptr.Fptr.curbuf) * IOBUFLEN) + bufpos as LONGLONG) as usize;
             let _to = _from + nread as usize;
             buffer[cptr_index..(cptr_index + nread as usize)]
                 .copy_from_slice(cast_slice_mut(&mut fptr.Fptr.iobuffer[_from.._to]));
@@ -981,7 +982,7 @@ pub fn ffgrsz_safe(
         /* image pixels are in column 2 of the 'table' */
         ffgtcl_safe(fptr, 2, Some(&mut typecode), None, None, status);
         bytesperpixel = typecode / 10;
-        *ndata = ((NIOBUF as c_long - 1) * IOBUFLEN as c_long) / bytesperpixel as c_long;
+        *ndata = ((NIOBUF as c_long - 1) * IOBUFLEN as c_long) / c_long::from(bytesperpixel);
     } else {
         /* calc number of rows that fit in buffers */
 

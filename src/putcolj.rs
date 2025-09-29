@@ -720,7 +720,7 @@ pub fn ffpclj_safe(
     {
         return *status;
     }
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     if tcode == TSTRING {
         ffcfmt(&tform, &mut cform); /* derive C format for writing strings */
@@ -735,10 +735,10 @@ pub fn ffpclj_safe(
     if scale == 1.0 && zero == 0.0 && CFITSIO_MACHINE == NATIVE && tcode == TLONG && LONGSIZE == 32
     {
         writeraw = true;
-        if nelem < (INT32_MAX as LONGLONG) {
+        if nelem < LONGLONG::from(INT32_MAX) {
             maxelem = nelem;
         } else {
-            maxelem = INT32_MAX as LONGLONG / 8;
+            maxelem = LONGLONG::from(INT32_MAX) / 8;
         }
     } else {
         writeraw = false;
@@ -1188,7 +1188,7 @@ pub(crate) fn ffi4fi1(
             if input[ii] < 0 {
                 *status = OVERFLOW_ERR;
                 output[ii] = 0;
-            } else if input[ii] > u8::MAX as c_long {
+            } else if input[ii] > c_long::from(u8::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {
@@ -1228,10 +1228,10 @@ pub(crate) fn ffi4fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < c_short::MIN as c_long {
+            if input[ii] < c_long::from(c_short::MIN) {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MIN;
-            } else if input[ii] > c_short::MAX as c_long {
+            } else if input[ii] > c_long::from(c_short::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -2107,7 +2107,7 @@ pub fn ffpcljj_safe(
         return *status;
     }
 
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     if tcode == TSTRING {
         ffcfmt(&tform, &mut cform); /* derive C format for writing strings */
@@ -2122,10 +2122,10 @@ pub fn ffpcljj_safe(
     */
     if scale == 1.0 && zero == 0.0 && CFITSIO_MACHINE == NATIVE && tcode == TLONGLONG {
         writeraw = true;
-        if nelem < (INT32_MAX / 8) as LONGLONG {
+        if nelem < LONGLONG::from(INT32_MAX / 8) {
             maxelem = nelem;
         } else {
-            maxelem = (INT32_MAX / 8) as LONGLONG;
+            maxelem = LONGLONG::from(INT32_MAX / 8);
         }
     } else {
         writeraw = false;
@@ -2572,7 +2572,7 @@ pub(crate) fn ffi8fi1(
             if input[ii] < 0 {
                 *status = OVERFLOW_ERR;
                 output[ii] = 0;
-            } else if input[ii] > u8::MAX as LONGLONG {
+            } else if input[ii] > LONGLONG::from(u8::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {
@@ -2610,10 +2610,10 @@ pub(crate) fn ffi8fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < c_short::MIN as LONGLONG {
+            if input[ii] < LONGLONG::from(c_short::MIN) {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MIN;
-            } else if input[ii] > c_short::MAX as LONGLONG {
+            } else if input[ii] > LONGLONG::from(c_short::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -2653,10 +2653,10 @@ pub(crate) fn ffi8fi4(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < INT32_MIN as LONGLONG {
+            if input[ii] < LONGLONG::from(INT32_MIN) {
                 *status = OVERFLOW_ERR;
                 output[ii] = INT32_MIN;
-            } else if input[ii] > INT32_MAX as LONGLONG {
+            } else if input[ii] > LONGLONG::from(INT32_MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = INT32_MAX;
             } else {

@@ -2,8 +2,7 @@
 mod tests {
     use bytemuck::{cast_slice, cast_slice_mut};
     use libc::{
-        c_char, c_double, c_float, c_int, c_long, c_longlong, c_short, c_uchar, c_ulong,
-        c_ulonglong,
+        c_double, c_float, c_int, c_long, c_longlong, c_short, c_uchar, c_ulong, c_ulonglong,
     };
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::fitsio::{
@@ -396,7 +395,7 @@ mod tests {
                 for i in 0..IMAGE_WIDTH {
                     let index = (j * IMAGE_WIDTH + i) as usize;
                     write_data[index] =
-                        ((i - 25) as c_longlong * 100000 + (j - 25) as c_longlong * 1000);
+                        (i - 25) as c_longlong * 100000 + (j - 25) as c_longlong * 1000;
                 }
             }
 
@@ -488,7 +487,7 @@ mod tests {
             for j in 0..IMAGE_HEIGHT {
                 for i in 0..IMAGE_WIDTH {
                     let index = (j * IMAGE_WIDTH + i) as usize;
-                    write_data[index] = ((i - 25) as f32 * 10.0 + (j - 25) as f32 * 1.0);
+                    write_data[index] = (i - 25) as f32 * 10.0 + (j - 25) as f32 * 1.0;
                 }
             }
 
@@ -586,7 +585,7 @@ mod tests {
             for j in 0..IMAGE_HEIGHT {
                 for i in 0..IMAGE_WIDTH {
                     let index = (j * IMAGE_WIDTH + i) as usize;
-                    write_data[index] = ((i - 25) as f64 * 100.0 + (j - 25) as f64 * 10.0);
+                    write_data[index] = (i - 25) as f64 * 100.0 + (j - 25) as f64 * 10.0;
                 }
             }
 
@@ -868,7 +867,7 @@ mod tests {
             for j in 0..IMAGE_HEIGHT {
                 for i in 0..IMAGE_WIDTH {
                     let index = (j * IMAGE_WIDTH + i) as usize;
-                    write_data[index] = ((i as c_ulonglong + j as c_ulonglong) * 100000);
+                    write_data[index] = (i as c_ulonglong + j as c_ulonglong) * 100000;
                 }
             }
 

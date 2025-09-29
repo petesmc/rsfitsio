@@ -298,7 +298,7 @@ pub fn ffpclu_safe(
         }
         strncpy_safe(&mut cstring, &snull, leng); /* copy null string to temp buffer */
     } else if tcode == TBYTE || tcode == TSHORT || tcode == TLONG || tcode == TLONGLONG {
-        if tnull == NULL_UNDEFINED as LONGLONG {
+        if tnull == LONGLONG::from(NULL_UNDEFINED) {
             ffpmsg_str("Null value for integer table column is not defined (FTPCLU).");
             *status = NO_NULL;
             return *status;
@@ -561,7 +561,7 @@ pub(crate) fn ffpcluc(
         }
         strncpy_safe(&mut cstring, &snull, leng); /* copy null string to temp buffer */
     } else if tcode == TBYTE || tcode == TSHORT || tcode == TLONG || tcode == TLONGLONG {
-        if tnull == NULL_UNDEFINED as LONGLONG {
+        if tnull == LONGLONG::from(NULL_UNDEFINED) {
             ffpmsg_str("Null value for integer table column is not defined (FTPCLU).");
             *status = NO_NULL;
             return *status;

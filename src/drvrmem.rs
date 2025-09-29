@@ -297,8 +297,10 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
         /* call the memory reallocation function, if defined */
         if m[handle].mem_realloc.is_some() {
             /* explicit LONGLONG->size_t cast */
-            let ptr =
-                (m[handle].mem_realloc.unwrap())(*(m[handle].memaddrptr) as *mut c_void, filesize);
+            let ptr = (m[handle].mem_realloc.unwrap())(
+                (*(m[handle].memaddrptr)).cast::<c_void>(),
+                filesize,
+            );
             if ptr.is_null() {
                 ffpmsg_str("Failed to reallocate memory (mem_truncate)");
                 return MEMORY_ALLOCATION;
@@ -313,7 +315,7 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
                 );
             }
 
-            *(m[handle].memaddrptr) = ptr as *mut c_char;
+            *(m[handle].memaddrptr) = ptr.cast::<c_char>();
             *(m[handle].memsizeptr) = filesize;
         }
 
@@ -386,7 +388,7 @@ pub(crate) fn stdin_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_
 
         // AFAIK this can't be reproduced in safe rust.
         unsafe {
-            ungetc(cbuff[0] as c_int, STDIN!());
+            ungetc(c_int::from(cbuff[0]), STDIN!());
 
             /* compressed files begin with 037 or 'P' */
             if cbuff[0] == 31 || cbuff[0] == 75 {
@@ -449,12 +451,12 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
             /* reading 1 char at a time, looking for 'S', 'I', 'M', 'P', 'L', 'E' */
             /* Give up if not found in the first 2000 characters */
 
-            if c == simple[ii] as c_int {
+            if c == c_int::from(simple[ii]) {
                 ii += 1;
                 if ii == 6
                 /* found the complete string? */
                 {
-                    memcpy(memptr as *mut c_void, simple.as_ptr() as *const _, 6); /* copy "SIMPLE" to buffer */
+                    memcpy(memptr.cast::<c_void>(), simple.as_ptr().cast(), 6); /* copy "SIMPLE" to buffer */
                     filesize = 6;
                     break;
                 }
@@ -472,7 +474,7 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
         }
 
         /* fill up the remainder of the initial memory allocation */
-        let mut nread = fread(memptr.add(6) as *mut c_void, 1, memsize - 6, STDIN!());
+        let mut nread = fread(memptr.add(6).cast::<c_void>(), 1, memsize - 6, STDIN!());
         nread += 6; /* add in the 6 characters in 'SIMPLE' */
 
         if nread < memsize
@@ -486,7 +488,7 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
 
         loop {
             /* allocate memory for another FITS block */
-            memptr = realloc(memptr as *mut c_void, memsize + delta) as *mut c_char;
+            memptr = realloc(memptr.cast::<c_void>(), memsize + delta) as *mut c_char;
 
             if memptr.is_null() {
                 ffpmsg_str("realloc failed while copying stdin (stdin2mem)");
@@ -495,7 +497,7 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
             memsize += delta;
 
             /* read another FITS block */
-            nread = fread(memptr.add(filesize) as *mut c_void, 1, delta, STDIN!());
+            nread = fread(memptr.add(filesize).cast::<c_void>(), 1, delta, STDIN!());
 
             filesize += nread;
 
@@ -528,12 +530,12 @@ pub(crate) fn stdin2file(handle: c_int) -> c_int {
     let mut c = [0_u8];
     stdin_hdl.read_exact(&mut c).unwrap();
 
-    while c[0] as c_int != EOF && jj < 2000 {
+    while c_int::from(c[0]) != EOF && jj < 2000 {
         /* Skip over any garbage at the beginning of the stdin stream by */
         /* reading 1 char at a time, looking for 'S', 'I', 'M', 'P', 'L', 'E' */
         /* Give up if not found in the first 2000 characters */
 
-        if c[0] as c_int == simple[ii] as c_int {
+        if c_int::from(c[0]) == c_int::from(simple[ii]) {
             ii += 1;
             if ii == 6 {
                 /* found the complete string? */
@@ -596,7 +598,7 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
 
         /* copy from memory to standard out.  explicit LONGLONG->size_t cast */
         if fwrite(
-            m[handle as usize].memaddr as *mut c_void,
+            m[handle as usize].memaddr.cast::<c_void>(),
             1,
             m[handle as usize].fitsfilesize as usize,
             STDOUT!(),
@@ -676,10 +678,10 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             diskfile.read_exact(&mut buffer[..4]).unwrap(); /* read 4 bytes */
 
             /* have to worry about integer byte order */
-            modulosize = buffer[0] as c_uint;
-            modulosize |= (buffer[1] as c_uint) << 8;
-            modulosize |= (buffer[2] as c_uint) << 16;
-            modulosize |= (buffer[3] as c_uint) << 24;
+            modulosize = c_uint::from(buffer[0]);
+            modulosize |= c_uint::from(buffer[1]) << 8;
+            modulosize |= c_uint::from(buffer[2]) << 16;
+            modulosize |= c_uint::from(buffer[3]) << 24;
 
             /*
               the field ISIZE in the gzipped file header only stores 4 bytes and contains
@@ -722,10 +724,10 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             diskfile.read_exact(&mut buffer[..4]).unwrap(); /* read 4 bytes */
 
             /* have to worry about integer byte order */
-            modulosize = buffer[0] as c_uint;
-            modulosize |= (buffer[1] as c_uint) << 8;
-            modulosize |= (buffer[2] as c_uint) << 16;
-            modulosize |= (buffer[3] as c_uint) << 24;
+            modulosize = c_uint::from(buffer[0]);
+            modulosize |= c_uint::from(buffer[1]) << 8;
+            modulosize |= c_uint::from(buffer[2]) << 16;
+            modulosize |= c_uint::from(buffer[3]) << 24;
             finalsize = modulosize as usize;
 
             estimated = 0; /* file size is known, not estimated */
@@ -739,8 +741,8 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             /* LZH */
             finalsize = 0; /* for most methods we can't determine final size */
         } else if memcmp(
-            buffer.as_ptr() as *const c_void,
-            b"BZ".as_ptr() as *const c_void,
+            buffer.as_ptr().cast::<c_void>(),
+            b"BZ".as_ptr().cast::<c_void>(),
             2,
         ) == 0
         {
@@ -788,7 +790,7 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
         /* if we allocated too much memory initially, then free it */
         if *(m[*hdl as usize].memsizeptr) > ((m[*hdl as usize].fitsfilesize as usize) + 256) {
             let ptr = realloc(
-                *(m[*hdl as usize].memaddrptr) as *mut _,
+                (*(m[*hdl as usize].memaddrptr)).cast(),
                 m[*hdl as usize].fitsfilesize as usize,
             ) as *mut c_char;
             if ptr.is_null() {
@@ -846,7 +848,7 @@ pub(crate) unsafe fn mem_compress_stdin_open(
         /* if we allocated too much memory initially, then free it */
         if *(m[*hdl as usize].memsizeptr) > ((m[*hdl as usize].fitsfilesize as usize) + 256) {
             let ptr = realloc(
-                *(m[*hdl as usize].memaddrptr) as *mut c_void,
+                (*(m[*hdl as usize].memaddrptr)).cast::<c_void>(),
                 m[*hdl as usize].fitsfilesize as usize,
             ) as *mut c_char;
             if ptr.is_null() {
@@ -1041,8 +1043,8 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
         }
 
         nvals = dim[0] * dim[1] * dim[2] * dim[3] * dim[4];
-        datasize = (nvals * bytePerPix as c_long) as usize;
-        filesize = (nvals * bytePerPix as c_long) as usize + BL!();
+        datasize = (nvals * c_long::from(bytePerPix)) as usize;
+        filesize = (nvals * c_long::from(bytePerPix)) as usize + BL!();
         filesize = ((filesize - 1) / BL!() + 1) * BL!();
 
         /* open the raw binary disk file */
@@ -1068,7 +1070,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         ffimem_safer(
             &mut fptr,
-            m[*hdl as usize].memaddrptr as *mut *mut c_void,
+            m[*hdl as usize].memaddrptr.cast::<*mut c_void>(),
             &mut filesize,
             0,
             None,
@@ -1094,7 +1096,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
         }
 
         /* read the raw data into memory */
-        let ptr = (*m[*hdl as usize].memaddrptr).add(BL!()) as *mut u8;
+        let ptr = (*m[*hdl as usize].memaddrptr).add(BL!()).cast::<u8>();
         let ptr_slice = slice::from_raw_parts_mut(ptr, datasize);
 
         let tmp = diskfile.read(&mut ptr_slice[..datasize]).unwrap();
@@ -1171,15 +1173,15 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                 use libc::fdopen;
                 let fd = diskfile.as_raw_fd();
 
-                fdopen(fd, c"rb".as_ptr() as *const c_char)
+                fdopen(fd, c"rb".as_ptr().cast::<c_char>())
             };
 
             zuncompress2mem(
                 filename,
                 raw_file_handle,
-                m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+                m[hdl as usize].memaddrptr.cast::<*mut u8>(), /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
-                Some(realloc),                              /* reallocation function */
+                Some(realloc),                                /* reallocation function */
                 &mut finalsize,
                 &mut status, /* returned file size and status*/
             );
@@ -1190,7 +1192,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                     use libc::fdopen;
                     let fd = diskfile.as_raw_fd();
 
-                    fdopen(fd, c"rb".as_ptr() as *const c_char)
+                    fdopen(fd, c"rb".as_ptr().cast::<c_char>())
                 };
 
                 bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
@@ -1199,7 +1201,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
             uncompress2mem(
                 filename,
                 diskfile,
-                m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
+                m[hdl as usize].memaddrptr.cast::<*mut u8>(), /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
                 Some(realloc),                                        /* reallocation function */
                 &mut finalsize,
@@ -1390,8 +1392,8 @@ pub(crate) fn mem_read_unsafe(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c
         let c_pos = m[hdl].currentpos;
 
         memcpy(
-            buffer.as_mut_ptr() as *mut c_void,
-            (*m_ptr).add(c_pos as usize) as *mut c_void,
+            buffer.as_mut_ptr().cast::<c_void>(),
+            (*m_ptr).add(c_pos as usize).cast::<c_void>(),
             nbytes as usize,
         );
 
@@ -1428,19 +1430,22 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
             );
 
             /* call the realloc function */
-            let ptr = (m[hdl].mem_realloc.unwrap())(*(m[hdl].memaddrptr) as *mut c_void, newsize);
+            let ptr =
+                (m[hdl].mem_realloc.unwrap())((*(m[hdl].memaddrptr)).cast::<c_void>(), newsize);
             if ptr.is_null() {
                 ffpmsg_str("Failed to reallocate memory (mem_write)");
                 return MEMORY_ALLOCATION;
             }
 
-            *(m[hdl].memaddrptr) = ptr as *mut c_char;
+            *(m[hdl].memaddrptr) = ptr.cast::<c_char>();
             *(m[hdl].memsizeptr) = newsize;
         }
 
         /* now copy the bytes from the buffer into memory */
         memcpy(
-            (*(m[hdl].memaddrptr)).add(m[hdl].currentpos as usize) as *mut c_void,
+            (*(m[hdl].memaddrptr))
+                .add(m[hdl].currentpos as usize)
+                .cast::<c_void>(),
             buffer.as_ptr() as *mut c_void,
             nbytes as usize,
         );
@@ -1469,7 +1474,7 @@ pub(crate) unsafe fn mem_zuncompress_and_write(hdl: c_int, buffer: &[u8], nbytes
         uncompress2mem_from_mem(
             cast_slice(buffer),
             nbytes,
-            m[hdl as usize].memaddrptr as *mut *mut u8,
+            m[hdl as usize].memaddrptr.cast::<*mut u8>(),
             m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG),
             m[hdl as usize].mem_realloc,
             Some(&mut newsize),

@@ -10,6 +10,25 @@
     clippy::needless_range_loop,
     clippy::manual_range_contains
 )]
+/*
+#![warn(
+    clippy::cast_possible_truncation,
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::unnecessary_cast,
+    clippy::fn_to_numeric_cast,
+    clippy::fn_to_numeric_cast_with_truncation,
+    clippy::char_lit_as_u8,
+    clippy::ptr_as_ptr,
+    clippy::cast,
+    // clippy::alloc_instead_of_core,
+    // clippy::std_instead_of_alloc,
+    //clippy::std_instead_of_core,
+)]
+*/
 #![deny(deprecated)]
 
 pub mod c_types;
@@ -348,19 +367,19 @@ pub enum NullValue {
 impl NullValue {
     pub fn get_value_as_f64(&self) -> f64 {
         match self {
-            NullValue::Float(v) => *v as f64,
+            NullValue::Float(v) => f64::from(*v),
             NullValue::Double(v) => *v,
             NullValue::Long(v) => *v as f64,
             NullValue::ULong(v) => *v as f64,
             NullValue::LONGLONG(v) => *v as f64,
             NullValue::ULONGLONG(v) => *v as f64,
-            NullValue::Int(v) => *v as f64,
-            NullValue::UInt(v) => *v as f64,
-            NullValue::Short(v) => *v as f64,
-            NullValue::UShort(v) => *v as f64,
-            NullValue::Byte(v) => *v as f64,
-            NullValue::UByte(v) => *v as f64,
-            NullValue::Logical(v) => *v as f64,
+            NullValue::Int(v) => f64::from(*v),
+            NullValue::UInt(v) => f64::from(*v),
+            NullValue::Short(v) => f64::from(*v),
+            NullValue::UShort(v) => f64::from(*v),
+            NullValue::Byte(v) => f64::from(*v),
+            NullValue::UByte(v) => f64::from(*v),
+            NullValue::Logical(v) => f64::from(*v),
             _ => 0.0,
         }
     }
@@ -371,23 +390,21 @@ impl NullValue {
         }
 
         match datatype {
-            TFLOAT => Some(NullValue::Float(unsafe { *(value as *const f32) })),
-            TDOUBLE => Some(NullValue::Double(unsafe { *(value as *const f64) })),
-            TLONG => Some(NullValue::Long(unsafe { *(value as *const c_long) })),
-            TULONG => Some(NullValue::ULong(unsafe { *(value as *const c_ulong) })),
-            TLONGLONG => Some(NullValue::LONGLONG(unsafe { *(value as *const LONGLONG) })),
-            TULONGLONG => Some(NullValue::ULONGLONG(unsafe {
-                *(value as *const ULONGLONG)
-            })),
-            TINT => Some(NullValue::Int(unsafe { *(value as *const c_int) })),
-            TUINT => Some(NullValue::UInt(unsafe { *(value as *const c_uint) })),
-            TSHORT => Some(NullValue::Short(unsafe { *(value as *const c_short) })),
-            TUSHORT => Some(NullValue::UShort(unsafe { *(value as *const c_ushort) })),
-            TBYTE => Some(NullValue::UByte(unsafe { *(value as *const c_uchar) })),
-            TSBYTE => Some(NullValue::Byte(unsafe { *(value as *const i8) })),
-            TLOGICAL => Some(NullValue::Logical(unsafe { *(value as *const c_char) })),
+            TFLOAT => Some(NullValue::Float(unsafe { *value.cast::<f32>() })),
+            TDOUBLE => Some(NullValue::Double(unsafe { *value.cast::<f64>() })),
+            TLONG => Some(NullValue::Long(unsafe { *value.cast::<c_long>() })),
+            TULONG => Some(NullValue::ULong(unsafe { *value.cast::<c_ulong>() })),
+            TLONGLONG => Some(NullValue::LONGLONG(unsafe { *value.cast::<LONGLONG>() })),
+            TULONGLONG => Some(NullValue::ULONGLONG(unsafe { *value.cast::<ULONGLONG>() })),
+            TINT => Some(NullValue::Int(unsafe { *value.cast::<c_int>() })),
+            TUINT => Some(NullValue::UInt(unsafe { *value.cast::<c_uint>() })),
+            TSHORT => Some(NullValue::Short(unsafe { *value.cast::<c_short>() })),
+            TUSHORT => Some(NullValue::UShort(unsafe { *value.cast::<c_ushort>() })),
+            TBYTE => Some(NullValue::UByte(unsafe { *value.cast::<c_uchar>() })),
+            TSBYTE => Some(NullValue::Byte(unsafe { *value.cast::<i8>() })),
+            TLOGICAL => Some(NullValue::Logical(unsafe { *value.cast::<c_char>() })),
             TSTRING => {
-                let cstr = unsafe { CStr::from_ptr(value as *const c_char) };
+                let cstr = unsafe { CStr::from_ptr(value.cast::<c_char>()) };
                 Some(NullValue::String(cstr.to_owned()))
             }
             _ => None, // Don't panic here, will be handled by the caller
@@ -419,24 +436,24 @@ pub enum KeywordDatatype<'a> {
 impl KeywordDatatype<'_> {
     pub fn from_datatype(datatype: c_int, value: *const c_void) -> Self {
         match datatype {
-            TBYTE => KeywordDatatype::TBYTE(unsafe { &*(value as *const c_uchar) }),
-            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*(value as *const c_char) }),
-            TSHORT => KeywordDatatype::TSHORT(unsafe { &*(value as *const c_short) }),
-            TUSHORT => KeywordDatatype::TUSHORT(unsafe { &*(value as *const c_ushort) }),
-            TINT => KeywordDatatype::TINT(unsafe { &*(value as *const c_int) }),
-            TUINT => KeywordDatatype::TUINT(unsafe { &*(value as *const c_uint) }),
-            TLONG => KeywordDatatype::TLONG(unsafe { &*(value as *const c_long) }),
-            TULONG => KeywordDatatype::TULONG(unsafe { &*(value as *const c_ulong) }),
-            TFLOAT => KeywordDatatype::TFLOAT(unsafe { &*(value as *const f32) }),
-            TDOUBLE => KeywordDatatype::TDOUBLE(unsafe { &*(value as *const f64) }),
+            TBYTE => KeywordDatatype::TBYTE(unsafe { &*value.cast::<c_uchar>() }),
+            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*value.cast::<c_char>() }),
+            TSHORT => KeywordDatatype::TSHORT(unsafe { &*value.cast::<c_short>() }),
+            TUSHORT => KeywordDatatype::TUSHORT(unsafe { &*value.cast::<c_ushort>() }),
+            TINT => KeywordDatatype::TINT(unsafe { &*value.cast::<c_int>() }),
+            TUINT => KeywordDatatype::TUINT(unsafe { &*value.cast::<c_uint>() }),
+            TLONG => KeywordDatatype::TLONG(unsafe { &*value.cast::<c_long>() }),
+            TULONG => KeywordDatatype::TULONG(unsafe { &*value.cast::<c_ulong>() }),
+            TFLOAT => KeywordDatatype::TFLOAT(unsafe { &*value.cast::<f32>() }),
+            TDOUBLE => KeywordDatatype::TDOUBLE(unsafe { &*value.cast::<f64>() }),
             TSTRING => KeywordDatatype::TSTRING(unsafe {
-                cast_slice(CStr::from_ptr(value as *const c_char).to_bytes_with_nul())
+                cast_slice(CStr::from_ptr(value.cast::<c_char>()).to_bytes_with_nul())
             }),
-            TLOGICAL => KeywordDatatype::TLOGICAL(unsafe { &*(value as *const c_int) }),
-            TCOMPLEX => KeywordDatatype::TCOMPLEX(unsafe { &*(value as *const [f32; 2]) }),
-            TDBLCOMPLEX => KeywordDatatype::TDBLCOMPLEX(unsafe { &*(value as *const [f64; 2]) }),
-            TULONGLONG => KeywordDatatype::TULONGLONG(unsafe { &*(value as *const ULONGLONG) }),
-            TLONGLONG => KeywordDatatype::TLONGLONG(unsafe { &*(value as *const LONGLONG) }),
+            TLOGICAL => KeywordDatatype::TLOGICAL(unsafe { &*value.cast::<c_int>() }),
+            TCOMPLEX => KeywordDatatype::TCOMPLEX(unsafe { &*value.cast::<[f32; 2]>() }),
+            TDBLCOMPLEX => KeywordDatatype::TDBLCOMPLEX(unsafe { &*value.cast::<[f64; 2]>() }),
+            TULONGLONG => KeywordDatatype::TULONGLONG(unsafe { &*value.cast::<ULONGLONG>() }),
+            TLONGLONG => KeywordDatatype::TLONGLONG(unsafe { &*value.cast::<LONGLONG>() }),
             _ => KeywordDatatype::INVALID(datatype),
         }
     }
@@ -488,28 +505,28 @@ pub enum KeywordDatatypeMut<'a> {
 impl KeywordDatatypeMut<'_> {
     pub fn from_datatype(datatype: c_int, value: *mut c_void) -> Self {
         match datatype {
-            TBYTE => KeywordDatatypeMut::TBYTE(unsafe { &mut *(value as *mut c_uchar) }),
-            TSBYTE => KeywordDatatypeMut::TSBYTE(unsafe { &mut *(value as *mut c_char) }),
-            TSHORT => KeywordDatatypeMut::TSHORT(unsafe { &mut *(value as *mut c_short) }),
-            TUSHORT => KeywordDatatypeMut::TUSHORT(unsafe { &mut *(value as *mut c_ushort) }),
-            TINT => KeywordDatatypeMut::TINT(unsafe { &mut *(value as *mut c_int) }),
-            TUINT => KeywordDatatypeMut::TUINT(unsafe { &mut *(value as *mut c_uint) }),
-            TLONG => KeywordDatatypeMut::TLONG(unsafe { &mut *(value as *mut c_long) }),
-            TULONG => KeywordDatatypeMut::TULONG(unsafe { &mut *(value as *mut c_ulong) }),
-            TFLOAT => KeywordDatatypeMut::TFLOAT(unsafe { &mut *(value as *mut f32) }),
-            TDOUBLE => KeywordDatatypeMut::TDOUBLE(unsafe { &mut *(value as *mut f64) }),
+            TBYTE => KeywordDatatypeMut::TBYTE(unsafe { &mut *value.cast::<c_uchar>() }),
+            TSBYTE => KeywordDatatypeMut::TSBYTE(unsafe { &mut *value.cast::<c_char>() }),
+            TSHORT => KeywordDatatypeMut::TSHORT(unsafe { &mut *value.cast::<c_short>() }),
+            TUSHORT => KeywordDatatypeMut::TUSHORT(unsafe { &mut *value.cast::<c_ushort>() }),
+            TINT => KeywordDatatypeMut::TINT(unsafe { &mut *value.cast::<c_int>() }),
+            TUINT => KeywordDatatypeMut::TUINT(unsafe { &mut *value.cast::<c_uint>() }),
+            TLONG => KeywordDatatypeMut::TLONG(unsafe { &mut *value.cast::<c_long>() }),
+            TULONG => KeywordDatatypeMut::TULONG(unsafe { &mut *value.cast::<c_ulong>() }),
+            TFLOAT => KeywordDatatypeMut::TFLOAT(unsafe { &mut *value.cast::<f32>() }),
+            TDOUBLE => KeywordDatatypeMut::TDOUBLE(unsafe { &mut *value.cast::<f64>() }),
             TSTRING => {
-                KeywordDatatypeMut::TSTRING(unsafe { &mut *(value as *mut [c_char; FLEN_VALUE]) })
+                KeywordDatatypeMut::TSTRING(unsafe { &mut *value.cast::<[c_char; FLEN_VALUE]>() })
             }
-            TLOGICAL => KeywordDatatypeMut::TLOGICAL(unsafe { &mut *(value as *mut c_int) }),
-            TCOMPLEX => KeywordDatatypeMut::TCOMPLEX(unsafe { &mut *(value as *mut [f32; 2]) }),
+            TLOGICAL => KeywordDatatypeMut::TLOGICAL(unsafe { &mut *value.cast::<c_int>() }),
+            TCOMPLEX => KeywordDatatypeMut::TCOMPLEX(unsafe { &mut *value.cast::<[f32; 2]>() }),
             TDBLCOMPLEX => {
-                KeywordDatatypeMut::TDBLCOMPLEX(unsafe { &mut *(value as *mut [f64; 2]) })
+                KeywordDatatypeMut::TDBLCOMPLEX(unsafe { &mut *value.cast::<[f64; 2]>() })
             }
             TULONGLONG => {
-                KeywordDatatypeMut::TULONGLONG(unsafe { &mut *(value as *mut ULONGLONG) })
+                KeywordDatatypeMut::TULONGLONG(unsafe { &mut *value.cast::<ULONGLONG>() })
             }
-            TLONGLONG => KeywordDatatypeMut::TLONGLONG(unsafe { &mut *(value as *mut LONGLONG) }),
+            TLONGLONG => KeywordDatatypeMut::TLONGLONG(unsafe { &mut *value.cast::<LONGLONG>() }),
             _ => KeywordDatatypeMut::INVALID(datatype),
         }
     }
@@ -683,7 +700,6 @@ macro_rules! STDERR {
 mod tests {
     use std::{ffi::CString, slice};
 
-    use crate::cs;
     use bytemuck::cast_slice;
     use cfileio::{ffclos_safe, ffinit_safe};
 

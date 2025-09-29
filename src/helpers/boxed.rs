@@ -35,7 +35,7 @@ fn try_new_uninit<T>() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
         if ptr.is_null() {
             return Err(AllocError);
         }
-        (ptr) as *mut mem::MaybeUninit<T>
+        (ptr).cast::<mem::MaybeUninit<T>>()
     };
 
     unsafe { Ok(Box::from_raw(ptr)) }

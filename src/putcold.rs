@@ -722,7 +722,7 @@ pub fn ffpcld_safe(
     {
         return *status;
     }
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     if tcode == TSTRING {
         ffcfmt(&tform, &mut cform); /* derive C format for writing strings */
@@ -737,10 +737,10 @@ pub fn ffpcld_safe(
     */
     if scale == 1.0 && zero == 0.0 && CFITSIO_MACHINE == NATIVE && tcode == TDOUBLE {
         writeraw = true;
-        if nelem < INT32_MAX as LONGLONG {
+        if nelem < LONGLONG::from(INT32_MAX) {
             maxelem = nelem;
         } else {
-            maxelem = (INT32_MAX / 8) as LONGLONG;
+            maxelem = LONGLONG::from(INT32_MAX / 8);
         }
     } else {
         writeraw = false;

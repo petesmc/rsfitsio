@@ -11,7 +11,7 @@ use std::ptr;
 use libc::{c_char, c_int, c_long, strcpy};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::c_api::*;
-use rsfitsio::fitsio::InputOutputCol;
+use rsfitsio::fitsio::INPUT_OUTPUT_COL;
 use rsfitsio::fitsio::{
     BINARY_TBL, FALSE, READWRITE, TLOGICAL, TRUE, TSTRING, fitsfile, iteratorCol,
 };
@@ -69,14 +69,14 @@ pub fn main() -> ExitCode {
                 fptr_box.as_mut(),
                 avalue_name.as_ptr(),
                 TSTRING,
-                InputOutputCol as c_int,
+                INPUT_OUTPUT_COL as c_int,
             );
             fits_iter_set_by_name(
                 &mut cols[1],
                 fptr_box.as_mut(),
                 lvalue_name.as_ptr(),
                 TLOGICAL,
-                InputOutputCol as c_int,
+                INPUT_OUTPUT_COL as c_int,
             );
         }
     }

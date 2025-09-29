@@ -1111,17 +1111,9 @@ fn same_path(
 
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
-        if cfg!(vms) {
-            while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
-                len -= 1;
-            }
-        } else {
-            while (len > 0)
-                && (newpixname[len - 1] != bb(b']'))
-                && (newpixname[len - 1] != bb(b':'))
-            {
-                len -= 1;
-            }
+
+        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
+            len -= 1;
         }
 
         /* add name */
@@ -1134,17 +1126,9 @@ fn same_path(
 
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
-        if cfg!(vms) {
-            while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
-                len -= 1;
-            }
-        } else {
-            while (len > 0)
-                && (newpixname[len - 1] != bb(b']'))
-                && (newpixname[len - 1] != bb(b':'))
-            {
-                len -= 1;
-            }
+
+        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
+            len -= 1;
         }
 
         /* add name */
@@ -1423,11 +1407,11 @@ fn hgeti4(
         }
         strcpy_safe(&mut val, &value);
         dval = atof_safe(&val);
-        if dval + 0.001 > MAXINT as f64 {
+        if dval + 0.001 > f64::from(MAXINT) {
             *ival = MAXINT;
         } else if dval >= 0.0 {
             *ival = (dval + 0.001) as c_int;
-        } else if dval - 0.001 < minint as f64 {
+        } else if dval - 0.001 < f64::from(minint) {
             *ival = minint;
         } else {
             *ival = (dval - 0.001) as c_int;

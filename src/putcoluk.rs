@@ -775,7 +775,7 @@ pub fn ffpcluk_safe(
                will fit in the buffer space or to the number of pixels that remain
                in the current vector, which ever is smaller.
             */
-            ntodo = cmp::min(remain, maxelem as LONGLONG) as c_long;
+            ntodo = cmp::min(remain, LONGLONG::from(maxelem)) as c_long;
             ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
             wrtptr = startpos + ((rownum as LONGLONG) * rowlen) + (elemnum * incre as LONGLONG);
@@ -1191,7 +1191,7 @@ pub(crate) fn ffuintfi1(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] > u8::MAX as c_uint {
+            if input[ii] > c_uint::from(u8::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {
@@ -1200,7 +1200,7 @@ pub(crate) fn ffuintfi1(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DUCHAR_MIN {
                 *status = OVERFLOW_ERR;
@@ -1238,7 +1238,7 @@ pub(crate) fn ffuintfi2(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DSHRT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1285,7 +1285,7 @@ pub(crate) fn ffuintfi4(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1323,15 +1323,15 @@ pub(crate) fn ffuintfi8(
         /* are valid ULONGLONG values. */
 
         for ii in 0..(ntodo as usize) {
-            output[ii] = (input[ii] as ULONGLONG ^ 0x8000000000000000) as LONGLONG;
+            output[ii] = (ULONGLONG::from(input[ii]) ^ 0x8000000000000000) as LONGLONG;
         }
     } else if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as LONGLONG;
+            output[ii] = LONGLONG::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DLONGLONG_MIN {
                 *status = OVERFLOW_ERR;
@@ -1366,7 +1366,7 @@ pub(crate) fn ffuintfr4(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            output[ii] = ((input[ii] as f64 - zero) / scale) as f32;
+            output[ii] = ((f64::from(input[ii]) - zero) / scale) as f32;
         }
     }
     *status
@@ -1385,11 +1385,11 @@ pub(crate) fn ffuintfr8(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as f64;
+            output[ii] = f64::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            output[ii] = (input[ii] as f64 - zero) / scale;
+            output[ii] = (f64::from(input[ii]) - zero) / scale;
         }
     }
     *status
@@ -1416,7 +1416,7 @@ pub(crate) fn ffuintfstr(
                 &mut output[oi..],
                 DBUFFSIZE as usize,
                 cform,
-                input[ii] as f64,
+                f64::from(input[ii]),
             );
             oi += twidth as usize;
 
@@ -1427,7 +1427,7 @@ pub(crate) fn ffuintfstr(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
             snprintf_f64(&mut output[oi..], DBUFFSIZE as usize, cform, dvalue);
             oi += twidth as usize;
 

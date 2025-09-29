@@ -6595,7 +6595,7 @@ pub fn fits_get_token_safe(
             if let Some(isanumber) = isanumber {
                 *isanumber = 1;
 
-                if !strchr(token, b'D' as c_int).is_null() {
+                if !strchr(token, c_int::from(b'D')).is_null() {
                     strncpy(tval.as_mut_ptr(), token, 72);
                     tval[72] = 0;
 
@@ -6888,7 +6888,9 @@ pub fn ffdelt_safe(
     /* call driver function to actually delete the file */
     if let Some(remove) = d[local_fptr.Fptr.driver as usize].remove {
         /* parse the input URL to get the base filename */
-        slen = strlen_safe(cast_slice(local_fptr.Fptr.get_filename_as_cstr().to_bytes_with_nul())) as c_int;
+        slen = strlen_safe(cast_slice(
+            local_fptr.Fptr.get_filename_as_cstr().to_bytes_with_nul(),
+        )) as c_int;
         if basename.try_reserve_exact((slen + 1) as usize).is_err() {
             *status = MEMORY_ALLOCATION;
             return *status;

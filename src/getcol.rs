@@ -67,7 +67,7 @@ pub unsafe extern "C" fn ffgpxv(
         let anynul = anynul.as_mut();
 
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
         /* get the size of the image */
@@ -152,7 +152,7 @@ pub unsafe extern "C" fn ffgpxvll(
         let anynul = anynul.as_mut();
 
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
         if *status > 0 || nelem == 0 {
@@ -789,7 +789,7 @@ pub unsafe extern "C" fn ffgpxf(
         let nullarray = slice::from_raw_parts_mut(nullarray, nelem as usize);
 
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
         let anynul = anynul.as_mut();
 
         let mut naxis = 0;
@@ -878,7 +878,7 @@ pub unsafe extern "C" fn ffgpxfll(
 
         let nullarray = slice::from_raw_parts_mut(nullarray, nelem as usize);
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
 
         /* get the size of the image */
         let mut naxis = 0;
@@ -1209,7 +1209,7 @@ pub unsafe extern "C" fn ffgsv(
 
         let nelem = calculate_subsection_length(blc, trc, inc);
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
 
         ffgsv_safe(fptr, datatype, blc, trc, inc, nulval, array, anynul, status)
     }
@@ -1641,7 +1641,7 @@ pub unsafe extern "C" fn ffgpv(
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
 
         let anynul = anynul.as_mut();
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
@@ -1994,7 +1994,7 @@ pub unsafe extern "C" fn ffgpf(
 
         let nullarray = slice::from_raw_parts_mut(nullarray, nelem as usize);
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
 
         let anynul = anynul.as_mut();
 
@@ -2114,7 +2114,7 @@ pub unsafe extern "C" fn ffgcv(
 
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
         let bytes = bytes_per_datatype(datatype).unwrap();
-        let array = slice::from_raw_parts_mut(array as *mut _, bytes * nelem as usize);
+        let array = slice::from_raw_parts_mut(array.cast(), bytes * nelem as usize);
 
         ffgcv_safe(
             fptr,
@@ -2994,7 +2994,7 @@ pub unsafe fn ffgcvn_safer(
             };
 
             let arr = slice::from_raw_parts_mut(
-                array[0] as *mut u8,
+                array[0].cast::<u8>(),
                 bytes * (nrows * repeats[0]) as usize,
             );
 
@@ -3035,7 +3035,7 @@ pub unsafe fn ffgcvn_safer(
                 };
 
                 let arr = slice::from_raw_parts_mut(
-                    array[icol] as *mut u8,
+                    array[icol].cast::<u8>(),
                     bytes * (nrows * repeats[icol]) as usize,
                 );
                 let array1 =
@@ -3115,7 +3115,7 @@ pub unsafe extern "C" fn ffgcf(
             }
         };
 
-        let array: &mut [u8] = slice::from_raw_parts_mut(array as *mut u8, bytes);
+        let array: &mut [u8] = slice::from_raw_parts_mut(array.cast::<u8>(), bytes);
 
         ffgcf_safe(
             fptr,
@@ -3418,7 +3418,7 @@ pub fn ffgcf_safe(
     } else if datatype == TSTRING {
         unsafe {
             let array =
-                slice::from_raw_parts_mut(array.as_mut_ptr() as *mut *mut _, nelem as usize);
+                slice::from_raw_parts_mut(array.as_mut_ptr().cast::<*mut _>(), nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);

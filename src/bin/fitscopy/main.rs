@@ -70,7 +70,12 @@ pub fn main() -> ExitCode {
     ) == 0
     {
         /* Create the output file */
-        if fits_create_file(&mut outfptr, cast_slice(outfile.as_bytes_with_nul()), &mut status) == 0 {
+        if fits_create_file(
+            &mut outfptr,
+            cast_slice(outfile.as_bytes_with_nul()),
+            &mut status,
+        ) == 0
+        {
             /* copy the previous, current, and following HDUs */
             fits_copy_file(
                 infptr.as_deref_mut().unwrap(),

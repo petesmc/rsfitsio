@@ -10,8 +10,8 @@ use std::ptr;
 use libc::{c_float, c_int, c_long};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::c_api::*;
-use rsfitsio::fitsio::InputCol;
-use rsfitsio::fitsio::OutputCol;
+use rsfitsio::fitsio::INPUT_COL;
+use rsfitsio::fitsio::OUTPUT_COL;
 use rsfitsio::fitsio::{
     BINARY_TBL, DOUBLENULLVALUE, READWRITE, TFLOAT, TLONG, fitsfile, iteratorCol,
 };
@@ -75,21 +75,21 @@ pub fn main() -> ExitCode {
                 fptr_box.as_mut(),
                 counts_name.as_ptr(),
                 TLONG,
-                InputCol as c_int,
+                INPUT_COL as c_int,
             );
             fits_iter_set_by_name(
                 &mut cols[1],
                 fptr_box.as_mut(),
                 time_name.as_ptr(),
                 TFLOAT,
-                InputCol as c_int,
+                INPUT_COL as c_int,
             );
             fits_iter_set_by_name(
                 &mut cols[2],
                 fptr_box.as_mut(),
                 rate_name.as_ptr(),
                 TFLOAT,
-                OutputCol as c_int,
+                OUTPUT_COL as c_int,
             );
         }
     }

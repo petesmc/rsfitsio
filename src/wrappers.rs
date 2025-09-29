@@ -110,7 +110,7 @@ pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
         let b = ct[i];
 
         if a != b || a == 0 {
-            return (a as c_int) - (b as c_int);
+            return c_int::from(a) - c_int::from(b);
         }
     }
 
@@ -120,9 +120,9 @@ pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     if min_len < n {
         // We reached the end of one string, but not the other
         return if cs.len() < ct.len() {
-            -(ct[min_len] as c_int)
+            -c_int::from(ct[min_len])
         } else {
-            cs[min_len] as c_int
+            c_int::from(cs[min_len])
         };
     }
 
@@ -137,11 +137,11 @@ pub(crate) unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
 
 pub(crate) unsafe fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t) -> c_int {
     unsafe {
-        let s1 = core::slice::from_raw_parts(s1 as *const c_uchar, n);
-        let s2 = core::slice::from_raw_parts(s2 as *const c_uchar, n);
+        let s1 = core::slice::from_raw_parts(s1.cast::<c_uchar>(), n);
+        let s2 = core::slice::from_raw_parts(s2.cast::<c_uchar>(), n);
 
         for (&a, &b) in s1.iter().zip(s2.iter()) {
-            let val = (a as c_int) - (b as c_int);
+            let val = c_int::from(a) - c_int::from(b);
             if a != b || a == 0 {
                 return val;
             }
@@ -429,8 +429,8 @@ unsafe fn strcspn(s1: *const c_char, s2: *const c_char) -> size_t {
 // Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
 unsafe fn inner_strspn(s1: *const c_char, s2: *const c_char, cmp: bool) -> size_t {
     unsafe {
-        let mut s1 = s1 as *const u8;
-        let mut s2 = s2 as *const u8;
+        let mut s1 = s1.cast::<u8>();
+        let mut s2 = s2.cast::<u8>();
 
         // The below logic is effectively ripped from the musl implementation. It
         // works by placing each byte as it's own bit in an array of numbers. Each
@@ -499,8 +499,8 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
         }
 
         while let Some(digit) = (s[si] as u8 as char).to_digit(radix) {
-            result *= radix as f64;
-            result += digit as f64;
+            result *= f64::from(radix);
+            result += f64::from(digit);
             si += 1;
         }
 
@@ -509,8 +509,8 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
 
             let mut i = 1.0;
             while let Some(digit) = (s[si] as u8 as char).to_digit(radix) {
-                i *= radix as f64;
-                result += digit as f64 / i;
+                i *= f64::from(radix);
+                result += f64::from(digit) / i;
                 si += 1;
             }
         }

@@ -239,7 +239,7 @@ pub fn ffmaky_safe(
     }
 
     let headstart = fptr.Fptr.get_headstart_as_slice();
-    fptr.Fptr.nextkey = headstart[fptr.Fptr.curhdu as usize] + ((nrec as LONGLONG - 1) * 80);
+    fptr.Fptr.nextkey = headstart[fptr.Fptr.curhdu as usize] + ((LONGLONG::from(nrec) - 1) * 80);
     *status
 }
 
@@ -272,7 +272,7 @@ pub fn ffmrky_safe(
         ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
     }
 
-    fptr.Fptr.nextkey += nmove as LONGLONG * 80;
+    fptr.Fptr.nextkey += LONGLONG::from(nmove) * 80;
 
     *status
 }
@@ -498,7 +498,7 @@ pub fn ffgky_safe(
         }
         KeywordDatatypeMut::TBYTE(value) => {
             if ffgkyjj_safe(fptr, keyname, &mut longval, comm, status) <= 0 {
-                if longval > u8::MAX as LONGLONG || longval < 0 {
+                if longval > LONGLONG::from(u8::MAX) || longval < 0 {
                     *status = NUM_OVERFLOW;
                 } else {
                     *(value) = longval as u8;
@@ -516,7 +516,7 @@ pub fn ffgky_safe(
         }
         KeywordDatatypeMut::TUSHORT(value) => {
             if ffgkyjj_safe(fptr, keyname, &mut longval, comm, status) <= 0 {
-                if longval > (c_ushort::MAX as LONGLONG) || longval < 0 {
+                if longval > LONGLONG::from(c_ushort::MAX) || longval < 0 {
                     *status = NUM_OVERFLOW;
                 } else {
                     *(value) = longval as c_ushort;
@@ -525,7 +525,8 @@ pub fn ffgky_safe(
         }
         KeywordDatatypeMut::TSHORT(value) => {
             if ffgkyjj_safe(fptr, keyname, &mut longval, comm, status) <= 0 {
-                if longval > c_short::MAX as LONGLONG || longval < c_short::MIN as LONGLONG {
+                if longval > LONGLONG::from(c_short::MAX) || longval < LONGLONG::from(c_short::MIN)
+                {
                     *status = NUM_OVERFLOW;
                 } else {
                     *(value) = longval as c_short;
@@ -534,7 +535,7 @@ pub fn ffgky_safe(
         }
         KeywordDatatypeMut::TUINT(value) => {
             if ffgkyjj_safe(fptr, keyname, &mut longval, comm, status) <= 0 {
-                if longval > (c_uint::MAX as LONGLONG) || longval < 0 {
+                if longval > LONGLONG::from(c_uint::MAX) || longval < 0 {
                     *status = NUM_OVERFLOW;
                 } else {
                     *(value) = longval as c_uint;
@@ -543,7 +544,7 @@ pub fn ffgky_safe(
         }
         KeywordDatatypeMut::TINT(value) => {
             if ffgkyjj_safe(fptr, keyname, &mut longval, comm, status) <= 0 {
-                if longval > c_int::MAX as LONGLONG || longval < c_int::MIN as LONGLONG {
+                if longval > LONGLONG::from(c_int::MAX) || longval < LONGLONG::from(c_int::MIN) {
                     *status = NUM_OVERFLOW;
                 } else {
                     *(value) = longval as c_int;
@@ -2827,14 +2828,14 @@ pub fn ffgkns_safe(
             tstatus = 0;
             if ffc2ii(&keyindex, &mut ival, &mut tstatus) <= 0 {
                 /*  test suffix  */
-                if ival <= nend as c_long && ival >= nstart as c_long {
-                    let v = &mut value[(ival - nstart as c_long) as usize];
+                if ival <= c_long::from(nend) && ival >= c_long::from(nstart) {
+                    let v = &mut value[(ival - c_long::from(nstart)) as usize];
 
                     ffpsvc_safe(&card, &mut svalue, Some(&mut comm), status); /*  parse the value */
 
                     ffc2s(&svalue, v, status); /* convert */
-                    if ival - nstart as c_long + 1 > (*nfound) as c_long {
-                        *nfound = (ival - nstart as c_long + 1) as c_int; /*  max found */
+                    if ival - c_long::from(nstart) + 1 > c_long::from(*nfound) {
+                        *nfound = (ival - c_long::from(nstart) + 1) as c_int; /*  max found */
                     }
 
                     if *status == VALUE_UNDEFINED {
@@ -5222,12 +5223,12 @@ pub(crate) fn ffgphd(
 
             *status = BAD_BITPIX;
             return *status;
-        } else if longbitpix != BYTE_IMG as c_long
-            && longbitpix != SHORT_IMG as c_long
-            && longbitpix != LONG_IMG as c_long
-            && longbitpix != LONGLONG_IMG as c_long
-            && longbitpix != FLOAT_IMG as c_long
-            && longbitpix != DOUBLE_IMG as c_long
+        } else if longbitpix != c_long::from(BYTE_IMG)
+            && longbitpix != c_long::from(SHORT_IMG)
+            && longbitpix != c_long::from(LONG_IMG)
+            && longbitpix != c_long::from(LONGLONG_IMG)
+            && longbitpix != c_long::from(FLOAT_IMG)
+            && longbitpix != c_long::from(DOUBLE_IMG)
         {
             int_snprintf!(
                 &mut message,
@@ -5316,7 +5317,7 @@ pub(crate) fn ffgphd(
     *extend = 0;
     //}
     //if !blank.is_null() {
-    *blank = NULL_UNDEFINED as LONGLONG; /* no default null value for BITPIX=8,16,32 */
+    *blank = LONGLONG::from(NULL_UNDEFINED); /* no default null value for BITPIX=8,16,32 */
     //}
 
     *nspace = 0;
@@ -5416,7 +5417,7 @@ pub(crate) fn ffgphd(
 
                     /* reset error status and continue, but still issue warning */
                     *status = tstatus;
-                    *blank = NULL_UNDEFINED as LONGLONG;
+                    *blank = LONGLONG::from(NULL_UNDEFINED);
                     int_snprintf!(
                         &mut message,
                         FLEN_ERRMSG,
@@ -5848,7 +5849,7 @@ pub fn ffh2st_safe(
         return *status;
     }
 
-    nrec = nkeys as c_long / 36 + 1;
+    nrec = c_long::from(nkeys) / 36 + 1;
 
     /* allocate memory for all the keywords (multiple of 2880 bytes) */
     // HEAP ALLOCATION

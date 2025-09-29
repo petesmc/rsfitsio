@@ -43,7 +43,7 @@ pub(crate) struct WCSdata {
 }
 
 #[derive(Default, Debug, PartialEq, Clone)]
-enum ShapeType {
+pub(crate) enum ShapeType {
     #[default]
     Point,
     Line,
@@ -73,23 +73,23 @@ enum CoordFmt {
 
 #[derive(Default, Debug, Clone)]
 pub(crate) struct RgnShape {
-    pub(crate) sign: c_char,     /*  Include or exclude?        */
-    pub(crate) shape: ShapeType, /*  Shape of this region       */
-    pub(crate) comp: c_int,      /*  Component number for this region */
+    sign: c_char,     /*  Include or exclude?        */
+    shape: ShapeType, /*  Shape of this region       */
+    comp: c_int,      /*  Component number for this region */
 
     /*  bounding box    */
-    pub(crate) xmin: f64,
-    pub(crate) xmax: f64,
-    pub(crate) ymin: f64,
-    pub(crate) ymax: f64,
+    xmin: f64,
+    xmax: f64,
+    ymin: f64,
+    ymax: f64,
 
     /*  Parameters - In pixels     */
-    pub(crate) genericParams: RgnShapeGeneric,
-    pub(crate) polyParams: RgnShapePolygon,
+    genericParams: RgnShapeGeneric,
+    polyParams: RgnShapePolygon,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-struct RgnShapeGeneric {
+pub(crate) struct RgnShapeGeneric {
     p: [f64; 11], /*  Region parameters       */
 
     /*  For rotated shapes      */
@@ -2022,7 +2022,7 @@ pub(crate) fn fits_read_fits_region(
         if ffgcvs_safe(
             &mut fptr,
             icol[2],
-            i as LONGLONG,
+            LONGLONG::from(i),
             1,
             1,
             Some(cs!(c" ")),
@@ -2094,8 +2094,8 @@ pub(crate) fn fits_read_fits_region(
             if ffgcvd_safe(
                 &mut fptr,
                 icol[0],
-                i as LONGLONG,
-                j as LONGLONG + 1,
+                LONGLONG::from(i),
+                LONGLONG::from(j) + 1,
                 1,
                 DOUBLENULLVALUE,
                 &mut coords[ci..],
@@ -2119,8 +2119,8 @@ pub(crate) fn fits_read_fits_region(
             if ffgcvd_safe(
                 &mut fptr,
                 icol[1],
-                i as LONGLONG,
-                j as LONGLONG + 1,
+                LONGLONG::from(i),
+                LONGLONG::from(j) + 1,
                 1,
                 DOUBLENULLVALUE,
                 &mut coords[ci..],
@@ -2236,7 +2236,7 @@ pub(crate) fn fits_read_fits_region(
             if ffgcvd_safe(
                 &mut fptr,
                 icol[3],
-                i as LONGLONG,
+                LONGLONG::from(i),
                 1,
                 npos.into(),
                 0.0,
@@ -2337,9 +2337,9 @@ pub(crate) fn fits_read_fits_region(
             if ffgcvd_safe(
                 &mut fptr,
                 icol[4],
-                i as LONGLONG,
+                LONGLONG::from(i),
                 1,
-                npos as LONGLONG,
+                LONGLONG::from(npos),
                 0.0,
                 &mut coords[ci..],
                 Some(&mut anynul),
@@ -2371,7 +2371,7 @@ pub(crate) fn fits_read_fits_region(
                 &mut fptr,
                 TINT,
                 icol[5],
-                i as LONGLONG,
+                LONGLONG::from(i),
                 1,
                 1,
                 Some(NullValue::Int(0)),

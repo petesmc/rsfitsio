@@ -736,7 +736,7 @@ pub fn ffpcluj_safe(
            will fit in the buffer space or to the number of pixels that remain
            in the current vector, which ever is smaller.
         */
-        ntodo = cmp::min(remain, maxelem as LONGLONG) as c_long;
+        ntodo = cmp::min(remain, LONGLONG::from(maxelem)) as c_long;
         ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
         wrtptr = startpos + (rownum as LONGLONG * rowlen) + (elemnum * incre as LONGLONG);
@@ -1152,7 +1152,7 @@ pub(crate) fn ffu4fi1(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] > u8::MAX as c_ulong {
+            if input[ii] > c_ulong::from(u8::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {
@@ -2085,7 +2085,7 @@ pub fn ffpclujj_safe(
            will fit in the buffer space or to the number of pixels that remain
            in the current vector, which ever is smaller.
         */
-        ntodo = cmp::min(remain, maxelem as LONGLONG) as c_long;
+        ntodo = cmp::min(remain, LONGLONG::from(maxelem)) as c_long;
         ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
         wrtptr = startpos + (rownum as LONGLONG * rowlen) + (elemnum * incre as LONGLONG);
@@ -2499,7 +2499,7 @@ pub(crate) fn ffu8fi1(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] > u8::MAX as ULONGLONG {
+            if input[ii] > ULONGLONG::from(u8::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {

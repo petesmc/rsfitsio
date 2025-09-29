@@ -748,7 +748,7 @@ pub fn ffpcle_safe(
     {
         return *status;
     }
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     if tcode == TSTRING {
         ffcfmt(&tform, &mut cform); /* derive C format for writing strings */
@@ -763,10 +763,10 @@ pub fn ffpcle_safe(
     */
     if scale == 1.0 && zero == 0.0 && CFITSIO_MACHINE == NATIVE && tcode == TFLOAT {
         writeraw = true;
-        if nelem < INT32_MAX as LONGLONG {
+        if nelem < LONGLONG::from(INT32_MAX) {
             maxelem = nelem;
         } else {
-            maxelem = (INT32_MAX / 4) as LONGLONG;
+            maxelem = LONGLONG::from(INT32_MAX / 4);
         }
     } else {
         writeraw = false;
@@ -1297,10 +1297,10 @@ pub(crate) fn ffr4fi1(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if (input[ii] as f64) < DUCHAR_MIN {
+            if f64::from(input[ii]) < DUCHAR_MIN {
                 *status = OVERFLOW_ERR;
                 output[ii] = 0;
-            } else if (input[ii] as f64) > DUCHAR_MAX {
+            } else if f64::from(input[ii]) > DUCHAR_MAX {
                 *status = OVERFLOW_ERR;
                 output[ii] = u8::MAX;
             } else {
@@ -1309,7 +1309,7 @@ pub(crate) fn ffr4fi1(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DUCHAR_MIN {
                 *status = OVERFLOW_ERR;
@@ -1338,10 +1338,10 @@ pub(crate) fn ffr4fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if (input[ii] as f64) < DSHRT_MIN {
+            if f64::from(input[ii]) < DSHRT_MIN {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MIN;
-            } else if (input[ii] as f64) > DSHRT_MAX {
+            } else if f64::from(input[ii]) > DSHRT_MAX {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -1350,7 +1350,7 @@ pub(crate) fn ffr4fi2(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DSHRT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1381,10 +1381,10 @@ pub(crate) fn ffr4fi4(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if (input[ii] as f64) < DINT_MIN {
+            if f64::from(input[ii]) < DINT_MIN {
                 *status = OVERFLOW_ERR;
                 output[ii] = INT32_MIN;
-            } else if (input[ii] as f64) > DINT_MAX {
+            } else if f64::from(input[ii]) > DINT_MAX {
                 *status = OVERFLOW_ERR;
                 output[ii] = INT32_MAX;
             } else {
@@ -1393,7 +1393,7 @@ pub(crate) fn ffr4fi4(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1431,7 +1431,7 @@ pub(crate) fn ffr4fi8(
             if input[ii] < -0.49 {
                 *status = OVERFLOW_ERR;
                 output[ii] = LONGLONG_MIN;
-            } else if (input[ii] as f64) > 2.0 * DLONGLONG_MAX {
+            } else if f64::from(input[ii]) > 2.0 * DLONGLONG_MAX {
                 *status = OVERFLOW_ERR;
                 output[ii] = LONGLONG_MAX;
             } else {
@@ -1440,10 +1440,10 @@ pub(crate) fn ffr4fi8(
         }
     } else if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if (input[ii] as f64) < DLONGLONG_MIN {
+            if f64::from(input[ii]) < DLONGLONG_MIN {
                 *status = OVERFLOW_ERR;
                 output[ii] = LONGLONG_MIN;
-            } else if (input[ii] as f64) > DLONGLONG_MAX {
+            } else if f64::from(input[ii]) > DLONGLONG_MAX {
                 *status = OVERFLOW_ERR;
                 output[ii] = LONGLONG_MAX;
             } else {
@@ -1452,7 +1452,7 @@ pub(crate) fn ffr4fi8(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DLONGLONG_MIN {
                 *status = OVERFLOW_ERR;
@@ -1486,7 +1486,7 @@ pub(crate) fn ffr4fr4(
         output[..ntodo].copy_from_slice(&input[..ntodo]); /* copy input to output */
     } else {
         for ii in 0..(ntodo) {
-            output[ii] = ((input[ii] as f64 - zero) / scale) as f32;
+            output[ii] = ((f64::from(input[ii]) - zero) / scale) as f32;
         }
     }
     *status
@@ -1505,11 +1505,11 @@ pub(crate) fn ffr4fr8(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as f64;
+            output[ii] = f64::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            output[ii] = (input[ii] as f64 - zero) / scale;
+            output[ii] = (f64::from(input[ii]) - zero) / scale;
         }
     }
     *status
@@ -1536,7 +1536,7 @@ pub(crate) fn ffr4fstr(
                 &mut output[ci..],
                 DBUFFSIZE as usize,
                 cform,
-                input[ii] as f64,
+                f64::from(input[ii]),
             );
             ci += twidth as usize;
 
@@ -1547,7 +1547,7 @@ pub(crate) fn ffr4fstr(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
             snprintf_f64(&mut output[ci..], DBUFFSIZE as usize, cform, dvalue);
             ci += twidth as usize;
 

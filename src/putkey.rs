@@ -518,7 +518,7 @@ pub fn ffphprll_safe(
     if ffpkyj_safe(
         fptr,
         cs!(c"BITPIX"),
-        longbitpix as LONGLONG,
+        LONGLONG::from(longbitpix),
         Some(&comm),
         status,
     ) > 0
@@ -538,7 +538,13 @@ pub fn ffphprll_safe(
     }
 
     strcpy_safe(&mut comm, cs!(c"number of data axes"));
-    ffpkyj_safe(fptr, cs!(c"NAXIS"), naxis as LONGLONG, Some(&comm), status);
+    ffpkyj_safe(
+        fptr,
+        cs!(c"NAXIS"),
+        LONGLONG::from(naxis),
+        Some(&comm),
+        status,
+    );
 
     strcpy_safe(&mut comm, cs!(c"length of data axis "));
     ii = 0;
@@ -1065,7 +1071,7 @@ pub fn ffphbn_safe(
         } else if datatype == TBIT {
             naxis1 += ((repeat + 7) / 8) as LONGLONG;
         } else if datatype > 0 {
-            naxis1 += repeat as LONGLONG * (datatype as LONGLONG / 10);
+            naxis1 += repeat as LONGLONG * (LONGLONG::from(datatype) / 10);
         } else if tform_item[0] == bb(b'P')
             || tform_item[1] == bb(b'P')
             || tform_item[0] == bb(b'p')
@@ -1119,7 +1125,7 @@ pub fn ffphbn_safe(
     ffpkyj_safe(
         fptr,
         cs!(c"TFIELDS"),
-        tfields as LONGLONG,
+        LONGLONG::from(tfields),
         Some(cs!(c"number of fields in each row")),
         status,
     );
@@ -3643,22 +3649,22 @@ pub fn ffpky_safe(
             ffpkys_safe(fptr, keyname, value, comm, status);
         }
         KeywordDatatype::TBYTE(value) => {
-            ffpkyj_safe(fptr, keyname, (*(value)) as LONGLONG, comm, status);
+            ffpkyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TSBYTE(value) => {
-            ffpkyj_safe(fptr, keyname, (*(value)) as LONGLONG, comm, status);
+            ffpkyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TUSHORT(value) => {
-            ffpkyj_safe(fptr, keyname, (*(value)) as LONGLONG, comm, status);
+            ffpkyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TSHORT(value) => {
-            ffpkyj_safe(fptr, keyname, (*(value)) as LONGLONG, comm, status);
+            ffpkyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TUINT(value) => {
-            ffpkyg_safe(fptr, keyname, (*(value)) as f64, 0, comm, status);
+            ffpkyg_safe(fptr, keyname, f64::from(*(value)), 0, comm, status);
         }
         KeywordDatatype::TINT(value) => {
-            ffpkyj_safe(fptr, keyname, (*(value)) as LONGLONG, comm, status);
+            ffpkyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TLOGICAL(value) => {
             ffpkyl_safe(fptr, keyname, *(value), comm, status);
@@ -4703,7 +4709,7 @@ pub(crate) fn ffr2f(
         return *status;
     }
 
-    if int_snprintf!(cval, FLEN_VALUE, "{:.*}", decim as usize, fval as f64,) < 0 {
+    if int_snprintf!(cval, FLEN_VALUE, "{:.*}", decim as usize, f64::from(fval),) < 0 {
         ffpmsg_str("Error in ffr2f converting float to string");
         *status = BAD_F2C;
     }
@@ -4752,7 +4758,7 @@ pub(crate) fn ffr2e(
             FLEN_VALUE,
             cast_slice(c"%.*G".to_bytes_with_nul()),
             -decim,
-            fval as f64,
+            f64::from(fval),
         ) < 0
         {
             ffpmsg_str("Error in ffr2e converting float to string");
@@ -4764,7 +4770,7 @@ pub(crate) fn ffr2e(
                 && strchr_safe(cval, bb(b'E')).is_some()
             {
                 /* reformat value with a decimal point and single zero */
-                if int_snprintf!(cval, FLEN_VALUE, "{:.1E}", fval as f64,) < 0 {
+                if int_snprintf!(cval, FLEN_VALUE, "{:.1E}", f64::from(fval),) < 0 {
                     ffpmsg_str("Error in ffr2e converting float to string");
                     *status = BAD_F2C;
                 }
@@ -4782,7 +4788,7 @@ pub(crate) fn ffr2e(
         cval,
         FLEN_VALUE,
         "{}",
-        fmt_f64(fval as f64, decim as usize, 2)
+        fmt_f64(f64::from(fval), decim as usize, 2)
     ) < 0
     {
         ffpmsg_str("Error in ffr2e converting float to string");

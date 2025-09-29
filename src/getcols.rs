@@ -384,7 +384,7 @@ pub(crate) fn ffgcls(
                 } else if intcol > 0 {
                     snprintf_cint(&mut tmpstr, 400, &cform, earray[jj] as c_int);
                 } else {
-                    snprintf_f64(&mut tmpstr, 400, &cform, earray[jj] as f64);
+                    snprintf_f64(&mut tmpstr, 400, &cform, f64::from(earray[jj]));
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
@@ -400,7 +400,7 @@ pub(crate) fn ffgcls(
                 } else if intcol > 0 {
                     snprintf_cint(&mut tmpstr, 400, &cform, earray[jj] as c_int);
                 } else {
-                    snprintf_f64(&mut tmpstr, 400, &cform, earray[jj] as f64);
+                    snprintf_f64(&mut tmpstr, 400, &cform, f64::from(earray[jj]));
                 }
 
                 strncat_safe(array[ii], &tmpstr, dwidth as usize);
@@ -1180,7 +1180,7 @@ pub(crate) fn ffgcls2(
         will fit in the buffer space or to the number of pixels that remain
         in the current vector, which ever is smaller.
         */
-        ntodo = cmp::min(remain, maxelem as LONGLONG) as c_long;
+        ntodo = cmp::min(remain, LONGLONG::from(maxelem)) as c_long;
         ntodo = cmp::min(ntodo as LONGLONG, repeat - elemnum) as c_long;
 
         readptr = startpos + (rownum as LONGLONG * rowlen) + (elemnum * incre as LONGLONG);

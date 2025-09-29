@@ -123,7 +123,7 @@ impl<'a> LZW_Compress<'a> {
 
         self.bytes_in += self.insize;
         self.inptr = 1;
-        self.inbuf[0] as c_int
+        c_int::from(self.inbuf[0])
     }
 
     /* =========================================================================== */
@@ -156,7 +156,7 @@ impl<'a> LZW_Compress<'a> {
                 }
                 /* copy into memory buffer */
                 let tmp_slice =
-                    slice::from_raw_parts_mut((*self.memptr).add(self.bytes_out) as *mut u8, cnt);
+                    slice::from_raw_parts_mut((*self.memptr).add(self.bytes_out).cast::<u8>(), cnt);
                 tmp_slice.copy_from_slice(&buf[..cnt]);
             }
         }
@@ -207,7 +207,7 @@ pub(crate) unsafe fn zuncompress2mem(
         ifname: fn_buffer,
         ifd: indiskfile,
         ofd: std::ptr::null_mut(),
-        memptr: buffptr as *mut *mut c_void,
+        memptr: buffptr.cast::<*mut c_void>(),
         memsize: buffsize,
         realloc_fn: mem_realloc,
         insize: 0,
@@ -248,7 +248,7 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
     let mut stackp: usize;
 
     lzw.ofd = out_file;
-    lzw.maxbits = lzw.get_byte() as c_int;
+    lzw.maxbits = c_int::from(lzw.get_byte());
     lzw.block_mode = lzw.maxbits & BLOCK_MODE;
 
     if lzw.maxbits & LZW_RESERVED != 0 {
@@ -275,7 +275,7 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
     let mut posbits: c_long = (lzw.inptr as c_long) << 3;
 
     let mut free_ent: code_int = if lzw.block_mode != 0 {
-        FIRST as code_int
+        code_int::from(FIRST)
     } else {
         256
     };
@@ -330,16 +330,16 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
         }
 
         inbits = if rsize != 0 {
-            ((lzw.insize as c_long) - (lzw.insize as c_long % n_bits as c_long)) << 3
+            ((lzw.insize as c_long) - (lzw.insize as c_long % c_long::from(n_bits))) << 3
         } else {
-            ((lzw.insize as c_long) << 3) - (n_bits as c_long - 1)
+            ((lzw.insize as c_long) << 3) - (c_long::from(n_bits) - 1)
         };
 
         while inbits > posbits {
             if free_ent > maxcode {
                 posbits = (posbits - 1)
-                    + (((n_bits as c_long) << 3)
-                        - (posbits - 1 + (n_bits << 3) as c_long) % (n_bits << 3) as c_long);
+                    + ((c_long::from(n_bits) << 3)
+                        - (posbits - 1 + c_long::from(n_bits << 3)) % c_long::from(n_bits << 3));
                 n_bits += 1;
                 if n_bits == lzw.maxbits {
                     maxcode = maxmaxcode;
@@ -354,10 +354,11 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
 
             // 'input' macro
             let p = &(lzw.inbuf)[((posbits >> 3) as usize)..];
-            (code) = (((p[0] as c_long) | ((p[1] as c_long) << 8) | ((p[2] as c_long) << 16))
-                >> ((posbits) & 0x7))
-                & (bitmask as c_long);
-            (posbits) += n_bits as c_long;
+            (code) =
+                ((c_long::from(p[0]) | (c_long::from(p[1]) << 8) | (c_long::from(p[2]) << 16))
+                    >> ((posbits) & 0x7))
+                    & c_long::from(bitmask);
+            (posbits) += c_long::from(n_bits);
 
             if oldcode == -1 {
                 if code >= 256 {
@@ -374,12 +375,12 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
                 continue;
             }
 
-            if code == CLEAR as c_long && lzw.block_mode != 0 {
+            if code == c_long::from(CLEAR) && lzw.block_mode != 0 {
                 lzw.tab_prefix[..256].fill(0);
-                free_ent = (FIRST - 1) as c_long;
+                free_ent = c_long::from(FIRST - 1);
                 posbits = (posbits - 1)
-                    + (((n_bits as c_long) << 3)
-                        - (posbits - 1 + (n_bits << 3) as c_long) % (n_bits << 3) as c_long);
+                    + ((c_long::from(n_bits) << 3)
+                        - (posbits - 1 + c_long::from(n_bits << 3)) % c_long::from(n_bits << 3));
                 n_bits = INIT_BITS;
                 maxcode = MAXCODE!(n_bits) - 1;
                 bitmask = (1 << n_bits) - 1;
@@ -417,11 +418,11 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
                 /* Generate output characters in reverse order */
                 stackp -= 1;
                 stack[stackp] = lzw.window[code as usize] as char_type;
-                code = lzw.tab_prefix[code as usize] as code_int;
+                code = code_int::from(lzw.tab_prefix[code as usize]);
             }
 
             stackp -= 1;
-            finchar = lzw.window[code as usize] as c_int;
+            finchar = c_int::from(lzw.window[code as usize]);
             stack[stackp] = finchar as char_type;
 
             /* And put them out in forward order */

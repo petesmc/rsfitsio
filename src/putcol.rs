@@ -97,7 +97,7 @@ pub unsafe extern "C" fn ffppx(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         let mut naxis: c_int = 0;
         ffgidm_safe(fptr, &mut naxis, status);
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn ffppxll(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         let mut naxis: c_int = 0;
         ffgidm_safe(fptr, &mut naxis, status);
@@ -339,7 +339,7 @@ pub unsafe extern "C" fn ffppxn(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         let mut naxis = 0;
         ffgidm_safe(fptr, &mut naxis, status);
@@ -569,7 +569,7 @@ pub unsafe extern "C" fn ffppxnll(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
         let mut naxis = 0;
         ffgidm_safe(fptr, &mut naxis, status);
         let firstpix = slice::from_raw_parts(firstpix, naxis as usize);
@@ -796,7 +796,7 @@ pub unsafe extern "C" fn ffppr(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         ffppr_safe(fptr, datatype, firstelem, nelem, array, status)
     }
@@ -891,7 +891,7 @@ pub unsafe extern "C" fn ffppn(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
         ffppn_safe(fptr, datatype, firstelem, nelem, array, nulval, status)
@@ -1156,7 +1156,7 @@ pub unsafe extern "C" fn ffpss(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         ffpss_safe(fptr, datatype, blc, trc, array, status)
     }
@@ -1190,7 +1190,7 @@ pub fn ffpss_safe(
     ffgidm_safe(fptr, &mut naxis, status);
     ffgisz_safe(fptr, 9, &mut naxes, status);
 
-    let naxis = naxis as c_long;
+    let naxis = c_long::from(naxis);
 
     if datatype == TBYTE {
         let array = cast_slice(array);
@@ -1263,7 +1263,7 @@ pub unsafe extern "C" fn ffpcl(
             }
         };
 
-        let array = slice::from_raw_parts(array as *const u8, bytes);
+        let array = slice::from_raw_parts(array.cast::<u8>(), bytes);
 
         ffpcl_safe(
             fptr,
@@ -1493,7 +1493,7 @@ pub fn ffpcl_safe(
         }
         TSTRING => unsafe {
             let array =
-                slice::from_raw_parts(array.as_ptr() as *const *const c_char, nelem as usize);
+                slice::from_raw_parts(array.as_ptr().cast::<*const c_char>(), nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
@@ -1546,7 +1546,7 @@ pub unsafe extern "C" fn ffpcn(
             }
         };
 
-        let array: &[u8] = slice::from_raw_parts(array as *const u8, bytes);
+        let array: &[u8] = slice::from_raw_parts(array.cast::<u8>(), bytes);
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
         ffpcn_safer(
@@ -1830,7 +1830,7 @@ pub unsafe fn ffpcn_safer(
             );
         } else if datatype == TSTRING {
             let array: &[*const c_char] =
-                slice::from_raw_parts(array.as_ptr() as *const _, nelem as usize);
+                slice::from_raw_parts(array.as_ptr().cast(), nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts(*item, FLEN_VALUE);
@@ -2497,13 +2497,14 @@ pub fn ffiter_safe(
             columns.  Variable length arrays have a negative type code
             value. */
 
-            if !((cols[jj].iotype == OutputCol) || (cols[jj].iotype == TemporaryCol)) && (dtype < 0)
+            if !((cols[jj].iotype == OUTPUT_COL) || (cols[jj].iotype == TEMPORARY_COL))
+                && (dtype < 0)
             {
                 dtype *= -1;
             }
 
             /* TemporaryCol must have defined datatype and repeat */
-            if cols[jj].iotype == TemporaryCol && (dtype <= 0 || cols[jj].repeat <= 0) {
+            if cols[jj].iotype == TEMPORARY_COL && (dtype <= 0 || cols[jj].repeat <= 0) {
                 int_snprintf!(
                     message,
                     FLEN_ERRMSG,
@@ -2561,7 +2562,7 @@ pub fn ffiter_safe(
             cols[jj].tdisp[0] = 0;
 
             /* Determine HDU type of this table (or BINARY_TBL for TemporaryCol) */
-            if cols[jj].iotype != TemporaryCol {
+            if cols[jj].iotype != TEMPORARY_COL {
                 ffghdt_safe(cols[jj].fptr.as_mut().unwrap(), &mut jtype, status); /* get HDU type */
             } else {
                 hdutype = BINARY_TBL;
@@ -2594,7 +2595,7 @@ pub fn ffiter_safe(
                     &mut tstatus,
                 );
 
-                if cols[jj].iotype == TemporaryCol {
+                if cols[jj].iotype == TEMPORARY_COL {
                     int_snprintf!(
                         message,
                         FLEN_ERRMSG,
@@ -2617,7 +2618,7 @@ pub fn ffiter_safe(
                     return *status;
                 }
 
-                if cols[jj].iotype != TemporaryCol {
+                if cols[jj].iotype != TEMPORARY_COL {
                     if cols[jj].colnum < 1 {
                         /* find the column number for the named column */
                         if ffgcno_safe(
@@ -2798,7 +2799,7 @@ pub fn ffiter_safe(
             passes a non-calculator input to this iterator, and
             has NOT set fptr to a legitimate FITS handle.  Boom! */
             for jj in 0..n_cols.max(1) as usize {
-                if cols[jj].iotype != TemporaryCol && !cols[jj].fptr.is_null() {
+                if cols[jj].iotype != TEMPORARY_COL && !cols[jj].fptr.is_null() {
                     ffgkyj_safe(
                         cols[jj].fptr.as_mut().unwrap(),
                         cs!(c"NAXIS2"),
@@ -2838,12 +2839,12 @@ pub fn ffiter_safe(
 
             nfiles = 1;
             n_optimum = 0;
-            if cols[0].iotype != TemporaryCol {
+            if cols[0].iotype != TEMPORARY_COL {
                 ffgrsz_safe(cols[0].fptr.as_mut().unwrap(), &mut n_optimum, status);
             }
 
             for jj in 1..n_cols as usize {
-                if cols[jj].iotype == TemporaryCol {
+                if cols[jj].iotype == TEMPORARY_COL {
                     continue;
                 }
                 let mut ii = 0;
@@ -2868,7 +2869,7 @@ pub fn ffiter_safe(
             }
 
             /* divid n_optimum by the number of files that will be processed */
-            n_optimum /= nfiles as c_long;
+            n_optimum /= c_long::from(nfiles);
             n_optimum = n_optimum.max(1);
         } else if n_per_loop < 0 {
             /* must pass all the values at one time */
@@ -2914,7 +2915,7 @@ pub fn ffiter_safe(
                         }
                         _ => {}
                     }
-                } else if cols[jj].iotype != TemporaryCol {
+                } else if cols[jj].iotype != TEMPORARY_COL {
                     if ffgtcl_safe(
                         cols[jj].fptr.as_mut().unwrap(),
                         cols[jj].colnum,
@@ -2935,7 +2936,7 @@ pub fn ffiter_safe(
                         but not for OutputCol columns.  Variable length arrays have a
                         negative type code value. */
 
-                        if cols[jj].iotype == OutputCol {
+                        if cols[jj].iotype == OUTPUT_COL {
                             int_snprintf!(
                                 message,
                                 FLEN_ERRMSG,
@@ -3181,8 +3182,8 @@ pub fn ffiter_safe(
                             || typecode.abs() == TINT
                             || typecode.abs() == TLONGLONG
                         {
-                            tnull = tnull.min(SHRT_MAX as c_long);
-                            tnull = tnull.max(SHRT_MIN as c_long);
+                            tnull = tnull.min(c_long::from(SHRT_MAX));
+                            tnull = tnull.max(c_long::from(SHRT_MIN));
                             col[jj].null = ColNullValue::ShortNull(tnull as c_short);
                         } else {
                             col[jj].null = ColNullValue::ShortNull(SHRT_MIN); /* use minimum as null */
@@ -3198,7 +3199,7 @@ pub fn ffiter_safe(
                             || typecode.abs() == TINT
                             || typecode.abs() == TLONGLONG
                         {
-                            tnull = tnull.min(c_ushort::MAX as c_long);
+                            tnull = tnull.min(c_long::from(c_ushort::MAX));
                             tnull = tnull.max(0); /* don't allow negative value */
                             col[jj].null = ColNullValue::UShortNull(tnull as c_ushort);
                         } else {
@@ -3215,8 +3216,8 @@ pub fn ffiter_safe(
                             || typecode.abs() == TINT
                             || typecode.abs() == TLONGLONG
                         {
-                            tnull = tnull.min(c_int::MAX as c_long);
-                            tnull = tnull.max(c_int::MIN as c_long);
+                            tnull = tnull.min(c_long::from(c_int::MAX));
+                            tnull = tnull.max(c_long::from(c_int::MIN));
                             col[jj].null = ColNullValue::IntNull(tnull as c_int);
                         } else {
                             col[jj].null = ColNullValue::IntNull(c_int::MIN); /* use minimum as null */
@@ -3232,7 +3233,7 @@ pub fn ffiter_safe(
                             || typecode.abs() == TINT
                             || typecode.abs() == TLONGLONG
                         {
-                            tnull = tnull.min(INT32_MAX as c_long);
+                            tnull = tnull.min(c_long::from(INT32_MAX));
                             tnull = tnull.max(0);
                             col[jj].null = ColNullValue::UIntNull(tnull as c_uint);
                         } else {
@@ -3321,14 +3322,14 @@ pub fn ffiter_safe(
                             rept = width;
                         }
                         stringptr = calloc((ntodo + 1) as usize, size_of::<*mut c_char>())
-                            as *mut *mut c_char;
-                        cols[jj].array = stringptr as *mut c_void;
+                            .cast::<*mut c_char>();
+                        cols[jj].array = stringptr.cast::<c_void>();
                         col[jj].nullsize = (rept + 1) as usize; /* number of bytes per value */
 
                         if !stringptr.is_null() {
                             /* allocate string to store the null string value */
                             let stringnull =
-                                calloc((rept + 1) as usize, size_of::<c_char>()) as *mut c_char;
+                                calloc((rept + 1) as usize, size_of::<c_char>()).cast::<c_char>();
                             col[jj].null = ColNullValue::StringNull(stringnull);
                             if rept > 0
                                 && let ColNullValue::StringNull(ptr) = col[jj].null
@@ -3341,7 +3342,7 @@ pub fn ffiter_safe(
 
                             (*stringptr) =
                                 calloc(((ntodo + 1) * (rept + 1)) as usize, size_of::<c_char>())
-                                    as *mut c_char;
+                                    .cast::<c_char>();
 
                             if !(*stringptr).is_null() {
                                 for ii in 1..=ntodo as usize {
@@ -3434,12 +3435,12 @@ pub fn ffiter_safe(
 
                 /*  read input columns from FITS file(s)  */
                 for jj in 0..n_cols as usize {
-                    if cols[jj].iotype != OutputCol && cols[jj].iotype != TemporaryCol {
+                    if cols[jj].iotype != OUTPUT_COL && cols[jj].iotype != TEMPORARY_COL {
                         if cols[jj].datatype == TSTRING {
-                            stringptr = cols[jj].array as *mut *mut c_char;
-                            dataptr = stringptr.add(1) as *mut c_void;
+                            stringptr = cols[jj].array.cast::<*mut c_char>();
+                            dataptr = stringptr.add(1).cast::<c_void>();
                             defaultnull = match col[jj].null {
-                                ColNullValue::StringNull(ptr) => ptr as *mut c_void,
+                                ColNullValue::StringNull(ptr) => ptr.cast::<c_void>(),
                                 _ => std::ptr::null_mut(),
                             }; /* ptr to the null value */
                         } else {
@@ -3458,7 +3459,7 @@ pub fn ffiter_safe(
                                     defaultnull as *const c_void,
                                 ),
                                 slice::from_raw_parts_mut(
-                                    dataptr as *mut u8,
+                                    dataptr.cast::<u8>(),
                                     bytes_per_datatype(cols[jj].datatype).unwrap()
                                         * (cols[jj].repeat * ntodo) as usize,
                                 ),
@@ -3505,7 +3506,7 @@ pub fn ffiter_safe(
                                     defaultnull as *const c_void,
                                 ),
                                 slice::from_raw_parts_mut(
-                                    dataptr as *mut u8,
+                                    dataptr.cast::<u8>(),
                                     bytes_per_datatype(cols[jj].datatype).unwrap()
                                         * (cols[jj].repeat * ntodo) as usize,
                                 ),
@@ -3522,10 +3523,10 @@ pub fn ffiter_safe(
                         /* are there any nulls in the data? */
                         if anynul != 0 {
                             if cols[jj].datatype == TSTRING {
-                                stringptr = &mut (cols[jj].array as *mut c_char);
+                                stringptr = &mut cols[jj].array.cast::<c_char>();
                                 if let ColNullValue::StringNull(ptr) = col[jj].null {
                                     memcpy(
-                                        *stringptr as *mut c_void,
+                                        (*stringptr).cast::<c_void>(),
                                         ptr as *const c_void,
                                         col[jj].nullsize,
                                     );
@@ -3536,9 +3537,9 @@ pub fn ffiter_safe(
                         } else {
                             /* no null values so copy zero into first element */
                             if cols[jj].datatype == TSTRING {
-                                stringptr = cols[jj].array as *mut *mut c_char;
+                                stringptr = cols[jj].array.cast::<*mut c_char>();
 
-                                memset((*stringptr) as *mut c_void, 0, col[jj].nullsize);
+                                memset((*stringptr).cast::<c_void>(), 0, col[jj].nullsize);
                             } else {
                                 memset(cols[jj].array, 0, col[jj].nullsize);
                             }
@@ -3581,21 +3582,21 @@ pub fn ffiter_safe(
                 /*  write output columns  before quiting if status = -1 */
                 tstatus = 0;
                 for jj in 0..n_cols as usize {
-                    if cols[jj].iotype != InputCol && cols[jj].iotype != TemporaryCol {
+                    if cols[jj].iotype != INPUT_COL && cols[jj].iotype != TEMPORARY_COL {
                         if cols[jj].datatype == TSTRING {
-                            stringptr = cols[jj].array as *mut *mut c_char;
-                            dataptr = stringptr.add(1) as *mut c_void;
+                            stringptr = cols[jj].array.cast::<*mut c_char>();
+                            dataptr = stringptr.add(1).cast::<c_void>();
                             nullpointer = *stringptr;
                             nbytes = 2;
                         } else {
                             dataptr = cols[jj].array.add(col[jj].nullsize);
-                            nullpointer = cols[jj].array as *mut c_char;
+                            nullpointer = cols[jj].array.cast::<c_char>();
                             nbytes = col[jj].nullsize as c_int;
                         }
 
                         if memcmp(
                             nullpointer as *const c_void,
-                            &zeros as *const _ as *const c_void,
+                            (&zeros as *const f64).cast::<c_void>(),
                             nbytes as usize,
                         ) != 0
                         {
@@ -3720,7 +3721,7 @@ pub fn ffiter_safe(
                                     felement as LONGLONG,
                                     (cols[jj].repeat * ntodo) as LONGLONG,
                                     slice::from_raw_parts_mut(
-                                        dataptr as *mut u8,
+                                        dataptr.cast::<u8>(),
                                         bytes_per_datatype(cols[jj].datatype).unwrap()
                                             * (cols[jj].repeat * ntodo) as usize,
                                     ),
@@ -3761,11 +3762,11 @@ pub fn ffiter_safe(
 
         for jj in 0..n_cols as usize {
             if cols[jj].datatype == TSTRING && cols[jj].array.is_null() {
-                stringptr = cols[jj].array as *mut *mut c_char;
+                stringptr = cols[jj].array.cast::<*mut c_char>();
 
-                free(*stringptr as *mut c_void); /* free the block of strings */
+                free((*stringptr).cast::<c_void>()); /* free the block of strings */
                 if let ColNullValue::StringNull(ptr) = col[jj].null {
-                    free(ptr as *mut c_void); /* free the null string */
+                    free(ptr.cast::<c_void>()); /* free the null string */
                 }
             }
             if cols[jj].array.is_null() {

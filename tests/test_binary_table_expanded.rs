@@ -1,18 +1,14 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{c_char, c_double, c_float, c_int, c_long, c_short, c_uchar};
+use bytemuck::cast_slice;
+use libc::{c_int, c_long};
 
+use rsfitsio::STDERR;
 use rsfitsio::aliases::rust_api::*;
-use rsfitsio::fitsio::{ASCII_TBL, BINARY_TBL, FLEN_VALUE, LONGLONG, READONLY, READWRITE};
-use rsfitsio::fitsio::{
-    TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TLOGICAL, TLONG, TLONGLONG, TSHORT,
-    fitsfile,
-};
-use rsfitsio::helpers::testhelpers::with_temp_file;
-use rsfitsio::{KeywordDatatype, NullValue, STDERR};
+use rsfitsio::fitsio::fitsfile;
+use rsfitsio::fitsio::{BINARY_TBL, READONLY};
 
 fn get_expanded_filename() -> String {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

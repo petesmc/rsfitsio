@@ -3,13 +3,12 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{c_char, c_float, c_int, c_long, c_ushort};
+use libc::{c_char, c_float, c_int, c_long};
 
+use rsfitsio::NullValue;
 use rsfitsio::aliases::rust_api::*;
-use rsfitsio::fitsio::{ASCII_TBL, KEY_NO_EXIST, LONGLONG, TUSHORT, USHORT_IMG};
-use rsfitsio::fitsio::{BINARY_TBL, FLEN_VALUE, READONLY, READWRITE, TFLOAT, TLONG, fitsfile};
-use rsfitsio::helpers::testhelpers::with_temp_file;
-use rsfitsio::{KeywordDatatype, NullValue};
+use rsfitsio::fitsio::{ASCII_TBL, LONGLONG};
+use rsfitsio::fitsio::{BINARY_TBL, FLEN_VALUE, READONLY, TFLOAT, TLONG, fitsfile};
 
 fn get_filename() -> String {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

@@ -78,22 +78,22 @@ pub fn ffuky_safe(
             ffukys_safe(fptr, keyname, value, comm, status);
         }
         KeywordDatatype::TBYTE(value) => {
-            ffukyj_safe(fptr, keyname, *(value) as LONGLONG, comm, status);
+            ffukyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TSBYTE(value) => {
-            ffukyj_safe(fptr, keyname, *(value) as LONGLONG, comm, status);
+            ffukyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TUSHORT(value) => {
-            ffukyj_safe(fptr, keyname, *(value) as LONGLONG, comm, status);
+            ffukyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TSHORT(value) => {
-            ffukyj_safe(fptr, keyname, *(value) as LONGLONG, comm, status);
+            ffukyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TINT(value) => {
-            ffukyj_safe(fptr, keyname, *(value) as LONGLONG, comm, status);
+            ffukyj_safe(fptr, keyname, LONGLONG::from(*(value)), comm, status);
         }
         KeywordDatatype::TUINT(value) => {
-            ffukyg_safe(fptr, keyname, *(value) as f64, 0, comm, status);
+            ffukyg_safe(fptr, keyname, f64::from(*(value)), 0, comm, status);
         }
         KeywordDatatype::TLOGICAL(value) => {
             ffukyl_safe(fptr, keyname, *(value), comm, status);
@@ -3235,13 +3235,13 @@ pub fn ffdrec_safe(
     let headstart = fptr.Fptr.get_headstart_as_slice();
 
     if keypos < 1
-        || (keypos as LONGLONG) > fptr.Fptr.headend - headstart[fptr.Fptr.curhdu as usize] / 80
+        || LONGLONG::from(keypos) > fptr.Fptr.headend - headstart[fptr.Fptr.curhdu as usize] / 80
     {
         *status = KEY_OUT_BOUNDS;
         return *status;
     }
 
-    fptr.Fptr.nextkey = headstart[fptr.Fptr.curhdu as usize] + (keypos as LONGLONG - 1) * 80;
+    fptr.Fptr.nextkey = headstart[fptr.Fptr.curhdu as usize] + (LONGLONG::from(keypos) - 1) * 80;
 
     nshift = ((fptr.Fptr.headend - fptr.Fptr.nextkey) / 80) as c_int; /* no. keywords to shift */
 

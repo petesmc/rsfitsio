@@ -30,7 +30,7 @@ impl Read for CFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let nread = unsafe {
             fread(
-                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.as_mut_ptr().cast::<libc::c_void>(),
                 1,
                 buf.len(),
                 self.file,
@@ -47,7 +47,7 @@ impl Read for CFile {
 impl Write for CFile {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let nwritten = unsafe {
-            libc::fwrite(buf.as_ptr() as *const libc::c_void, 1, buf.len(), self.file) as usize
+            libc::fwrite(buf.as_ptr().cast::<libc::c_void>(), 1, buf.len(), self.file) as usize
         };
         if self.has_error() {
             Err(io::Error::last_os_error())

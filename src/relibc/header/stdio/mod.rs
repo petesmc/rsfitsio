@@ -21,7 +21,7 @@ pub(crate) fn sprintf_f64(s: &mut [c_char], format: &[c_char], val: f64) -> c_in
         valist.push(VaArg::c_double(val));
 
         printf::printf(
-            &mut platform::StringWriter(s.as_mut_ptr() as *mut u8, n),
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
             CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
             valist,
         )
@@ -38,10 +38,10 @@ pub(crate) fn sprintf_string_width(
         let n = s.len();
         let mut valist = CustomVaList::new();
         valist.push(VaArg::c_int(width));
-        valist.push(VaArg::pointer(val.as_ptr() as *const c_void));
+        valist.push(VaArg::pointer(val.as_ptr().cast::<c_void>()));
 
         printf::printf(
-            &mut platform::StringWriter(s.as_mut_ptr() as *mut u8, n),
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
             CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
             valist,
         )
@@ -54,7 +54,7 @@ pub(crate) fn snprintf_f64(s: &mut [c_char], n: size_t, format: &[c_char], val: 
         valist.push(VaArg::c_double(val));
 
         printf::printf(
-            &mut platform::StringWriter(s.as_mut_ptr() as *mut u8, n),
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
             CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
             valist,
         )
@@ -67,7 +67,7 @@ pub(crate) fn snprintf_cint(s: &mut [c_char], n: size_t, format: &[c_char], val:
         valist.push(VaArg::c_int(val));
 
         printf::printf(
-            &mut platform::StringWriter(s.as_mut_ptr() as *mut u8, n),
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
             CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
             valist,
         )
@@ -87,7 +87,7 @@ pub(crate) fn snprintf_f64_decim(
         valist.push(VaArg::c_double(val));
 
         printf::printf(
-            &mut platform::StringWriter(s.as_mut_ptr() as *mut u8, n),
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
             CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
             valist,
         )
@@ -96,7 +96,7 @@ pub(crate) fn snprintf_f64_decim(
 
 fn sscanf_internal(s: *const c_char, format: *const c_char, valist: CustomVaList) -> c_int {
     unsafe {
-        let reader = (s as *const u8).into();
+        let reader = s.cast::<u8>().into();
         scanf::scanf_custom(reader, format, valist)
     }
 }

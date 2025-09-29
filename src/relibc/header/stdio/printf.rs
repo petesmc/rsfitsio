@@ -984,10 +984,12 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     }
                 }
                 FmtKind::String => {
-                    let ptr = match varargs.get(index, &mut ap, Some((arg.fmtkind, arg.intkind))) {
-                        VaArg::pointer(p) => p,
-                        _ => panic!("this should not be possible"),
-                    } as *const c_char;
+                    let ptr =
+                        (match varargs.get(index, &mut ap, Some((arg.fmtkind, arg.intkind))) {
+                            VaArg::pointer(p) => p,
+                            _ => panic!("this should not be possible"),
+                        })
+                        .cast::<c_char>();
 
                     if ptr.is_null() {
                         w.write_all(b"(null)")?;
@@ -996,7 +998,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
 
                         if intkind == IntKind::Long || intkind == IntKind::LongLong {
                             // Handle wchar_t
-                            let mut ptr = ptr as *const wchar_t;
+                            let mut ptr = ptr.cast::<wchar_t>();
                             let mut string = String::new();
 
                             while *ptr != 0 {
@@ -1024,7 +1026,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                             }
 
                             pad(w, !left, b' ', len..pad_space)?;
-                            w.write_all(slice::from_raw_parts(ptr as *const u8, len))?;
+                            w.write_all(slice::from_raw_parts(ptr.cast::<u8>(), len))?;
                             pad(w, left, b' ', len..pad_space)?;
                         }
                     }

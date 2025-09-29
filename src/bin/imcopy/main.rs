@@ -134,7 +134,11 @@ pub fn main() -> ExitCode {
             READONLY,
             &mut status,
         );
-        fits_create_file(&mut outfptr, cast_slice(outfile.to_bytes_with_nul()), &mut status);
+        fits_create_file(
+            &mut outfptr,
+            cast_slice(outfile.to_bytes_with_nul()),
+            &mut status,
+        );
 
         if status != 0 {
             #[cfg(windows)]
@@ -214,7 +218,7 @@ pub fn main() -> ExitCode {
 
                     if tstatus != 0 {
                         strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'   / name of this binary table extension"));
-                        fits_write_record(outfptr.as_mut(), &mut card, &mut status);
+                        fits_write_record(outfptr.as_mut(), &card, &mut status);
                     }
                 }
 
@@ -224,7 +228,7 @@ pub fn main() -> ExitCode {
                 for ii in 1..=nkeys {
                     fits_read_record(infptr.as_mut(), ii, Some(&mut card), &mut status);
                     if fits_get_keyclass(&card) > TYP_CMPRS_KEY {
-                        fits_write_record(outfptr.as_mut(), &mut card, &mut status);
+                        fits_write_record(outfptr.as_mut(), &card, &mut status);
                     }
                 }
 

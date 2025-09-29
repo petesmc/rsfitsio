@@ -96,8 +96,8 @@ pub fn ffcsum_safe(
         lo = *sum & 0xFFFF;
         ii = 0;
         while ii < 1440 {
-            hi += sbuf[ii] as c_ulong;
-            lo += sbuf[ii + 1] as c_ulong;
+            hi += c_ulong::from(sbuf[ii]);
+            lo += c_ulong::from(sbuf[ii + 1]);
             ii += 2
         }
 

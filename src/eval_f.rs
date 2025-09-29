@@ -68,7 +68,7 @@ use crate::cfileio::ffimport_file_safer;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
     CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
-    ParseStatusVariables, parseInfo,
+    ParseStatusVariables, data_union, parseInfo,
 };
 use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
@@ -223,7 +223,7 @@ pub fn fffrow_safe(
         }
     } else {
         let firstrow = if firstrow > 1 { firstrow } else { 1 };
-        Info.dataPtr = row_status.as_mut_ptr() as *mut c_void;
+        Info.dataPtr = row_status.as_mut_ptr().cast::<c_void>();
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = nrows;
         Info.parseData = &mut lParse;
@@ -437,7 +437,7 @@ pub fn ffsrow_safe(
         }
 
         /* make sure array is zero terminated */
-        *(Info.dataPtr as *mut c_char).add(inExt.numRows as usize) = 0;
+        *Info.dataPtr.cast::<c_char>().add(inExt.numRows as usize) = 0;
 
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
@@ -445,7 +445,7 @@ pub fn ffsrow_safe(
             result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log;
 
             for ntodo in 0..inExt.numRows {
-                *(Info.dataPtr as *mut c_char).add(ntodo as usize) = result;
+                *Info.dataPtr.cast::<c_char>().add(ntodo as usize) = result;
             }
             nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
         } else {
@@ -456,14 +456,14 @@ pub fn ffsrow_safe(
                 0,
                 0,
                 fits_parser_workfn,
-                &mut Info as *mut parseInfo as *mut c_void,
+                (&mut Info as *mut parseInfo).cast::<c_void>(),
                 status,
             );
 
             nGood = 0;
 
             for ntodo in 0..inExt.numRows {
-                if (*(Info.dataPtr as *mut c_char).add(ntodo as usize)) != 0 {
+                if (*Info.dataPtr.cast::<c_char>().add(ntodo as usize)) != 0 {
                     nGood += 1;
                 }
             }
@@ -491,7 +491,7 @@ pub fn ffsrow_safe(
             inloc = 1;
             if std::ptr::eq(infptr, outfptr) {
                 /* Skip initial good rows if input==output file */
-                while *(Info.dataPtr as *mut c_char).add((inloc - 1) as usize) != 0 {
+                while *Info.dataPtr.cast::<c_char>().add((inloc - 1) as usize) != 0 {
                     inloc += 1;
                 }
                 outloc = inloc;
@@ -503,7 +503,7 @@ pub fn ffsrow_safe(
             }
 
             loop {
-                if *(Info.dataPtr as *mut c_char).add((inloc - 1) as usize) != 0 {
+                if *Info.dataPtr.cast::<c_char>().add((inloc - 1) as usize) != 0 {
                     let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
 
                     ffgtbb_safe(
@@ -690,7 +690,7 @@ pub unsafe extern "C" fn ffcrow(
         let status = status.as_mut().expect(NULL_MSG);
         let anynul = anynul.as_mut().expect(NULL_MSG);
 
-        let array = std::slice::from_raw_parts_mut(array as *mut u8, nelements as usize);
+        let array = std::slice::from_raw_parts_mut(array.cast::<u8>(), nelements as usize);
 
         raw_to_slice!(expr);
 
@@ -761,7 +761,7 @@ pub fn ffcrow_safe(
         Info.datatype = datatype;
     }
 
-    Info.dataPtr = array.as_mut_ptr() as *mut c_void;
+    Info.dataPtr = array.as_mut_ptr().cast::<c_void>();
     Info.nullPtr = nulval as *mut c_void;
     Info.maxRows = nelements / nelem1;
     Info.parseData = &mut lParse;
@@ -773,7 +773,7 @@ pub fn ffcrow_safe(
         firstrow - 1,
         0,
         fits_parser_workfn,
-        (&mut Info) as *mut parseInfo as *mut c_void,
+        ((&mut Info) as *mut parseInfo).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -1169,7 +1169,7 @@ pub fn ffcalc_rng_safe(
             outfptr,
             colNo,
             0,
-            OutputCol,
+            OUTPUT_COL,
         );
 
         lParse.nCols += 1;
@@ -1197,7 +1197,7 @@ pub fn ffcalc_rng_safe(
                 lParse.nCols,
                 colData_slice,
                 start[i as usize] - 1,
-                nPerLp as c_long,
+                c_long::from(nPerLp),
                 fits_parser_workfn,
                 &Info as *const _ as *mut c_void,
                 status,
@@ -1244,7 +1244,7 @@ pub fn ffcalc_rng_safe(
                 ffukyl_safe(
                     outfptr,
                     parName,
-                    unsafe { result.value.data.log } as i32,
+                    i32::from(unsafe { result.value.data.log }),
                     Some(parInfo),
                     status,
                 );
@@ -1434,7 +1434,7 @@ pub(crate) fn ffiprs(
                 let lexpr_cstr = CStr::from_ptr(temp_ptr);
                 let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
                 lParse.expr = Some(vec.into_boxed_slice());
-                free(temp_ptr as *mut libc::c_void); // Don't forget to free
+                free(temp_ptr.cast::<libc::c_void>()); // Don't forget to free
             }
         } else {
             lexpr = strlen_safe(expr) as c_int;
@@ -1545,11 +1545,11 @@ fn ffcprs(lParse: &mut ParseData) {
                     continue;
                 }
                 if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
-                    let data_ptr = lParse.varData[col as usize].data as *mut *mut c_char;
+                    let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
                     let mut first_ptr = *data_ptr;
                     FREE!(first_ptr);
                 }
-                free(lParse.varData[col as usize].undef as *mut c_void);
+                free(lParse.varData[col as usize].undef.cast::<c_void>());
             }
             lParse.varData.clear();
             lParse.nCols = 0;
@@ -1571,7 +1571,7 @@ fn ffcprs(lParse: &mut ParseData) {
                 } else if (lParse.Nodes[node as usize]).operation == regfilt_fct as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     fits_free_region(Box::from_raw(
-                        (lParse.Nodes[i]).value.data.ptr as *mut SAORegion,
+                        (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
                     ));
                 }
             }
@@ -1630,7 +1630,8 @@ fn fits_parser_workfn_safe(
         let mut result: &mut Node;
         let mut outcol: &mut iteratorCol;
         let lParse: &mut ParseData = unsafe {
-            (userPtr as *mut parseInfo)
+            userPtr
+                .cast::<parseInfo>()
                 .as_mut()
                 .unwrap()
                 .parseData
@@ -1638,7 +1639,7 @@ fn fits_parser_workfn_safe(
                 .unwrap()
         };
         let pv: &mut ParseStatusVariables =
-            unsafe { &mut (userPtr as *mut parseInfo).as_mut().unwrap().parseVariables };
+            unsafe { &mut userPtr.cast::<parseInfo>().as_mut().unwrap().parseVariables };
 
         /* declare variables static to preserve their values between calls */
         let mut zeros: [c_long; 4] = [0, 0, 0, 0];
@@ -1654,7 +1655,7 @@ fn fits_parser_workfn_safe(
         /*--------------------------------------------------------*/
 
         if firstrow == offset + 1 {
-            (pv.userInfo) = userPtr as *mut parseInfo;
+            (pv.userInfo) = userPtr.cast::<parseInfo>();
             (*(pv.userInfo)).anyNull = 0;
 
             /* Unfortunately there are two copies of the iterator columns,
@@ -1682,7 +1683,7 @@ fn fits_parser_workfn_safe(
             values will be the where the outputs are placed */
             if (*(pv.userInfo)).dataPtr.is_null() {
                 outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
-                if outcol.iotype == InputCol {
+                if outcol.iotype == INPUT_COL {
                     ffpmsg_str("Output column for parser results not found!");
                     return PARSE_NO_OUTPUT;
                 }
@@ -1699,7 +1700,7 @@ fn fits_parser_workfn_safe(
                         (pv.jnull) = (*(lParse.pixFilter)).blank as LONGLONG;
                     }
                 } else {
-                    if outcol.iotype != TemporaryCol {
+                    if outcol.iotype != TEMPORARY_COL {
                         let mut jj_tmp: c_int = 0;
                         ffgknjj_safe(
                             outcol.fptr.as_mut().unwrap(),
@@ -1710,10 +1711,10 @@ fn fits_parser_workfn_safe(
                             &mut jj_tmp,
                             &mut status,
                         );
-                        jj = jj_tmp as c_long;
+                        jj = c_long::from(jj_tmp);
                     }
 
-                    if status == BAD_INTKEY || outcol.iotype == TemporaryCol {
+                    if status == BAD_INTKEY || outcol.iotype == TEMPORARY_COL {
                         /*  Probably ASCII table with text TNULL keyword  */
                         match (*(pv.userInfo)).datatype {
                             TSHORT => {
@@ -1780,16 +1781,17 @@ fn fits_parser_workfn_safe(
             /* Determine the size of each element of the calculated result */
             /*   (only matters for numeric/logical data)                   */
 
-            match lParse.Nodes[lParse.resultNode as usize].ntype {
-                BOOLEAN => {
+            match lParse.Nodes[lParse.resultNode as usize].ntype.into() {
+                fits_parser_yytokentype::BOOLEAN => {
                     (pv.resDataSize) = size_of::<c_char>() as c_long;
                 }
-                LONG => {
+                fits_parser_yytokentype::LONG => {
                     (pv.resDataSize) = size_of::<c_long>() as c_long;
                 }
-                DOUBLE => {
+                fits_parser_yytokentype::DOUBLE => {
                     (pv.resDataSize) = size_of::<f64>() as c_long;
                 }
+                _ => {}
             }
         }
 
@@ -1810,42 +1812,44 @@ fn fits_parser_workfn_safe(
             /* First, reset Data pointer to start of output array, plus 1
             because the 0th element is the null value (cute undocumented
             feature of the iterator!) */
-            (pv.Data) =
-                (outcol.array as *mut c_char).add(pv.datasize.try_into().unwrap()) as *mut c_void;
+            (pv.Data) = outcol
+                .array
+                .cast::<c_char>()
+                .add(pv.datasize.try_into().unwrap()) as *mut c_void;
 
             /* A TemporaryCol with null value specified explicitly */
-            if outcol.iotype == TemporaryCol && !(*(pv.userInfo)).nullPtr.is_null() {
+            if outcol.iotype == TEMPORARY_COL && !(*(pv.userInfo)).nullPtr.is_null() {
                 pv.Null = (*(pv.userInfo)).nullPtr;
             } else {
                 /* ... or an OutputCol or TemporaryCol with no explicit null */
                 match (*(pv.userInfo)).datatype {
                     TLOGICAL => {
-                        *(pv.Null as *mut c_char) = b'U' as c_char;
+                        *pv.Null.cast::<c_char>() = b'U' as c_char;
                     }
                     TBYTE => {
-                        *(pv.Null as *mut c_char) = (pv.jnull) as c_char;
+                        *pv.Null.cast::<c_char>() = (pv.jnull) as c_char;
                     }
                     TSHORT => {
-                        *(pv.Null as *mut c_short) = (pv.jnull) as c_short;
+                        *pv.Null.cast::<c_short>() = (pv.jnull) as c_short;
                     }
                     TINT => {
-                        *(pv.Null as *mut c_int) = (pv.jnull) as c_int;
+                        *pv.Null.cast::<c_int>() = (pv.jnull) as c_int;
                     }
                     TLONG => {
-                        *(pv.Null as *mut c_long) = (pv.jnull) as c_long;
+                        *pv.Null.cast::<c_long>() = (pv.jnull) as c_long;
                     }
                     TLONGLONG => {
-                        *(pv.Null as *mut LONGLONG) = (pv.jnull) as LONGLONG;
+                        *pv.Null.cast::<LONGLONG>() = (pv.jnull) as LONGLONG;
                     }
                     TFLOAT => {
-                        *(pv.Null as *mut f32) = FLOATNULLVALUE;
+                        *pv.Null.cast::<f32>() = FLOATNULLVALUE;
                     }
                     TDOUBLE => {
-                        *(pv.Null as *mut f64) = DOUBLENULLVALUE;
+                        *pv.Null.cast::<f64>() = DOUBLENULLVALUE;
                     }
                     TSTRING => {
-                        (**(pv.Null as *mut *mut c_char)) = 1;
-                        *(*(pv.Null as *mut *mut c_char)).add(1) = 0;
+                        (**pv.Null.cast::<*mut c_char>()) = 1;
+                        *(*pv.Null.cast::<*mut c_char>()).add(1) = 0;
                     }
                     _ => {}
                 }
@@ -1894,13 +1898,13 @@ fn fits_parser_workfn_safe(
                             for jj in 0..pv.repeat {
                                 ffcvtn(
                                     lParse.datatype,
-                                    &(result.value.data) as *const _ as *const c_void,
+                                    (&(result.value.data) as *const data_union).cast::<c_void>(),
                                     &undef,
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
                                     pv.Null,
-                                    (pv.Data as *mut c_char).add(
-                                        ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
+                                    pv.Data.cast::<c_char>().add(
+                                        ((kk * (pv.repeat) + jj) * c_long::from(pv.datasize))
                                             .try_into()
                                             .unwrap(),
                                     ) as *mut c_void,
@@ -1927,16 +1931,23 @@ fn fits_parser_workfn_safe(
                                 for jj in 0..pv.repeat {
                                     ffcvtn(
                                         lParse.datatype,
-                                        (result.value.data.ptr as *mut c_char)
+                                        result
+                                            .value
+                                            .data
+                                            .ptr
+                                            .cast::<c_char>()
                                             .add((kk * (pv.resDataSize)).try_into().unwrap())
                                             as *const c_void,
-                                        (result.value.undef as *mut c_char)
+                                        result
+                                            .value
+                                            .undef
+                                            .cast::<c_char>()
                                             .add(kk.try_into().unwrap()),
                                         1,
                                         (*(pv.userInfo)).datatype,
                                         pv.Null,
-                                        (pv.Data as *mut c_char).add(
-                                            ((kk * (pv.repeat) + jj) * (pv.datasize as c_long))
+                                        pv.Data.cast::<c_char>().add(
+                                            ((kk * (pv.repeat) + jj) * c_long::from(pv.datasize))
                                                 .try_into()
                                                 .unwrap(),
                                         ) as *mut c_void,
@@ -1950,34 +1961,40 @@ fn fits_parser_workfn_safe(
                             for kk in 0..ntodo {
                                 ffcvtn(
                                     lParse.datatype,
-                                    (result.value.data.ptr as *const c_char).add(
-                                        (kk * result.value.nelem * (pv.resDataSize))
-                                            .try_into()
-                                            .unwrap(),
-                                    ) as *const c_void,
-                                    (result.value.undef as *mut c_char)
+                                    (result.value.data.ptr as *const c_char)
+                                        .add(
+                                            (kk * result.value.nelem * (pv.resDataSize))
+                                                .try_into()
+                                                .unwrap(),
+                                        )
+                                        .cast::<c_void>(),
+                                    result
+                                        .value
+                                        .undef
+                                        .cast::<c_char>()
                                         .add((kk * result.value.nelem).try_into().unwrap()),
-                                    nCopy as c_long,
+                                    c_long::from(nCopy),
                                     (*(pv.userInfo)).datatype,
                                     pv.Null,
-                                    (pv.Data as *mut c_char).add(
-                                        ((kk * (pv.repeat)) * (pv.datasize as c_long))
+                                    pv.Data.cast::<c_char>().add(
+                                        ((kk * (pv.repeat)) * c_long::from(pv.datasize))
                                             .try_into()
                                             .unwrap(),
                                     ) as *mut c_void,
                                     &mut anyNullThisTime,
                                     &mut lParse.status,
                                 );
-                                if (nCopy as c_long) < (pv.repeat) {
+                                if c_long::from(nCopy) < (pv.repeat) {
                                     memset(
-                                        (pv.Data as *mut c_char).add(
-                                            ((kk * (pv.repeat) + nCopy as c_long)
-                                                * (pv.datasize as c_long))
-                                                .try_into()
-                                                .unwrap(),
+                                        pv.Data.cast::<c_char>().add(
+                                            ((kk * (pv.repeat) + c_long::from(nCopy))
+                                                * c_long::from(pv.datasize))
+                                            .try_into()
+                                            .unwrap(),
                                         ) as *mut c_void,
                                         0,
-                                        (((pv.repeat) - nCopy as c_long) * (pv.datasize as c_long))
+                                        (((pv.repeat) - c_long::from(nCopy))
+                                            * c_long::from(pv.datasize))
                                             as usize,
                                     );
                                 }
@@ -2003,12 +2020,13 @@ fn fits_parser_workfn_safe(
                                 for jj in 0..result.value.nelem {
                                     if jj % 8 == 0 {
                                         idx += 1;
-                                        *((pv.Data as *mut c_char).add(idx.try_into().unwrap())) =
+                                        *(pv.Data.cast::<c_char>().add(idx.try_into().unwrap())) =
                                             0;
                                     }
                                     if constant != 0 {
                                         if result.value.data.astr[jj as usize] == b'1' as c_char {
-                                            *((pv.Data as *mut c_uchar)
+                                            *(pv.Data
+                                                .cast::<c_uchar>()
                                                 .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
                                         }
                                     } else if *(*(result
@@ -2019,7 +2037,8 @@ fn fits_parser_workfn_safe(
                                     .add(jj.try_into().unwrap())
                                         == b'1' as c_char
                                     {
-                                        *((pv.Data as *mut c_uchar)
+                                        *(pv.Data
+                                            .cast::<c_uchar>()
                                             .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
                                     }
                                 }
@@ -2036,7 +2055,7 @@ fn fits_parser_workfn_safe(
                                         } else {
                                             0
                                         };
-                                        *((pv.Data as *mut c_char).add(
+                                        *(pv.Data.cast::<c_char>().add(
                                             (jj + kk * result.value.nelem).try_into().unwrap(),
                                         )) = r;
                                     }
@@ -2056,7 +2075,7 @@ fn fits_parser_workfn_safe(
                                         } else {
                                             0
                                         };
-                                        *((pv.Data as *mut c_char).add(
+                                        *(pv.Data.cast::<c_char>().add(
                                             (jj + kk * result.value.nelem).try_into().unwrap(),
                                         )) = r;
                                     }
@@ -2067,7 +2086,8 @@ fn fits_parser_workfn_safe(
                             if constant != 0 {
                                 for jj in 0..ntodo {
                                     strcpy(
-                                        *((pv.Data as *mut *mut c_char)
+                                        *(pv.Data
+                                            .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
                                         result.value.data.astr.as_ptr(),
                                     );
@@ -2075,7 +2095,8 @@ fn fits_parser_workfn_safe(
                             } else {
                                 for jj in 0..ntodo {
                                     strcpy(
-                                        *((pv.Data as *mut *mut c_char)
+                                        *(pv.Data
+                                            .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
                                         *(result.value.data.strptr.add(jj.try_into().unwrap())),
                                     );
@@ -2097,7 +2118,7 @@ fn fits_parser_workfn_safe(
                         if constant != 0 {
                             for jj in 0..ntodo {
                                 strcpy(
-                                    *((pv.Data as *mut *mut c_char).add(jj.try_into().unwrap())),
+                                    *(pv.Data.cast::<*mut c_char>().add(jj.try_into().unwrap())),
                                     result.value.data.astr.as_ptr(),
                                 );
                             }
@@ -2106,13 +2127,15 @@ fn fits_parser_workfn_safe(
                                 if *(result.value.undef.add(jj.try_into().unwrap())) != 0 {
                                     anyNullThisTime = 1;
                                     strcpy(
-                                        *((pv.Data as *mut *mut c_char)
+                                        *(pv.Data
+                                            .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(pv.Null as *mut *mut c_char),
+                                        *pv.Null.cast::<*mut c_char>(),
                                     );
                                 } else {
                                     strcpy(
-                                        *((pv.Data as *mut *mut c_char)
+                                        *(pv.Data
+                                            .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
                                         *(result.value.data.strptr.add(jj.try_into().unwrap())),
                                     );
@@ -2140,18 +2163,20 @@ fn fits_parser_workfn_safe(
             if result.ntype == fits_parser_yytokentype::BITSTR as c_int
                 && (*(pv.userInfo)).datatype == TBYTE
             {
-                (pv.Data) = (pv.Data as *mut c_char).add(
-                    ((pv.datasize as c_long) * ((result.value.nelem + 7) / 8) * ntodo)
+                (pv.Data) = pv.Data.cast::<c_char>().add(
+                    (c_long::from(pv.datasize) * ((result.value.nelem + 7) / 8) * ntodo)
                         .try_into()
                         .unwrap(),
                 ) as *mut c_void;
             } else if result.ntype == fits_parser_yytokentype::STRING as c_int {
-                (pv.Data) = (pv.Data as *mut c_char)
-                    .add(((pv.datasize as c_long) * ntodo).try_into().unwrap())
+                (pv.Data) = pv
+                    .Data
+                    .cast::<c_char>()
+                    .add((c_long::from(pv.datasize) * ntodo).try_into().unwrap())
                     as *mut c_void;
             } else {
-                (pv.Data) = (pv.Data as *mut c_char).add(
-                    ((pv.datasize as c_long) * ntodo * (pv.repeat))
+                (pv.Data) = pv.Data.cast::<c_char>().add(
+                    (c_long::from(pv.datasize) * ntodo * (pv.repeat))
                         .try_into()
                         .unwrap(),
                 ) as *mut c_void;
@@ -2172,13 +2197,15 @@ fn fits_parser_workfn_safe(
 
         if pv.Null != outcol.array
             && (Data0)
-                == (outcol.array as *mut c_char).add((pv.datasize).try_into().unwrap())
-                    as *mut c_void
+                == outcol
+                    .array
+                    .cast::<c_char>()
+                    .add((pv.datasize).try_into().unwrap()) as *mut c_void
         {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
                     outcol.array,
-                    (*(pv.Null as *mut *mut c_char)) as *mut c_void,
+                    (*pv.Null.cast::<*mut c_char>()) as *mut c_void,
                     2,
                 );
             } else {
@@ -2194,14 +2221,14 @@ fn fits_parser_workfn_safe(
         } else if pv.Null == outcol.array {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
-                    (*(pv.Null as *mut *mut c_char)) as *mut c_void,
-                    zeros.as_mut_ptr() as *mut c_void,
+                    (*pv.Null.cast::<*mut c_char>()) as *mut c_void,
+                    zeros.as_mut_ptr().cast::<c_void>(),
                     2,
                 );
             } else {
                 memcpy(
                     pv.Null,
-                    zeros.as_mut_ptr() as *mut c_void,
+                    zeros.as_mut_ptr().cast::<c_void>(),
                     (pv.datasize).try_into().unwrap(),
                 );
             }
@@ -2265,7 +2292,7 @@ fn Setup_DataArrays(
             let icol: &mut iteratorCol = &mut cols[i];
             let varData = &mut lParse.varData[i];
 
-            if icol.iotype == OutputCol || icol.iotype == TemporaryCol {
+            if icol.iotype == OUTPUT_COL || icol.iotype == TEMPORARY_COL {
                 continue;
             }
 
@@ -2276,23 +2303,23 @@ fn Setup_DataArrays(
                 fits_parser_yytokentype::BITSTR => {
                     /* No need for UNDEF array, but must make string DATA array */
                     len = (nelem + 1) * nRows; /* Count '\0' */
-                    bitStrs = varData.data as *mut *mut c_char;
+                    bitStrs = varData.data.cast::<*mut c_char>();
                     if do_realloc != 0 {
                         if !bitStrs.is_null() {
                             FREE!(*bitStrs);
                         }
-                        free(bitStrs as *mut c_void);
+                        free(bitStrs.cast::<c_void>());
                         bitStrs =
-                            malloc(nRows as usize * size_of::<*mut c_char>()) as *mut *mut c_char;
+                            malloc(nRows as usize * size_of::<*mut c_char>()).cast::<*mut c_char>();
                         if bitStrs.is_null() {
                             varData.undef = ptr::null_mut();
                             varData.data = ptr::null_mut();
                             lParse.status = MEMORY_ALLOCATION;
                             break;
                         }
-                        *bitStrs = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        *bitStrs = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
                         if (*bitStrs).is_null() {
-                            free(bitStrs as *mut c_void);
+                            free(bitStrs.cast::<c_void>());
                             varData.undef = ptr::null_mut();
                             varData.data = ptr::null_mut();
                             lParse.status = MEMORY_ALLOCATION;
@@ -2305,7 +2332,7 @@ fn Setup_DataArrays(
                             (*bitStrs.add(0)).add((row as c_long * (nelem + 1)) as usize);
                         idx = (row as c_long) * ((nelem + 7) / 8) + 1;
                         for len in 0..nelem as usize {
-                            if (*(icol.array as *mut c_char).add(idx as usize)
+                            if (*icol.array.cast::<c_char>().add(idx as usize)
                                 & (1 << (7 - (len % 8))))
                                 != 0
                             {
@@ -2319,17 +2346,18 @@ fn Setup_DataArrays(
                         }
                         *(*bitStrs.add(row)).add(len as usize) = 0;
                     }
-                    varData.undef = bitStrs as *mut c_char;
-                    varData.data = bitStrs as *mut c_void;
+                    varData.undef = bitStrs.cast::<c_char>();
+                    varData.data = bitStrs.cast::<c_void>();
                 }
 
                 fits_parser_yytokentype::STRING => {
-                    sptr = icol.array as *mut *mut c_char;
+                    sptr = icol.array.cast::<*mut c_char>();
                     if do_realloc != 0 {
                         if !varData.undef.is_null() {
-                            free(varData.undef as *mut c_void);
+                            free(varData.undef.cast::<c_void>());
                         }
-                        varData.undef = malloc(nRows as usize * size_of::<c_char>()) as *mut c_char;
+                        varData.undef =
+                            malloc(nRows as usize * size_of::<c_char>()).cast::<c_char>();
                         if varData.undef.is_null() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2338,26 +2366,27 @@ fn Setup_DataArrays(
                     row = nRows;
                     while row > 0 {
                         row -= 1;
-                        *varData.undef.add(row as usize) = (**sptr != 0
-                            && FSTRCMP(
-                                cast_slice(CStr::from_ptr(*sptr.add(0)).to_bytes_with_nul()),
-                                cast_slice(
-                                    CStr::from_ptr(*sptr.add((row + 1) as usize))
-                                        .to_bytes_with_nul(),
-                                ),
-                            ) == 0)
-                            as c_char;
+                        *varData.undef.add(row as usize) = c_char::from(
+                            **sptr != 0
+                                && FSTRCMP(
+                                    cast_slice(CStr::from_ptr(*sptr.add(0)).to_bytes_with_nul()),
+                                    cast_slice(
+                                        CStr::from_ptr(*sptr.add((row + 1) as usize))
+                                            .to_bytes_with_nul(),
+                                    ),
+                                ) == 0,
+                        );
                     }
-                    varData.data = sptr.add(1) as *mut c_void;
+                    varData.data = sptr.add(1).cast::<c_void>();
                 }
 
                 fits_parser_yytokentype::BOOLEAN => {
-                    barray = icol.array as *mut c_char;
+                    barray = icol.array.cast::<c_char>();
                     if do_realloc != 0 {
                         if !varData.undef.is_null() {
-                            free(varData.undef as *mut c_void);
+                            free(varData.undef.cast::<c_void>());
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
                         if varData.undef.is_null() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2365,20 +2394,21 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = (*barray.add(0) != 0
-                            && *barray.add(0) == *barray.add((len + 1) as usize))
-                            as c_char;
+                        *varData.undef.add(len as usize) = c_char::from(
+                            *barray.add(0) != 0
+                                && *barray.add(0) == *barray.add((len + 1) as usize),
+                        );
                     }
-                    varData.data = barray.add(1) as *mut c_void;
+                    varData.data = barray.add(1).cast::<c_void>();
                 }
 
                 fits_parser_yytokentype::LONG => {
-                    iarray = icol.array as *mut c_long;
+                    iarray = icol.array.cast::<c_long>();
                     if do_realloc != 0 {
                         if !varData.undef.is_null() {
-                            free(varData.undef as *mut c_void);
+                            free(varData.undef.cast::<c_void>());
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
                         if varData.undef.is_null() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2386,20 +2416,21 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = (*iarray.add(0) != 0
-                            && *iarray.add(0) == *iarray.add((len + 1) as usize))
-                            as c_char;
+                        *varData.undef.add(len as usize) = c_char::from(
+                            *iarray.add(0) != 0
+                                && *iarray.add(0) == *iarray.add((len + 1) as usize),
+                        );
                     }
-                    varData.data = iarray.add(1) as *mut c_void;
+                    varData.data = iarray.add(1).cast::<c_void>();
                 }
 
                 fits_parser_yytokentype::DOUBLE => {
-                    rarray = icol.array as *mut c_double;
+                    rarray = icol.array.cast::<c_double>();
                     if do_realloc != 0 {
                         if !varData.undef.is_null() {
-                            free(varData.undef as *mut c_void);
+                            free(varData.undef.cast::<c_void>());
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()) as *mut c_char;
+                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
                         if varData.undef.is_null() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2407,11 +2438,12 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = (*rarray.add(0) != 0.0
-                            && *rarray.add(0) == *rarray.add((len + 1) as usize))
-                            as c_char;
+                        *varData.undef.add(len as usize) = c_char::from(
+                            *rarray.add(0) != 0.0
+                                && *rarray.add(0) == *rarray.add((len + 1) as usize),
+                        );
                     }
-                    varData.data = rarray.add(1) as *mut c_void;
+                    varData.data = rarray.add(1).cast::<c_void>();
                 }
 
                 _ => {
@@ -2432,7 +2464,7 @@ fn Setup_DataArrays(
                     j -= 1;
                     let varData = &mut lParse.varData[j];
                     if varData.dtype == fits_parser_yytokentype::BITSTR as c_int {
-                        FREE!(*(varData.data as *mut *mut c_char).add(0));
+                        FREE!(*varData.data.cast::<*mut c_char>().add(0));
                     }
                     FREE!(varData.undef);
                     varData.undef = ptr::null_mut();
@@ -2469,46 +2501,46 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            if (*((input as *const c_uchar).add(i.try_into().unwrap()))) != 0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            if (*(input.cast::<c_uchar>().add(i.try_into().unwrap()))) != 0 {
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
                             }
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            if (*((input as *const c_short).add(i.try_into().unwrap()))) != 0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            if (*(input.cast::<c_short>().add(i.try_into().unwrap()))) != 0 {
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
                             }
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            if (*((input as *const c_long).add(i.try_into().unwrap()))) != 0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            if (*(input.cast::<c_long>().add(i.try_into().unwrap()))) != 0 {
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
                             }
                         }
                     }
                     TFLOAT => {
                         for i in 0..ntodo {
-                            if (*((input as *const c_float).add(i.try_into().unwrap()))) != 0.0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            if (*(input.cast::<c_float>().add(i.try_into().unwrap()))) != 0.0 {
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
                             }
                         }
                     }
                     TDOUBLE => {
                         for i in 0..ntodo {
-                            if (*((input as *const c_double).add(i.try_into().unwrap()))) != 0.0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 1;
+                            if (*(input.cast::<c_double>().add(i.try_into().unwrap()))) != 0.0 {
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
                             }
                         }
                     }
@@ -2518,8 +2550,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_uchar).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_uchar);
+                        *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_uchar>();
                         *anynull = 1;
                     }
                 }
@@ -2528,21 +2560,21 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_uchar).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap()));
+                            *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap()));
                         }
                     }
                     TSHORT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const c_short,
+                                input.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_uchar,
+                                output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2564,22 +2596,21 @@ fn ffcvtn(
                     TLONG => {
                         for i in 0..ntodo {
                             if *((undef).add(i.try_into().unwrap())) != 0 {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
-                                    *(nulval as *const c_uchar);
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
+                                    *nulval.cast::<c_uchar>();
                                 *anynull = 1;
-                            } else if *((input as *const c_long).add(i.try_into().unwrap())) < 0 {
+                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap())) < 0 {
                                 *status = OVERFLOW_ERR;
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) = 0;
-                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
+                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
                                 > UCHAR_MAX as c_long
                             {
                                 *status = OVERFLOW_ERR;
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
                                     UCHAR_MAX as c_uchar;
                             } else {
-                                *((output as *mut c_uchar).add(i.try_into().unwrap())) =
-                                    *((input as *const c_long).add(i.try_into().unwrap()))
-                                        as c_uchar;
+                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
+                                    *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_uchar;
                             }
                         }
                         return *status;
@@ -2587,14 +2618,14 @@ fn ffcvtn(
                     TFLOAT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f32,
+                                input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_uchar,
+                                output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2615,14 +2646,14 @@ fn ffcvtn(
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_uchar,
+                                output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2647,8 +2678,8 @@ fn ffcvtn(
 
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_uchar).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_uchar);
+                        *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_uchar>();
                         *anynull = 1;
                     }
                 }
@@ -2657,38 +2688,37 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_short).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_short;
+                            *(output.cast::<c_short>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_short;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_short).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap()));
+                            *(output.cast::<c_short>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap()));
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
                             if *((undef).add(i.try_into().unwrap())) != 0 {
-                                *((output as *mut c_short).add(i.try_into().unwrap())) =
-                                    *(nulval as *const c_short);
+                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
+                                    *nulval.cast::<c_short>();
                                 *anynull = 1;
-                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
                                 < SHRT_MIN as c_long
                             {
                                 *status = OVERFLOW_ERR;
-                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
                                     SHRT_MIN as c_short;
-                            } else if *((input as *const c_long).add(i.try_into().unwrap()))
+                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
                                 > SHRT_MAX as c_long
                             {
                                 *status = OVERFLOW_ERR;
-                                *((output as *mut c_short).add(i.try_into().unwrap())) =
+                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
                                     SHRT_MAX as c_short;
                             } else {
-                                *((output as *mut c_short).add(i.try_into().unwrap())) =
-                                    *((input as *const c_long).add(i.try_into().unwrap()))
-                                        as c_short;
+                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
+                                    *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_short;
                             }
                         }
                         return *status;
@@ -2696,14 +2726,14 @@ fn ffcvtn(
                     TFLOAT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f32,
+                                input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_short,
+                                output.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2724,14 +2754,14 @@ fn ffcvtn(
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_short,
+                                output.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2755,8 +2785,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_short).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_short);
+                        *(output.cast::<c_short>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_short>();
                         *anynull = 1;
                     }
                 }
@@ -2765,33 +2795,33 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_int).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_int;
+                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_int;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_int).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap())) as c_int;
+                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_int;
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            *((output as *mut c_int).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap())) as c_int;
+                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_int;
                         }
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f32,
+                                input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_int,
+                                output.cast::<c_int>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2812,14 +2842,14 @@ fn ffcvtn(
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_int,
+                                output.cast::<c_int>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2843,8 +2873,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_int).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_int);
+                        *(output.cast::<c_int>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_int>();
                         *anynull = 1;
                     }
                 }
@@ -2853,33 +2883,33 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_long).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_long;
+                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_long;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_long).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap())) as c_long;
+                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_long;
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            *((output as *mut c_long).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap()));
+                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_long>().add(i.try_into().unwrap()));
                         }
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f32,
+                                input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_long,
+                                output.cast::<c_long>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2900,14 +2930,14 @@ fn ffcvtn(
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut c_long,
+                                output.cast::<c_long>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2931,8 +2961,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_long).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_long);
+                        *(output.cast::<c_long>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_long>();
                         *anynull = 1;
                     }
                 }
@@ -2941,33 +2971,33 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as LONGLONG;
+                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as LONGLONG;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap())) as LONGLONG;
+                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as LONGLONG;
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap())) as LONGLONG;
+                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as LONGLONG;
                         }
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f32,
+                                input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut LONGLONG,
+                                output.cast::<LONGLONG>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -2988,14 +3018,14 @@ fn ffcvtn(
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut LONGLONG,
+                                output.cast::<LONGLONG>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -3019,8 +3049,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut LONGLONG).add(i.try_into().unwrap())) =
-                            *(nulval as *const LONGLONG);
+                        *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<LONGLONG>();
                         *anynull = 1;
                     }
                 }
@@ -3029,39 +3059,39 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_float).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_float;
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_float;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_float).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap())) as c_float;
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_float;
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            *((output as *mut c_float).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap())) as c_float;
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_float;
                         }
                     }
                     TFLOAT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_float).add(i.try_into().unwrap())) =
-                                *((input as *const c_float).add(i.try_into().unwrap()));
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_float>().add(i.try_into().unwrap()));
                         }
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
                             std::slice::from_raw_parts(
-                                input as *const f64,
+                                input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
                             std::slice::from_raw_parts_mut(
-                                output as *mut f32,
+                                output.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
@@ -3085,8 +3115,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_float).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_float);
+                        *(output.cast::<c_float>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_float>();
                         *anynull = 1;
                     }
                 }
@@ -3095,33 +3125,32 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_double).add(i.try_into().unwrap())) =
-                                *((input as *const c_uchar).add(i.try_into().unwrap())) as c_double;
+                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_double;
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_double).add(i.try_into().unwrap())) =
-                                *((input as *const c_short).add(i.try_into().unwrap())) as c_double;
+                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_double;
                         }
                     }
                     TLONG => {
                         for i in 0..ntodo {
-                            *((output as *mut c_double).add(i.try_into().unwrap())) =
-                                *((input as *const c_long).add(i.try_into().unwrap())) as c_double;
+                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_double;
                         }
                     }
                     TFLOAT => {
                         for i in 0..ntodo {
-                            *((output as *mut c_double).add(i.try_into().unwrap())) =
-                                *((input as *const c_float).add(i.try_into().unwrap())) as c_double;
+                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_float>().add(i.try_into().unwrap())) as c_double;
                         }
                     }
                     TDOUBLE => {
                         for i in 0..ntodo {
-                            *((output as *mut c_double).add(i.try_into().unwrap())) =
-                                *((input as *const c_double).add(i.try_into().unwrap()))
-                                    as c_double;
+                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                                *(input.cast::<c_double>().add(i.try_into().unwrap())) as c_double;
                         }
                     }
                     _ => {
@@ -3130,8 +3159,8 @@ fn ffcvtn(
                 }
                 for i in 0..ntodo {
                     if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *((output as *mut c_double).add(i.try_into().unwrap())) =
-                            *(nulval as *const c_double);
+                        *(output.cast::<c_double>().add(i.try_into().unwrap())) =
+                            *nulval.cast::<c_double>();
                         *anynull = 1;
                     }
                 }
@@ -3288,7 +3317,7 @@ pub fn fffrwc_safe(
                 TLONG => {
                     col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_long>());
                     if !col_data.array.is_null() {
-                        let array_ptr = col_data.array as *mut c_long;
+                        let array_ptr = col_data.array.cast::<c_long>();
                         *array_ptr.wrapping_add(0) = 1234554321;
                     } else {
                         *status = MEMORY_ALLOCATION;
@@ -3297,7 +3326,7 @@ pub fn fffrwc_safe(
                 TDOUBLE => {
                     col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_double>());
                     if !col_data.array.is_null() {
-                        let array_ptr = col_data.array as *mut c_double;
+                        let array_ptr = col_data.array.cast::<c_double>();
                         *array_ptr.wrapping_add(0) = DOUBLENULLVALUE;
                     } else {
                         *status = MEMORY_ALLOCATION;
@@ -3316,8 +3345,8 @@ pub fn fffrwc_safe(
                         alen += 1;
                         col_data.array = malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>());
                         if !col_data.array.is_null() {
-                            let str_array = col_data.array as *mut *mut c_char;
-                            let first_str = malloc(((ntimes + 1) * alen) as usize) as *mut c_char;
+                            let str_array = col_data.array.cast::<*mut c_char>();
+                            let first_str = malloc(((ntimes + 1) * alen) as usize).cast::<c_char>();
                             *str_array.wrapping_add(0) = first_str;
                             if !first_str.is_null() {
                                 for elem in 1..=(ntimes as usize) {
@@ -3343,7 +3372,7 @@ pub fn fffrwc_safe(
                     parNo -= 1;
                     let col_data2 = lParse.colData[parNo as usize];
                     if (col_data2).datatype == TSTRING {
-                        let str_array = (col_data2).array as *mut *mut c_char;
+                        let str_array = (col_data2).array.cast::<*mut c_char>();
                         if !str_array.is_null() {
                             let mut first_str = *str_array.wrapping_add(0);
                             FREE!(first_str);
@@ -3370,7 +3399,7 @@ pub fn fffrwc_safe(
                     time_status[elem as usize] = result;
                 }
             } else {
-                Info.dataPtr = time_status.as_mut_ptr() as *mut c_void;
+                Info.dataPtr = time_status.as_mut_ptr().cast::<c_void>();
                 Info.nullPtr = ptr::null_mut();
                 Info.maxRows = ntimes;
                 *status = fits_parser_workfn_safe(
@@ -3380,7 +3409,7 @@ pub fn fffrwc_safe(
                     ntimes,
                     lParse.nCols,
                     &mut lParse.colData,
-                    (&mut Info) as *mut parseInfo as *mut c_void,
+                    ((&mut Info) as *mut parseInfo).cast::<c_void>(),
                 );
             }
         }
@@ -3394,7 +3423,7 @@ pub fn fffrwc_safe(
             parNo -= 1;
             let col_data = lParse.colData[parNo as usize];
             if (col_data).datatype == TSTRING {
-                let str_array = (col_data).array as *mut *mut c_char;
+                let str_array = (col_data).array.cast::<*mut c_char>();
                 if !str_array.is_null() {
                     let mut first_str = *str_array.wrapping_add(0);
                     FREE!(first_str);
@@ -3508,7 +3537,7 @@ pub fn ffffrw_safer(
                 0,
                 0,
                 ffffrw_work,
-                (&mut workData as *mut ffffrw_workdata) as *mut c_void,
+                (&mut workData as *mut ffffrw_workdata).cast::<c_void>(),
                 status,
             ) == -1
             {
@@ -3546,7 +3575,7 @@ fn fits_parser_set_temporary_col(
         ptr::null_mut(),
         0,
         TDOUBLE,
-        TemporaryCol,
+        TEMPORARY_COL,
     );
 
     (lParse.colData[col_cnt as usize]).repeat = lParse.nElements;
@@ -3628,17 +3657,17 @@ fn fits_uncompress_hkdata(
                     let col_data = lParse.colData[parNo as usize];
                     match col_data.datatype {
                         TLONG => {
-                            let array = col_data.array as *mut c_long;
+                            let array = col_data.array.cast::<c_long>();
                             *array.wrapping_add(currelem as usize) =
                                 *array.wrapping_add((currelem - 1) as usize);
                         }
                         TDOUBLE => {
-                            let array = col_data.array as *mut f64;
+                            let array = col_data.array.cast::<f64>();
                             *array.wrapping_add(currelem as usize) =
                                 *array.wrapping_add((currelem - 1) as usize);
                         }
                         TSTRING => {
-                            let str_array = col_data.array as *mut *mut c_char;
+                            let str_array = col_data.array.cast::<*mut c_char>();
                             strcpy(
                                 *str_array.wrapping_add(currelem as usize),
                                 *str_array.wrapping_add((currelem - 1) as usize),
@@ -3685,7 +3714,7 @@ fn fits_uncompress_hkdata(
                 let col_data = lParse.colData[parNo as usize];
                 match col_data.datatype {
                     TLONG => {
-                        let array = col_data.array as *mut c_long;
+                        let array = col_data.array.cast::<c_long>();
                         ffgcvj_safe(
                             fptr,
                             lParse.valCol,
@@ -3702,7 +3731,7 @@ fn fits_uncompress_hkdata(
                         );
                     }
                     TDOUBLE => {
-                        let array = col_data.array as *mut f64;
+                        let array = col_data.array.cast::<f64>();
                         ffgcvd_safe(
                             fptr,
                             lParse.valCol,
@@ -3719,7 +3748,7 @@ fn fits_uncompress_hkdata(
                         );
                     }
                     TSTRING => {
-                        let str_array = col_data.array as *mut *mut c_char;
+                        let str_array = col_data.array.cast::<*mut c_char>();
                         ffgcvs_safe(
                             fptr,
                             lParse.valCol,
@@ -3785,24 +3814,26 @@ pub(crate) extern "C" fn ffffrw_work(
     colData: *mut iteratorCol, /* IO- Column information/data        */
     userPtr: *mut c_void,
 ) -> c_int {
-    ffffrw_work_safe(totalrows, offset, firstrow, nrows, nCols, colData, userPtr)
+    let workData: &mut ffffrw_workdata =
+        unsafe { userPtr.cast::<ffffrw_workdata>().as_mut().expect(NULL_MSG) };
+
+    ffffrw_work_safe(totalrows, offset, firstrow, nrows, nCols, workData)
 }
 
 /*---------------------------------------------------------------------------*/
 /// Iterator work function which calls the parser and searches for the
 /// first row which evaluates to TRUE.
 pub(crate) fn ffffrw_work_safe(
-    totalrows: c_long,         /* I - Total rows to be processed     */
-    offset: c_long,            /* I - Number of rows skipped at start*/
-    firstrow: c_long,          /* I - First row of this iteration    */
-    nrows: c_long,             /* I - Number of rows in this iter    */
-    nCols: c_int,              /* I - Number of columns in use       */
-    colData: *mut iteratorCol, /* IO- Column information/data        */
-    userPtr: *mut c_void,
+    totalrows: c_long, /* I - Total rows to be processed     */
+    offset: c_long,    /* I - Number of rows skipped at start*/
+    firstrow: c_long,  /* I - First row of this iteration    */
+    nrows: c_long,     /* I - Number of rows in this iter    */
+    nCols: c_int,      /* I - Number of columns in use       */
+    workData: &mut ffffrw_workdata,
 ) -> c_int {
     unsafe {
         let result: &mut Node;
-        let workData: *mut ffffrw_workdata = userPtr as *mut ffffrw_workdata;
+
         let lParse: &mut ParseData = &mut *(*workData).lParse;
 
         Evaluate_Parser(lParse, firstrow, nrows);
@@ -4149,7 +4180,7 @@ pub fn fits_pixel_filter_safer(
 
             let colIter: &mut iteratorCol = &mut lParse.colData[col_cnt as usize];
             unsafe { colIter.fptr = filter.ofptr };
-            unsafe { colIter.iotype = OutputCol };
+            unsafe { colIter.iotype = OUTPUT_COL };
 
             set_image_col_types(
                 &mut lParse.status,
@@ -4171,7 +4202,7 @@ pub fn fits_pixel_filter_safer(
                     0,
                     0,
                     fits_parser_workfn,
-                    (&mut info as *mut parseInfo) as *mut c_void,
+                    (&mut info as *mut parseInfo).cast::<c_void>(),
                     status,
                 )
             } == -1
@@ -4346,7 +4377,7 @@ fn set_image_col_types(
 
 fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void) -> c_int {
     unsafe {
-        let thelval: *mut FITS_PARSER_YYSTYPE = itslval as *mut FITS_PARSER_YYSTYPE;
+        let thelval: *mut FITS_PARSER_YYSTYPE = itslval.cast::<FITS_PARSER_YYSTYPE>();
 
         let mut status: c_int;
         let mut colnum: c_int = 0;
@@ -4450,7 +4481,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                 return P_ERROR;
             }
             colIter.fptr = fptr;
-            colIter.iotype = InputCol;
+            colIter.iotype = INPUT_COL;
         } else {
             /* HDU holds a table */
             if lParse.compressed != 0 {
@@ -4497,7 +4528,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             varInfo = &mut lParse.varData[col_cnt as usize];
             colIter = &mut lParse.colData[col_cnt as usize];
 
-            fits_iter_set_by_num_safe(colIter, fptr, colnum, 0, InputCol);
+            fits_iter_set_by_num_safe(colIter, fptr, colnum, 0, INPUT_COL);
         }
 
         /*  Make sure we don't overflow variable name array  */
@@ -4559,7 +4590,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
                     varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
                     colIter.datatype = TSTRING;
                     ktype = fits_parser_yytokentype::SCOLUMN as c_int;
-                    if width >= MAX_STRLEN as c_long {
+                    if width >= c_long::from(MAX_STRLEN) {
                         int_snprintf!(
                             &mut temp,
                             80,
@@ -4610,7 +4641,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
         }
         lParse.nCols += 1;
-        (*thelval).lng = col_cnt as c_long;
+        (*thelval).lng = c_long::from(col_cnt);
 
         ktype
     }
@@ -4618,7 +4649,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
 
 fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) -> c_int {
     unsafe {
-        let thelval: *mut FITS_PARSER_YYSTYPE = itslval as *mut FITS_PARSER_YYSTYPE;
+        let thelval: *mut FITS_PARSER_YYSTYPE = itslval.cast::<FITS_PARSER_YYSTYPE>();
 
         let mut status: c_int = 0;
         let mut ktype: c_int = 0;
@@ -4778,7 +4809,7 @@ fn load_column(
                 var.datatype,
                 fRow as LONGLONG,
                 nRows as LONGLONG,
-                unsafe { std::slice::from_raw_parts_mut(data as *mut u8, (nRows * 8) as usize) }, // Assuming 8 bytes per element
+                unsafe { std::slice::from_raw_parts_mut(data.cast::<u8>(), (nRows * 8) as usize) }, // Assuming 8 bytes per element
                 unsafe { std::slice::from_raw_parts_mut(undef, nRows as usize) },
                 Some(&mut anynul),
                 &mut status,
@@ -4810,7 +4841,7 @@ fn load_column(
                     );
 
                     nelem = var.repeat;
-                    bitStrs = data as *mut *mut c_char;
+                    bitStrs = data.cast::<*mut c_char>();
                     for row in 0..nRows {
                         idx = (row) * ((nelem + 7) / 8) + 1;
                         for len in 0..nelem {
@@ -4836,7 +4867,7 @@ fn load_column(
                 }
                 TSTRING => {
                     // Convert data to Vec<&mut [c_char]> and undef to &mut [c_char]
-                    let data_ptr_array = data as *mut *mut c_char;
+                    let data_ptr_array = data.cast::<*mut c_char>();
                     let mut string_vec = Vec::new();
                     for i in 0..nRows {
                         let str_ptr = unsafe { *data_ptr_array.wrapping_add(i as usize) };
@@ -4862,7 +4893,7 @@ fn load_column(
                 }
                 TLOGICAL => {
                     let data_slice = unsafe {
-                        std::slice::from_raw_parts_mut(data as *mut c_char, nelem as usize)
+                        std::slice::from_raw_parts_mut(data.cast::<c_char>(), nelem as usize)
                     };
                     let undef_slice =
                         unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
@@ -4887,7 +4918,7 @@ fn load_column(
                         1,
                         nelem as LONGLONG,
                         unsafe {
-                            std::slice::from_raw_parts_mut(data as *mut c_long, nelem as usize)
+                            std::slice::from_raw_parts_mut(data.cast::<c_long>(), nelem as usize)
                         },
                         unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) },
                         Some(&mut anynul),
@@ -4895,8 +4926,9 @@ fn load_column(
                     );
                 }
                 TDOUBLE => {
-                    let data_slice =
-                        unsafe { std::slice::from_raw_parts_mut(data as *mut f64, nelem as usize) };
+                    let data_slice = unsafe {
+                        std::slice::from_raw_parts_mut(data.cast::<f64>(), nelem as usize)
+                    };
                     let undef_slice =
                         unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
 

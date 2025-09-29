@@ -597,7 +597,7 @@ pub fn ffpmrk_safe() {
 pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
     unsafe {
         ffxmsg(GET_MESG, err_message);
-        (*err_message) as c_int
+        c_int::from(*err_message)
     }
 }
 
@@ -616,7 +616,7 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
         }
         err_message[copy_len] = 0; // null terminate
 
-        err_message[0] as c_int
+        c_int::from(err_message[0])
     } else {
         err_message[0] = 0;
         0
@@ -740,7 +740,7 @@ pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
 
                     unsafe {
                         ptr::copy_nonoverlapping(
-                            message_bytes.as_ptr() as *const c_char,
+                            message_bytes.as_ptr().cast::<c_char>(),
                             errmsg,
                             copy_len,
                         );
@@ -940,7 +940,7 @@ pub fn fftrec_safe(
                 FLEN_ERRMSG,
                 "Character {} in this keyword is illegal. Hex Value = {:X}",
                 (ii + 1) as c_int,
-                card[ii] as c_int,
+                c_int::from(card[ii]),
             );
 
             let len = strlen_safe(&msg);
@@ -2290,13 +2290,13 @@ pub fn fits_translate_keyword_safer(
             if s == bb(b'i') {
                 /* Special pattern: 'i' placeholder */
                 if isdigit_safe(c) {
-                    i1 = (c - bb(b'0')) as c_int;
+                    i1 = c_int::from(c - bb(b'0'));
                     pass = true;
                 }
             } else if s == bb(b'j') {
                 /* Special pattern: 'j' placeholder */
                 if isdigit_safe(c) {
-                    j1 = (c - bb(b'0')) as c_int;
+                    j1 = c_int::from(c - bb(b'0'));
                     pass = true;
                 }
             } else if (s == bb(b'n')) || (s == bb(b'm')) || (s == bb(b'#')) {
@@ -2308,7 +2308,7 @@ pub fn fits_translate_keyword_safer(
 
                     /* Parse decimal number */
                     while ic < 8 && isdigit_safe(c) {
-                        val = val * 10 + (c - bb(b'0')) as c_int;
+                        val = val * 10 + c_int::from(c - bb(b'0'));
                         ic += 1;
                         c = inrec[ic];
                     }
@@ -2415,9 +2415,9 @@ pub fn fits_translate_keyword_safer(
     while spat[ip] != 0 {
         s = spat[ip];
         if s == bb(b'i') {
-            outrec[ic] = (i1 + bb(b'0') as c_int) as c_char;
+            outrec[ic] = (i1 + c_int::from(bb(b'0'))) as c_char;
         } else if s == bb(b'j') {
-            outrec[ic] = (j1 + bb(b'0') as c_int) as c_char;
+            outrec[ic] = (j1 + c_int::from(bb(b'0'))) as c_char;
         } else if s == bb(b'n') {
             if n1 == -1 {
                 n1 = n_value;
@@ -2431,7 +2431,7 @@ pub fn fits_translate_keyword_safer(
 
                 fac /= 10;
                 while fac > 0 {
-                    outrec[ic] = (((n1 / fac) % 10) + bb(b'0') as c_int) as c_char;
+                    outrec[ic] = (((n1 / fac) % 10) + c_int::from(bb(b'0'))) as c_char;
                     fac /= 10;
                     ic += 1;
                 }
@@ -2444,7 +2444,7 @@ pub fn fits_translate_keyword_safer(
             }
             fac /= 10;
             while fac > 0 {
-                outrec[ic] = (((m1 / fac) % 10) + bb(b'0') as c_int) as c_char;
+                outrec[ic] = (((m1 / fac) % 10) + c_int::from(bb(b'0'))) as c_char;
                 fac /= 10;
                 ic += 1;
             }
@@ -2957,13 +2957,13 @@ pub(crate) fn fits_translate_pixkeyword(
             if s == bb(b'i') {
                 /* Special pattern: 'i' placeholder */
                 if isdigit_safe(c) {
-                    i1 = (c - bb(b'0')) as c_int;
+                    i1 = c_int::from(c - bb(b'0'));
                     pass = true;
                 }
             } else if s == bb(b'j') {
                 /* Special pattern: 'j' placeholder */
                 if isdigit_safe(c) {
-                    j1 = (c - bb(b'0')) as c_int;
+                    j1 = c_int::from(c - bb(b'0'));
                     pass = true;
                 }
             } else if (s == bb(b'n')) || (s == bb(b'm')) || (s == bb(b'l')) || (s == bb(b'#')) {
@@ -2975,7 +2975,7 @@ pub(crate) fn fits_translate_pixkeyword(
 
                     /* Parse decimal number */
                     while ic < 8 && isdigit_safe(c) {
-                        val = val * 10 + (c - bb(b'0')) as c_int;
+                        val = val * 10 + c_int::from(c - bb(b'0'));
                         ic += 1;
                         c = inrec[ic as usize];
                     }
@@ -4099,7 +4099,7 @@ pub fn ffgcnn_safe(
         /* didn't find a match; check if template is a positive integer */
 
         ffc2ii(templt, &mut ivalue, &mut tstatus);
-        if tstatus == 0 && ivalue <= fptr.Fptr.tfield as c_long && ivalue > 0 {
+        if tstatus == 0 && ivalue <= c_long::from(fptr.Fptr.tfield) && ivalue > 0 {
             *colnum = ivalue as c_int;
 
             let c = fptr.Fptr.get_tableptr_as_slice();
@@ -5772,7 +5772,7 @@ pub(crate) unsafe fn ffpinit(
            the logical end of the header is 80 bytes before the current position,
            minus any trailing blank keywords just before the END keyword.
         */
-        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (nspace as LONGLONG + 1));
+        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (LONGLONG::from(nspace) + 1));
 
         /* the data unit begins at the beginning of the next logical block */
         fptr.Fptr.datastart = ((fptr.Fptr.nextkey - 80) / BL!() + 1) * BL!();
@@ -6240,7 +6240,7 @@ pub(crate) unsafe fn ffainit(
         the 'END' record is 80 bytes before the current position, minus
         any trailing blank keywords just before the END keyword.
         */
-        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (nspace as LONGLONG + 1));
+        fptr.Fptr.headend = fptr.Fptr.nextkey - (80 * (LONGLONG::from(nspace) + 1));
 
         /* the data unit begins at the beginning of the next logical block */
         fptr.Fptr.datastart = ((fptr.Fptr.nextkey - 80) / 2880 + 1) * 2880;
@@ -6360,7 +6360,7 @@ pub(crate) unsafe fn ffbinit(
                 c[ci].ttype[0] = 0; /* null column name */
                 c[ci].tscale = 1.0;
                 c[ci].tzero = 0.0;
-                c[ci].tnull = NULL_UNDEFINED as _; /* (integer) null value undefined */
+                c[ci].tnull = NULL_UNDEFINED.into(); /* (integer) null value undefined */
                 c[ci].tdatatype = -9999; /* initialize to illegal value */
                 c[ci].trepeat = 1;
                 c[ci].strnull[0] = 0; /* for ASCII string columns (TFORM = rA) */
@@ -6563,10 +6563,10 @@ pub fn ffgabc_safe(
             status,
         );
 
-        *rowlen += width + space as c_long; /* total length of row */
+        *rowlen += width + c_long::from(space); /* total length of row */
     }
 
-    *rowlen -= space as c_long; /*  don't add space after the last field */
+    *rowlen -= c_long::from(space); /*  don't add space after the last field */
 
     *status
 }
@@ -6610,7 +6610,7 @@ pub(crate) fn ffgtbc(
             } else if c[ci].tdatatype == TBIT {
                 nbytes = (c[ci].trepeat + 7) / 8;
             } else if c[ci].tdatatype > 0 {
-                nbytes = c[ci].trepeat * (c[ci].tdatatype as LONGLONG / 10);
+                nbytes = c[ci].trepeat * (LONGLONG::from(c[ci].tdatatype) / 10);
             } else {
                 let cptr = &c[ci].tform;
                 let mut cpi = 0;
@@ -6697,7 +6697,7 @@ pub(crate) fn ffgtbp(
             /* read index no. */
             return *status; /* must not be an indexed keyword */
         }
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6718,7 +6718,7 @@ pub(crate) fn ffgtbp(
             return *status; /* must not be an indexed keyword */
         }
 
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6782,7 +6782,7 @@ pub(crate) fn ffgtbp(
             return *status; /* must not be an indexed keyword */
         }
 
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6812,7 +6812,7 @@ pub(crate) fn ffgtbp(
             return *status; /* must not be an indexed keyword */
         }
 
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6839,7 +6839,7 @@ pub(crate) fn ffgtbp(
             /* read index no. */
             return *status; /* must not be an indexed keyword */
         }
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6867,7 +6867,7 @@ pub(crate) fn ffgtbp(
             return *status; /* must not be an indexed keyword */
         }
 
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -6913,7 +6913,7 @@ pub(crate) fn ffgtbp(
             return *status; /* must not be an indexed keyword */
         }
 
-        if nfield < 1 || nfield > fptr.Fptr.tfield as c_long {
+        if nfield < 1 || nfield > c_long::from(fptr.Fptr.tfield) {
             /* out of range */
             return *status;
         }
@@ -7160,7 +7160,7 @@ pub(crate) fn ffgcprll(
             *twidth = 1; /* width of each element */
             *scale = 1.0; /* no scaling */
             *zero = 0.0;
-            *tnull = NULL_UNDEFINED as LONGLONG; /* don't test for nulls */
+            *tnull = LONGLONG::from(NULL_UNDEFINED); /* don't test for nulls */
             *maxelem = DBUFFSIZE as c_int;
 
             if *tcode < 0 {
@@ -7707,7 +7707,7 @@ pub fn fftheap_safe(
             if typecode == -TBIT {
                 nbytes = ((repeat + 7) as c_long) / 8;
             } else {
-                nbytes = (repeat as c_long) * pixsize as c_long;
+                nbytes = (repeat as c_long) * c_long::from(pixsize);
             }
             if offset < 0 || offset + nbytes as LONGLONG > theapsz as LONGLONG {
                 if let Some(valid) = valid.as_deref_mut() {
@@ -8138,10 +8138,10 @@ pub fn ffgdesll_safe(
         /* read 4-byte descriptor */
         if ffgi4b(fptr, bytepos, 2, 4, cast_slice_mut(&mut descript4), status) <= 0 {
             if let Some(length) = length {
-                *length = descript4[0] as LONGLONG; /* 1st word is the length  */
+                *length = LONGLONG::from(descript4[0]); /* 1st word is the length  */
             }
             if let Some(heapaddr) = heapaddr {
-                *heapaddr = descript4[1] as LONGLONG; /* 2nd word is the address */
+                *heapaddr = LONGLONG::from(descript4[1]); /* 2nd word is the address */
             };
         };
     } else {
@@ -8238,12 +8238,12 @@ pub fn ffgdess_safe(
             /* read descriptors */
             if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
                 if let Some(length) = length.as_deref_mut() {
-                    length[length_i] = descript4[0] as c_long; /* 1st word is the length  */
+                    length[length_i] = c_long::from(descript4[0]); /* 1st word is the length  */
                     length_i += 1;
                 }
 
                 if let Some(heapaddr) = heapaddr.as_deref_mut() {
-                    heapaddr[heapaddr_i] = descript4[1] as c_long; /* 2nd word is the address */
+                    heapaddr[heapaddr_i] = c_long::from(descript4[1]); /* 2nd word is the address */
                     heapaddr_i += 1;
                 }
 
@@ -8370,12 +8370,12 @@ pub unsafe fn ffgdessll_safe(
                 if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
                     if !length.is_null() {
                         let length = slice::from_raw_parts_mut(length, nrows as usize);
-                        length[length_i] = descript4[0] as LONGLONG; /* 1st word is the length  */
+                        length[length_i] = LONGLONG::from(descript4[0]); /* 1st word is the length  */
                         length_i += 1;
                     }
                     if !heapaddr.is_null() {
                         let heapaddr = slice::from_raw_parts_mut(heapaddr, nrows as usize);
-                        heapaddr[heapaddr_i] = descript4[1] as LONGLONG; /* 2nd word is the address */
+                        heapaddr[heapaddr_i] = LONGLONG::from(descript4[1]); /* 2nd word is the address */
                         heapaddr_i += 1;
                     }
                     bytepos += rowsize;
@@ -8476,9 +8476,9 @@ pub fn ffpdes_safe(
     let ci = (colnum - 1) as usize; /* offset to the correct column */
 
     if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
-        if length > c_uint::MAX as LONGLONG
+        if length > LONGLONG::from(c_uint::MAX)
             || length < 0
-            || heapaddr > c_uint::MAX as LONGLONG
+            || heapaddr > LONGLONG::from(c_uint::MAX)
             || heapaddr < 0
         {
             ffpmsg_str("P variable length column descriptor is out of range");
@@ -8860,7 +8860,7 @@ pub fn ffhdef_safe(
         /* We need to increment both of these values based on */
         /* the number of new keywords to be added.  */
 
-        delta = ((fptr.Fptr.headend + (morekeys as LONGLONG * 80)) / BL!() + 1) * BL!()
+        delta = ((fptr.Fptr.headend + (LONGLONG::from(morekeys) * 80)) / BL!() + 1) * BL!()
             - fptr.Fptr.datastart;
 
         fptr.Fptr.datastart += delta;
@@ -10328,7 +10328,7 @@ pub fn ffmnhd_safe(
                         extver = 1; /* assume default EXTVER value */
                     }
 
-                    if extver == hduver as c_long {
+                    if extver == c_long::from(hduver) {
                         if chopped != 0 {
                             /* The # was literally part of the name, not a flag */
                             fptr.Fptr.only_one = 0;
@@ -11533,7 +11533,7 @@ pub(crate) fn ffc2i(
             *ival = dval as c_long;
         };
     } else if dtype == bb(b'L') {
-        *ival = lval as c_long;
+        *ival = c_long::from(lval);
     }
 
     if *status > 0 {
@@ -11599,7 +11599,7 @@ pub(crate) fn ffc2j(
             *ival = dval as LONGLONG;
         }
     } else if dtype == bb(b'L') {
-        *ival = lval as LONGLONG;
+        *ival = LONGLONG::from(lval);
     }
 
     if *status > 0 {
@@ -11825,7 +11825,7 @@ pub(crate) fn ffc2d(
         ffc2dd(cval, dval, status);
     } else if dtype == bb(b'L') {
         ffc2ll(cval, &mut lval, status);
-        *dval = lval as f64;
+        *dval = f64::from(lval);
     } else if dtype == bb(b'C') {
         /* try reading the string as a number */
         ffc2s(cval, &mut sval, status);
@@ -12326,8 +12326,8 @@ pub(crate) fn fits_strncasecmp(s1: &[c_char], s2: &[c_char], n: usize) -> c_int 
     let mut i = 0;
 
     while i < n {
-        c1 = toupper(s1[i]) as c_int;
-        c2 = toupper(s2[i]) as c_int;
+        c1 = c_int::from(toupper(s1[i]));
+        c2 = c_int::from(toupper(s2[i]));
         if c1 < c2 {
             return -1;
         }

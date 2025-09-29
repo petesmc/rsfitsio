@@ -80,10 +80,10 @@ pub fn main() -> ExitCode {
     }
 
     /* all done */
-    if let Some(fptr_box) = fptr {
-        if unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0 {
-            printerror(status);
-        }
+    if let Some(fptr_box) = fptr
+        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+    {
+        printerror(status);
     }
 
     if status != 0 {

@@ -571,8 +571,8 @@ pub fn ffgsvk_safe(
             rstr = 1;
             rstp = 1;
         } else {
-            rstr = colnum as c_long;
-            rstp = colnum as c_long;
+            rstr = c_long::from(colnum);
+            rstp = c_long::from(colnum);
         }
         rinc = 1;
         numcol = 2;
@@ -581,7 +581,7 @@ pub fn ffgsvk_safe(
         rstr = blc[naxis];
         rstp = trc[naxis];
         rinc = inc[naxis];
-        numcol = colnum as c_long;
+        numcol = c_long::from(colnum);
     }
 
     nultyp = NullCheckType::SetPixel;
@@ -825,8 +825,8 @@ pub fn ffgsfk_safe(
             rstr = 1;
             rstp = 1;
         } else {
-            rstr = colnum as c_long;
-            rstp = colnum as c_long;
+            rstr = c_long::from(colnum);
+            rstp = c_long::from(colnum);
         }
         rinc = 1;
         numcol = 2;
@@ -835,7 +835,7 @@ pub fn ffgsfk_safe(
         rstr = blc[naxis];
         rstp = trc[naxis];
         rinc = inc[naxis];
-        numcol = colnum as c_long;
+        numcol = c_long::from(colnum);
     }
 
     nultyp = NullCheckType::SetNullArray;
@@ -1241,7 +1241,7 @@ pub(crate) fn ffgclk(
             nelem as LONGLONG,
             elemincre,
             nultyp,
-            nulval as c_long,
+            c_long::from(nulval),
             cast_slice_mut(array),
             nularray,
             anynul,
@@ -1298,7 +1298,7 @@ pub(crate) fn ffgclk(
             return *status;
         }
 
-        maxelem = maxelem2 as LONGLONG;
+        maxelem = LONGLONG::from(maxelem2);
 
         incre *= elemincre; /* multiply incre to just get every nth pixel */
 
@@ -1324,13 +1324,13 @@ pub(crate) fn ffgclk(
 
         if nultyp == NullCheckType::SetPixel && nulval == 0 {
             nulcheck = NullCheckType::None; /* calling routine does not want to check for nulls */
-        } else if tcode % 10 == 1 && tnull == NULL_UNDEFINED as LONGLONG {
+        } else if tcode % 10 == 1 && tnull == LONGLONG::from(NULL_UNDEFINED) {
             /* if reading an integer column, and  */
             /* if a null value is not defined,    */
 
             nulcheck = NullCheckType::None; /* then do not check for null values. */
         } else if tcode == TSHORT
-            && (tnull > c_short::MAX as LONGLONG || tnull < c_short::MIN as LONGLONG)
+            && (tnull > LONGLONG::from(c_short::MAX) || tnull < LONGLONG::from(c_short::MIN))
         {
             nulcheck = NullCheckType::None; /* Impossible null value */
         } else if tcode == TBYTE && (tnull > 255 || tnull < 0) {
@@ -1349,10 +1349,10 @@ pub(crate) fn ffgclk(
             /* no type convertion required, so read */
             /* data directly into output buffer.    */
 
-            if nelem < (INT32_MAX / 4) as LONGLONG {
+            if nelem < LONGLONG::from(INT32_MAX / 4) {
                 maxelem = nelem;
             } else {
-                maxelem = (INT32_MAX / 4) as LONGLONG;
+                maxelem = LONGLONG::from(INT32_MAX / 4);
             }
 
             if nulcheck == NullCheckType::None && scale == 1.0 && zero == 0.0 {
@@ -1695,12 +1695,12 @@ pub(crate) fn fffi1int(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _; /* copy input */
+                output[ii] = input[ii].into(); /* copy input */
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                dvalue = (input[ii] as f64) * scale + zero;
+                dvalue = f64::from(input[ii]) * scale + zero;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -1728,7 +1728,7 @@ pub(crate) fn fffi1int(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
             }
         } else {
@@ -1742,7 +1742,7 @@ pub(crate) fn fffi1int(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    dvalue = (input[ii] as f64) * scale + zero;
+                    dvalue = f64::from(input[ii]) * scale + zero;
 
                     if dvalue < DINT_MIN {
                         *status = OVERFLOW_ERR;
@@ -1795,12 +1795,12 @@ pub(crate) fn fffi2int(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                output[ii] = input[ii] as _;
+                output[ii] = input[ii].into();
             }
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                dvalue = (input[ii] as f64) * scale + zero;
+                dvalue = f64::from(input[ii]) * scale + zero;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -1828,7 +1828,7 @@ pub(crate) fn fffi2int(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    output[ii] = input[ii] as _;
+                    output[ii] = input[ii].into();
                 }
             }
         } else {
@@ -1843,7 +1843,7 @@ pub(crate) fn fffi2int(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    dvalue = (input[ii] as f64) * scale + zero;
+                    dvalue = f64::from(input[ii]) * scale + zero;
 
                     if dvalue < DINT_MIN {
                         *status = OVERFLOW_ERR;
@@ -1900,7 +1900,7 @@ pub(crate) fn fffi4int(
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                dvalue = (input[ii] as f64) * scale + zero;
+                dvalue = f64::from(input[ii]) * scale + zero;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -1942,7 +1942,7 @@ pub(crate) fn fffi4int(
                         nullarray[ii] = 1;
                     }
                 } else {
-                    dvalue = (input[ii] as f64) * scale + zero;
+                    dvalue = f64::from(input[ii]) * scale + zero;
 
                     if dvalue < DINT_MIN {
                         *status = OVERFLOW_ERR;
@@ -2015,7 +2015,7 @@ pub(crate) fn fffi8int(
                 if input[ii] < 0 {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MIN;
-                } else if input[ii] > c_int::MAX as LONGLONG {
+                } else if input[ii] > LONGLONG::from(c_int::MAX) {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MAX;
                 } else {
@@ -2080,7 +2080,7 @@ pub(crate) fn fffi8int(
                 } else if input[ii] < 0 {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MIN;
-                } else if input[ii] > c_int::MAX as LONGLONG {
+                } else if input[ii] > LONGLONG::from(c_int::MAX) {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MAX;
                 } else {
@@ -2151,10 +2151,10 @@ pub(crate) fn fffr4int(
         if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                if (input[ii] as f64) < DINT_MIN {
+                if f64::from(input[ii]) < DINT_MIN {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MIN;
-                } else if (input[ii] as f64) > DINT_MAX {
+                } else if f64::from(input[ii]) > DINT_MAX {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MAX;
                 } else {
@@ -2164,7 +2164,7 @@ pub(crate) fn fffr4int(
         } else {
             /* must scale the data */
             for ii in 0..(ntodo as usize) {
-                dvalue = (input[ii] as f64) * scale + zero;
+                dvalue = f64::from(input[ii]) * scale + zero;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -2205,10 +2205,10 @@ pub(crate) fn fffr4int(
                         /* it's an underflow */
                         output[ii] = 0;
                     }
-                } else if (input[ii] as f64) < DINT_MIN {
+                } else if f64::from(input[ii]) < DINT_MIN {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MIN;
-                } else if (input[ii] as f64) > DINT_MAX {
+                } else if f64::from(input[ii]) > DINT_MAX {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_int::MAX;
                 } else {
@@ -2244,7 +2244,7 @@ pub(crate) fn fffr4int(
                         }
                     }
                 } else {
-                    dvalue = (input[ii] as f64) * scale + zero;
+                    dvalue = f64::from(input[ii]) * scale + zero;
 
                     if dvalue < DINT_MIN {
                         *status = OVERFLOW_ERR;
@@ -2505,7 +2505,7 @@ pub(crate) fn fffstrint(
             }
 
             while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                val = val * 10.0 + (input[cptr] - chrzero) as f64; /* accumulate the value */
+                val = val * 10.0 + f64::from(input[cptr] - chrzero); /* accumulate the value */
                 cptr += 1;
 
                 while input[cptr] == bb(b' ') {
@@ -2524,7 +2524,7 @@ pub(crate) fn fffstrint(
                 }
 
                 while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                    val = val * 10.0 + (input[cptr] - chrzero) as f64; /* accumulate the value */
+                    val = val * 10.0 + f64::from(input[cptr] - chrzero); /* accumulate the value */
                     power *= 10.;
                     cptr += 1;
 
@@ -2558,7 +2558,7 @@ pub(crate) fn fffstrint(
                 }
 
                 while input[cptr] >= bb(b'0') && input[cptr] <= bb(b'9') {
-                    exponent = exponent * 10 + (input[cptr] - chrzero) as c_int; /* accumulate exp */
+                    exponent = exponent * 10 + c_int::from(input[cptr] - chrzero); /* accumulate exp */
                     cptr += 1;
 
                     while input[cptr] == bb(b' ') {
@@ -2593,7 +2593,7 @@ pub(crate) fn fffstrint(
                 /* if no explicit decimal, use implied */
                 power = implipower;
             }
-            dvalue = (sign as f64 * val / power) * 10.0_f64.powi(esign * exponent);
+            dvalue = (f64::from(sign) * val / power) * 10.0_f64.powi(esign * exponent);
 
             dvalue = dvalue * scale + zero; /* apply the scaling */
 

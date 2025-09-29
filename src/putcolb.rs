@@ -735,7 +735,7 @@ pub fn ffpclb_safe(
         return *status;
     }
 
-    maxelem = maxelem2 as LONGLONG;
+    maxelem = LONGLONG::from(maxelem2);
 
     if tcode == TSTRING {
         ffcfmt(&tform, &mut cform); /* derive C format for writing strings */
@@ -750,10 +750,10 @@ pub fn ffpclb_safe(
     */
     if scale == 1.0 && zero == 0.0 && tcode == TBYTE {
         writeraw = true;
-        if nelem < INT32_MAX as LONGLONG {
+        if nelem < LONGLONG::from(INT32_MAX) {
             maxelem = nelem;
         } else {
-            maxelem = INT32_MAX as LONGLONG;
+            maxelem = LONGLONG::from(INT32_MAX);
         }
     } else {
         writeraw = false;
@@ -1209,7 +1209,7 @@ pub unsafe extern "C" fn ffpextn(
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        let buffer = slice::from_raw_parts(buffer as *const u8, nelem as usize);
+        let buffer = slice::from_raw_parts(buffer.cast::<u8>(), nelem as usize);
         ffpextn_safe(fptr, offset, nelem, buffer, status)
     }
 }
@@ -1263,7 +1263,7 @@ pub(crate) fn ffi1fi1(
         output.copy_from_slice(input); /* just copy input to output */
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = ((input[ii] as f64) - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DUCHAR_MIN {
                 *status = OVERFLOW_ERR;
@@ -1292,11 +1292,11 @@ pub(crate) fn ffi1fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as c_short; /* just copy input to output */
+            output[ii] = c_short::from(input[ii]); /* just copy input to output */
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = ((input[ii] as f64) - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DSHRT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1327,11 +1327,11 @@ pub(crate) fn ffi1fi4(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as INT32BIT; /* copy input to output */
+            output[ii] = INT32BIT::from(input[ii]); /* copy input to output */
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -1369,15 +1369,15 @@ pub(crate) fn ffi1fi8(
         /* are valid ULONGLONG values. */
 
         for ii in 0..(ntodo as usize) {
-            output[ii] = ((input[ii] as ULONGLONG) ^ 0x8000000000000000) as LONGLONG;
+            output[ii] = (ULONGLONG::from(input[ii]) ^ 0x8000000000000000) as LONGLONG;
         }
     } else if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as LONGLONG;
+            output[ii] = LONGLONG::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
 
             if dvalue < DLONGLONG_MIN {
                 *status = OVERFLOW_ERR;
@@ -1408,11 +1408,11 @@ pub(crate) fn ffi1fr4(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as f32;
+            output[ii] = f32::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            output[ii] = (((input[ii] as f64) - zero) / scale) as f32;
+            output[ii] = ((f64::from(input[ii]) - zero) / scale) as f32;
         }
     }
     *status
@@ -1431,11 +1431,11 @@ pub(crate) fn ffi1fr8(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            output[ii] = input[ii] as f64;
+            output[ii] = f64::from(input[ii]);
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            output[ii] = ((input[ii] as f64) - zero) / scale;
+            output[ii] = (f64::from(input[ii]) - zero) / scale;
         }
     }
     *status
@@ -1462,7 +1462,7 @@ pub(crate) fn ffi1fstr(
                 &mut output[ci..],
                 DBUFFSIZE as usize,
                 cform,
-                input[ii] as f64,
+                f64::from(input[ii]),
             );
             //unsafe { sprintf(output[ci..].as_mut_ptr(), cform.as_ptr(), input[ii] as f64) };
             ci += twidth as usize;
@@ -1474,7 +1474,7 @@ pub(crate) fn ffi1fstr(
         }
     } else {
         for ii in 0..(ntodo as usize) {
-            let dvalue: f64 = (input[ii] as f64 - zero) / scale;
+            let dvalue: f64 = (f64::from(input[ii]) - zero) / scale;
             snprintf_f64(&mut output[ci..], DBUFFSIZE as usize, cform, dvalue);
             // unsafe { sprintf(output[ci..].as_mut_ptr(), cform.as_ptr(), dvalue) };
             ci += twidth as usize;

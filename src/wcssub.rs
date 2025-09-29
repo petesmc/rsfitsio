@@ -155,7 +155,7 @@ pub unsafe fn fits_read_wcstab_safer(
             }
 
             if naxis != wtbp[iwtb].ndim {
-                if wtbp[iwtb].kind == b'c' as c_int && wtbp[iwtb].ndim == 2 {
+                if wtbp[iwtb].kind == c_int::from(b'c') && wtbp[iwtb].ndim == 2 {
                     /* Allow TDIMn to be omitted for degenerate coordinate arrays. */
                     naxis = 2;
                     naxes[1] = naxes[0];
@@ -167,7 +167,7 @@ pub unsafe fn fits_read_wcstab_safer(
                 }
             }
 
-            if wtbp[iwtb].kind == b'c' as c_int {
+            if wtbp[iwtb].kind == c_int::from(b'c') {
                 /* Coordinate array; calculate the array size. */
                 nelem = naxes[0];
 
@@ -179,7 +179,7 @@ pub unsafe fn fits_read_wcstab_safer(
             } else {
                 /* Index vector; check length. */
                 nelem = naxes[0];
-                if nelem != *(wtbp[iwtb].dimlen) as c_long {
+                if nelem != c_long::from(*(wtbp[iwtb].dimlen)) {
                     /* N.B. coordinate array precedes the index vectors. */
                     *status = BAD_TDIM;
                     // goto cleanup;

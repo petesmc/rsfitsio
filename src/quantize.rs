@@ -163,14 +163,14 @@ pub(crate) fn fits_quantize_float_inplace(
         if qlevel == 0.0 {
             delta = stdev / 4.0; /* default quantization */
         } else {
-            delta = stdev / qlevel as f64;
+            delta = stdev / f64::from(qlevel);
         }
         if delta == 0.0 {
             return 0; /* don't quantize */
         }
     } else {
         /* negative value represents the absolute quantization level */
-        delta = -qlevel as f64;
+        delta = f64::from(-qlevel);
 
         /* only nned to calculate the min and max values */
         FnNoise3_float(
@@ -188,7 +188,7 @@ pub(crate) fn fits_quantize_float_inplace(
     }
 
     /* check that the range of quantized levels is not > range of int */
-    if (maxval - minval) as f64 / delta > 2.0 * 2147483647.0 - N_RESERVED_VALUES as f64 {
+    if f64::from(maxval - minval) / delta > 2.0 * 2147483647.0 - f64::from(N_RESERVED_VALUES) {
         return 0; /* don't quantize */
     }
 
@@ -207,8 +207,8 @@ pub(crate) fn fits_quantize_float_inplace(
 
         if dither_method == DitherType::SubtractiveDither2 {
             /* shift the range to be close to the value used to represent zeros */
-            zeropt = (minval as f64) - delta * (NULL_VALUE + N_RESERVED_VALUES) as f64;
-        } else if (maxval - minval) as f64 / delta < 2147483647.0 - N_RESERVED_VALUES as f64 {
+            zeropt = f64::from(minval) - delta * f64::from(NULL_VALUE + N_RESERVED_VALUES);
+        } else if f64::from(maxval - minval) / delta < 2147483647.0 - f64::from(N_RESERVED_VALUES) {
             zeropt = minval.into();
             /* fudge the zero point so it is an integer multiple of delta */
             /* This helps to ensure the same scaling will be performed if the */
@@ -217,7 +217,7 @@ pub(crate) fn fits_quantize_float_inplace(
             zeropt = iqfactor as f64 * delta;
         } else {
             /* center the quantized levels around zero */
-            zeropt = (minval + maxval) as f64 / 2.;
+            zeropt = f64::from(minval + maxval) / 2.;
         }
 
         if row > 0 {
@@ -229,7 +229,8 @@ pub(crate) fn fits_quantize_float_inplace(
                     fdata[i] = cast(ZERO_VALUE);
                 } else {
                     fdata[i] = cast(nint_f64(
-                        ((fdata[i] as f64 - zeropt) / delta) + fits_rand_value[nextrand] as f64
+                        ((f64::from(fdata[i]) - zeropt) / delta)
+                            + f64::from(fits_rand_value[nextrand])
                             - 0.5,
                     ));
                 }
@@ -248,13 +249,13 @@ pub(crate) fn fits_quantize_float_inplace(
 
             for i in 0..nx {
                 // for (i = 0;  i < nx;  i+=1) {
-                fdata[i] = cast(nint_f64((fdata[i] as f64 - zeropt) / delta));
+                fdata[i] = cast(nint_f64((f64::from(fdata[i]) - zeropt) / delta));
             }
         }
     } else {
         /* data contains null values; shift the range to be */
         /* close to the value used to represent null values */
-        zeropt = (minval as f64) - delta * (NULL_VALUE + N_RESERVED_VALUES) as f64;
+        zeropt = f64::from(minval) - delta * f64::from(NULL_VALUE + N_RESERVED_VALUES);
 
         if row > 0 {
             /* dither the values */
@@ -265,7 +266,8 @@ pub(crate) fn fits_quantize_float_inplace(
                         fdata[i] = cast(ZERO_VALUE);
                     } else {
                         fdata[i] = cast(nint_f64(
-                            ((fdata[i] as f64 - zeropt) / delta) + fits_rand_value[nextrand] as f64
+                            ((f64::from(fdata[i]) - zeropt) / delta)
+                                + f64::from(fits_rand_value[nextrand])
                                 - 0.5,
                         ));
                     }
@@ -288,7 +290,7 @@ pub(crate) fn fits_quantize_float_inplace(
             for i in 0..nx {
                 // for (i = 0;  i < nx;  i+=1) {
                 if fdata[i] != in_null_value {
-                    fdata[i] = cast(nint_f64((fdata[i] as f64 - zeropt) / delta));
+                    fdata[i] = cast(nint_f64((f64::from(fdata[i]) - zeropt) / delta));
                 } else {
                     fdata[i] = cast(NULL_VALUE);
                 }
@@ -297,9 +299,9 @@ pub(crate) fn fits_quantize_float_inplace(
     }
 
     /* calc min and max values */
-    let mut temp: f64 = (minval as f64 - zeropt) / delta;
+    let mut temp: f64 = (f64::from(minval) - zeropt) / delta;
     *iminval = nint_f64(temp);
-    temp = (maxval as f64 - zeropt) / delta;
+    temp = (f64::from(maxval) - zeropt) / delta;
     *imaxval = nint_f64(temp);
 
     *bscale = delta;
@@ -395,14 +397,14 @@ pub(crate) fn fits_quantize_double_inplace(
         if qlevel == 0.0 {
             delta = stdev / 4.0; /* default quantization */
         } else {
-            delta = stdev / qlevel as f64;
+            delta = stdev / f64::from(qlevel);
         }
         if delta == 0.0 {
             return 0; /* don't quantize */
         }
     } else {
         /* negative value represents the absolute quantization level */
-        delta = -qlevel as f64;
+        delta = f64::from(-qlevel);
 
         /* only nned to calculate the min and max values */
         FnNoise3_double(
@@ -420,7 +422,7 @@ pub(crate) fn fits_quantize_double_inplace(
     }
 
     /* check that the range of quantized levels is not > range of int */
-    if (maxval - minval) / delta > 2.0 * 2147483647.0 - N_RESERVED_VALUES as f64 {
+    if (maxval - minval) / delta > 2.0 * 2147483647.0 - f64::from(N_RESERVED_VALUES) {
         return 0; /* don't quantize */
     }
 
@@ -439,8 +441,8 @@ pub(crate) fn fits_quantize_double_inplace(
 
         if dither_method == DitherType::SubtractiveDither2 {
             /* shift the range to be close to the value used to represent zeros */
-            zeropt = minval - delta * (NULL_VALUE + N_RESERVED_VALUES) as f64;
-        } else if (maxval - minval) / delta < 2147483647.0 - N_RESERVED_VALUES as f64 {
+            zeropt = minval - delta * f64::from(NULL_VALUE + N_RESERVED_VALUES);
+        } else if (maxval - minval) / delta < 2147483647.0 - f64::from(N_RESERVED_VALUES) {
             zeropt = minval;
             /* fudge the zero point so it is an integer multiple of delta */
             /* This helps to ensure the same scaling will be performed if the */
@@ -462,7 +464,7 @@ pub(crate) fn fits_quantize_double_inplace(
                     idata[i] = ZERO_VALUE;
                 } else {
                     idata[i] = nint_f64(
-                        ((fdata_i - zeropt) / delta) + fits_rand_value[nextrand] as f64 - 0.5,
+                        ((fdata_i - zeropt) / delta) + f64::from(fits_rand_value[nextrand]) - 0.5,
                     );
                 }
 
@@ -487,7 +489,7 @@ pub(crate) fn fits_quantize_double_inplace(
     } else {
         /* data contains null values; shift the range to be */
         /* close to the value used to represent null values */
-        zeropt = minval - delta * (NULL_VALUE + N_RESERVED_VALUES) as f64;
+        zeropt = minval - delta * f64::from(NULL_VALUE + N_RESERVED_VALUES);
 
         if row > 0 {
             /* dither the values */
@@ -499,7 +501,8 @@ pub(crate) fn fits_quantize_double_inplace(
                         idata[i] = ZERO_VALUE;
                     } else {
                         idata[i] = nint_f64(
-                            ((fdata_i - zeropt) / delta) + fits_rand_value[nextrand] as f64 - 0.5,
+                            ((fdata_i - zeropt) / delta) + f64::from(fits_rand_value[nextrand])
+                                - 0.5,
                         );
                     }
                 } else {
@@ -1628,18 +1631,19 @@ fn FnNoise5_short(
             /* construct array of absolute differences */
 
             if !(v5 == v6 && v6 == v7) {
-                differences2[nvals2] = ((v5 as c_int) - (v7 as c_int)).abs();
+                differences2[nvals2] = (c_int::from(v5) - c_int::from(v7)).abs();
 
                 nvals2 += 1;
             }
 
             if !(v3 == v4 && v4 == v5 && v5 == v6 && v6 == v7) {
-                differences3[nvals] = ((2 * (v5 as c_int)) - (v3 as c_int) - (v7 as c_int)).abs();
+                differences3[nvals] =
+                    ((2 * c_int::from(v5)) - c_int::from(v3) - c_int::from(v7)).abs();
                 differences5[nvals] =
-                    ((6 * (v5 as c_int)) - (4 * (v3 as c_int)) - (4 * (v7 as c_int))
-                        + (v1 as c_int)
-                        + (v9 as c_int))
-                        .abs();
+                    ((6 * c_int::from(v5)) - (4 * c_int::from(v3)) - (4 * c_int::from(v7))
+                        + c_int::from(v1)
+                        + c_int::from(v9))
+                    .abs();
 
                 nvals += 1;
             } else {
@@ -2084,7 +2088,7 @@ fn FnNoise5_int(
             /* construct array of absolute differences */
 
             if !(v5 == v6 && v6 == v7) {
-                let tdiff = (v5 as LONGLONG) - (v7 as LONGLONG);
+                let tdiff = LONGLONG::from(v5) - LONGLONG::from(v7);
                 if tdiff < 0 {
                     differences2[nvals2] = -tdiff;
                 } else {
@@ -2095,7 +2099,7 @@ fn FnNoise5_int(
             }
 
             if !(v3 == v4 && v4 == v5 && v5 == v6 && v6 == v7) {
-                let tdiff = (2 * (v5 as LONGLONG)) - (v3 as LONGLONG) - (v7 as LONGLONG);
+                let tdiff = (2 * LONGLONG::from(v5)) - LONGLONG::from(v3) - LONGLONG::from(v7);
                 if tdiff < 0 {
                     differences3[nvals] = -tdiff;
                 } else {
@@ -2103,9 +2107,9 @@ fn FnNoise5_int(
                 }
 
                 let tdiff =
-                    (6 * (v5 as LONGLONG)) - (4 * (v3 as LONGLONG)) - (4 * (v7 as LONGLONG))
-                        + (v1 as LONGLONG)
-                        + (v9 as LONGLONG);
+                    (6 * LONGLONG::from(v5)) - (4 * LONGLONG::from(v3)) - (4 * LONGLONG::from(v7))
+                        + LONGLONG::from(v1)
+                        + LONGLONG::from(v9);
                 if tdiff < 0 {
                     differences5[nvals] = -tdiff;
                 } else {
@@ -4371,7 +4375,7 @@ fn FnNoise1_short(
                     kk = 0;
                     for ii in 0..nvals {
                         //for (ii = 0;  ii < nvals;  ii+=1) {
-                        if (differences[ii] as f64 - mean).abs() < SIGMA_CLIP * stdev {
+                        if (f64::from(differences[ii]) - mean).abs() < SIGMA_CLIP * stdev {
                             if kk < ii {
                                 differences[kk] = differences[ii];
                             }
@@ -4534,7 +4538,7 @@ fn FnNoise1_int(
                     kk = 0;
                     for ii in 0..nvals {
                         //for (ii = 0;  ii < nvals;  ii+=1) {
-                        if (differences[ii] as f64 - mean).abs() < SIGMA_CLIP * stdev {
+                        if (f64::from(differences[ii]) - mean).abs() < SIGMA_CLIP * stdev {
                             if kk < ii {
                                 differences[kk] = differences[ii];
                             }
@@ -4697,7 +4701,7 @@ fn FnNoise1_float(
                     kk = 0;
                     for ii in 0..nvals {
                         //for (ii = 0;  ii < nvals;  ii+=1) {
-                        if (differences[ii] as f64 - mean).abs() < SIGMA_CLIP * stdev {
+                        if (f64::from(differences[ii]) - mean).abs() < SIGMA_CLIP * stdev {
                             if kk < ii {
                                 differences[kk] = differences[ii];
                             }

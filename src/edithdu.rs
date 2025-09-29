@@ -765,7 +765,7 @@ pub fn ffiimgll_safe(
         npixels *= naxes[ii];
     }
 
-    let datasize: LONGLONG = npixels * bytlen as LONGLONG; /* size of image in bytes */
+    let datasize: LONGLONG = npixels * LONGLONG::from(bytlen); /* size of image in bytes */
     let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + 1) as c_long; /* +1 for the header */
 
     if fptr.Fptr.writemode == READWRITE
@@ -1052,7 +1052,7 @@ pub fn ffitab_safe(
 
     let nhead: c_int = (9 + (3 * tfields) + nunit + 35) / 36; /* no. of header blocks */
     let datasize: LONGLONG = (rowlen as LONGLONG) * naxis2; /* size of table in bytes */
-    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + LONGLONG::from(nhead)) as c_long; /* size of HDU */
 
     if fptr.Fptr.writemode == READWRITE {
         /* must have write access */
@@ -1098,7 +1098,7 @@ pub fn ffitab_safe(
     fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
     fptr.Fptr.nextkey = hs_item;
     fptr.Fptr.headend = hs_item;
-    fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
+    fptr.Fptr.datastart = (hs_item) + (LONGLONG::from(nhead) * BL!());
     fptr.Fptr.hdutype = ASCII_TBL; /* might need to be reset... */
 
     /* write the required header keywords */
@@ -1270,7 +1270,7 @@ pub fn ffibin_safe(
     }
 
     let datasize: LONGLONG = ((naxis1 as LONGLONG) * naxis2) + pcount; /* size of table in bytes */
-    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + nhead as LONGLONG) as c_long; /* size of HDU */
+    let nblocks: c_long = (((datasize + (BL!() - 1)) / BL!()) + LONGLONG::from(nhead)) as c_long; /* size of HDU */
 
     if fptr.Fptr.writemode == READWRITE {
         /* must have write access */
@@ -1317,7 +1317,7 @@ pub fn ffibin_safe(
     fptr.HDUposition = nexthdu; /* we are now located at the next HDU */
     fptr.Fptr.nextkey = hs_item;
     fptr.Fptr.headend = hs_item;
-    fptr.Fptr.datastart = (hs_item) + (nhead as LONGLONG * BL!());
+    fptr.Fptr.datastart = (hs_item) + (LONGLONG::from(nhead) * BL!());
     fptr.Fptr.hdutype = BINARY_TBL; /* might need to be reset... */
 
     /* write the required header keywords. This will write PCOUNT = 0 */

@@ -157,7 +157,7 @@ pub(crate) fn fits_init_randoms() -> c_int {
     let mut ii = 0;
     while ii < N_RANDOM {
         temp = a * seed;
-        seed = temp - m * (((temp / m) as i32) as f64);
+        seed = temp - m * f64::from((temp / m) as i32);
         rand_value[ii] = (seed / m) as f32;
         ii += 1;
     }
@@ -896,7 +896,7 @@ pub fn fits_set_compression_pref_safe(
         Some(&mut dataend),
         status,
     );
-    if (dataend - datastart) > UINT32_MAX as LONGLONG {
+    if (dataend - datastart) > LONGLONG::from(UINT32_MAX) {
         /* use 64-bit '1Q' variable length columns instead of '1P' columns */
         /* for large files, in case the heap size becomes larger than 2**32 bytes*/
         fits_set_huge_hdu_safe(outfptr, 1, status);
@@ -1081,7 +1081,7 @@ pub fn fits_get_noise_bits_safe(
     noisebits: &mut c_int, /* noise_bits parameter value       */
     status: &mut c_int,    /* IO - error status                */
 ) -> c_int {
-    let qlevel: f64 = (fptr.Fptr).request_quantize_level as f64;
+    let qlevel: f64 = f64::from((fptr.Fptr).request_quantize_level);
 
     if qlevel > 0. && qlevel < 65537. {
         *noisebits = (((qlevel.ln()) / (2.0_f64).ln()) + 0.5) as c_int;
@@ -1594,8 +1594,8 @@ pub(crate) fn imcomp_init_table(
         remain = naxes[firstDim] % (actual_tilesize[firstDim]); /* 1st dimension */
         if remain > 0 && remain < 4 {
             ndiv = (naxes[firstDim] / actual_tilesize[firstDim]) as c_int; /* integer truncation is intentional */
-            addToDim = ((remain as f64) / (ndiv as f64)).ceil() as c_int;
-            (actual_tilesize[firstDim]) += addToDim as c_long; /* increase tile size */
+            addToDim = ((remain as f64) / f64::from(ndiv)).ceil() as c_int;
+            (actual_tilesize[firstDim]) += c_long::from(addToDim); /* increase tile size */
 
             remain = naxes[firstDim] % (actual_tilesize[firstDim]);
             if remain > 0 && remain < 4 {
@@ -1610,8 +1610,8 @@ pub(crate) fn imcomp_init_table(
         remain = naxes[secondDim] % (actual_tilesize[secondDim]); /* 2nd dimension */
         if remain > 0 && remain < 4 {
             ndiv = (naxes[secondDim] / actual_tilesize[secondDim]) as c_int; /* integer truncation is intentional */
-            addToDim = ((remain as f64) / (ndiv as f64)).ceil() as c_int;
-            (actual_tilesize[secondDim]) += addToDim as c_long; /* increase tile size */
+            addToDim = ((remain as f64) / f64::from(ndiv)).ceil() as c_int;
+            (actual_tilesize[secondDim]) += c_long::from(addToDim); /* increase tile size */
 
             remain = naxes[secondDim] % (actual_tilesize[secondDim]);
             if remain > 0 && remain < 4 {
@@ -1737,14 +1737,14 @@ pub(crate) fn imcomp_init_table(
         ffpkyj_safe(
             outfptr,
             cs!(c"ZBITPIX"),
-            bitpix as LONGLONG,
+            LONGLONG::from(bitpix),
             Some(cs!(c"data type of original image")),
             status,
         );
         ffpkyj_safe(
             outfptr,
             cs!(c"ZNAXIS"),
-            naxis as LONGLONG,
+            LONGLONG::from(naxis),
             Some(cs!(c"dimension of original image")),
             status,
         );
@@ -1815,7 +1815,7 @@ pub(crate) fn imcomp_init_table(
                 fits_write_key_lng(
                     outfptr,
                     cs!(c"ZDITHER0"),
-                    ((outfptr.Fptr).request_dither_seed) as LONGLONG,
+                    LONGLONG::from((outfptr.Fptr).request_dither_seed),
                     Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
@@ -1833,7 +1833,7 @@ pub(crate) fn imcomp_init_table(
                 fits_write_key_lng(
                     outfptr,
                     cs!(c"ZDITHER0"),
-                    ((outfptr.Fptr).request_dither_seed) as LONGLONG,
+                    LONGLONG::from((outfptr.Fptr).request_dither_seed),
                     Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
@@ -1944,7 +1944,7 @@ pub(crate) fn imcomp_init_table(
         ffpkyj_safe(
             outfptr,
             cs!(c"ZVAL2"),
-            (outfptr.Fptr).request_hcomp_smooth as LONGLONG,
+            LONGLONG::from((outfptr.Fptr).request_hcomp_smooth),
             Some(cs!(c"HCOMPRESS smooth option")),
             status,
         );
@@ -2009,7 +2009,7 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
         buffer of size 1% larger than the uncompressed data, plus 600 bytes
         */
 
-        ((nx as f64) * 1.01 * (zbitpix as f64) / 8.0 + 601.0) as c_int
+        (f64::from(nx) * 1.01 * f64::from(zbitpix) / 8.0 + 601.0) as c_int
     } else if comptype == HCOMPRESS_1 {
         /* Imperical evidence suggests in the worst case,
         the compressed stream could be up to 10% larger than the original
@@ -2019,9 +2019,9 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
         */
 
         if zbitpix == 16 || zbitpix == 8 {
-            ((nx as f64) * 2.2 + 26.0) as c_int /* will be compressing 16-bit int array */
+            (f64::from(nx) * 2.2 + 26.0) as c_int /* will be compressing 16-bit int array */
         } else {
-            ((nx as f64) * 4.4 + 26.0) as c_int /* will be compressing 32-bit int array */
+            (f64::from(nx) * 4.4 + 26.0) as c_int /* will be compressing 32-bit int array */
         }
     } else {
         nx * mem::size_of::<c_int>() as c_int
@@ -2358,7 +2358,7 @@ unsafe fn imcomp_compress_image(
             ffikyj_safe(
                 outfptr,
                 cs!(c"ZBLANK"),
-                COMPRESS_NULL_VALUE as LONGLONG,
+                LONGLONG::from(COMPRESS_NULL_VALUE),
                 Some(cs!(c"null value in the compressed integer array")),
                 status,
             );
@@ -2452,7 +2452,7 @@ unsafe fn imcomp_compress_tile(
             let out_tilerow = (outfptr.Fptr).get_tilerow_as_slice();
             let out_tiledata = (outfptr.Fptr).get_tiledata_as_slice();
 
-            if out_tilerow[tilecol as usize] as c_long == row {
+            if c_long::from(out_tilerow[tilecol as usize]) == row {
                 if !out_tiledata[tilecol as usize].is_null() {
                     // HEAP DEALLOCATION
                     let len_cap =
@@ -2740,7 +2740,7 @@ unsafe fn imcomp_compress_tile(
                     (outfptr.Fptr).cn_compressed,
                     row as LONGLONG,
                     1,
-                    nelem as LONGLONG,
+                    LONGLONG::from(nelem),
                     cast_slice(&cbuf),
                     status,
                 );
@@ -2773,7 +2773,7 @@ unsafe fn imcomp_compress_tile(
                     (outfptr.Fptr).cn_compressed,
                     row as LONGLONG,
                     1,
-                    nelem as LONGLONG,
+                    LONGLONG::from(nelem),
                     &cbuf,
                     status,
                 );
@@ -2797,7 +2797,7 @@ unsafe fn imcomp_compress_tile(
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f32>(),
-                        &mut (cbuf.as_mut_ptr() as *mut u8),
+                        &mut cbuf.as_mut_ptr().cast::<u8>(),
                         &mut clen,
                         Some(realloc),
                         Some(&mut gzip_nelem),
@@ -2817,7 +2817,7 @@ unsafe fn imcomp_compress_tile(
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f64>(),
-                        &mut (cbuf.as_mut_ptr() as *mut u8),
+                        &mut cbuf.as_mut_ptr().cast::<u8>(),
                         &mut clen,
                         Some(realloc),
                         Some(&mut gzip_nelem),
@@ -2850,7 +2850,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_short>(),
-                            &mut (cbuf.as_mut_ptr() as *mut u8),
+                            &mut cbuf.as_mut_ptr().cast::<u8>(),
                             &mut clen,
                             Some(realloc),
                             Some(&mut gzip_nelem),
@@ -2861,7 +2861,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice(idata),
                             tilelen as usize * mem::size_of::<c_uchar>(),
-                            &mut (cbuf.as_mut_ptr() as *mut u8),
+                            &mut cbuf.as_mut_ptr().cast::<u8>(),
                             &mut clen,
                             Some(realloc),
                             Some(&mut gzip_nelem),
@@ -2881,7 +2881,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_int>(),
-                            &mut (cbuf.as_mut_ptr() as *mut u8),
+                            &mut cbuf.as_mut_ptr().cast::<u8>(),
                             &mut clen,
                             Some(realloc),
                             Some(&mut gzip_nelem),
@@ -2893,7 +2893,7 @@ unsafe fn imcomp_compress_tile(
                 /* Write the compressed byte stream. */
                 ffpclb_safe(
                     outfptr,
-                    ((outfptr.Fptr).cn_compressed as LONGLONG)
+                    LONGLONG::from((outfptr.Fptr).cn_compressed)
                         .try_into()
                         .unwrap(),
                     row as LONGLONG,
@@ -2929,7 +2929,7 @@ unsafe fn imcomp_compress_tile(
                         cbuf.as_ptr() as *mut c_char,
                         &mut bzlen,
                         tiledata.as_ptr() as *mut _,
-                        (tilelen * intlength as c_long) as c_uint,
+                        (tilelen * c_long::from(intlength)) as c_uint,
                         9,
                         0,
                         0,
@@ -2946,7 +2946,7 @@ unsafe fn imcomp_compress_tile(
                         (outfptr.Fptr).cn_compressed,
                         row as LONGLONG,
                         1,
-                        bzlen as LONGLONG,
+                        LONGLONG::from(bzlen),
                         cast_slice_mut(&mut cbuf),
                         status,
                     );
@@ -2991,7 +2991,7 @@ unsafe fn imcomp_compress_tile(
                         noise3 = noise5;
                     }
 
-                    hcompscale = (hcompscale as f64 * noise3) as f32;
+                    hcompscale = (f64::from(hcompscale) * noise3) as f32;
                 } else if hcompscale < 0.0 {
                     hcompscale = -hcompscale;
                 }
@@ -3152,7 +3152,7 @@ unsafe fn imcomp_compress_tile(
                 compress2mem_from_mem(
                     cast_slice(tiledata),
                     tilelen as usize * mem::size_of::<f32>(),
-                    &mut (cbuf.as_mut_ptr() as *mut u8),
+                    &mut cbuf.as_mut_ptr().cast::<u8>(),
                     &mut clen,
                     Some(realloc),
                     Some(&mut gzip_nelem),
@@ -3192,7 +3192,7 @@ unsafe fn imcomp_compress_tile(
                 compress2mem_from_mem(
                     cast_slice_mut(tiledata),
                     tilelen as usize * mem::size_of::<f64>(),
-                    &mut (cbuf.as_mut_ptr() as *mut u8),
+                    &mut cbuf.as_mut_ptr().cast::<u8>(),
                     &mut clen,
                     Some(realloc),
                     Some(&mut gzip_nelem),
@@ -3349,7 +3349,7 @@ unsafe fn imcomp_convert_tile_tshort(
                 if sbuff_ii == (flagval as c_short) {
                     idata[ii] = nullval;
                 } else {
-                    idata[ii] = sbuff_ii as c_int;
+                    idata[ii] = c_int::from(sbuff_ii);
                 }
             }
         } else {
@@ -3379,7 +3379,7 @@ unsafe fn imcomp_convert_tile_tshort(
                     if sbuff_ii == (flagval as c_short) {
                         idata[ii] = nullval;
                     } else {
-                        idata[ii] = (sbuff_ii as c_int) + 32768;
+                        idata[ii] = c_int::from(sbuff_ii) + 32768;
                     }
                 }
             } else {
@@ -3400,7 +3400,7 @@ unsafe fn imcomp_convert_tile_tshort(
                     if sbuff_ii == (flagval as c_short) {
                         idata[ii] = nullval;
                     } else {
-                        idata[ii] = sbuff_ii as c_int;
+                        idata[ii] = c_int::from(sbuff_ii);
                     }
                 }
             } else {
@@ -3493,7 +3493,7 @@ fn imcomp_convert_tile_tushort(
                 if usbuff_ii == (flagval as c_ushort) {
                     idata[ii] = nullval;
                 } else {
-                    idata[ii] = (usbuff_ii as c_int) - 32768;
+                    idata[ii] = c_int::from(usbuff_ii) - 32768;
                 }
             }
         } else {
@@ -3695,7 +3695,7 @@ fn imcomp_convert_tile_tbyte(
                 if usbuff_ii == (flagval as c_uchar) {
                     idata[ii] = nullval;
                 } else {
-                    idata[ii] = usbuff_ii as c_int;
+                    idata[ii] = c_int::from(usbuff_ii);
                 }
             }
         } else {
@@ -3785,7 +3785,7 @@ fn imcomp_convert_tile_tsbyte(
                 if sbbuff_ii == (flagval as c_schar) {
                     idata[ii] = nullval;
                 } else {
-                    idata[ii] = (sbbuff_ii as c_int) + 128;
+                    idata[ii] = c_int::from(sbbuff_ii) + 128;
                 }
             }
         } else {
@@ -3900,7 +3900,7 @@ unsafe fn imcomp_convert_tile_tfloat(
                 let usbbuff: &[c_uchar] = cast_slice(tiledata);
                 dithersum = 0;
                 for ii in 0..(4 * tilelen as usize) {
-                    dithersum += usbbuff[ii] as c_ulong; /* doesn't matter if there is an integer overflow */
+                    dithersum += c_ulong::from(usbbuff[ii]); /* doesn't matter if there is an integer overflow */
                 }
                 (outfptr.Fptr).dither_seed = ((dithersum % 10000) as c_int) + 1;
 
@@ -3916,7 +3916,7 @@ unsafe fn imcomp_convert_tile_tfloat(
             }
 
             /* subtract 1 to convert from 1-based to 0-based element number */
-            irow = row + (outfptr.Fptr).dither_seed as c_long - 1; /* dither the quantized values */
+            irow = row + c_long::from((outfptr.Fptr).dither_seed) - 1; /* dither the quantized values */
         } else if (outfptr.Fptr).quantize_method == -1 {
             irow = 0; /* do not dither the quantized values */
         } else {
@@ -4071,7 +4071,7 @@ fn imcomp_convert_tile_tdouble(
                 let usbbuff: &[c_uchar] = cast_slice(tiledata);
                 dithersum = 0;
                 for ii in 0..(8 * tilelen as usize) {
-                    dithersum += usbbuff[ii] as c_ulong;
+                    dithersum += c_ulong::from(usbbuff[ii]);
                 }
                 (outfptr.Fptr).dither_seed = ((dithersum % 10000) as c_int) + 1;
 
@@ -4085,7 +4085,7 @@ fn imcomp_convert_tile_tdouble(
                 );
             }
 
-            irow = row + (outfptr.Fptr).dither_seed as c_long - 1; /* dither the quantized values */
+            irow = row + c_long::from((outfptr.Fptr).dither_seed) - 1; /* dither the quantized values */
         } else if (outfptr.Fptr).quantize_method == -1 {
             irow = 0; /* do not dither the quantized values */
         } else {
@@ -4169,7 +4169,7 @@ fn imcomp_nullscale(
         if idata[ii] == nullflagval {
             idata[ii] = nullval;
         } else {
-            dvalue = (idata[ii] as f64 - zero) / scale;
+            dvalue = (f64::from(idata[ii]) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4217,7 +4217,7 @@ fn imcomp_scalevalues(
     let mut dvalue: f64 = 0.0;
 
     for ii in 0..(tilelen as usize) {
-        dvalue = (idata[ii] as f64 - zero) / scale;
+        dvalue = (f64::from(idata[ii]) - zero) / scale;
 
         if dvalue < DINT_MIN {
             *status = OVERFLOW_ERR;
@@ -4253,7 +4253,7 @@ fn imcomp_nullscalei2(
         if idata[ii] == nullflagval {
             idata[ii] = nullval;
         } else {
-            dvalue = (idata[ii] as f64 - zero) / scale;
+            dvalue = (f64::from(idata[ii]) - zero) / scale;
 
             if dvalue < DSHRT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4301,7 +4301,7 @@ fn imcomp_scalevaluesi2(
     let mut dvalue: f64 = 0.0;
 
     for ii in 0..(tilelen as usize) {
-        dvalue = (idata[ii] as f64 - zero) / scale;
+        dvalue = (f64::from(idata[ii]) - zero) / scale;
 
         if dvalue < DSHRT_MIN {
             *status = OVERFLOW_ERR;
@@ -4339,7 +4339,7 @@ fn imcomp_nullfloats(
             if fdata[ii] == nullflagval {
                 idata[ii] = nullval;
             } else {
-                dvalue = fdata[ii] as f64;
+                dvalue = f64::from(fdata[ii]);
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -4357,7 +4357,7 @@ fn imcomp_nullfloats(
     } else {
         /* don't have to worry about null values */
         for ii in 0..(tilelen as usize) {
-            dvalue = fdata[ii] as f64;
+            dvalue = f64::from(fdata[ii]);
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4397,7 +4397,7 @@ fn imcomp_nullfloats_inplace(
             if fdata_ii == nullflagval {
                 idata[ii] = nullval;
             } else {
-                dvalue = fdata_ii as f64;
+                dvalue = f64::from(fdata_ii);
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -4416,7 +4416,7 @@ fn imcomp_nullfloats_inplace(
         /* don't have to worry about null values */
         for ii in 0..(tilelen as usize) {
             let fdata_ii: f32 = cast(idata[ii]);
-            dvalue = fdata_ii as f64;
+            dvalue = f64::from(fdata_ii);
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4457,7 +4457,7 @@ fn imcomp_nullscalefloats(
             if fdata[ii] == nullflagval {
                 idata[ii] = nullval;
             } else {
-                dvalue = (fdata[ii] as f64 - zero) / scale;
+                dvalue = (f64::from(fdata[ii]) - zero) / scale;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -4476,7 +4476,7 @@ fn imcomp_nullscalefloats(
         /* don't have to worry about null values */
 
         for ii in 0..(tilelen as usize) {
-            dvalue = (fdata[ii] as f64 - zero) / scale;
+            dvalue = (f64::from(fdata[ii]) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4518,7 +4518,7 @@ fn imcomp_nullscalefloats_inplace(
             if fdata_ii == nullflagval {
                 idata[ii] = nullval;
             } else {
-                dvalue = (fdata_ii as f64 - zero) / scale;
+                dvalue = (f64::from(fdata_ii) - zero) / scale;
 
                 if dvalue < DINT_MIN {
                     *status = OVERFLOW_ERR;
@@ -4538,7 +4538,7 @@ fn imcomp_nullscalefloats_inplace(
 
         for ii in 0..(tilelen as usize) {
             let fdata_ii: f32 = cast(idata[ii]);
-            dvalue = (fdata_ii as f64 - zero) / scale;
+            dvalue = (f64::from(fdata_ii) - zero) / scale;
 
             if dvalue < DINT_MIN {
                 *status = OVERFLOW_ERR;
@@ -4952,9 +4952,12 @@ pub(crate) fn fits_write_compressed_img(
         tilesize[ii] = (fptr.Fptr).tilesize[ii];
         tiledim[ii] = ((naxis[ii] as c_long - 1) / tilesize[ii] + 1) as c_int;
         ftile[ii] = (fpixel[ii] - 1) / tilesize[ii] + 1;
-        ltile[ii] = cmp::min((lpixel[ii] - 1) / tilesize[ii] + 1, tiledim[ii] as c_long);
+        ltile[ii] = cmp::min(
+            (lpixel[ii] - 1) / tilesize[ii] + 1,
+            c_long::from(tiledim[ii]),
+        );
         rowdim[ii] = ntemp; /* total tiles in each dimension */
-        ntemp *= tiledim[ii] as c_long;
+        ntemp *= c_long::from(tiledim[ii]);
     }
 
     /* support up to 6 dimensions for now */
@@ -5081,7 +5084,7 @@ pub(crate) fn fits_write_compressed_img(
             ffikyj_safe(
                 fptr,
                 cs!(c"ZBLANK"),
-                COMPRESS_NULL_VALUE as LONGLONG,
+                LONGLONG::from(COMPRESS_NULL_VALUE),
                 Some(cs!(c"null value in the compressed integer array")),
                 status,
             );
@@ -5267,7 +5270,7 @@ pub(crate) fn fits_write_compressed_pixels(
             firstcoord[1] = 0;
 
             /* increment pointers to next elements to be written */
-            arrayptr = &arrayptr[(nread * bytesperpixel as c_long) as usize..];
+            arrayptr = &arrayptr[(nread * c_long::from(bytesperpixel)) as usize..];
         }
     } else {
         ffpmsg_str("only 1D, 2D, or 3D images are currently supported");
@@ -5342,7 +5345,7 @@ fn fits_write_compressed_img_plane(
         /* set starting coord to beginning of next line */
         firstcoord[0] = 0;
         firstcoord[1] += 1;
-        arrayptr += ((trc[0] - blc[0] + 1) * bytesperpixel as c_long) as usize;
+        arrayptr += ((trc[0] - blc[0] + 1) * c_long::from(bytesperpixel)) as usize;
     }
 
     /* write contiguous complete rows of the image, if any */
@@ -5378,7 +5381,8 @@ fn fits_write_compressed_img_plane(
         }
 
         /* increment pointers for the last partial row */
-        arrayptr += ((trc[1] - blc[1] + 1) * naxes[0] as c_long * bytesperpixel as c_long) as usize;
+        arrayptr +=
+            ((trc[1] - blc[1] + 1) * naxes[0] as c_long * c_long::from(bytesperpixel)) as usize;
     }
 
     if trc[1] == lastcoord[1] + 1 {
@@ -7114,12 +7118,12 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
         return *status;
     }
 
-    (infptr.Fptr).maxelem = imcomp_calc_max_elem(
+    (infptr.Fptr).maxelem = c_long::from(imcomp_calc_max_elem(
         (infptr.Fptr).compress_type,
         maxtilelen as c_int,
         (infptr.Fptr).zbitpix,
         (infptr.Fptr).rice_blocksize,
-    ) as c_long;
+    ));
 
     /* Get Column numbers. */
     let mut cn_compressed = (infptr.Fptr).cn_compressed;
@@ -7736,9 +7740,9 @@ fn imcomp_decompress_tile(
 
             let ptr_addr = (&raw const infptr.Fptr) as usize;
             (infptr.Fptr).tilerow = tile_struct.tilerow.as_mut_ptr();
-            (infptr.Fptr).tiledata = tile_struct.tiledata.as_mut_ptr() as *mut *mut c_void;
+            (infptr.Fptr).tiledata = tile_struct.tiledata.as_mut_ptr().cast::<*mut c_void>();
             (infptr.Fptr).tilenullarray =
-                tile_struct.tilenullarray.as_mut_ptr() as *mut *mut c_void;
+                tile_struct.tilenullarray.as_mut_ptr().cast::<*mut c_void>();
             (infptr.Fptr).tiledatasize = tile_struct.tiledatasize.as_mut_ptr();
             (infptr.Fptr).tiletype = tile_struct.tiletype.as_mut_ptr();
             (infptr.Fptr).tileanynull = tile_struct.tileanynull.as_mut_ptr();
@@ -7756,7 +7760,7 @@ fn imcomp_decompress_tile(
     /* check if this tile was cached; if so, just copy it out */
     if !(infptr.Fptr).tilerow.is_null() {
         /* calculate the column bin of the compressed tile */
-        tilecol = (nrow as c_long - 1)
+        tilecol = (c_long::from(nrow) - 1)
             % (((((infptr.Fptr).znaxis[0] - 1) / ((infptr.Fptr).tilesize[0])) as c_long) + 1);
 
         let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
@@ -7836,7 +7840,7 @@ fn imcomp_decompress_tile(
                     infptr,
                     datatype,
                     (infptr.Fptr).cn_uncompressed,
-                    nrow as LONGLONG,
+                    LONGLONG::from(nrow),
                     1,
                     nelemll as LONGLONG,
                     nulval.clone(),
@@ -7850,7 +7854,7 @@ fn imcomp_decompress_tile(
                     infptr,
                     datatype,
                     (infptr.Fptr).cn_uncompressed,
-                    nrow as LONGLONG,
+                    LONGLONG::from(nrow),
                     1,
                     nelemll as LONGLONG,
                     buffer,
@@ -7867,7 +7871,7 @@ fn imcomp_decompress_tile(
             ffgdesll_safe(
                 infptr,
                 (infptr.Fptr).cn_gzip_data,
-                nrow as LONGLONG,
+                LONGLONG::from(nrow),
                 Some(&mut nelemll),
                 Some(&mut offset),
                 status,
@@ -7894,7 +7898,7 @@ fn imcomp_decompress_tile(
                 infptr,
                 TBYTE,
                 (infptr.Fptr).cn_gzip_data,
-                nrow as LONGLONG,
+                LONGLONG::from(nrow),
                 1,
                 nelemll as LONGLONG,
                 Some(NullValue::UByte(charnull)),
@@ -7950,7 +7954,7 @@ fn imcomp_decompress_tile(
                     uncompress2mem_from_mem(
                         &cbuf,
                         (nelemll as c_long).try_into().unwrap(),
-                        &mut (tempdouble.as_mut_ptr() as *mut u8),
+                        &mut tempdouble.as_mut_ptr().cast::<u8>(),
                         &mut idatalen,
                         None,
                         Some(&mut tilebytesize),
@@ -7981,7 +7985,7 @@ fn imcomp_decompress_tile(
                     uncompress2mem_from_mem(
                         &cbuf,
                         (nelemll as c_long).try_into().unwrap(),
-                        &mut (tempfloat.as_mut_ptr() as *mut u8),
+                        &mut tempfloat.as_mut_ptr().cast::<u8>(),
                         &mut idatalen,
                         None,
                         Some(&mut tilebytesize),
@@ -8019,9 +8023,9 @@ fn imcomp_decompress_tile(
 
                 if BYTESWAPPED {
                     if !tempfloat.is_empty() {
-                        ffswap4(cast_slice_mut(&mut tempfloat), tilelen as c_long);
+                        ffswap4(cast_slice_mut(&mut tempfloat), c_long::from(tilelen));
                     } else {
-                        ffswap4(cast_slice_mut(buffer), tilelen as c_long);
+                        ffswap4(cast_slice_mut(buffer), c_long::from(tilelen));
                     }
                 }
                 if datatype == TFLOAT {
@@ -8031,7 +8035,7 @@ fn imcomp_decompress_tile(
 
                     fffr4r4_inplace(
                         cast_slice_mut(buffer),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         1.0,
                         0.0,
                         nullcheck,
@@ -8048,7 +8052,7 @@ fn imcomp_decompress_tile(
                     /* note that the R*4 data are in the tempfloat array in this case */
                     fffr4r8(
                         &tempfloat,
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         1.0,
                         0.0,
                         nullcheck,
@@ -8070,9 +8074,9 @@ fn imcomp_decompress_tile(
 
                 if BYTESWAPPED {
                     if !tempdouble.is_empty() {
-                        ffswap8(cast_slice_mut(&mut tempdouble), tilelen as c_long);
+                        ffswap8(cast_slice_mut(&mut tempdouble), c_long::from(tilelen));
                     } else {
-                        ffswap8(cast_slice_mut(buffer), tilelen as c_long);
+                        ffswap8(cast_slice_mut(buffer), c_long::from(tilelen));
                     }
                 }
                 if datatype == TFLOAT {
@@ -8082,7 +8086,7 @@ fn imcomp_decompress_tile(
 
                     fffr8r4(
                         &tempdouble,
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         1.0,
                         0.0,
                         nullcheck,
@@ -8100,7 +8104,7 @@ fn imcomp_decompress_tile(
 
                     fffr8r8_inplace(
                         cast_slice_mut(buffer),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         1.0,
                         0.0,
                         nullcheck,
@@ -8222,7 +8226,7 @@ fn imcomp_decompress_tile(
         ffgcvk_safe(
             infptr,
             (infptr.Fptr).cn_zblank,
-            nrow as LONGLONG,
+            LONGLONG::from(nrow),
             1,
             1,
             0,
@@ -8441,32 +8445,32 @@ fn imcomp_decompress_tile(
             tiledatatype = TSHORT;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_2bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
+                fits_unshuffle_2bytes(cast_slice_mut(idata), LONGLONG::from(tilelen), status);
             }
 
             if BYTESWAPPED {
-                ffswap2(cast_slice_mut(idata), tilelen as c_long);
+                ffswap2(cast_slice_mut(idata), c_long::from(tilelen));
             }
         } else if tilebytesize == (tilelen * 4) as usize {
             /* this is a int I*4 array (or maybe R*4) */
             tiledatatype = TINT;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_4bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
+                fits_unshuffle_4bytes(cast_slice_mut(idata), LONGLONG::from(tilelen), status);
             }
 
             if BYTESWAPPED {
-                ffswap4(cast_slice_mut(idata), tilelen as c_long);
+                ffswap4(cast_slice_mut(idata), c_long::from(tilelen));
             }
         } else if tilebytesize == ((tilelen * 8) as usize) {
             /* this is a R*8 double array */
             tiledatatype = TDOUBLE;
 
             if (infptr.Fptr).compress_type == GZIP_2 {
-                fits_unshuffle_8bytes(cast_slice_mut(idata), tilelen as LONGLONG, status);
+                fits_unshuffle_8bytes(cast_slice_mut(idata), LONGLONG::from(tilelen), status);
             }
             if BYTESWAPPED {
-                ffswap8(cast_slice_mut(idata), tilelen as c_long);
+                ffswap8(cast_slice_mut(idata), c_long::from(tilelen));
             }
         } else if tilebytesize == (tilelen as size_t) {
             /* this is an unsigned char I*1 array */
@@ -8497,12 +8501,12 @@ fn imcomp_decompress_tile(
         } else if (infptr.Fptr).zbitpix == SHORT_IMG {
             tiledatatype = TSHORT;
             if BYTESWAPPED {
-                ffswap2(cast_slice_mut(idata), tilelen as c_long);
+                ffswap2(cast_slice_mut(idata), c_long::from(tilelen));
             }
         } else {
             tiledatatype = TINT;
             if BYTESWAPPED {
-                ffswap4(cast_slice_mut(idata), tilelen as c_long);
+                ffswap4(cast_slice_mut(idata), c_long::from(tilelen));
             }
         }
 
@@ -8535,7 +8539,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4i2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8548,7 +8552,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8i2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8565,7 +8569,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4i2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -8579,7 +8583,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4i2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8610,7 +8614,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2i2(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8624,7 +8628,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1i2(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8647,7 +8651,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4int(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8660,7 +8664,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8int(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8677,7 +8681,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4int(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -8691,7 +8695,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4int(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8706,7 +8710,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2int(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8720,7 +8724,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1int(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8742,7 +8746,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4i4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8755,7 +8759,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8i4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8772,7 +8776,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4i4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -8786,7 +8790,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4i4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8801,7 +8805,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2i4(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8815,7 +8819,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1i4(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -8838,7 +8842,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4r4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8851,7 +8855,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8r4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8869,9 +8873,9 @@ fn imcomp_decompress_tile(
 
             if tiledatatype == TINT {
                 unquantize_i4r4(
-                    ((nrow + (infptr.Fptr).dither_seed - 1) as c_long) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1) as c_long,
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -8885,9 +8889,9 @@ fn imcomp_decompress_tile(
                 );
             } else if tiledatatype == TSHORT {
                 unquantize_i2r4(
-                    (nrow + (infptr.Fptr).dither_seed - 1) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1),
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -8901,9 +8905,9 @@ fn imcomp_decompress_tile(
                 );
             } else if tiledatatype == TBYTE {
                 unquantize_i1r4(
-                    (nrow + (infptr.Fptr).dither_seed - 1) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1),
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -8926,7 +8930,7 @@ fn imcomp_decompress_tile(
                     /* offset by +32768 when using PLIO */
                     fffi4r4(
                         cast_slice_mut(idata),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         bscale,
                         bzero - 32768.,
                         nullcheck,
@@ -8940,7 +8944,7 @@ fn imcomp_decompress_tile(
                 } else {
                     fffi4r4(
                         cast_slice_mut(idata),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         bscale,
                         bzero,
                         nullcheck,
@@ -8955,7 +8959,7 @@ fn imcomp_decompress_tile(
             } else if tiledatatype == TSHORT {
                 fffi2r4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8969,7 +8973,7 @@ fn imcomp_decompress_tile(
             } else if tiledatatype == TBYTE {
                 fffi1r4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -8993,7 +8997,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4r8(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9006,7 +9010,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8r8(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9023,9 +9027,9 @@ fn imcomp_decompress_tile(
             /* use the new dithering algorithm (introduced in July 2009) */
             if tiledatatype == TINT {
                 unquantize_i4r8(
-                    (nrow + (infptr.Fptr).dither_seed - 1) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1),
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -9039,9 +9043,9 @@ fn imcomp_decompress_tile(
                 );
             } else if tiledatatype == TSHORT {
                 unquantize_i2r8(
-                    (nrow + (infptr.Fptr).dither_seed - 1) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1),
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -9055,9 +9059,9 @@ fn imcomp_decompress_tile(
                 );
             } else if tiledatatype == TBYTE {
                 unquantize_i1r8(
-                    (nrow + (infptr.Fptr).dither_seed - 1) as c_long,
+                    c_long::from(nrow + (infptr.Fptr).dither_seed - 1),
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     (infptr.Fptr).quantize_method,
@@ -9079,7 +9083,7 @@ fn imcomp_decompress_tile(
                     /* offset by +32768 when using PLIO */
                     fffi4r8(
                         cast_slice_mut(idata),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         bscale,
                         bzero - 32768.,
                         nullcheck,
@@ -9093,7 +9097,7 @@ fn imcomp_decompress_tile(
                 } else {
                     fffi4r8(
                         cast_slice_mut(idata),
-                        tilelen as c_long,
+                        c_long::from(tilelen),
                         bscale,
                         bzero,
                         nullcheck,
@@ -9108,7 +9112,7 @@ fn imcomp_decompress_tile(
             } else if tiledatatype == TSHORT {
                 fffi2r8(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9122,7 +9126,7 @@ fn imcomp_decompress_tile(
             } else if tiledatatype == TBYTE {
                 fffi1r8(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9140,7 +9144,7 @@ fn imcomp_decompress_tile(
         if tiledatatype == TINT {
             fffi4i1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9154,7 +9158,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2i1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9168,7 +9172,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1i1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9185,7 +9189,7 @@ fn imcomp_decompress_tile(
         if tiledatatype == TINT {
             fffi4s1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9199,7 +9203,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2s1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9213,7 +9217,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1s1(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9235,7 +9239,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4u2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9248,7 +9252,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8u2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9265,7 +9269,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4u2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -9279,7 +9283,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4u2(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9294,7 +9298,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2u2(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9308,7 +9312,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1u2(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9330,7 +9334,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4uint(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9343,7 +9347,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8uint(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9360,7 +9364,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4uint(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -9374,7 +9378,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4uint(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9389,7 +9393,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2uint(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9403,7 +9407,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1uint(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9425,7 +9429,7 @@ fn imcomp_decompress_tile(
             if tiledatatype == TINT {
                 fffr4u4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9438,7 +9442,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffr8u4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9455,7 +9459,7 @@ fn imcomp_decompress_tile(
                 /* offset by +32768 when using PLIO */
                 fffi4u4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero - 32768.,
                     nullcheck,
@@ -9469,7 +9473,7 @@ fn imcomp_decompress_tile(
             } else {
                 fffi4u4(
                     cast_slice_mut(idata),
-                    tilelen as c_long,
+                    c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
@@ -9484,7 +9488,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TSHORT {
             fffi2u4(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9498,7 +9502,7 @@ fn imcomp_decompress_tile(
         } else if tiledatatype == TBYTE {
             fffi1u4(
                 cast_slice_mut(idata),
-                tilelen as c_long,
+                c_long::from(tilelen),
                 bscale,
                 bzero,
                 nullcheck,
@@ -9531,7 +9535,7 @@ fn imcomp_decompress_tile(
                 .get_mut(&(&raw const infptr.Fptr as usize))
                 .unwrap();
 
-            tilesize = pixlen as c_long * tilelen as c_long;
+            tilesize = pixlen as c_long * c_long::from(tilelen);
 
             /* check that tile size/type has not changed */
             if tilesize != tilestruct.tiledatasize[tilecol as usize]
@@ -9923,32 +9927,33 @@ fn imcomp_copy_overlap(
                         if nullcheck == NullCheckType::SetNullArray {
                             /* copy overlapping null flags from tile to image */
                             let n = nullarray.as_deref_mut().unwrap();
-                            n[imgpix as usize..(imgpix + overlap_flags as c_long) as usize]
+                            n[imgpix as usize..(imgpix + c_long::from(overlap_flags)) as usize]
                                 .copy_from_slice(
                                     &bnullarray[tilepix as usize
-                                        ..(tilepix + overlap_flags as c_long) as usize],
+                                        ..(tilepix + c_long::from(overlap_flags)) as usize],
                                 );
                         }
 
                         /* convert from image pixel to byte offset */
-                        tilepixbyte = tilepix * pixlen as c_long;
-                        imgpixbyte = imgpix * pixlen as c_long;
+                        tilepixbyte = tilepix * c_long::from(pixlen);
+                        imgpixbyte = imgpix * c_long::from(pixlen);
                         /*
                         printf("  tilepix, tilepixbyte, imgpix, imgpixbyte= %d
                         %d %d %d\n", tilepix, tilepixbyte, imgpix, imgpixbyte);
                         */
                         /* copy overlapping row of pixels from tile to image */
-                        image[imgpixbyte as usize..(imgpixbyte + overlap_bytes as c_long) as usize]
+                        image[imgpixbyte as usize
+                            ..(imgpixbyte + c_long::from(overlap_bytes)) as usize]
                             .copy_from_slice(
                                 &tile[tilepixbyte as usize
-                                    ..(tilepixbyte + overlap_bytes as c_long) as usize],
+                                    ..(tilepixbyte + c_long::from(overlap_bytes)) as usize],
                             );
 
-                        tilepix += (overlap_flags as c_long) * (inc[0]).abs();
+                        tilepix += c_long::from(overlap_flags) * (inc[0]).abs();
                         if inc[0] > 0 {
-                            imgpix += overlap_flags as c_long;
+                            imgpix += c_long::from(overlap_flags);
                         } else {
-                            imgpix -= overlap_flags as c_long;
+                            imgpix -= c_long::from(overlap_flags);
                         }
                     }
                     it1 += 1;
@@ -10188,25 +10193,25 @@ fn imcomp_merge_overlap(
                     /* loop over pixels along one row of the image */
                     for _ipos in (imgfpix[0]..=imglpix[0]).step_by(overlap_flags as usize) {
                         /* convert from image pixel to byte offset */
-                        tilepixbyte = tilepix * (pixlen as c_long);
-                        imgpixbyte = imgpix * (pixlen as c_long);
+                        tilepixbyte = tilepix * c_long::from(pixlen);
+                        imgpixbyte = imgpix * c_long::from(pixlen);
                         /*
                         printf("  tilepix, tilepixbyte, imgpix, imgpixbyte= %d
                         %d %d %d\n", tilepix, tilepixbyte, imgpix, imgpixbyte);
                         */
                         /* copy overlapping row of pixels from image to tile */
                         tile[tilepixbyte as usize
-                            ..(tilepixbyte + overlap_bytes as c_long) as usize]
+                            ..(tilepixbyte + c_long::from(overlap_bytes)) as usize]
                             .copy_from_slice(
                                 &image[imgpixbyte as usize
-                                    ..(imgpixbyte + overlap_bytes as c_long) as usize],
+                                    ..(imgpixbyte + c_long::from(overlap_bytes)) as usize],
                             );
 
-                        tilepix += (overlap_flags as c_long) * (inc[0]).abs();
+                        tilepix += c_long::from(overlap_flags) * (inc[0]).abs();
                         if inc[0] > 0 {
-                            imgpix += overlap_flags as c_long;
+                            imgpix += c_long::from(overlap_flags);
                         } else {
-                            imgpix -= overlap_flags as c_long;
+                            imgpix -= c_long::from(overlap_flags);
                         }
                     }
                     it1 += 1;
@@ -10259,7 +10264,8 @@ fn unquantize_i1r4(
                       if (dither_method == SUBTRACTIVE_DITHER_2 &&
             input[ii] == ZERO_VALUE) output[ii] = 0.0; else
             */
-            output[ii] = (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5)
+            output[ii] = ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize])
+                + 0.5)
                 * scale
                 + zero) as f32;
 
@@ -10291,7 +10297,8 @@ fn unquantize_i1r4(
                  input[ii] == ZERO_VALUE) output[ii] = 0.0; else
                 */
                 output[ii] =
-                    (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5) * scale
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
                         + zero) as f32;
             }
 
@@ -10349,7 +10356,8 @@ fn unquantize_i2r4(
                       if (dither_method == SUBTRACTIVE_DITHER_2 &&
             input[ii] == ZERO_VALUE) output[ii] = 0.0; else
             */
-            output[ii] = (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5)
+            output[ii] = ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize])
+                + 0.5)
                 * scale
                 + zero) as f32;
 
@@ -10381,7 +10389,8 @@ fn unquantize_i2r4(
                  input[ii] == ZERO_VALUE) output[ii] = 0.0; else
                 */
                 output[ii] =
-                    (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5) * scale
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
                         + zero) as f32;
             }
 
@@ -10439,7 +10448,8 @@ fn unquantize_i4r4(
                 output[ii] = 0.0;
             } else {
                 output[ii] =
-                    (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5) * scale
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
                         + zero) as f32;
             }
 
@@ -10469,7 +10479,8 @@ fn unquantize_i4r4(
                 output[ii] = 0.0;
             } else {
                 output[ii] =
-                    (((input[ii] as f64) - fits_rand_value[nextrand as usize] as f64 + 0.5) * scale
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
                         + zero) as f32;
             }
 
@@ -10527,7 +10538,8 @@ fn unquantize_i1r8(
                       if (dither_method == SUBTRACTIVE_DITHER_2 &&
             input[ii] == ZERO_VALUE) output[ii] = 0.0; else
             */
-            output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64) + 0.5)
+            output[ii] = ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize])
+                + 0.5)
                 * scale
                 + zero) as f64;
 
@@ -10558,10 +10570,10 @@ fn unquantize_i1r8(
                                   if (dither_method == SUBTRACTIVE_DITHER_2 &&
                  input[ii] == ZERO_VALUE) output[ii] = 0.0; else
                 */
-                output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64)
-                    + 0.5)
-                    * scale
-                    + zero) as f64;
+                output[ii] =
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
+                        + zero) as f64;
             }
 
             nextrand += 1;
@@ -10619,7 +10631,8 @@ fn unquantize_i2r8(
                       if (dither_method == SUBTRACTIVE_DITHER_2 &&
             input[ii] == ZERO_VALUE) output[ii] = 0.0; else
             */
-            output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64) + 0.5)
+            output[ii] = ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize])
+                + 0.5)
                 * scale
                 + zero) as f64;
 
@@ -10649,10 +10662,10 @@ fn unquantize_i2r8(
                 /*                    if (dither_method == SUBTRACTIVE_DITHER_2
                  && input[ii] == ZERO_VALUE) output[ii] = 0.0; else
                 */
-                output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64)
-                    + 0.5)
-                    * scale
-                    + zero) as f64;
+                output[ii] =
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
+                        + zero) as f64;
             }
 
             nextrand += 1;
@@ -10708,10 +10721,10 @@ fn unquantize_i4r8(
             if dither_method == SUBTRACTIVE_DITHER_2 && input[ii] == ZERO_VALUE {
                 output[ii] = 0.0;
             } else {
-                output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64)
-                    + 0.5)
-                    * scale
-                    + zero) as f64;
+                output[ii] =
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
+                        + zero) as f64;
             }
 
             nextrand += 1;
@@ -10739,10 +10752,10 @@ fn unquantize_i4r8(
             } else if dither_method == SUBTRACTIVE_DITHER_2 && input[ii] == ZERO_VALUE {
                 output[ii] = 0.0;
             } else {
-                output[ii] = (((input[ii] as f64) - (fits_rand_value[nextrand as usize] as f64)
-                    + 0.5)
-                    * scale
-                    + zero) as f64;
+                output[ii] =
+                    ((f64::from(input[ii]) - f64::from(fits_rand_value[nextrand as usize]) + 0.5)
+                        * scale
+                        + zero) as f64;
             }
 
             nextrand += 1;
@@ -11120,7 +11133,7 @@ pub unsafe fn fits_compress_table_safer(
         fits_modify_key_lng(
             outfptr,
             cs!(c"NAXIS1"),
-            (ncols * 16) as LONGLONG,
+            LONGLONG::from(ncols * 16),
             Some(cs!(c"&")),
             status,
         ); /* 16 bytes for each 1QB column */
@@ -11453,14 +11466,14 @@ pub unsafe fn fits_compress_table_safer(
                             } else {
                                 /* if P pointers */
                                 let pdescriptors: &[c_int] = cast_slice(&cdescript); /* use this instead for or P type descriptors */
-                                vlalen = pdescriptors[jj * 2] as LONGLONG;
-                                vlastart = pdescriptors[(jj * 2) + 1] as LONGLONG;
+                                vlalen = LONGLONG::from(pdescriptors[jj * 2]);
+                                vlastart = LONGLONG::from(pdescriptors[(jj * 2) + 1]);
                             }
 
                             if vlalen > 0 {
                                 /* skip zero-length VLAs */
 
-                                vlamemlen = vlalen * (-coltype[ii] / 10) as LONGLONG;
+                                vlamemlen = vlalen * LONGLONG::from(-coltype[ii] / 10);
 
                                 /* memory for the input uncompressed VLA */
                                 if vlamem.try_reserve_exact(vlamemlen as usize).is_err() {
@@ -11471,7 +11484,7 @@ pub unsafe fn fits_compress_table_safer(
                                     vlamem.resize(vlamemlen as usize, 0);
                                 }
 
-                                compmemlen = ((vlalen * ((-coltype[ii] / 10) as LONGLONG)) as f64
+                                compmemlen = ((vlalen * LONGLONG::from(-coltype[ii] / 10)) as f64
                                     * 1.5) as usize;
                                 if compmemlen < 100 {
                                     compmemlen = 100;
@@ -12262,7 +12275,7 @@ pub fn fits_uncompress_table_safe(
          */
 
         fullsize = (naxis1 * rowspertile) as usize;
-        let cm_size: usize = fullsize + (addspace as c_long * rowspertile) as usize;
+        let cm_size: usize = fullsize + (c_long::from(addspace) * rowspertile) as usize;
 
         if cm_buffer.try_reserve_exact(cm_size).is_err() {
             ffpmsg_str("Could not allocate buffer for transformed column-major table");
@@ -12386,7 +12399,7 @@ pub fn fits_uncompress_table_safe(
                                 uncompress2mem_from_mem(
                                     &ptr,
                                     vla_repeat.try_into().unwrap(),
-                                    &mut (cptr.as_mut_ptr() as *mut u8),
+                                    &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
                                     Some(realloc),
                                     Some(&mut dlen),
@@ -12423,7 +12436,7 @@ pub fn fits_uncompress_table_safe(
                                 uncompress2mem_from_mem(
                                     &ptr,
                                     vla_repeat.try_into().unwrap(),
-                                    &mut (cptr.as_mut_ptr() as *mut u8),
+                                    &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
                                     Some(realloc),
                                     Some(&mut dlen),
@@ -12453,7 +12466,7 @@ pub fn fits_uncompress_table_safe(
                                 uncompress2mem_from_mem(
                                     &ptr,
                                     vla_repeat.try_into().unwrap(),
-                                    &mut (cptr.as_mut_ptr() as *mut u8),
+                                    &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
                                     Some(realloc),
                                     Some(&mut dlen),
@@ -12468,7 +12481,7 @@ pub fn fits_uncompress_table_safe(
                             uncompress2mem_from_mem(
                                 &ptr,
                                 vla_repeat.try_into().unwrap(),
-                                &mut (cptr.as_mut_ptr() as *mut u8),
+                                &mut cptr.as_mut_ptr().cast::<u8>(),
                                 &mut fullsize,
                                 Some(realloc),
                                 Some(&mut dlen),
@@ -12789,8 +12802,8 @@ pub fn fits_uncompress_table_safe(
                             if cvlalen > 0 {
                                 /* get the size and location to write the uncompressed VLA in the uncompressed table */
                                 if rmajor_colwidth[ii] == 8 {
-                                    vlalen = pdescript[jj * 2] as LONGLONG;
-                                    vlastart = pdescript[(jj * 2) + 1] as LONGLONG;
+                                    vlalen = LONGLONG::from(pdescript[jj * 2]);
+                                    vlastart = LONGLONG::from(pdescript[(jj * 2) + 1]);
                                 } else {
                                     vlalen = qdescript[jj * 2];
                                     vlastart = qdescript[(jj * 2) + 1];
@@ -12915,19 +12928,19 @@ pub fn fits_uncompress_table_safe(
 
                                         if zctype[ii] == GZIP_2 {
                                             /* unshuffle the bytes after ungzipping them */
-                                            if ((-coltype[ii] / 10) as c_int) == 2 {
+                                            if c_int::from(-coltype[ii] / 10) == 2 {
                                                 fits_unshuffle_2bytes(
                                                     cast_slice_mut(&mut uncompressed_vla),
                                                     vlalen,
                                                     status,
                                                 );
-                                            } else if ((-coltype[ii] / 10) as c_int) == 4 {
+                                            } else if c_int::from(-coltype[ii] / 10) == 4 {
                                                 fits_unshuffle_4bytes(
                                                     cast_slice_mut(&mut uncompressed_vla),
                                                     vlalen,
                                                     status,
                                                 );
-                                            } else if ((-coltype[ii] / 10) as c_int) == 8 {
+                                            } else if c_int::from(-coltype[ii] / 10) == 8 {
                                                 fits_unshuffle_8bytes(
                                                     cast_slice_mut(&mut uncompressed_vla),
                                                     vlalen,
@@ -13283,7 +13296,7 @@ fn fits_int_to_longlong_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            longlongarray[ii] = intarray[ii + firstelem] as LONGLONG;
+            longlongarray[ii] = LONGLONG::from(intarray[ii + firstelem]);
         }
 
         /* copy temp array back to alias */
@@ -13358,7 +13371,7 @@ fn fits_short_to_int_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            intarray[ii] = ((shortarray[ii + firstelem]) as c_int) + shift;
+            intarray[ii] = c_int::from(shortarray[ii + firstelem]) + shift;
         }
 
         /* copy temp array back to alias */
@@ -13433,7 +13446,7 @@ fn fits_ushort_to_int_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            intarray[ii] = ((ushortarray[ii + firstelem]) as c_int) + shift;
+            intarray[ii] = c_int::from(ushortarray[ii + firstelem]) + shift;
         }
 
         /* copy temp array back to alias */
@@ -13507,7 +13520,7 @@ fn fits_ubyte_to_int_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            intarray[ii] = ubytearray[ii + firstelem] as c_int;
+            intarray[ii] = c_int::from(ubytearray[ii + firstelem]);
         }
 
         /* copy temp array back to alias */
@@ -13586,7 +13599,7 @@ fn fits_sbyte_to_int_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            intarray[ii] = (sbytearray[ii + firstelem].overflowing_add_unsigned(128).0) as c_int; /* !! Note the offset !! */
+            intarray[ii] = c_int::from(sbytearray[ii + firstelem].overflowing_add_unsigned(128).0); /* !! Note the offset !! */
         }
 
         /* copy temp array back to alias */
