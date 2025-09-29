@@ -3,6 +3,7 @@ use std::ffi::c_void;
 use crate::c_types::{c_char, c_int, c_long};
 
 use crate::eval_l::yyguts_t;
+use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
 pub const MAXDIMS: c_int = 5;
@@ -89,8 +90,9 @@ pub struct Node {
 #[derive(Default)]
 pub struct ParseData {
     pub def_fptr: *mut fitsfile,
-    pub getData:
-        Option<fn(p: &mut ParseData, dataName: &[c_char], dataValue: *mut c_void) -> c_int>,
+    pub getData: Option<
+        fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int,
+    >,
     pub loadData: Option<
         fn(
             p: &mut ParseData,

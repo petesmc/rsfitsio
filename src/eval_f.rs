@@ -74,7 +74,7 @@ use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, gtifilt_fct, regfilt_fct};
+use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT, fits_parser_yyparse};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -1562,13 +1562,13 @@ fn ffcprs(lParse: &mut ParseData) {
             node = lParse.nNodes;
             while node != 0 {
                 node -= 1;
-                if (lParse.Nodes[node as usize]).operation == gtifilt_fct as c_int {
+                if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
                     i = lParse.Nodes[node as usize].SubNodes[0];
                     if !(lParse.Nodes[i]).value.data.ptr.is_null() {
                         let mut data_ptr = (lParse.Nodes[i]).value.data.ptr;
                         FREE!(data_ptr);
                     }
-                } else if (lParse.Nodes[node as usize]).operation == regfilt_fct as c_int {
+                } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     fits_free_region(Box::from_raw(
                         (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
@@ -3834,7 +3834,7 @@ pub(crate) fn ffffrw_work_safe(
     unsafe {
         let result: &mut Node;
 
-        let lParse: &mut ParseData = &mut *(*workData).lParse;
+        let lParse: &mut ParseData = &mut *workData.lParse;
 
         Evaluate_Parser(lParse, firstrow, nrows);
 
@@ -3842,7 +3842,7 @@ pub(crate) fn ffffrw_work_safe(
             result = &mut lParse.Nodes[lParse.resultNode as usize];
             if result.operation == CONST_OP {
                 if result.value.data.log != 0 {
-                    *((*workData).prownum) = firstrow;
+                    *(workData.prownum) = firstrow;
                     return -1;
                 }
             } else {
@@ -3850,7 +3850,7 @@ pub(crate) fn ffffrw_work_safe(
                     if *(result.value.data.logptr.add(idx)) != 0
                         && *(result.value.undef.add(idx)) == 0
                     {
-                        *((*workData).prownum) = firstrow + idx as c_long;
+                        *(workData.prownum) = firstrow + idx as c_long;
                         return -1;
                     }
                 }
@@ -4375,9 +4375,13 @@ fn set_image_col_types(
 
 *************************************************************************/
 
-fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void) -> c_int {
+fn find_column(
+    lParse: &mut ParseData,
+    colName: &[c_char],
+    itslval: &mut FITS_PARSER_YYSTYPE,
+) -> c_int {
     unsafe {
-        let thelval: *mut FITS_PARSER_YYSTYPE = itslval.cast::<FITS_PARSER_YYSTYPE>();
+        let thelval = itslval;
 
         let mut status: c_int;
         let mut colnum: c_int = 0;
@@ -4401,7 +4405,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
         }
 
         if colName[0] == b'#' as c_char {
-            return find_keywd(lParse, &colName[1..], itslval);
+            return find_keywd(lParse, &colName[1..], thelval);
         }
 
         fptr = lParse.def_fptr;
@@ -4495,7 +4499,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             ) != 0
             {
                 if status == COL_NOT_FOUND {
-                    ktype = find_keywd(lParse, colName, itslval);
+                    ktype = find_keywd(lParse, colName, thelval);
                     if ktype != P_ERROR {
                         ffcmsg_safe();
                     }
@@ -4641,15 +4645,19 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char], itslval: *mut c_void)
             }
         }
         lParse.nCols += 1;
-        (*thelval).lng = c_long::from(col_cnt);
+        thelval.lng = c_long::from(col_cnt);
 
         ktype
     }
 }
 
-fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) -> c_int {
+fn find_keywd(
+    lParse: &mut ParseData,
+    keyname: &[c_char],
+    itslval: &mut FITS_PARSER_YYSTYPE,
+) -> c_int {
     unsafe {
-        let thelval: *mut FITS_PARSER_YYSTYPE = itslval.cast::<FITS_PARSER_YYSTYPE>();
+        let thelval = itslval;
 
         let mut status: c_int = 0;
         let mut ktype: c_int = 0;
@@ -4662,15 +4670,16 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
         let mut ival: c_long = 0;
 
         status = 0;
-        let fptr: *mut fitsfile = lParse.def_fptr;
-        if fits_read_keyword(
-            unsafe { &mut *fptr },
-            keyname,
-            &mut keyvalue,
-            None,
-            &mut status,
-        ) != 0
-        {
+
+        if lParse.def_fptr.is_null() {
+            ffpmsg_str("find_keywd: no default fitsfile defined");
+            lParse.status = P_ERROR;
+            return P_ERROR;
+        }
+
+        let fptr: &mut fitsfile = lParse.def_fptr.as_mut().expect(NULL_MSG);
+
+        if fits_read_keyword(fptr, keyname, &mut keyvalue, None, &mut status) != 0 {
             if status == KEY_NO_EXIST {
                 /*  Do this since ffgkey doesn't put an error message on stack  */
                 int_snprintf!(
@@ -4697,38 +4706,32 @@ fn find_keywd(lParse: &mut ParseData, keyname: &[c_char], itslval: *mut c_void) 
         match dtype as u8 {
             b'C' => {
                 // 'C' as c_char
-                fits_read_key_str(
-                    unsafe { &mut *fptr },
-                    keyname,
-                    &mut keyvalue,
-                    None,
-                    &mut status,
-                );
+                fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
                 ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(unsafe { (*thelval).astr.as_mut_ptr() }, keyvalue.as_ptr());
+                strcpy(unsafe { thelval.astr.as_mut_ptr() }, keyvalue.as_ptr());
             }
             b'L' => {
                 // 'L' as c_char
-                fits_read_key_log(unsafe { &mut *fptr }, keyname, &mut bval, None, &mut status);
+                fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
                 ktype = fits_parser_yytokentype::BOOLEAN as c_int;
                 unsafe {
-                    (*thelval).log = bval as c_char;
+                    thelval.log = bval as c_char;
                 }
             }
             b'I' => {
                 // 'I' as c_char
-                fits_read_key_lng(unsafe { &mut *fptr }, keyname, &mut ival, None, &mut status);
+                fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
                 ktype = fits_parser_yytokentype::LONG as c_int;
                 unsafe {
-                    (*thelval).lng = ival;
+                    thelval.lng = ival;
                 }
             }
             b'F' => {
                 // 'F' as c_char
-                fits_read_key_dbl(unsafe { &mut *fptr }, keyname, &mut rval, None, &mut status);
+                fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
                 ktype = fits_parser_yytokentype::DOUBLE as c_int;
                 unsafe {
-                    (*thelval).dbl = rval;
+                    thelval.dbl = rval;
                 }
             }
             _ => {

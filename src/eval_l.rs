@@ -149,11 +149,7 @@ pub(crate) fn fits_parser_yyGetVariable(
 
     if varNum < 0 {
         if (lParse.getData).is_some() {
-            dtype = (lParse.getData).expect("non-null function pointer")(
-                lParse,
-                varName,
-                (thelval as *mut FITS_PARSER_YYSTYPE).cast::<c_void>(),
-            );
+            dtype = (lParse.getData).expect("non-null function pointer")(lParse, varName, thelval);
         } else {
             dtype = -1;
             lParse.status = 431 as c_int;
@@ -723,7 +719,11 @@ pub(crate) fn fits_parser_yylex(
                                         .expect("non-null function pointer")(
                                         &mut *yyscanner.yyextra_r,
                                         yytext_r_slice,
-                                        yyscanner.yylval_r.cast::<c_void>(),
+                                        yyscanner
+                                            .yylval_r
+                                            .cast::<FITS_PARSER_YYSTYPE>()
+                                            .as_mut()
+                                            .unwrap(),
                                     );
                                     return result;
                                 }
