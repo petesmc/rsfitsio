@@ -2331,6 +2331,7 @@ fn Setup_DataArrays(
                         *bitStrs.add(row) =
                             (*bitStrs.add(0)).add((row as c_long * (nelem + 1)) as usize);
                         idx = (row as c_long) * ((nelem + 7) / 8) + 1;
+
                         for len in 0..nelem as usize {
                             if (*icol.array.cast::<c_char>().add(idx as usize)
                                 & (1 << (7 - (len % 8))))
@@ -2344,7 +2345,7 @@ fn Setup_DataArrays(
                                 idx += 1;
                             }
                         }
-                        *(*bitStrs.add(row)).add(len as usize) = 0;
+                        *(*bitStrs.add(row)).add(nelem as usize) = 0;
                     }
                     varData.undef = bitStrs.cast::<c_char>();
                     varData.data = bitStrs.cast::<c_void>();

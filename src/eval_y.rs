@@ -14941,8 +14941,8 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
         let mut l1 = strlen(bitstrm1) as c_int;
         let mut l2 = strlen(bitstrm2) as c_int;
 
-        let mut bitstrm1 = std::slice::from_raw_parts_mut(bitstrm1, l1 as usize);
-        let mut bitstrm2 = std::slice::from_raw_parts_mut(bitstrm2, l2 as usize);
+        let mut bitstrm1 = std::slice::from_raw_parts_mut(bitstrm1, l1 as usize+1);
+        let mut bitstrm2 = std::slice::from_raw_parts_mut(bitstrm2, l2 as usize+1);
 
         largestStream = cmp::max(l1, l2);
 
@@ -14953,17 +14953,17 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
             ldiff = l2 - l1;
             i = 0;
 
-            while ldiff >= 0 {
-                ldiff -= 1;
+            while ldiff > 0 {
                 stream[i as usize] = b'0' as c_char;
                 i += 1;
+                ldiff -= 1;
             }
 
-            while l1 >= 0 {
-                l1 -= 1;
+            while l1 > 0 {
                 stream[i as usize] = bitstrm1[0];
                 bitstrm1 = &mut bitstrm1[1..];
                 i += 1;
+                l1 -= 1;
             }
 
             stream[i as usize] = 0;
@@ -14972,17 +14972,17 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
             ldiff = l1 - l2;
             i = 0;
 
-            while ldiff >= 0 {
-                ldiff -= 1;
+            while ldiff > 0 {
                 stream[i as usize] = b'0' as c_char;
                 i += 1;
+                ldiff -= 1;
             }
 
-            while l2 >= 0 {
-                l2 -= 1;
+            while l2 > 0 {
                 stream[i as usize] = bitstrm2[0];
                 bitstrm2 = &mut bitstrm2[1..];
                 i += 1;
+                l2 -= 1;
             }
 
             stream[i as usize] = 0;
@@ -14991,10 +14991,10 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
 
         loop {
             chr1 = bitstrm1[0];
-            bitstrm1 = &mut bitstrm1[1..];
             if chr1 == 0 {
                 break;
             }
+            bitstrm1 = &mut bitstrm1[1..];
 
             chr2 = bitstrm2[0];
             bitstrm2 = &mut bitstrm2[1..];

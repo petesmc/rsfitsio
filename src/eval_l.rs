@@ -1098,7 +1098,7 @@ fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
         let mut yy_cp: *mut c_char = std::ptr::null_mut::<c_char>();
 
         yy_current_state = yyscanner.yy_start;
-        yy_cp = (yyscanner.yytext_r).offset(0);
+        yy_cp = (yyscanner.yytext_r);
         while yy_cp < yyscanner.yy_c_buf_p {
             let mut yy_c: YY_CHAR = (if c_int::from(*yy_cp) != 0 {
                 c_int::from(YY_EC[*yy_cp as YY_CHAR as usize])

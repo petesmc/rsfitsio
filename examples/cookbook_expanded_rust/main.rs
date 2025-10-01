@@ -286,6 +286,36 @@ fn writeascii() {
 
 /*--------------------------------------------------------------------------*/
 /// Create a binary table extension with all data types (except P and Q)
+///
+/// IMPORTANT NOTE ON TBIT (Bit Array) COLUMNS:
+/// ============================================
+/// TBIT columns in FITS binary tables require special handling that differs from other data types:
+///
+/// 1. DATA REPRESENTATION:
+///    - TBIT columns store individual bits, not bytes
+///    - Each bit is represented as a logical value in memory:
+///      * 0 (zero) = FALSE = bit will be 0
+///      * Non-zero = TRUE = bit will be 1
+///    - For an "8X" column format, each row contains 8 bits
+///
+/// 2. MEMORY LAYOUT:
+///    - The data is passed as an array of c_char (logical values)
+///    - For 6 rows with 8 bits each, you need 48 c_char elements total
+///    - NOT 6 bytes as you might expect!
+///
+/// 3. API FUNCTIONS:
+///    - Use fits_write_col() and fits_read_col() with TBIT datatype for TBIT columns
+///    - Parameters are the same as other column types, but:
+///      * datatype: TBIT
+///      * nelem: Total number of bits to read/write (NOT number of rows)
+///      * array: Array of logical values (c_char) where 0=FALSE, non-zero=TRUE
+///
+/// 4. PARAMETER COUNTING:
+///    - The 'nelem' parameter is the TOTAL number of bits across all rows
+///    - Example: 6 rows × 8 bits/row = 48 bits total
+///    - This is different from other column types where nelem = number of rows
+///
+/// This example demonstrates proper TBIT handling alongside all other FITS data types.
 fn writebintable() {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
@@ -379,10 +409,41 @@ fn writebintable() {
     // L - Logical values (1=T, 0=F for FITS internal representation)
     let active: [c_char; 6] = [1, 1, 1, 1, 1, 0];
 
-    // X - Bit arrays (8 bits each)
-    let flags: [c_uchar; 6] = [
-        0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001,
+    // X - TBIT columns (Bit arrays in FITS binary tables)
+    // IMPORTANT: TBIT columns in FITS store bits as character arrays, not byte values!
+    // Each bit is represented as a character '0' or '1' (ASCII 48 or 49).
+    // For an "8X" column format, each row contains 8 bits, requiring 8 char elements per row.
+    // The nelem parameter in fits_write_col/fits_read_col is the total number of bits, not rows.
+    //
+    // Here we define the bit patterns we want to write:
+    // - flags_bytes: The actual bit patterns we want (as bytes for convenience)
+    // - flags_chars: Will store the logical representation for FITS (0 or 1 values)
+    let flags_bytes: [c_uchar; 6] = [
+        0b10101010, // Mercury: alternating pattern
+        0b11110000, // Venus: first 4 bits set
+        0b00001111, // Earth: last 4 bits set
+        0b11001100, // Mars: bits 0,1,4,5 set
+        0b01010101, // Jupiter: alternating opposite pattern
+        0b10011001, // Saturn: bits 0,3,4,7 set
     ];
+
+    // Convert bit patterns to logical arrays for FITS TBIT format
+    // For fits_write_col_bit, non-zero values are TRUE (bit set to 1)
+    // and zero values are FALSE (bit set to 0)
+    // Total: 48 characters (8 bits/row × 6 rows)
+    let mut flags_chars: [c_char; 48] = [0; 48];
+    for row in 0..6 {
+        for bit in 0..8 {
+            let bit_index = row * 8 + bit;
+            // Check if bit is set in the byte
+            // For FITS: non-zero = TRUE (1), zero = FALSE (0)
+            if (flags_bytes[row] >> (7 - bit)) & 1 == 1 {
+                flags_chars[bit_index] = 1;  // TRUE - bit will be set to 1
+            } else {
+                flags_chars[bit_index] = 0;  // FALSE - bit will be set to 0
+            }
+        }
+    }
 
     // B - Unsigned bytes
     let category: [c_uchar; 6] = [1, 2, 3, 4, 5, 6];
@@ -411,22 +472,22 @@ fn writebintable() {
 
     // C - Single-precision complex (real, imaginary pairs)
     let position: [[c_float; 2]; 6] = [
-        [0.39, 0.0], // Mercury
-        [0.72, 0.0], // Venus
-        [1.00, 0.0], // Earth
-        [1.52, 0.0], // Mars
-        [5.20, 0.0], // Jupiter
+        [0.39, 5.0], // Mercury
+        [0.72, 4.0], // Venus
+        [1.00, 3.0], // Earth
+        [1.52, 2.0], // Mars
+        [5.20, 1.0], // Jupiter
         [9.58, 0.0], // Saturn
     ];
 
     // M - Double-precision complex (real, imaginary pairs)
     let velocity: [[c_double; 2]; 6] = [
         [47.36, 0.0], // Mercury orbital velocity
-        [35.02, 0.0], // Venus
-        [29.78, 0.0], // Earth
-        [24.07, 0.0], // Mars
-        [13.07, 0.0], // Jupiter
-        [9.68, 0.0],  // Saturn
+        [35.02, 1.0], // Venus
+        [29.78, 2.0], // Earth
+        [24.07, 3.0], // Mars
+        [13.07, 4.0], // Jupiter
+        [9.68, 5.0],  // Saturn
     ];
 
     // 3I - Vector of 3 16-bit integers (number of major moons in different size categories)
@@ -526,15 +587,20 @@ fn writebintable() {
             &mut status,
         );
 
-        // Column 3: X - Bit array
+        // Column 3: X - Bit array (TBIT)
+        // For TBIT columns with fits_write_col:
+        // - Use TBIT as the datatype
+        // - nelem parameter is the total number of BITS, not rows
+        // - Data is passed as logical values: 0=FALSE (bit 0), non-zero=TRUE (bit 1)
+        // - For 6 rows × 8 bits = 48 total bits
         fits_write_col(
             fptr_box,
             TBIT,
             3,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
-            flags.len() as LONGLONG,
-            cast_slice(&flags),
+            48 as LONGLONG,  // Total number of bits (8 bits/row × 6 rows)
+            cast_slice(&flags_chars),
             &mut status,
         );
 
@@ -1282,7 +1348,10 @@ fn read_binary_table() {
 
     // Arrays to store data from various columns
     let mut active: [c_char; 6] = [0; 6];
-    let mut flags: [c_uchar; 6] = [0; 6]; // X - Bit array (stored as bytes)
+    // For TBIT columns: We need 48 logical values (8 bits/row × 6 rows)
+    // Each bit is represented as a logical value: 0 = FALSE (bit is 0), non-zero = TRUE (bit is 1)
+    let mut flags_chars: [c_char; 48] = [0; 48]; // X - Bit array (stored as logical values)
+    let mut flags_bytes: [c_uchar; 6] = [0; 6]; // Converted byte representation for display
     let mut category: [c_uchar; 6] = [0; 6];
     let mut priority: [c_short; 6] = [0; 6];
     let mut diameter: [c_long; 6] = [0; 6];
@@ -1443,18 +1512,35 @@ fn read_binary_table() {
         );
 
         // Read column 3: Flags (X - Bit array)
+        // For TBIT columns with fits_read_col:
+        // - Use TBIT as the datatype
+        // - nelem parameter is the total number of BITS, not rows
+        // - Data is returned as logical values: 0=FALSE (bit was 0), non-zero=TRUE (bit was 1)
         fits_read_col(
             fptr_box,
             TBIT,
             3,
             frow as LONGLONG,
             felem as LONGLONG,
-            nelem as LONGLONG,
+            48 as LONGLONG,  // Total number of bits (8 bits/row × 6 rows)
             None,
-            cast_slice_mut(&mut flags),
+            cast_slice_mut(&mut flags_chars),
             None,
             &mut status,
         );
+
+        // Convert the logical values back to bytes for easier handling
+        // Non-zero values mean the bit is set to 1
+        for row in 0..6 {
+            let mut byte_val: c_uchar = 0;
+            for bit in 0..8 {
+                let char_index = row * 8 + bit;
+                if flags_chars[char_index] != 0 {  // Non-zero = TRUE (bit is 1)
+                    byte_val |= 1 << (7 - bit);
+                }
+            }
+            flags_bytes[row] = byte_val;
+        }
 
         // Read column 4: Category (B - Unsigned byte)
         fits_read_col(
@@ -1615,8 +1701,14 @@ fn read_binary_table() {
     let expected_planets = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn"];
     // For logical values, FITS uses 1 for T and 0 for F when stored internally
     let expected_active: [c_char; 6] = [1, 1, 1, 1, 1, 0]; // 1=T, 0=F
-    let _expected_flags: [c_uchar; 6] = [
-        0b10101010, 0b11110000, 0b00001111, 0b11001100, 0b01010101, 0b10011001,
+    // Expected flags: The varied bit patterns we wrote
+    let expected_flags: [c_uchar; 6] = [
+        0b10101010, // Mercury: alternating pattern
+        0b11110000, // Venus: first 4 bits set
+        0b00001111, // Earth: last 4 bits set
+        0b11001100, // Mars: bits 0,1,4,5 set
+        0b01010101, // Jupiter: alternating opposite pattern
+        0b10011001, // Saturn: bits 0,3,4,7 set
     ];
     let expected_category: [c_uchar; 6] = [1, 2, 3, 4, 5, 6];
     let expected_priority: [c_short; 6] = [100, 200, 300, 150, 50, 75];
@@ -1632,20 +1724,20 @@ fn read_binary_table() {
     let expected_density: [c_float; 6] = [5.1, 5.3, 5.52, 3.94, 1.33, 0.69];
     let expected_gravity: [c_double; 6] = [3.7, 8.87, 9.807, 3.71, 24.79, 10.44];
     let expected_position: [[c_float; 2]; 6] = [
-        [0.39, 0.0],
-        [0.72, 0.0],
-        [1.00, 0.0],
-        [1.52, 0.0],
-        [5.20, 0.0],
+        [0.39, 5.0],
+        [0.72, 4.0],
+        [1.00, 3.0],
+        [1.52, 2.0],
+        [5.20, 1.0],
         [9.58, 0.0],
     ];
     let expected_velocity: [[c_double; 2]; 6] = [
         [47.36, 0.0],
-        [35.02, 0.0],
-        [29.78, 0.0],
-        [24.07, 0.0],
-        [13.07, 0.0],
-        [9.68, 0.0],
+        [35.02, 1.0],
+        [29.78, 2.0],
+        [24.07, 3.0],
+        [13.07, 4.0],
+        [9.68, 5.0],
     ];
     let expected_moons: [[c_short; 3]; 6] = [
         [0, 0, 0],
@@ -1696,9 +1788,10 @@ fn read_binary_table() {
             active[ii]
         );
 
-        // TODO: Bit array assertions - need to investigate FITS bit array format
-        // assert_eq!(flags[ii], expected_flags[ii],
-        //     "Flags mismatch at row {}: expected {:#010b}, got {:#010b}", ii+1, expected_flags[ii], flags[ii]);
+        // Verify TBIT column data
+        assert_eq!(flags_bytes[ii], expected_flags[ii],
+            "Flags mismatch at row {}: expected {:#010b}, got {:#010b}",
+            ii+1, expected_flags[ii], flags_bytes[ii]);
 
         assert_eq!(
             category[ii],
@@ -1830,7 +1923,7 @@ fn read_binary_table() {
         let active_str = if active[ii] == 1 { "T" } else { "F" };
 
         // Format bit flags as binary (8 chars)
-        let flags_str = format!("{:08b}", flags[ii]);
+        let flags_str = format!("{:08b}", flags_bytes[ii]);
 
         // Format mass in scientific notation for readability (12 chars max)
         let mass_str = if mass[ii] > 1e12 as LONGLONG {
@@ -1885,7 +1978,7 @@ fn read_binary_table() {
     println!("\nData type examples shown and verified:");
     println!("• A (Character): Planet names");
     println!("• L (Logical): Active status (T/F)");
-    println!("• X (Bit array): Flags (TODO: bit packing investigation needed)");
+    println!("• X (Bit array): Flags stored as char arrays ('0'/'1' per bit)");
     println!("• B (Unsigned byte): Category numbers (1-6)");
     println!("• I (16-bit int): Priority values");
     println!("• J (32-bit int): Diameter in km");

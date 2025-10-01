@@ -187,6 +187,37 @@ void writebintable ( void )
 
     /*******************************************************************/
     /* Create a binary table extension with all data types (except P and Q) */
+    /*
+     * IMPORTANT NOTE ON TBIT (Bit Array) COLUMNS:
+     * ============================================
+     * TBIT columns in FITS binary tables require special handling that differs from other data types:
+     *
+     * 1. DATA REPRESENTATION:
+     *    - TBIT columns store individual bits, not bytes
+     *    - Each bit is represented as a logical value in memory:
+     *      * 0 (zero) = FALSE = bit will be 0
+     *      * Non-zero = TRUE = bit will be 1
+     *    - For an "8X" column format, each row contains 8 bits
+     *
+     * 2. MEMORY LAYOUT:
+     *    - The data is passed as an array of char (logical values)
+     *    - For 6 rows with 8 bits each, you need 48 char elements total
+     *    - NOT 6 bytes as you might expect!
+     *
+     * 3. API FUNCTIONS:
+     *    - Use fits_write_col() and fits_read_col() with TBIT datatype for TBIT columns
+     *    - Parameters are the same as other column types, but:
+     *      * datatype: TBIT
+     *      * nelem: Total number of bits to read/write (NOT number of rows)
+     *      * array: Array of logical values (char) where 0=FALSE, non-zero=TRUE
+     *
+     * 4. PARAMETER COUNTING:
+     *    - The 'nelem' parameter is the TOTAL number of bits across all rows
+     *    - Example: 6 rows × 8 bits/row = 48 bits total
+     *    - This is different from other column types where nelem = number of rows
+     *
+     * This example demonstrates proper TBIT handling alongside all other FITS data types.
+     */
     /*******************************************************************/
 {
     fitsfile *fptr;       /* pointer to the FITS file, defined in fitsio.h */
@@ -255,8 +286,35 @@ void writebintable ( void )
     /* L - Logical values (1=T, 0=F for FITS internal representation) */
     char active[] = {1, 1, 1, 1, 1, 0};
     
-    /* X - Bit arrays (8 bits each) */
-    unsigned char flags[] = {0xAA, 0xF0, 0x0F, 0xCC, 0x55, 0x99};
+    /* X - TBIT columns (Bit arrays in FITS binary tables)
+     * IMPORTANT: TBIT columns in FITS store bits as logical values, not byte values!
+     * Each bit is represented as a logical value (0 = FALSE, non-zero = TRUE).
+     * For an "8X" column format, each row contains 8 bits, requiring 8 char elements per row.
+     * The nelem parameter in fits_write_col/fits_read_col is the total number of bits, not rows.
+     *
+     * Here we define the bit patterns we want to write:
+     * - flags_bytes: The actual bit patterns we want (as bytes for convenience)
+     * - flags_chars: Will store the logical representation for FITS (0 or 1 values)
+     */
+    unsigned char flags_bytes[] = {0xAA, 0xF0, 0x0F, 0xCC, 0x55, 0x99};
+
+    /* Convert bit patterns to logical arrays for FITS TBIT format
+     * For fits_write_col with TBIT, 0 = FALSE (bit 0) and non-zero = TRUE (bit 1)
+     * Total: 48 characters (8 bits/row × 6 rows)
+     */
+    char flags_chars[48];
+    int row, bit;
+    for (row = 0; row < 6; row++) {
+        for (bit = 0; bit < 8; bit++) {
+            int bit_index = row * 8 + bit;
+            /* Check if bit is set in the byte */
+            if ((flags_bytes[row] >> (7 - bit)) & 1) {
+                flags_chars[bit_index] = 1;  /* TRUE - bit will be set to 1 */
+            } else {
+                flags_chars[bit_index] = 0;  /* FALSE - bit will be set to 0 */
+            }
+        }
+    }
     
     /* B - Unsigned bytes */
     unsigned char category[] = {1, 2, 3, 4, 5, 6};
@@ -279,22 +337,22 @@ void writebintable ( void )
     
     /* C - Single-precision complex (real, imaginary pairs) */
     float position[][2] = {
-        {0.39f, 0.0f},   /* Mercury */
-        {0.72f, 0.0f},   /* Venus */
-        {1.00f, 0.0f},   /* Earth */
-        {1.52f, 0.0f},   /* Mars */
-        {5.20f, 0.0f},   /* Jupiter */
+        {0.39f, 5.0f},   /* Mercury */
+        {0.72f, 4.0f},   /* Venus */
+        {1.00f, 3.0f},   /* Earth */
+        {1.52f, 2.0f},   /* Mars */
+        {5.20f, 1.0f},   /* Jupiter */
         {9.58f, 0.0f}    /* Saturn */
     };
     
     /* M - Double-precision complex (real, imaginary pairs) */
     double velocity[][2] = {
         {47.36, 0.0},  /* Mercury orbital velocity */
-        {35.02, 0.0},  /* Venus */
-        {29.78, 0.0},  /* Earth */
-        {24.07, 0.0},  /* Mars */
-        {13.07, 0.0},  /* Jupiter */
-        {9.68, 0.0}    /* Saturn */
+        {35.02, 1.0},  /* Venus */
+        {29.78, 2.0},  /* Earth */
+        {24.07, 3.0},  /* Mars */
+        {13.07, 4.0},  /* Jupiter */
+        {9.68, 5.0}    /* Saturn */
     };
     
     /* 3I - Vector of 3 16-bit integers (number of major moons in different size categories) */
@@ -352,8 +410,14 @@ void writebintable ( void )
     /* Column 2: L - Logical */
     fits_write_col(fptr, TLOGICAL, 2, firstrow, firstelem, nrows, active, &status);
 
-    /* Column 3: X - Bit array */
-    fits_write_col(fptr, TBIT, 3, firstrow, firstelem, nrows, flags, &status);
+    /* Column 3: X - Bit array (TBIT)
+     * For TBIT columns with fits_write_col:
+     * - Use TBIT as the datatype
+     * - nelem parameter is the total number of BITS, not rows
+     * - Data is passed as logical values: 0=FALSE (bit 0), non-zero=TRUE (bit 1)
+     * - For 6 rows × 8 bits = 48 total bits
+     */
+    fits_write_col(fptr, TBIT, 3, firstrow, firstelem, 48, flags_chars, &status);
 
     /* Column 4: B - Unsigned byte */
     fits_write_col(fptr, TBYTE, 4, firstrow, firstelem, nrows, category, &status);
@@ -719,7 +783,11 @@ void read_binary_table( void )
     
     /* Arrays to store data from various columns */
     char active[6];
-    unsigned char flags[6];
+    /* For TBIT columns: We need 48 logical values (8 bits/row × 6 rows)
+     * Each bit is represented as a logical value: 0 = FALSE (bit is 0), non-zero = TRUE (bit is 1)
+     */
+    char flags_chars[48];         /* X - Bit array (stored as logical values) */
+    unsigned char flags_bytes[6]; /* Converted byte representation for display */
     unsigned char category[6];
     short priority[6];
     long diameter[6];
@@ -777,8 +845,27 @@ void read_binary_table( void )
     /* Read column 2: Active (L - Logical) */
     fits_read_col(fptr, TLOGICAL, 2, frow, felem, nelem, NULL, active, NULL, &status);
 
-    /* Read column 3: Flags (X - Bit array) */
-    fits_read_col(fptr, TBIT, 3, frow, felem, nelem, NULL, flags, NULL, &status);
+    /* Read column 3: Flags (X - Bit array)
+     * For TBIT columns with fits_read_col:
+     * - Use TBIT as the datatype
+     * - nelem parameter is the total number of BITS, not rows
+     * - Data is returned as logical values: 0=FALSE (bit was 0), non-zero=TRUE (bit was 1)
+     */
+    fits_read_col(fptr, TBIT, 3, frow, felem, 48, NULL, flags_chars, NULL, &status);
+
+    /* Convert the logical values back to bytes for easier handling
+     * Non-zero values mean the bit is set to 1
+     */
+    for (ii = 0; ii < 6; ii++) {
+        unsigned char byte_val = 0;
+        for (jj = 0; jj < 8; jj++) {
+            int char_index = ii * 8 + jj;
+            if (flags_chars[char_index] != 0) {  /* Non-zero = TRUE (bit is 1) */
+                byte_val |= 1 << (7 - jj);
+            }
+        }
+        flags_bytes[ii] = byte_val;
+    }
 
     /* Read column 4: Category (B - Unsigned byte) */
     fits_read_col(fptr, TBYTE, 4, frow, felem, nelem, NULL, category, NULL, &status);
@@ -816,6 +903,7 @@ void read_binary_table( void )
     /* Expected values for verification (same as written) */
     const char *expected_planets[] = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn"};
     const char expected_active[] = {1, 1, 1, 1, 1, 0};  /* 1=T, 0=F */
+    /* Expected flags: The varied bit patterns we wrote */
     const unsigned char expected_flags[] = {0xAA, 0xF0, 0x0F, 0xCC, 0x55, 0x99};
     const unsigned char expected_category[] = {1, 2, 3, 4, 5, 6};
     const short expected_priority[] = {100, 200, 300, 150, 50, 75};
@@ -886,10 +974,17 @@ void read_binary_table( void )
         char coords_str[20];
         snprintf(coords_str, sizeof(coords_str), "[%.1f,%.1f]", coords[ii][0], coords[ii][1]);
         
-        printf("%8s %5s %08x %5d %5d %11ld %12s %10.2f %10.3f %7.2f %8.1f %11s %18s %13s\n",
+        /* Format bit flags as binary (8 chars) */
+        char flags_str[9];
+        for (jj = 0; jj < 8; jj++) {
+            flags_str[jj] = (flags_bytes[ii] & (1 << (7-jj))) ? '1' : '0';
+        }
+        flags_str[8] = '\0';
+
+        printf("%8s %5s %8s %5d %5d %11ld %12s %10.2f %10.3f %7.2f %8.1f %11s %18s %13s\n",
                name[ii],
                active_str,
-               flags[ii],
+               flags_str,
                category[ii],
                priority[ii],
                diameter[ii],
@@ -910,7 +1005,7 @@ void read_binary_table( void )
     printf("\nData type examples shown and verified:\n");
     printf("• A (Character): Planet names\n");
     printf("• L (Logical): Active status (T/F)\n");
-    printf("• X (Bit array): Flags (TODO: bit packing investigation needed)\n");
+    printf("• X (Bit array): Flags stored as char arrays ('0'/'1' per bit)\n");
     printf("• B (Unsigned byte): Category numbers (1-6)\n");
     printf("• I (16-bit int): Priority values\n");
     printf("• J (32-bit int): Diameter in km\n");

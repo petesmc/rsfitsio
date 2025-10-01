@@ -195,50 +195,70 @@ fn test_expanded_table_all_data_types() {
 }
 
 // Test bit array operations - these test the X format column
-// #[test]
+#[test]
 fn test_expanded_table_bit_operations_basic() {
     let filename = get_expanded_filename();
 
     // Test bitwise operations on Flags column (X format) - NOT IMPLEMENTED
     // Bitwise operations on bit arrays fail with status 431
-    let query = "(Flags & 22) >= 0"; // Test bitwise AND operation
-    let expected_rows = 6; // All rows should match
+    let query = "Flags == b01010101"; // Test bitwise AND operation
+    let expected_rows = 1; // All rows should match
 
     readtable_expanded(&filename, query, expected_rows);
 }
 
-// #[test]
-fn test_expanded_table_bit_operations_or() {
+// Test bit array operations - these test the X format column
+#[test]
+fn test_expanded_table_bit_operations_basic_with_wildcard() {
     let filename = get_expanded_filename();
 
-    // Test bitwise OR operations on bit column - NOT IMPLEMENTED
+    // Test bitwise operations on Flags column (X format) - NOT IMPLEMENTED
     // Bitwise operations on bit arrays fail with status 431
-    let query = "(Flags | 0xFF) > 0"; // OR with all bits set
+    let query = "Flags == b1xxxxxxx"; // Test bitwise AND operation
+    let expected_rows = 4; // All rows should match
+
+    readtable_expanded(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_expanded_table_bit_operations_or_hex() {
+    let filename = get_expanded_filename();
+
+    // Test bitwise OR operations on bit column
+
+    let query = "(Flags | b11111111) > h0A";
     let expected_rows = 6; // All rows should be > 0
 
     readtable_expanded(&filename, query, expected_rows);
 }
 
-// #[test]
-fn test_expanded_table_bit_operations_xor() {
+#[test]
+fn test_expanded_table_bit_operations_or_octal() {
     let filename = get_expanded_filename();
 
-    // Test bitwise XOR operations - NOT IMPLEMENTED
-    // Bitwise operations on bit arrays fail with status 431
-    let query = "(Flags ^^ 0x00) >= 0"; // XOR with zero
-    let expected_rows = 6; // All rows should remain unchanged
+    // Test bitwise OR operations on bit column
+    let query = "(Flags | b11111111) > o12";
+    let expected_rows = 6; // All rows should be > 0
 
     readtable_expanded(&filename, query, expected_rows);
 }
 
-// #[test]
+#[test]
 fn test_expanded_table_bit_operations_specific_bits() {
     let filename = get_expanded_filename();
 
-    // Test for specific bit patterns - NOT IMPLEMENTED
-    // Bitwise operations on bit arrays fail with status 431
-    let query = "(Flags & 0x0F) == 0x0A"; // Should match Mercury (0xAA & 0x0F = 0x0A)
-    let expected_rows = 1;
+    let query = "(Flags & b10000000) == b10000000";
+    let expected_rows = 4;
+
+    readtable_expanded(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_expanded_table_bit_operations_not() {
+    let filename = get_expanded_filename();
+
+    let query = "(!Flags) >= b01010101";
+    let expected_rows = 4;
 
     readtable_expanded(&filename, query, expected_rows);
 }
