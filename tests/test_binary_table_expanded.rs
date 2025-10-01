@@ -199,8 +199,7 @@ fn test_expanded_table_all_data_types() {
 fn test_expanded_table_bit_operations_basic() {
     let filename = get_expanded_filename();
 
-    // Test bitwise operations on Flags column (X format) - NOT IMPLEMENTED
-    // Bitwise operations on bit arrays fail with status 431
+    // Test bitwise operations on Flags column (X format)
     let query = "Flags == b01010101"; // Test bitwise AND operation
     let expected_rows = 1; // All rows should match
 
@@ -212,8 +211,7 @@ fn test_expanded_table_bit_operations_basic() {
 fn test_expanded_table_bit_operations_basic_with_wildcard() {
     let filename = get_expanded_filename();
 
-    // Test bitwise operations on Flags column (X format) - NOT IMPLEMENTED
-    // Bitwise operations on bit arrays fail with status 431
+    // Test bitwise operations on Flags column (X format)
     let query = "Flags == b1xxxxxxx"; // Test bitwise AND operation
     let expected_rows = 4; // All rows should match
 
@@ -268,8 +266,7 @@ fn test_expanded_table_bit_operations_not() {
 fn test_expanded_table_complex_position() {
     let filename = get_expanded_filename();
 
-    // Test single-precision complex column - NOT IMPLEMENTED
-    // Complex column comparisons fail with status 431
+    // Test single-precision complex column
     let query = "(Position > 2.0)";
     let expected_rows = 2; // Jupiter (5.20), Saturn (9.58)
 
@@ -540,6 +537,50 @@ fn test_expanded_table_precision_double() {
     // Test high precision with double column - Gravity
     let query = "(Gravity > 24.7) && (Gravity < 24.8)"; // Jupiter's gravity
     let expected_rows = 1;
+
+    readtable_expanded(&filename, query, expected_rows);
+}
+
+// Bitwise operator tests on 32-bit integer columns
+
+#[test]
+fn test_bitwise_and_operator() {
+    let filename = get_expanded_filename();
+
+    // Test bitwise AND operator (&) on integer columns
+    // Priority values: Mercury=100, Venus=200, Earth=300, Mars=150, Jupiter=50, Saturn=25
+    // Testing if Priority & 256 == 256 (bit 8 set)
+    // 256 in binary = 100000000
+    // Earth (300 = 100101100) has bit 8 set
+    let query = "(Priority & 256) == 256";
+    let expected_rows = 1; // Only Earth (300) has bit 8 set
+
+    readtable_expanded(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_bitwise_or_operator() {
+    let filename = get_expanded_filename();
+
+    // Test bitwise OR operator (|) on integer columns
+    // Priority values: Mercury=100, Venus=200, Earth=300, Mars=150, Jupiter=50, Saturn=25
+    // Testing (Priority | 15) > 100
+    // This adds bits 0-3 (15 = 1111 in binary) to each Priority value
+    let query = "(Priority | 15) > 100";
+    let expected_rows = 4; // Mercury(100|15=111), Venus(200|15=207), Earth(300|15=303), Mars(150|15=159)
+
+    readtable_expanded(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_bitwise_xor_operator() {
+    let filename = get_expanded_filename();
+
+    // Test bitwise XOR operator (^^) on integer columns
+    // XOR of any value with itself is always 0
+    // This should match all rows as it's a constant true expression
+    let query = "(Priority ^^ Priority) == 0";
+    let expected_rows = 6; // All planets - XOR with self is always 0
 
     readtable_expanded(&filename, query, expected_rows);
 }

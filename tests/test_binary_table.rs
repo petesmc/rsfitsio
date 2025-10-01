@@ -1141,7 +1141,7 @@ fn test_read_table_where_defnull() {
     readtable(&filename, query, expected_rows);
 }
 
-#[test] // Commented out - causes null pointer dereference
+#[test]
 fn test_read_table_where_accum() {
     let filename = get_filename();
 
