@@ -357,7 +357,7 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
             (code) =
                 ((c_long::from(p[0]) | (c_long::from(p[1]) << 8) | (c_long::from(p[2]) << 16))
                     >> ((posbits) & 0x7))
-                    & c_long::from(bitmask);
+                    & (bitmask as c_long);
             (posbits) += c_long::from(n_bits);
 
             if oldcode == -1 {
