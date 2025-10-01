@@ -7999,8 +7999,12 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
             {
                 column = -((lParse.Nodes)[i as usize]).operation;
                 offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
-                let fresh11 = &mut (((lParse.Nodes)[i as usize]).value).undef;
-                *fresh11 = (((lParse.varData)[column as usize]).undef).offset(offset as isize);
+
+                (((lParse.Nodes)[i as usize]).value).undef = match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
+                    Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
+                    None => ptr::null_mut(),
+                };
+
                 match ((lParse.Nodes)[i as usize]).ntype.into() {
                     fits_parser_yytokentype::BITSTR => {
                         let fresh12 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
@@ -8019,7 +8023,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                             .offset(rowOffset as isize);
                         let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh15 =
-                            (((lParse.varData)[column as usize]).undef).offset(rowOffset as isize);
+                            (((lParse.varData)[column as usize]).undef).as_deref_mut().unwrap()[(rowOffset as usize)..].as_mut_ptr();
                     }
                     fits_parser_yytokentype::BOOLEAN => {
                         let fresh16 = &mut (((lParse.Nodes)[i as usize]).value).data.logptr;

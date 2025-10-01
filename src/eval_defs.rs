@@ -16,14 +16,14 @@ pub const MAX_STRLEN_S: &str = "255";
 
 pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct DataInfo {
     pub name: [c_char; MAXVARNAME + 1],
     pub dtype: c_int,
     pub nelem: c_long,
     pub naxis: c_int,
     pub naxes: [c_long; MAXDIMS as usize],
-    pub undef: *mut c_char,
+    pub undef: Option<Box<[c_char]>>,
     pub data: *mut c_void,
 }
 
@@ -35,7 +35,7 @@ impl Default for DataInfo {
             nelem: 0,
             naxis: 0,
             naxes: [0; MAXDIMS as usize],
-            undef: std::ptr::null_mut(),
+            undef: None,
             data: std::ptr::null_mut(),
         }
     }

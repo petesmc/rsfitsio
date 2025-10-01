@@ -1297,8 +1297,9 @@ fn test_read_table_where_hexadecimal_integer() {
     readtable(&filename, query, expected_rows);
 }
 
-/*
+
 #[test]
+#[ignore]
 fn test_read_table_where_octal_integer() {
     let filename = get_filename();
 
@@ -1309,7 +1310,7 @@ fn test_read_table_where_octal_integer() {
     // Execute
     readtable(&filename, query, expected_rows);
 }
-*/
+
 
 #[test]
 fn test_read_table_where_binary_integer() {

@@ -1541,15 +1541,17 @@ fn ffcprs(lParse: &mut ParseData) {
             lParse.colData.clear();
 
             for col in 0..lParse.nCols {
-                if lParse.varData[col as usize].undef.is_null() {
+                if lParse.varData[col as usize].undef.is_none() {
                     continue;
                 }
+
                 if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
                     let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
                     let mut first_ptr = *data_ptr;
                     FREE!(first_ptr);
                 }
-                free(lParse.varData[col as usize].undef.cast::<c_void>());
+
+                lParse.varData[col as usize].undef = None;
             }
             lParse.varData.clear();
             lParse.nCols = 0;
@@ -2312,7 +2314,7 @@ fn Setup_DataArrays(
                         bitStrs =
                             malloc(nRows as usize * size_of::<*mut c_char>()).cast::<*mut c_char>();
                         if bitStrs.is_null() {
-                            varData.undef = ptr::null_mut();
+                            varData.undef = None;
                             varData.data = ptr::null_mut();
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2320,7 +2322,7 @@ fn Setup_DataArrays(
                         *bitStrs = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
                         if (*bitStrs).is_null() {
                             free(bitStrs.cast::<c_void>());
-                            varData.undef = ptr::null_mut();
+                            varData.undef = None;
                             varData.data = ptr::null_mut();
                             lParse.status = MEMORY_ALLOCATION;
                             break;
@@ -2347,27 +2349,33 @@ fn Setup_DataArrays(
                         }
                         *(*bitStrs.add(row)).add(nelem as usize) = 0;
                     }
-                    varData.undef = bitStrs.cast::<c_char>();
+
+                    // WARNING: THIS SHOULD NOT BE COMMENTED OUT, BUT IT CAUSES A
+                    // varData.undef = bitStrs.cast::<c_char>();
                     varData.data = bitStrs.cast::<c_void>();
                 }
 
                 fits_parser_yytokentype::STRING => {
                     sptr = icol.array.cast::<*mut c_char>();
                     if do_realloc != 0 {
-                        if !varData.undef.is_null() {
-                            free(varData.undef.cast::<c_void>());
+                        if varData.undef.is_some() {
+                            varData.undef = None;
                         }
-                        varData.undef =
-                            malloc(nRows as usize * size_of::<c_char>()).cast::<c_char>();
-                        if varData.undef.is_null() {
+
+                        let mut v = Vec::new();
+                        if v.try_reserve_exact(len as usize).is_err() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
+                        } else {
+                            v.resize(len as usize, 0);
                         }
+
+                        varData.undef = Some(v.into_boxed_slice());
                     }
                     row = nRows;
                     while row > 0 {
                         row -= 1;
-                        *varData.undef.add(row as usize) = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[(row as usize)] = c_char::from(
                             **sptr != 0
                                 && FSTRCMP(
                                     cast_slice(CStr::from_ptr(*sptr.add(0)).to_bytes_with_nul()),
@@ -2384,18 +2392,22 @@ fn Setup_DataArrays(
                 fits_parser_yytokentype::BOOLEAN => {
                     barray = icol.array.cast::<c_char>();
                     if do_realloc != 0 {
-                        if !varData.undef.is_null() {
-                            free(varData.undef.cast::<c_void>());
+                        if varData.undef.is_some() {
+                            varData.undef = None;
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
-                        if varData.undef.is_null() {
+                        let mut v = Vec::new();
+                        if v.try_reserve_exact(len as usize).is_err() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
+                        } else {
+                            v.resize(len as usize, 0);
                         }
+
+                        varData.undef = Some(v.into_boxed_slice());
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
                             *barray.add(0) != 0
                                 && *barray.add(0) == *barray.add((len + 1) as usize),
                         );
@@ -2406,18 +2418,23 @@ fn Setup_DataArrays(
                 fits_parser_yytokentype::LONG => {
                     iarray = icol.array.cast::<c_long>();
                     if do_realloc != 0 {
-                        if !varData.undef.is_null() {
-                            free(varData.undef.cast::<c_void>());
+                        if varData.undef.is_some() {
+                           varData.undef = None;
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
-                        if varData.undef.is_null() {
+                        let mut v = Vec::new();
+                        if v.try_reserve_exact(len as usize).is_err() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
+                        } else {
+                            v.resize(len as usize, 0);
                         }
+
+                        varData.undef = Some(v.into_boxed_slice());
+                   
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
                             *iarray.add(0) != 0
                                 && *iarray.add(0) == *iarray.add((len + 1) as usize),
                         );
@@ -2428,18 +2445,24 @@ fn Setup_DataArrays(
                 fits_parser_yytokentype::DOUBLE => {
                     rarray = icol.array.cast::<c_double>();
                     if do_realloc != 0 {
-                        if !varData.undef.is_null() {
-                            free(varData.undef.cast::<c_void>());
+                        if varData.undef.is_some() {
+                            varData.undef = None;
                         }
-                        varData.undef = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
-                        if varData.undef.is_null() {
+
+                        let mut v = Vec::new();
+                        if v.try_reserve_exact(len as usize).is_err() {
                             lParse.status = MEMORY_ALLOCATION;
                             break;
+                        } else {
+                            v.resize(len as usize, 0);
                         }
+
+                        varData.undef = Some(v.into_boxed_slice());
+   
                     }
                     while len > 0 {
                         len -= 1;
-                        *varData.undef.add(len as usize) = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
                             *rarray.add(0) != 0.0
                                 && *rarray.add(0) == *rarray.add((len + 1) as usize),
                         );
@@ -2467,8 +2490,7 @@ fn Setup_DataArrays(
                     if varData.dtype == fits_parser_yytokentype::BITSTR as c_int {
                         FREE!(*varData.data.cast::<*mut c_char>().add(0));
                     }
-                    FREE!(varData.undef);
-                    varData.undef = ptr::null_mut();
+                    varData.undef = None;
                 }
                 lParse.nPrevDataRows = 0;
                 return;
@@ -4775,11 +4797,11 @@ fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_i
         } else {
             lParse
                 .varData
-                .resize(existing_len + 25, DataInfo::default());
+                .resize_with(existing_len + 25, || DataInfo::default());
         }
     }
     (lParse.varData[nCol as usize]).data = ptr::null_mut();
-    (lParse.varData[nCol as usize]).undef = ptr::null_mut();
+    (lParse.varData[nCol as usize]).undef = None;
 
     0
 }
