@@ -1297,7 +1297,6 @@ fn test_read_table_where_hexadecimal_integer() {
     readtable(&filename, query, expected_rows);
 }
 
-
 #[test]
 #[ignore]
 fn test_read_table_where_octal_integer() {
@@ -1305,12 +1304,11 @@ fn test_read_table_where_octal_integer() {
 
     // Change these - octal integer 0o11610 = 5000 decimal (NOT IMPLEMENTED - status 431)
     let query = "(DIAMETER > 0o11610)";
-    let expected_rows = 5;  // Venus, Earth, Mars, Jupiter, Saturn
+    let expected_rows = 5; // Venus, Earth, Mars, Jupiter, Saturn
 
     // Execute
     readtable(&filename, query, expected_rows);
 }
-
 
 #[test]
 fn test_read_table_where_binary_integer() {

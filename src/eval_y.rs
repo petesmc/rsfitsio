@@ -67,7 +67,7 @@ fn tanh(x: f64) -> f64 {
 use crate::c_types::{
     c_char, c_double, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_void,
 };
-use crate::cfileio::{ffclos_safe, ffexts_safer, ffopen_safe};
+use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
@@ -7189,17 +7189,17 @@ fn New_GTI(
                     *fname.offset(i as isize) = 0;
                     fname = fname.offset(1);
                     let fname_str = CStr::from_ptr(fname).to_bytes();
-                    ffexts_safer(
+                    ffexts_safe(
                         std::slice::from_raw_parts(
                             fname_str.as_ptr().cast::<c_char>(),
                             fname_str.len(),
                         ),
                         &mut hdunum,
-                        extname.as_mut_ptr(),
+                        &mut extname,
                         &mut extvers,
                         &mut movetotype,
-                        xcol.as_mut_ptr(),
-                        xexpr.as_mut_ptr(),
+                        &mut xcol,
+                        &mut xexpr,
                         &mut lParse.status,
                     );
                     if *extname.as_mut_ptr() != 0 {
@@ -8000,10 +8000,11 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                 column = -((lParse.Nodes)[i as usize]).operation;
                 offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
 
-                (((lParse.Nodes)[i as usize]).value).undef = match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
-                    Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
-                    None => ptr::null_mut(),
-                };
+                (((lParse.Nodes)[i as usize]).value).undef =
+                    match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
+                        Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
+                        None => ptr::null_mut(),
+                    };
 
                 match ((lParse.Nodes)[i as usize]).ntype.into() {
                     fits_parser_yytokentype::BITSTR => {
@@ -8022,8 +8023,10 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                             .cast::<*mut c_char>()
                             .offset(rowOffset as isize);
                         let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
-                        *fresh15 =
-                            (((lParse.varData)[column as usize]).undef).as_deref_mut().unwrap()[(rowOffset as usize)..].as_mut_ptr();
+                        *fresh15 = (((lParse.varData)[column as usize]).undef)
+                            .as_deref_mut()
+                            .unwrap()[(rowOffset as usize)..]
+                            .as_mut_ptr();
                     }
                     fits_parser_yytokentype::BOOLEAN => {
                         let fresh16 = &mut (((lParse.Nodes)[i as usize]).value).data.logptr;
@@ -14945,8 +14948,8 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
         let mut l1 = strlen(bitstrm1) as c_int;
         let mut l2 = strlen(bitstrm2) as c_int;
 
-        let mut bitstrm1 = std::slice::from_raw_parts_mut(bitstrm1, l1 as usize+1);
-        let mut bitstrm2 = std::slice::from_raw_parts_mut(bitstrm2, l2 as usize+1);
+        let mut bitstrm1 = std::slice::from_raw_parts_mut(bitstrm1, l1 as usize + 1);
+        let mut bitstrm2 = std::slice::from_raw_parts_mut(bitstrm2, l2 as usize + 1);
 
         largestStream = cmp::max(l1, l2);
 

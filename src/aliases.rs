@@ -732,7 +732,7 @@ pub mod rust_api {
     pub use crate::cfileio::ffrtnm_safe as fits_parse_rootname;
 
     pub use crate::cfileio::ffextn_safer as fits_parse_extnum;
-    pub use crate::cfileio::ffexts_safer as fits_parse_extspec;
+    pub use crate::cfileio::ffexts_safe as fits_parse_extspec;
     pub use crate::cfileio::ffomem_safer as fits_open_memfile;
     pub use crate::editcol::ffrwrg_safe as fits_parse_range;
     pub use crate::editcol::ffrwrgll_safe as fits_parse_rangell;
@@ -772,7 +772,7 @@ pub mod rust_api {
     pub use crate::fitscore::ffflnm_safe as fits_file_name;
 
     pub use crate::buffers::ffgrsz_safe as fits_get_rowsize;
-    pub use crate::cfileio::ffrprt_safer as fits_report_error;
+    pub use crate::cfileio::ffrprt_safe as fits_report_error;
     pub use crate::fitscore::ffasfm_safe as fits_ascii_tform;
     pub use crate::fitscore::ffbnfm_safe as fits_binary_tform;
     pub use crate::fitscore::ffbnfmll_safe as fits_binary_tformll;
@@ -790,7 +790,7 @@ pub mod rust_api {
     pub use crate::fitscore::ffmkky_safe as fits_make_key;
     pub use crate::fitscore::ffnkey_safe as fits_make_nkey;
     pub use crate::fitscore::ffpmrk_safe as fits_write_errmark;
-    pub use crate::fitscore::ffpmsg_safer as fits_write_errmsg;
+    pub use crate::fitscore::ffpmsg_safe as fits_write_errmsg;
     pub use crate::fitscore::ffpsvc_safe as fits_parse_value;
     pub use crate::fitscore::fftkey_safe as fits_test_keyword;
     pub use crate::fitscore::fftrec_safe as fits_test_record;
@@ -985,8 +985,8 @@ pub mod rust_api {
     pub use crate::edithdu::ffcpfl_safe as fits_copy_file;
     pub use crate::edithdu::ffcphd_safe as fits_copy_header;
     pub use crate::edithdu::ffcpht_safe as fits_copy_hdutab;
-    pub use crate::edithdu::ffdhdu_safer as fits_delete_hdu;
-    pub use crate::edithdu::ffwrhdu_safer as fits_write_hdu;
+    pub use crate::edithdu::ffdhdu_safe as fits_delete_hdu;
+    pub use crate::edithdu::ffwrhdu_safe as fits_write_hdu;
 
     pub use crate::fitscore::ffhdef_safe as fits_set_hdrsize;
     pub use crate::fitscore::ffrdef_safe as fits_set_hdustruc;
@@ -1352,7 +1352,7 @@ pub mod rust_api {
 
     pub use crate::cfileio::ffgtmo_safer as fits_get_timeout;
     pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
-    pub use crate::cfileio::ffstmo_safer as fits_set_timeout;
+    pub use crate::cfileio::ffstmo_safe as fits_set_timeout;
 
     pub use crate::cfileio::ffchtps_safer as fits_cleanup_https;
     pub use crate::cfileio::ffihtps_safer as fits_init_https;

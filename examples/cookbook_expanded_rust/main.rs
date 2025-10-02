@@ -438,9 +438,9 @@ fn writebintable() {
             // Check if bit is set in the byte
             // For FITS: non-zero = TRUE (1), zero = FALSE (0)
             if (flags_bytes[row] >> (7 - bit)) & 1 == 1 {
-                flags_chars[bit_index] = 1;  // TRUE - bit will be set to 1
+                flags_chars[bit_index] = 1; // TRUE - bit will be set to 1
             } else {
-                flags_chars[bit_index] = 0;  // FALSE - bit will be set to 0
+                flags_chars[bit_index] = 0; // FALSE - bit will be set to 0
             }
         }
     }
@@ -599,7 +599,7 @@ fn writebintable() {
             3,
             firstrow as LONGLONG,
             firstelem as LONGLONG,
-            48 as LONGLONG,  // Total number of bits (8 bits/row × 6 rows)
+            48 as LONGLONG, // Total number of bits (8 bits/row × 6 rows)
             cast_slice(&flags_chars),
             &mut status,
         );
@@ -1522,7 +1522,7 @@ fn read_binary_table() {
             3,
             frow as LONGLONG,
             felem as LONGLONG,
-            48 as LONGLONG,  // Total number of bits (8 bits/row × 6 rows)
+            48 as LONGLONG, // Total number of bits (8 bits/row × 6 rows)
             None,
             cast_slice_mut(&mut flags_chars),
             None,
@@ -1535,7 +1535,8 @@ fn read_binary_table() {
             let mut byte_val: c_uchar = 0;
             for bit in 0..8 {
                 let char_index = row * 8 + bit;
-                if flags_chars[char_index] != 0 {  // Non-zero = TRUE (bit is 1)
+                if flags_chars[char_index] != 0 {
+                    // Non-zero = TRUE (bit is 1)
                     byte_val |= 1 << (7 - bit);
                 }
             }
@@ -1789,9 +1790,14 @@ fn read_binary_table() {
         );
 
         // Verify TBIT column data
-        assert_eq!(flags_bytes[ii], expected_flags[ii],
+        assert_eq!(
+            flags_bytes[ii],
+            expected_flags[ii],
             "Flags mismatch at row {}: expected {:#010b}, got {:#010b}",
-            ii+1, expected_flags[ii], flags_bytes[ii]);
+            ii + 1,
+            expected_flags[ii],
+            flags_bytes[ii]
+        );
 
         assert_eq!(
             category[ii],

@@ -48,7 +48,7 @@ use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe};
 use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
     ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
-    ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safer, ffupch_safe, fits_strcasecmp,
+    ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safe, ffupch_safe, fits_strcasecmp,
     fits_strncasecmp,
 };
 use crate::getkey::{ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffmaky_safe};
@@ -307,7 +307,7 @@ pub fn ffomem_safer(
 
     fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
 
-    if unsafe { ffrhdu_safer(&mut f_fitsfile, Some(&mut hdutyp), status) } > 0 {
+    if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
         /* determine HDU structure */
         ffpmsg_str("ffomem could not interpret primary array header of file: (ffomem)");
         ffpmsg_slice(&name[url..]);
@@ -332,18 +332,16 @@ pub fn ffomem_safer(
 
     if extspec[0] != 0 {
         /* parse the extension specifier into individual parameters */
-        unsafe {
-            ffexts_safer(
-                &extspec,
-                &mut extnum,
-                extname.as_mut_ptr(),
-                &mut extvers,
-                &mut movetotype,
-                imagecolname.as_mut_ptr(),
-                rowexpress.as_mut_ptr(),
-                status,
-            );
-        }
+        ffexts_safe(
+            &extspec,
+            &mut extnum,
+            &mut extname,
+            &mut extvers,
+            &mut movetotype,
+            &mut imagecolname,
+            &mut rowexpress,
+            status,
+        );
 
         if *status > 0 {
             return *status;
@@ -965,14 +963,14 @@ pub fn ffopen_safe(
             }
 
             /* parse the extension specifier into individual parameters */
-            ffexts_safer(
+            ffexts_safe(
                 &extspec,
                 &mut extnum,
-                extname.as_mut_ptr(),
+                &mut extname,
                 &mut extvers,
                 &mut movetotype,
-                imagecolname.as_mut_ptr(),
-                rowexpress.as_mut_ptr(),
+                &mut imagecolname,
+                &mut rowexpress,
                 status,
             );
             if *status > 0 {
@@ -1164,7 +1162,7 @@ pub fn ffopen_safe(
 
             fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
 
-            if ffrhdu_safer(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
+            if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
                 /* determine HDU structure */
                 ffpmsg_str("ffopen could not interpret primary array header of file: ");
                 ffpmsg_slice(url);
@@ -2552,7 +2550,7 @@ pub(crate) unsafe fn ffedit_columns(
         /* Check if need to import expression from a file */
         let mut file_expr = ptr::null_mut();
         if cptr[0] == bb(b'@') {
-            if ffimport_file_safer(&cptr[1..], &mut file_expr, status) != 0 {
+            if ffimport_file_safe(&cptr[1..], &mut file_expr, status) != 0 {
                 return *status;
             }
 
@@ -3858,7 +3856,7 @@ pub unsafe extern "C" fn ffimem(
 
 /*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file in memory
-pub unsafe fn ffimem_safer(
+pub fn ffimem_safer(
     _fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     _buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
     _buffsize: &mut usize,             /* I - size of buffer, in bytes            */
@@ -6045,12 +6043,16 @@ pub unsafe extern "C" fn ffexts(
 
         raw_to_slice!(extspec);
 
-        // Don't assign, using this to test for null pointer.
-        extname.as_mut().expect(NULL_MSG);
-        imagecolname.as_mut().expect(NULL_MSG);
-        rowexpress.as_mut().expect(NULL_MSG);
+        // Using this to test for null pointer.
+        let extname = extname.as_mut().expect(NULL_MSG);
+        let imagecolname = imagecolname.as_mut().expect(NULL_MSG);
+        let rowexpress = rowexpress.as_mut().expect(NULL_MSG);
 
-        ffexts_safer(
+        let extname = slice::from_raw_parts_mut(extname, FLEN_VALUE);
+        let imagecolname = slice::from_raw_parts_mut(imagecolname, FLEN_VALUE);
+        let rowexpress = slice::from_raw_parts_mut(rowexpress, FLEN_FILENAME);
+
+        ffexts_safe(
             extspec,
             extnum,
             extname,
@@ -6071,236 +6073,231 @@ pub unsafe extern "C" fn ffexts(
 /// if present.
 ///
 /// DANGER: Don't know size of extname, imagecolname, rowexpress
-pub unsafe fn ffexts_safer(
+pub fn ffexts_safe(
     extspec: &[c_char],
     extnum: &mut c_int,
-    extname: *mut c_char,
+    extname: &mut [c_char],
     extvers: &mut c_int,
     hdutype: &mut c_int,
-    imagecolname: *mut c_char,
-    rowexpress: *mut c_char,
+    imagecolname: &mut [c_char],
+    rowexpress: &mut [c_char],
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut slen: usize = 0;
-        let mut nvals: c_int = 0;
-        let mut notint: c_int = 1;
-        let mut tmpname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut slen: usize = 0;
+    let mut nvals: c_int = 0;
+    let mut notint: c_int = 1;
+    let mut tmpname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
-        *extnum = 0;
-        *extvers = 0;
-        *hdutype = ANY_HDU;
+    *extnum = 0;
+    *extvers = 0;
+    *hdutype = ANY_HDU;
 
-        *extname = 0;
-        *imagecolname = 0;
-        *rowexpress = 0;
+    extname[0] = 0;
+    imagecolname[0] = 0;
+    rowexpress[0] = 0;
 
-        // Use these as intermediate variables then copy into the FFI variables
-        let mut _extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut _imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut _rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    // Use these as intermediate variables then copy into the FFI variables
+    let mut _extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut _imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut _rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
-        if *status > 0 {
-            return *status;
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut ptr1 = 0; // ptr to extspec
+
+    while extspec[ptr1] == bb(b' ') {
+        /* skip over any leading blanks */
+        ptr1 += 1;
+    }
+
+    /* is the extension specification a number? */
+    if isdigit_safe(extspec[ptr1]) {
+        notint = 0; /* looks like extname may actually be the ext. number */
+
+        // Not required anymore since not using strtol from libc
+        // set_errno(Errno(0)); /* reset this prior to calling strtol */
+        let (r, loc): (LONGLONG, usize) = strtol_safe(&extspec[ptr1..]).unwrap(); /* read the string as an integer */
+
+        *extnum = r as c_int;
+
+        let mut loc = ptr1 + loc;
+        while extspec[loc] == bb(b' ') {
+            /* skip over trailing blanks */
+            loc += 1;
         }
 
-        let mut ptr1 = 0; // ptr to extspec
-
-        while extspec[ptr1] == bb(b' ') {
-            /* skip over any leading blanks */
-            ptr1 += 1;
-        }
-
-        /* is the extension specification a number? */
-        if isdigit_safe(extspec[ptr1]) {
-            notint = 0; /* looks like extname may actually be the ext. number */
+        /* check for read error, or junk following the integer */
+        if extspec[loc] != 0 && extspec[loc] != bb(b';')
+        /* || (errno().0 == ERANGE) */
+        {
+            *extnum = 0;
+            notint = 1; /* no, extname was not a simple integer after all */
 
             // Not required anymore since not using strtol from libc
-            // set_errno(Errno(0)); /* reset this prior to calling strtol */
-            let (r, loc): (LONGLONG, usize) = strtol_safe(&extspec[ptr1..]).unwrap(); /* read the string as an integer */
+            // set_errno(Errno(0)); /* reset error condition flag if it was set */
+        }
 
-            *extnum = r as c_int;
+        if *extnum < 0 || *extnum > 99999 {
+            *extnum = 0; /* this is not a reasonable extension number */
+            ffpmsg_str("specified extension number is out of range:");
+            ffpmsg_slice(extspec);
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+    }
 
-            let mut loc = ptr1 + loc;
-            while extspec[loc] == bb(b' ') {
-                /* skip over trailing blanks */
-                loc += 1;
-            }
+    /*  This logic was too simple, and failed on extnames like '1000TEMP'
+        where it would try to move to the 1000th extension
 
-            /* check for read error, or junk following the integer */
-            if extspec[loc] != 0 && extspec[loc] != bb(b';')
-            /* || (errno().0 == ERANGE) */
+        if (isdigit((int) extspec[ptr1]))
+        {
+            sscanf_d(ptr1, cs!(c"%d"), &mut extnum);
+            if (*extnum < 0 || *extnum > 9999)
             {
                 *extnum = 0;
-                notint = 1; /* no, extname was not a simple integer after all */
-
-                // Not required anymore since not using strtol from libc
-                // set_errno(Errno(0)); /* reset error condition flag if it was set */
-            }
-
-            if *extnum < 0 || *extnum > 99999 {
-                *extnum = 0; /* this is not a reasonable extension number */
-                ffpmsg_str("specified extension number is out of range:");
+                ffpmsg("specified extension number is out of range:");
                 ffpmsg_slice(extspec);
                 *status = URL_PARSE_ERROR;
                 return *status;
             }
         }
+    */
 
-        /*  This logic was too simple, and failed on extnames like '1000TEMP'
-            where it would try to move to the 1000th extension
+    if notint != 0 {
+        /* not a number, so EXTNAME must be specified, followed by */
+        /* optional EXTVERS and XTENSION  values */
 
-            if (isdigit((int) extspec[ptr1]))
-            {
-                sscanf_d(ptr1, cs!(c"%d"), &mut extnum);
-                if (*extnum < 0 || *extnum > 9999)
-                {
-                    *extnum = 0;
-                    ffpmsg("specified extension number is out of range:");
-                    ffpmsg_slice(extspec);
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-            }
-        */
+        /* don't use space char as end indicator, because there */
+        /* may be imbedded spaces in the EXTNAME value */
+        slen = strcspn_safe(&extspec[ptr1..], cs!(c",:;")); /* length of EXTNAME */
 
-        if notint != 0 {
-            /* not a number, so EXTNAME must be specified, followed by */
-            /* optional EXTVERS and XTENSION  values */
+        if slen > FLEN_VALUE - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
 
-            /* don't use space char as end indicator, because there */
-            /* may be imbedded spaces in the EXTNAME value */
-            slen = strcspn_safe(&extspec[ptr1..], cs!(c",:;")); /* length of EXTNAME */
+        strncat_safe(&mut _extname, &extspec[ptr1..], slen); /* EXTNAME value */
 
-            if slen > FLEN_VALUE - 1 {
+        /* now remove any trailing blanks */
+        while slen > 0 && (_extname[slen - 1]) == bb(b' ') {
+            (_extname[slen - 1]) = 0;
+            slen -= 1;
+        }
+
+        ptr1 += slen;
+        slen = strspn_safe(&extspec[ptr1..], cs!(c" ,:")); /* skip delimiter characters */
+        ptr1 += slen;
+
+        slen = strcspn_safe(&extspec[ptr1..], cs!(c" ,:;")); /* length of EXTVERS */
+        if slen != 0 {
+            nvals = sscanf_d(&extspec[ptr1..], cs!(c"%d"), extvers); /* EXTVERS value */
+            if nvals != 1 {
+                ffpmsg_str("illegal EXTVER value in input URL:");
+                ffpmsg_slice(extspec);
                 *status = URL_PARSE_ERROR;
                 return *status;
-            }
-
-            strncat_safe(&mut _extname, &extspec[ptr1..], slen); /* EXTNAME value */
-
-            /* now remove any trailing blanks */
-            while slen > 0 && (_extname[slen - 1]) == bb(b' ') {
-                (_extname[slen - 1]) = 0;
-                slen -= 1;
             }
 
             ptr1 += slen;
             slen = strspn_safe(&extspec[ptr1..], cs!(c" ,:")); /* skip delimiter characters */
             ptr1 += slen;
 
-            slen = strcspn_safe(&extspec[ptr1..], cs!(c" ,:;")); /* length of EXTVERS */
+            slen = strcspn_safe(&extspec[ptr1..], cs!(c";")); /* length of HDUTYPE */
             if slen != 0 {
-                nvals = sscanf_d(&extspec[ptr1..], cs!(c"%d"), extvers); /* EXTVERS value */
-                if nvals != 1 {
-                    ffpmsg_str("illegal EXTVER value in input URL:");
+                if extspec[ptr1] == bb(b'b') || extspec[ptr1] == bb(b'B') {
+                    *hdutype = BINARY_TBL;
+                } else if extspec[ptr1] == bb(b't')
+                    || extspec[ptr1] == bb(b'T')
+                    || extspec[ptr1] == bb(b'a')
+                    || extspec[ptr1] == bb(b'A')
+                {
+                    *hdutype = ASCII_TBL;
+                } else if extspec[ptr1] == bb(b'i') || extspec[ptr1] == bb(b'I') {
+                    *hdutype = IMAGE_HDU;
+                } else {
+                    ffpmsg_str("unknown type of HDU in input URL:");
                     ffpmsg_slice(extspec);
                     *status = URL_PARSE_ERROR;
                     return *status;
                 }
+            }
+        } else {
+            strcpy_safe(&mut tmpname, &_extname);
+            ffupch_safe(&mut tmpname);
+            if strcmp_safe(&tmpname, cs!(c"PRIMARY")) == 0 || strcmp_safe(&tmpname, cs!(c"P")) == 0
+            {
+                _extname[0] = 0; /* return extnum = 0 */
+            }
+        }
+    }
 
-                ptr1 += slen;
-                slen = strspn_safe(&extspec[ptr1..], cs!(c" ,:")); /* skip delimiter characters */
-                ptr1 += slen;
+    let ptr1 = strchr_safe(&extspec[ptr1..], bb(b';'));
 
-                slen = strcspn_safe(&extspec[ptr1..], cs!(c";")); /* length of HDUTYPE */
-                if slen != 0 {
-                    if extspec[ptr1] == bb(b'b') || extspec[ptr1] == bb(b'B') {
-                        *hdutype = BINARY_TBL;
-                    } else if extspec[ptr1] == bb(b't')
-                        || extspec[ptr1] == bb(b'T')
-                        || extspec[ptr1] == bb(b'a')
-                        || extspec[ptr1] == bb(b'A')
-                    {
-                        *hdutype = ASCII_TBL;
-                    } else if extspec[ptr1] == bb(b'i') || extspec[ptr1] == bb(b'I') {
-                        *hdutype = IMAGE_HDU;
-                    } else {
-                        ffpmsg_str("unknown type of HDU in input URL:");
+    if let Some(mut ptr1) = ptr1 {
+        /* an image is to be opened; the image is contained in a single */
+        /* cell of a binary table.  A column name and an expression to  */
+        /* determine which row to use has been entered.                 */
+
+        ptr1 += 1; /* skip over the ';' delimiter */
+        while extspec[ptr1] == bb(b' ') {
+            /* skip over any leading blanks */
+            ptr1 += 1;
+        }
+
+        let ptr2 = strchr_safe(&extspec[ptr1..], bb(b'('));
+        match ptr2 {
+            None => {
+                ffpmsg_str("illegal specification of image in table cell in input URL:");
+                ffpmsg_str(" did not find a row expression enclosed in ( )");
+                ffpmsg_slice(extspec);
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+            Some(mut ptr2) => {
+                ptr2 += ptr1;
+                if ptr2 - ptr1 > FLEN_FILENAME - 1 {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+
+                strncat_safe(&mut _imagecolname, &extspec[ptr1..], ptr2 - ptr1); /* copy column name */
+
+                ptr2 += 1; /* skip over the '(' delimiter */
+                while extspec[ptr2] == bb(b' ') {
+                    /* skip over any leading blanks */
+                    ptr2 += 1;
+                }
+
+                let ptr1 = strchr_safe(&extspec[ptr2..], bb(b')'));
+                match ptr1 {
+                    None => {
+                        ffpmsg_str("illegal specification of image in table cell in input URL:");
+                        ffpmsg_str(" missing closing ')' character in row expression");
                         ffpmsg_slice(extspec);
                         *status = URL_PARSE_ERROR;
                         return *status;
                     }
-                }
-            } else {
-                strcpy_safe(&mut tmpname, &_extname);
-                ffupch_safe(&mut tmpname);
-                if strcmp_safe(&tmpname, cs!(c"PRIMARY")) == 0
-                    || strcmp_safe(&tmpname, cs!(c"P")) == 0
-                {
-                    _extname[0] = 0; /* return extnum = 0 */
-                }
-            }
-        }
-
-        let ptr1 = strchr_safe(&extspec[ptr1..], bb(b';'));
-
-        if let Some(mut ptr1) = ptr1 {
-            /* an image is to be opened; the image is contained in a single */
-            /* cell of a binary table.  A column name and an expression to  */
-            /* determine which row to use has been entered.                 */
-
-            ptr1 += 1; /* skip over the ';' delimiter */
-            while extspec[ptr1] == bb(b' ') {
-                /* skip over any leading blanks */
-                ptr1 += 1;
-            }
-
-            let ptr2 = strchr_safe(&extspec[ptr1..], bb(b'('));
-            match ptr2 {
-                None => {
-                    ffpmsg_str("illegal specification of image in table cell in input URL:");
-                    ffpmsg_str(" did not find a row expression enclosed in ( )");
-                    ffpmsg_slice(extspec);
-                    *status = URL_PARSE_ERROR;
-                    return *status;
-                }
-                Some(mut ptr2) => {
-                    ptr2 += ptr1;
-                    if ptr2 - ptr1 > FLEN_FILENAME - 1 {
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-
-                    strncat_safe(&mut _imagecolname, &extspec[ptr1..], ptr2 - ptr1); /* copy column name */
-
-                    ptr2 += 1; /* skip over the '(' delimiter */
-                    while extspec[ptr2] == bb(b' ') {
-                        /* skip over any leading blanks */
-                        ptr2 += 1;
-                    }
-
-                    let ptr1 = strchr_safe(&extspec[ptr2..], bb(b')'));
-                    match ptr1 {
-                        None => {
-                            ffpmsg_str(
-                                "illegal specification of image in table cell in input URL:",
-                            );
-                            ffpmsg_str(" missing closing ')' character in row expression");
-                            ffpmsg_slice(extspec);
+                    Some(ptr1) => {
+                        if ptr1 - ptr2 > FLEN_FILENAME - 1 {
                             *status = URL_PARSE_ERROR;
                             return *status;
                         }
-                        Some(ptr1) => {
-                            if ptr1 - ptr2 > FLEN_FILENAME - 1 {
-                                *status = URL_PARSE_ERROR;
-                                return *status;
-                            }
 
-                            strncat_safe(&mut _rowexpress, &extspec[ptr2..], ptr1 - ptr2);
-                            /* row expression */
-                        }
+                        strncat_safe(&mut _rowexpress, &extspec[ptr2..], ptr1 - ptr2);
+                        /* row expression */
                     }
                 }
             }
         }
-
-        strcpy(extname, _extname.as_ptr());
-        strcpy(imagecolname, _imagecolname.as_ptr());
-        strcpy(rowexpress, _rowexpress.as_ptr());
-
-        *status
     }
+
+    strcpy_safe(extname, &_extname);
+    strcpy_safe(imagecolname, &_imagecolname);
+    strcpy_safe(rowexpress, &_rowexpress);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -6430,7 +6427,7 @@ pub unsafe extern "C" fn ffimport_file(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(filename);
 
-        ffimport_file_safer(filename, contents, status)
+        ffimport_file_safe(filename, contents, status)
     }
 }
 
@@ -6440,99 +6437,102 @@ pub unsafe extern "C" fn ffimport_file(
 /// to hold 2 characters more than the length of the text... allows the
 /// calling routine to append (or prepend) a newline (or quotes?) without
 /// reallocating memory.
-pub unsafe fn ffimport_file_safer(
+pub fn ffimport_file_safe(
     filename: &[c_char],        /* Text file to read                   */
     contents: *mut *mut c_char, /* Pointer to pointer to hold file     */
     status: &mut c_int,         /* CFITSIO error code                  */
 ) -> c_int {
-    unsafe {
-        let mut eoline = true;
-        let mut line: [c_char; 256] = [0; 256];
+    let mut eoline = true;
+    let mut line: [c_char; 256] = [0; 256];
 
-        if *status > 0 {
-            return *status;
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut totalLen = 0;
+    let mut allocLen = 1024;
+
+    // HEAP ALLOCATION
+    let mut lines = Vec::new();
+    if lines.try_reserve_exact(allocLen).is_err() {
+        ffpmsg_str("Couldn't allocate memory to hold ASCII file contents.");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        lines.resize(allocLen, 0);
+    }
+    lines[0] = 0;
+
+    let aFile = File::options().read(true).open(slice_to_str!(filename));
+
+    if aFile.is_err() {
+        int_snprintf!(
+            &mut line,
+            256,
+            "Could not open ASCII file {}.",
+            slice_to_str!(&filename),
+        );
+        ffpmsg_slice(&line);
+
+        *status = FILE_NOT_OPENED;
+        return *status;
+    }
+
+    let mut aFile = aFile.unwrap();
+
+    // Read the file line by line
+    while fgets(cast_slice_mut(&mut line), 256, &mut aFile).is_ok() {
+        let mut llen = strlen_safe(&line);
+        if eoline && (llen > 1) && (line[0] == bb(b'/') && line[1] == bb(b'/')) {
+            continue; /* skip comment lines begging with // */
         }
 
-        let mut totalLen = 0;
-        let mut allocLen = 1024;
+        eoline = false;
 
-        // HEAP ALLOCATION
-        let mut lines = Vec::new();
-        if lines.try_reserve_exact(allocLen).is_err() {
-            ffpmsg_str("Couldn't allocate memory to hold ASCII file contents.");
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            lines.resize(allocLen, 0);
-        }
-        lines[0] = 0;
+        /* replace CR and newline chars at end of line with nulls */
+        if (llen > 0) && (line[llen - 1] == bb(b'\n') || line[llen - 1] == bb(b'\r')) {
+            llen -= 1;
+            line[llen] = 0;
+            eoline = true; /* found an end of line character */
 
-        let aFile = File::options().read(true).open(slice_to_str!(filename));
-
-        if aFile.is_err() {
-            int_snprintf!(
-                &mut line,
-                256,
-                "Could not open ASCII file {}.",
-                slice_to_str!(&filename),
-            );
-            ffpmsg_slice(&line);
-
-            *status = FILE_NOT_OPENED;
-            return *status;
-        }
-
-        let mut aFile = aFile.unwrap();
-
-        // Read the file line by line
-        while fgets(cast_slice_mut(&mut line), 256, &mut aFile).is_ok() {
-            let mut llen = strlen_safe(&line);
-            if eoline && (llen > 1) && (line[0] == bb(b'/') && line[1] == bb(b'/')) {
-                continue; /* skip comment lines begging with // */
-            }
-
-            eoline = false;
-
-            /* replace CR and newline chars at end of line with nulls */
             if (llen > 0) && (line[llen - 1] == bb(b'\n') || line[llen - 1] == bb(b'\r')) {
                 llen -= 1;
                 line[llen] = 0;
-                eoline = true; /* found an end of line character */
-
-                if (llen > 0) && (line[llen - 1] == bb(b'\n') || line[llen - 1] == bb(b'\r')) {
-                    llen -= 1;
-                    line[llen] = 0;
-                }
-            }
-
-            if totalLen + llen + 3 >= allocLen {
-                allocLen += 256;
-
-                if lines.try_reserve_exact(256).is_err() {
-                    ffpmsg_str("Couldn't allocate memory to hold ASCII file contents.");
-                    *status = MEMORY_ALLOCATION;
-                    break;
-                } else {
-                    lines.resize(allocLen, 0);
-                }
-            }
-            strcpy_safe(&mut lines[totalLen..], &line);
-            totalLen += llen;
-
-            if eoline {
-                strcpy_safe(&mut lines[totalLen..], cs!(c" ")); /* add a space between lines */
-                totalLen += 1;
             }
         }
 
-        drop(aFile);
+        if totalLen + llen + 3 >= allocLen {
+            allocLen += 256;
 
-        // HEAP ALLOCATION
-        let (p, l, c) = vec_into_raw_parts(lines);
-        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-        *contents = p;
-        *status
+            if lines.try_reserve_exact(256).is_err() {
+                ffpmsg_str("Couldn't allocate memory to hold ASCII file contents.");
+                *status = MEMORY_ALLOCATION;
+                break;
+            } else {
+                lines.resize(allocLen, 0);
+            }
+        }
+        strcpy_safe(&mut lines[totalLen..], &line);
+        totalLen += llen;
+
+        if eoline {
+            strcpy_safe(&mut lines[totalLen..], cs!(c" ")); /* add a space between lines */
+            totalLen += 1;
+        }
     }
+
+    drop(aFile);
+
+    // HEAP ALLOCATION
+    let (p, l, c) = vec_into_raw_parts(lines);
+    ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+
+    if !contents.is_null() {
+        unsafe {
+            *contents = p;
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7196,13 +7196,13 @@ pub(crate) fn ffoptplt(
 /// Uses C FILE stream.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrprt(stream: *mut FILE, status: c_int) {
-    unsafe { ffrprt_safer(stream, status) }
+    ffrprt_safe(stream, status)
 }
 
 /*--------------------------------------------------------------------------*/
 /// Print out report of cfitsio error status and messages on the error stack.
 /// Uses C FILE stream.
-pub unsafe fn ffrprt_safer(stream: *mut FILE, status: c_int) {
+pub fn ffrprt_safe(stream: *mut FILE, status: c_int) {
     let mut status_str: [c_char; FLEN_STATUS] = [0; FLEN_STATUS];
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
@@ -7340,13 +7340,13 @@ pub fn ffgtmo_safer() -> c_int {
 pub unsafe extern "C" fn ffstmo(sec: c_int, status: *mut c_int) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        ffstmo_safer(sec, status)
+        ffstmo_safe(sec, status)
     }
 }
 
 /*-------------------------------------------------------------------*/
 /// Set the network timeout value in seconds (safe wrapper)
-pub fn ffstmo_safer(sec: c_int, status: &mut c_int) -> c_int {
+pub fn ffstmo_safe(sec: c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status; // If status is already set, return immediately
     }

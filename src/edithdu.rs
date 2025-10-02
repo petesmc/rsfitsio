@@ -8,7 +8,7 @@ use crate::{
     fitscore::{
         ffbnfm_safe, ffcmsg_safe, ffcrhd_safe, ffdblk, ffgabc_safe, ffgext, ffghadll_safe,
         ffghdn_safe, ffgidm_safe, ffhdef_safe, ffiblk, ffkeyn_safe, ffmahd_safe, ffpdfl,
-        ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safer, ffwend,
+        ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffwend,
     },
     fitsio::*,
     fitsio2::*,
@@ -554,13 +554,13 @@ pub unsafe extern "C" fn ffwrhdu(
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffwrhdu_safer(infptr, outstream, status)
+        ffwrhdu_safe(infptr, outstream, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// Write the current HDU to the output stream.
-pub unsafe fn ffwrhdu_safer(
+pub fn ffwrhdu_safe(
     infptr: &mut fitsfile, /* I - FITS file pointer to input file  */
     outstream: *mut FILE,  /* I - stream to write HDU to */
     status: &mut c_int,    /* IO - error status     */
@@ -1355,7 +1355,7 @@ pub unsafe extern "C" fn ffdhdu(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let hdutype = hdutype.as_mut();
 
-        ffdhdu_safer(fptr, hdutype, status)
+        ffdhdu_safe(fptr, hdutype, status)
     }
 }
 
@@ -1363,87 +1363,85 @@ pub unsafe extern "C" fn ffdhdu(
 /// Delete the CHDU.  If the CHDU is the primary array, then replace the HDU
 /// with an empty primary array with no data.   Return the
 /// type of the new CHDU after the old CHDU is deleted.
-pub unsafe fn ffdhdu_safer(
+pub fn ffdhdu_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                   */
     hdutype: Option<&mut c_int>, /* O - type of the new CHDU after deletion */
     status: &mut c_int,          /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        let mut tmptype = 0;
-        let mut nblocks: c_long = 0;
-        let naxes: [c_long; 1] = [0; 1];
+    let mut tmptype = 0;
+    let mut nblocks: c_long = 0;
+    let naxes: [c_long; 1] = [0; 1];
 
-        if *status > 0 {
+    if *status > 0 {
+        return *status;
+    }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    if fptr.Fptr.curhdu == 0 {
+        /* replace primary array with null image */
+
+        /* ignore any existing keywords */
+        fptr.Fptr.headend = 0;
+        fptr.Fptr.nextkey = 0;
+
+        /* write default primary array header */
+        ffphpr_safe(fptr, 1, 8, 0, &naxes, 0, 1, 1, status);
+
+        /* calc number of blocks to delete (leave just 1 block) */
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        nblocks = ((headstart[(fptr.Fptr.curhdu + 1) as usize] - BL!()) / BL!()) as c_long;
+
+        /* ffdblk also updates the starting address of all following HDUs */
+        if nblocks > 0 && ffdblk(fptr, nblocks, status) > 0 {
+            /* delete the HDU */
             return *status;
         }
 
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+        /* this might not be necessary, but is doesn't hurt */
+        fptr.Fptr.datastart = DATA_UNDEFINED as LONGLONG;
+
+        ffrdef_safe(fptr, status); /* reinitialize the primary array */
+    } else {
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+
+        /* calc number of blocks to delete */
+        nblocks = ((headstart[(fptr.Fptr.curhdu + 1) as usize]
+            - headstart[fptr.Fptr.curhdu as usize])
+            / BL!()) as c_long;
+
+        /* ffdblk also updates the starting address of all following HDUs */
+        if ffdblk(fptr, nblocks, status) > 0 {
+            /* delete the HDU */
+            return *status;
         }
 
-        if fptr.Fptr.curhdu == 0 {
-            /* replace primary array with null image */
-
-            /* ignore any existing keywords */
-            fptr.Fptr.headend = 0;
-            fptr.Fptr.nextkey = 0;
-
-            /* write default primary array header */
-            ffphpr_safe(fptr, 1, 8, 0, &naxes, 0, 1, 1, status);
-
-            /* calc number of blocks to delete (leave just 1 block) */
-            let headstart = fptr.Fptr.get_headstart_as_slice();
-            nblocks = ((headstart[(fptr.Fptr.curhdu + 1) as usize] - BL!()) / BL!()) as c_long;
-
-            /* ffdblk also updates the starting address of all following HDUs */
-            if nblocks > 0 && ffdblk(fptr, nblocks, status) > 0 {
-                /* delete the HDU */
-                return *status;
-            }
-
-            /* this might not be necessary, but is doesn't hurt */
-            fptr.Fptr.datastart = DATA_UNDEFINED as LONGLONG;
-
-            ffrdef_safe(fptr, status); /* reinitialize the primary array */
-        } else {
-            let headstart = fptr.Fptr.get_headstart_as_slice();
-
-            /* calc number of blocks to delete */
-            nblocks = ((headstart[(fptr.Fptr.curhdu + 1) as usize]
-                - headstart[fptr.Fptr.curhdu as usize])
-                / BL!()) as c_long;
-
-            /* ffdblk also updates the starting address of all following HDUs */
-            if ffdblk(fptr, nblocks, status) > 0 {
-                /* delete the HDU */
-                return *status;
-            }
-
-            /* delete the CHDU from the list of HDUs */
-            let curhdu = 1 + fptr.Fptr.curhdu as usize;
-            let maxhdu = fptr.Fptr.maxhdu as usize;
-            let headstart = fptr.Fptr.get_headstart_as_mut_slice();
-            for ii in curhdu..=maxhdu {
-                headstart[ii] = headstart[ii + 1];
-            }
-
-            headstart[maxhdu + 1] = 0;
-            (fptr.Fptr.maxhdu) -= 1; /* decrement the known number of HDUs */
-
-            if ffrhdu_safer(fptr, Some(&mut tmptype), status) > 0 {
-                /* initialize next HDU */
-
-                /* failed (end of file?), so move back one HDU */
-                *status = 0;
-                ffcmsg_safe(); /* clear extraneous error messages */
-                ffgext(fptr, (fptr.Fptr.curhdu) - 1, Some(&mut tmptype), status);
-            }
+        /* delete the CHDU from the list of HDUs */
+        let curhdu = 1 + fptr.Fptr.curhdu as usize;
+        let maxhdu = fptr.Fptr.maxhdu as usize;
+        let headstart = fptr.Fptr.get_headstart_as_mut_slice();
+        for ii in curhdu..=maxhdu {
+            headstart[ii] = headstart[ii + 1];
         }
 
-        if let Some(hdutype) = hdutype {
-            *hdutype = tmptype;
-        }
+        headstart[maxhdu + 1] = 0;
+        (fptr.Fptr.maxhdu) -= 1; /* decrement the known number of HDUs */
 
-        *status
+        if ffrhdu_safe(fptr, Some(&mut tmptype), status) > 0 {
+            /* initialize next HDU */
+
+            /* failed (end of file?), so move back one HDU */
+            *status = 0;
+            ffcmsg_safe(); /* clear extraneous error messages */
+            ffgext(fptr, (fptr.Fptr.curhdu) - 1, Some(&mut tmptype), status);
+        }
     }
+
+    if let Some(hdutype) = hdutype {
+        *hdutype = tmptype;
+    }
+
+    *status
 }

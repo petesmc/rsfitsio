@@ -64,7 +64,7 @@ use crate::aliases::rust_api::{
     fits_read_key_lng, fits_read_key_log, fits_read_key_str, fits_read_keyword, fits_read_record,
     fits_read_tdim, fits_set_imgnull, fits_update_key_lng, fits_write_record,
 };
-use crate::cfileio::ffimport_file_safer;
+use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
     CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
@@ -1425,7 +1425,7 @@ pub(crate) fn ffiprs(
         if expr[0] == b'@' as c_char {
             // Handle file import case
             let mut temp_ptr: *mut c_char = std::ptr::null_mut();
-            if ffimport_file_safer(&expr[1..], &mut temp_ptr, status) != 0 {
+            if ffimport_file_safe(&expr[1..], &mut temp_ptr, status) != 0 {
                 return *status;
             }
             if !temp_ptr.is_null() {
@@ -2419,7 +2419,7 @@ fn Setup_DataArrays(
                     iarray = icol.array.cast::<c_long>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
-                           varData.undef = None;
+                            varData.undef = None;
                         }
                         let mut v = Vec::new();
                         if v.try_reserve_exact(len as usize).is_err() {
@@ -2430,7 +2430,6 @@ fn Setup_DataArrays(
                         }
 
                         varData.undef = Some(v.into_boxed_slice());
-                   
                     }
                     while len > 0 {
                         len -= 1;
@@ -2458,7 +2457,6 @@ fn Setup_DataArrays(
                         }
 
                         varData.undef = Some(v.into_boxed_slice());
-   
                     }
                     while len > 0 {
                         len -= 1;

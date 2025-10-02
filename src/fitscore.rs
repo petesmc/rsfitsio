@@ -43,6 +43,7 @@ use std::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::wrappers::strcpy_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -245,8 +246,9 @@ pub unsafe extern "C" fn ffflnm(
     }
 }
 
-pub unsafe fn ffflnm_safe(fptr: &mut fitsfile, filename: *mut c_char, status: &mut c_int) -> c_int {
+pub fn ffflnm_safe(fptr: &mut fitsfile, filename: *mut c_char, status: &mut c_int) -> c_int {
     unsafe {
+        let filename = filename.as_mut().expect(NULL_MSG);
         strcpy(filename, fptr.Fptr.filename);
     }
     *status
@@ -530,14 +532,12 @@ impl ErrorStack {
 /// put message on to error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
-    unsafe {
-        ffxmsg(PUT_MESG, err_message as *mut c_char);
-    }
+    ffxmsg(PUT_MESG, err_message as *mut c_char);
 }
 
 /*--------------------------------------------------------------------------*/
 /// put message on to error stack
-pub unsafe fn ffpmsg_safer(err_message: &[c_char]) {
+pub fn ffpmsg_safe(err_message: &[c_char]) {
     // Convert c_char slice to string and use the new safe implementation
     if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message))
         && let Ok(message) = c_str.to_str()
@@ -627,10 +627,8 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
 ///  erase all messages in the error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmsg() {
-    unsafe {
-        let dummy = ptr::null_mut();
-        ffxmsg(DEL_ALL, dummy);
-    }
+    let dummy = ptr::null_mut();
+    ffxmsg(DEL_ALL, dummy);
 }
 
 /*--------------------------------------------------------------------------*/
@@ -718,7 +716,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
 /// GetMesg    4  pop and return oldest message, ignoring marks
 /// PutMesg    5  add a new message to the stack
 /// PutMark    6  add a marker to the stack
-pub(crate) unsafe fn ffxmsg(action: c_int, errmsg: *mut c_char) {
+pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
     let mut stack = ERROR_STACK.lock().unwrap();
 
     match action {
@@ -4962,6 +4960,31 @@ pub unsafe extern "C" fn ffgacl(
         let tscal = tscal.as_mut();
         let tzero = tzero.as_mut();
 
+        let ttype = match ttype.is_null() {
+            true => None,
+            false => Some(cast_slice_mut(slice::from_raw_parts_mut(ttype, FLEN_VALUE))),
+        };
+
+        let tunit = match tunit.is_null() {
+            true => None,
+            false => Some(cast_slice_mut(slice::from_raw_parts_mut(tunit, FLEN_VALUE))),
+        };
+
+        let tform = match tform.is_null() {
+            true => None,
+            false => Some(cast_slice_mut(slice::from_raw_parts_mut(tform, FLEN_VALUE))),
+        };
+
+        let tdisp = match tdisp.is_null() {
+            true => None,
+            false => Some(cast_slice_mut(slice::from_raw_parts_mut(tdisp, FLEN_VALUE))),
+        };
+
+        let tnull = match tnull.is_null() {
+            true => None,
+            false => Some(cast_slice_mut(slice::from_raw_parts_mut(tnull, FLEN_VALUE))),
+        };
+
         ffgacl_safer(
             fptr, colnum, ttype, tbcol, tunit, tform, tscal, tzero, tnull, tdisp, status,
         )
@@ -4970,89 +4993,85 @@ pub unsafe extern "C" fn ffgacl(
 
 /*--------------------------------------------------------------------------*/
 /// get ASCII table column keyword values
-pub unsafe fn ffgacl_safer(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                      */
-    colnum: c_int,              /* I - column number                          */
-    ttype: *mut c_char,         /* O - TTYPEn keyword value                   */
-    tbcol: Option<&mut c_long>, /* O - TBCOLn keyword value                   */
-    tunit: *mut c_char,         /* O - TUNITn keyword value                   */
-    tform: *mut c_char,         /* O - TFORMn keyword value                   */
-    tscal: Option<&mut f64>,    /* O - TSCALn keyword value                   */
-    tzero: Option<&mut f64>,    /* O - TZEROn keyword value                   */
-    tnull: *mut c_char,         /* O - TNULLn keyword value                   */
-    tdisp: *mut c_char,         /* O - TDISPn keyword value                   */
-    status: &mut c_int,         /* IO - error status                          */
+pub fn ffgacl_safer(
+    fptr: &mut fitsfile,          /* I - FITS file pointer                      */
+    colnum: c_int,                /* I - column number                          */
+    ttype: Option<&mut [c_char]>, /* O - TTYPEn keyword value                   */
+    tbcol: Option<&mut c_long>,   /* O - TBCOLn keyword value                   */
+    tunit: Option<&mut [c_char]>, /* O - TUNITn keyword value                   */
+    tform: Option<&mut [c_char]>, /* O - TFORMn keyword value                   */
+    tscal: Option<&mut f64>,      /* O - TSCALn keyword value                   */
+    tzero: Option<&mut f64>,      /* O - TZEROn keyword value                   */
+    tnull: Option<&mut [c_char]>, /* O - TNULLn keyword value                   */
+    tdisp: Option<&mut [c_char]>, /* O - TDISPn keyword value                   */
+    status: &mut c_int,           /* IO - error status                          */
 ) -> c_int {
-    unsafe {
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut tstatus;
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut tstatus;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
-            /* rescan header */
-            if ffrdef_safe(fptr, status) > 0 {
-                return *status;
-            }
-        }
-
-        if colnum < 1 || colnum > fptr.Fptr.tfield {
-            *status = BAD_COL_NUM;
-            return *status;
-        }
-
-        /* get what we can from the column structure */
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
-        let c = slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize);
-        let ci = colnum as usize - 1; /* offset to the correct column */
-
-        if !ttype.is_null() {
-            strcpy(ttype, c[ci].ttype.as_ptr());
-        }
-        if let Some(tbcol) = tbcol {
-            /* first col is 1, not 0 */
-            *tbcol = ((c[ci].tbcol) + 1) as c_long;
-        }
-        if !tform.is_null() {
-            strcpy(tform, c[ci].tform.as_ptr());
-        }
-        if let Some(tscal) = tscal {
-            *tscal = c[ci].tscale;
-        }
-        if let Some(tzero) = tzero {
-            *tzero = c[ci].tzero;
-        }
-
-        if !tnull.is_null() {
-            strcpy(tnull, c[ci].strnull.as_ptr());
-        }
-
-        /* read keywords to get additional parameters */
-        if !tunit.is_null() {
-            ffkeyn_safe(cs!(c"TUNIT"), colnum, &mut name, status);
-            tstatus = 0;
-
-            let tunit = slice::from_raw_parts_mut(tunit, FLEN_VALUE);
-            tunit[0] = 0;
-            ffgkys_safe(fptr, &name, tunit, Some(&mut comm), &mut tstatus);
-        }
-
-        if !tdisp.is_null() {
-            ffkeyn_safe(cs!(c"TDISP"), colnum, &mut name, status);
-            tstatus = 0;
-
-            let tdisp = slice::from_raw_parts_mut(tdisp, FLEN_VALUE);
-            tdisp[0] = 0;
-            ffgkys_safe(fptr, &name, tdisp, Some(&mut comm), &mut tstatus);
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        /* rescan header */
+        if ffrdef_safe(fptr, status) > 0 {
+            return *status;
+        }
+    }
+
+    if colnum < 1 || colnum > fptr.Fptr.tfield {
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    /* get what we can from the column structure */
+    /* point to first column structure */
+    let c = fptr.Fptr.get_tableptr_as_mut_slice();
+    let ci = colnum as usize - 1; /* offset to the correct column */
+
+    if let Some(ttype) = ttype {
+        strcpy_safe(ttype, cast_slice(&c[ci].ttype));
+    }
+    if let Some(tbcol) = tbcol {
+        /* first col is 1, not 0 */
+        *tbcol = ((c[ci].tbcol) + 1) as c_long;
+    }
+    if let Some(tform) = tform {
+        strcpy_safe(tform, cast_slice(&c[ci].tform));
+    }
+    if let Some(tscal) = tscal {
+        *tscal = c[ci].tscale;
+    }
+    if let Some(tzero) = tzero {
+        *tzero = c[ci].tzero;
+    }
+
+    if let Some(tnull) = tnull {
+        strcpy_safe(tnull, cast_slice(&c[ci].strnull));
+    }
+
+    /* read keywords to get additional parameters */
+    if let Some(tunit) = tunit {
+        ffkeyn_safe(cs!(c"TUNIT"), colnum, &mut name, status);
+        tstatus = 0;
+
+        tunit[0] = 0;
+        ffgkys_safe(fptr, &name, tunit, Some(&mut comm), &mut tstatus);
+    }
+
+    if let Some(tdisp) = tdisp {
+        ffkeyn_safe(cs!(c"TDISP"), colnum, &mut name, status);
+        tstatus = 0;
+
+        tdisp[0] = 0;
+        ffgkys_safe(fptr, &name, tdisp, Some(&mut comm), &mut tstatus);
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5558,150 +5577,157 @@ pub unsafe extern "C" fn ffrhdu(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffrhdu_safer(fptr, hdutype.as_mut(), status)
+        ffrhdu_safe(fptr, hdutype.as_mut(), status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// read the required keywords of the CHDU and initialize the corresponding
 /// structure elements that describe the format of the HDU
-pub unsafe fn ffrhdu_safer(
+pub fn ffrhdu_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer */
     hdutype: Option<&mut c_int>, /* O - type of HDU       */
     status: &mut c_int,          /* IO - error status     */
 ) -> c_int {
-    unsafe {
-        let mut tstatus;
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut xname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut urltype: [c_char; 20] = [0; 20];
+    let mut tstatus;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut xname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut urltype: [c_char; 20] = [0; 20];
 
-        let mut hdutype = hdutype;
+    let mut hdutype = hdutype;
 
-        if *status > 0 {
-            return *status;
-        }
-
-        if ffgrec_safe(fptr, 1, Some(&mut card), status) > 0 {
-            /* get the 80-byte card */
-            ffpmsg_str("Cannot read first keyword in header (ffrhdu).");
-            return *status;
-        }
-
-        strncpy_safe(&mut name, &card, 8); /* first 8 characters = the keyword name */
-        name[8] = 0;
-
-        for ii in (0..8).rev() {
-            /* replace trailing blanks with nulls */
-            if name[ii] == bb(b' ') {
-                name[ii] = 0;
-            } else {
-                break;
-            };
-        }
-
-        /* parse value and comment */
-        if ffpsvc_safe(&card, &mut value, Some(&mut comm), status) > 0 {
-            ffpmsg_str("Cannot read value of first keyword in header (ffrhdu):");
-            ffpmsg_slice(&card);
-            return *status;
-        }
-
-        if strcmp_safe(&name, cs!(c"SIMPLE")) == 0 {
-            /* this is the primary array */
-
-            ffpinit(fptr, status); /* initialize the primary array */
-            if let Some(hdutype) = hdutype.as_deref_mut() {
-                *hdutype = 0;
-            };
-        } else if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
-            /* this is an XTENSION keyword */
-
-            if ffc2s(&value, &mut xname, status) > 0 {
-                /* get the value string */
-                ffpmsg_str("Bad value string for XTENSION keyword:");
-                ffpmsg_slice(&value);
-                return *status;
-            }
-
-            let mut xtension = 0; // &xname
-            while xname[xtension] == bb(b' ') {
-                /* ignore any leading spaces in name */
-                xtension += 1;
-            }
-
-            if strcmp_safe(&xname[xtension..], cs!(c"TABLE")) == 0 {
-                ffainit(fptr, status); /* initialize the ASCII table */
-                if let Some(hdutype) = hdutype.as_deref_mut() {
-                    *hdutype = 1;
-                };
-            } else if strcmp_safe(&xname[xtension..], cs!(c"BINTABLE")) == 0
-                || strcmp_safe(&xname[xtension..], cs!(c"A3DTABLE")) == 0
-                || strcmp_safe(&xname[xtension..], cs!(c"3DTABLE")) == 0
-            {
-                ffbinit(fptr, status); /* initialize the binary table */
-                if let Some(hdutype) = hdutype.as_deref_mut() {
-                    *hdutype = 2;
-                };
-            } else {
-                tstatus = 0;
-                ffpinit(fptr, &mut tstatus); /* probably an IMAGE extension */
-
-                if tstatus == UNKNOWN_EXT
-                    && let Some(hdutype) = hdutype.as_deref_mut()
-                {
-                    /* don't recognize this extension type */
-                    *hdutype = -1;
-                } else {
-                    *status = tstatus;
-                    if let Some(hdutype) = hdutype {
-                        *hdutype = 0;
-                    };
-                };
-            };
-        } else {
-            /*  not the start of a new extension */
-
-            if card[0] == 0 || card[0] == 10 {
-                /* some editors append this character to EOF */
-                *status = END_OF_FILE;
-            } else {
-                *status = UNKNOWN_REC; /* found unknown type of record */
-                ffpmsg_str("Extension doesn't start with SIMPLE or XTENSION keyword. (ffrhdu)");
-                ffpmsg_slice(&card);
-            };
-        }
-
-        /*  compare the starting position of the next HDU (if any) with the size */
-        /*  of the whole file to see if this is the last HDU in the file */
-
-        let headstart = fptr.Fptr.get_headstart_as_slice();
-        let filesize = headstart[(fptr.Fptr.curhdu + 1) as usize];
-
-        if filesize < fptr.Fptr.logfilesize {
-            fptr.Fptr.lasthdu = 0; /* no, not the last HDU */
-        } else {
-            fptr.Fptr.lasthdu = 1; /* yes, this is the last HDU */
-
-            /* special code for mem:// type files (FITS file in memory) */
-            /* Allocate enough memory to hold the entire HDU. */
-            /* Without this code, CFITSIO would repeatedly realloc  memory */
-            /* to incrementally increase the size of the file by 2880 bytes */
-            /* at a time, until it reached the final size */
-
-            ffurlt_safe(fptr, &mut urltype, status);
-
-            if strcmp_safe(&urltype, cs!(c"mem://")) == 0
-                || strcmp_safe(&urltype, cs!(c"memkeep://")) == 0
-            {
-                fftrun(fptr, filesize, status);
-            };
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    if ffgrec_safe(fptr, 1, Some(&mut card), status) > 0 {
+        /* get the 80-byte card */
+        ffpmsg_str("Cannot read first keyword in header (ffrhdu).");
+        return *status;
+    }
+
+    strncpy_safe(&mut name, &card, 8); /* first 8 characters = the keyword name */
+    name[8] = 0;
+
+    for ii in (0..8).rev() {
+        /* replace trailing blanks with nulls */
+        if name[ii] == bb(b' ') {
+            name[ii] = 0;
+        } else {
+            break;
+        };
+    }
+
+    /* parse value and comment */
+    if ffpsvc_safe(&card, &mut value, Some(&mut comm), status) > 0 {
+        ffpmsg_str("Cannot read value of first keyword in header (ffrhdu):");
+        ffpmsg_slice(&card);
+        return *status;
+    }
+
+    if strcmp_safe(&name, cs!(c"SIMPLE")) == 0 {
+        /* this is the primary array */
+
+        unsafe {
+            ffpinit(fptr, status); /* initialize the primary array */
+        }
+
+        if let Some(hdutype) = hdutype.as_deref_mut() {
+            *hdutype = 0;
+        };
+    } else if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
+        /* this is an XTENSION keyword */
+
+        if ffc2s(&value, &mut xname, status) > 0 {
+            /* get the value string */
+            ffpmsg_str("Bad value string for XTENSION keyword:");
+            ffpmsg_slice(&value);
+            return *status;
+        }
+
+        let mut xtension = 0; // &xname
+        while xname[xtension] == bb(b' ') {
+            /* ignore any leading spaces in name */
+            xtension += 1;
+        }
+
+        if strcmp_safe(&xname[xtension..], cs!(c"TABLE")) == 0 {
+            unsafe {
+                ffainit(fptr, status); /* initialize the ASCII table */
+            }
+            if let Some(hdutype) = hdutype.as_deref_mut() {
+                *hdutype = 1;
+            };
+        } else if strcmp_safe(&xname[xtension..], cs!(c"BINTABLE")) == 0
+            || strcmp_safe(&xname[xtension..], cs!(c"A3DTABLE")) == 0
+            || strcmp_safe(&xname[xtension..], cs!(c"3DTABLE")) == 0
+        {
+            unsafe {
+                ffbinit(fptr, status); /* initialize the binary table */
+            }
+            if let Some(hdutype) = hdutype.as_deref_mut() {
+                *hdutype = 2;
+            };
+        } else {
+            tstatus = 0;
+            unsafe {
+                ffpinit(fptr, &mut tstatus); /* probably an IMAGE extension */
+            }
+
+            if tstatus == UNKNOWN_EXT
+                && let Some(hdutype) = hdutype.as_deref_mut()
+            {
+                /* don't recognize this extension type */
+                *hdutype = -1;
+            } else {
+                *status = tstatus;
+                if let Some(hdutype) = hdutype {
+                    *hdutype = 0;
+                };
+            };
+        };
+    } else {
+        /*  not the start of a new extension */
+
+        if card[0] == 0 || card[0] == 10 {
+            /* some editors append this character to EOF */
+            *status = END_OF_FILE;
+        } else {
+            *status = UNKNOWN_REC; /* found unknown type of record */
+            ffpmsg_str("Extension doesn't start with SIMPLE or XTENSION keyword. (ffrhdu)");
+            ffpmsg_slice(&card);
+        };
+    }
+
+    /*  compare the starting position of the next HDU (if any) with the size */
+    /*  of the whole file to see if this is the last HDU in the file */
+
+    let headstart = fptr.Fptr.get_headstart_as_slice();
+    let filesize = headstart[(fptr.Fptr.curhdu + 1) as usize];
+
+    if filesize < fptr.Fptr.logfilesize {
+        fptr.Fptr.lasthdu = 0; /* no, not the last HDU */
+    } else {
+        fptr.Fptr.lasthdu = 1; /* yes, this is the last HDU */
+
+        /* special code for mem:// type files (FITS file in memory) */
+        /* Allocate enough memory to hold the entire HDU. */
+        /* Without this code, CFITSIO would repeatedly realloc  memory */
+        /* to incrementally increase the size of the file by 2880 bytes */
+        /* at a time, until it reached the final size */
+
+        ffurlt_safe(fptr, &mut urltype, status);
+
+        if strcmp_safe(&urltype, cs!(c"mem://")) == 0
+            || strcmp_safe(&urltype, cs!(c"memkeep://")) == 0
+        {
+            fftrun(fptr, filesize, status);
+        };
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -8348,8 +8374,8 @@ pub unsafe fn ffgdessll_safe(
             return *status;
         }
 
-        let colptr = fptr.Fptr.tableptr; /* point to first column structure */
-        let c = slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize);
+        /* point to first column structure */
+        let c = fptr.Fptr.get_tableptr_as_mut_slice();
         let ci = colnum as usize - 1; /* offset to the correct column */
 
         if c[ci].tdatatype >= 0 {
@@ -8357,8 +8383,13 @@ pub unsafe fn ffgdessll_safe(
             return *status;
         }
 
+        let tbcol = c[ci].tbcol;
+
         let rowsize = fptr.Fptr.rowlength;
-        let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1)) + c[ci].tbcol;
+        let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1)) + tbcol;
+
+        let c = fptr.Fptr.get_tableptr_as_mut_slice();
+        let ci = colnum as usize - 1; /* offset to the correct column */
 
         if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
             /* read 4-byte descriptors */
@@ -8791,12 +8822,7 @@ pub fn ffrdef_safe(
 
         if ffwend(fptr, status) <= 0 {
             /* rewrite END keyword and fill */
-
-            // TODO: Remove this hack
-            // SAFETY: This is not safe, just a temporary hack to remove unsafe on upstream
-            unsafe {
-                ffrhdu_safer(fptr, Some(&mut dummy), status); /* re-scan the header keywords  */
-            }
+            ffrhdu_safe(fptr, Some(&mut dummy), status); /* re-scan the header keywords  */
         };
     }
     *status
@@ -10101,7 +10127,7 @@ pub fn ffmahd_safe(
                     if ffgext(fptr, moveto, exttype.as_deref_mut(), status) > 0 {
                         /* failed to get the requested extension */
                         tstatus = 0;
-                        ffrhdu_safer(fptr, exttype.as_deref_mut(), &mut tstatus);
+                        ffrhdu_safe(fptr, exttype.as_deref_mut(), &mut tstatus);
                         /* restore the CHDU */
                     };
                 };
@@ -10428,7 +10454,7 @@ pub(crate) fn ffgext(
         fptr.Fptr.maxhdu = cmp::max(fptr.Fptr.maxhdu, hdunum);
         fptr.Fptr.headend = fptr.Fptr.logfilesize; /* set max size */
 
-        if unsafe { ffrhdu_safer(fptr, exttype, status) } > 0 {
+        if ffrhdu_safe(fptr, exttype, status) > 0 {
             /* failed to get the new HDU, so restore previous values */
             fptr.Fptr.curhdu = xcurhdu;
             fptr.HDUposition = xcurhdu;
