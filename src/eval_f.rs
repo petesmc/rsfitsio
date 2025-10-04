@@ -2375,7 +2375,7 @@ fn Setup_DataArrays(
                     row = nRows;
                     while row > 0 {
                         row -= 1;
-                        varData.undef.as_deref_mut().unwrap()[(row as usize)] = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[row as usize] = c_char::from(
                             **sptr != 0
                                 && FSTRCMP(
                                     cast_slice(CStr::from_ptr(*sptr.add(0)).to_bytes_with_nul()),
@@ -2407,7 +2407,7 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[len as usize] = c_char::from(
                             *barray.add(0) != 0
                                 && *barray.add(0) == *barray.add((len + 1) as usize),
                         );
@@ -2433,7 +2433,7 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[len as usize] = c_char::from(
                             *iarray.add(0) != 0
                                 && *iarray.add(0) == *iarray.add((len + 1) as usize),
                         );
@@ -2460,7 +2460,7 @@ fn Setup_DataArrays(
                     }
                     while len > 0 {
                         len -= 1;
-                        varData.undef.as_deref_mut().unwrap()[(len as usize)] = c_char::from(
+                        varData.undef.as_deref_mut().unwrap()[len as usize] = c_char::from(
                             *rarray.add(0) != 0.0
                                 && *rarray.add(0) == *rarray.add((len + 1) as usize),
                         );
@@ -4795,7 +4795,7 @@ fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_i
         } else {
             lParse
                 .varData
-                .resize_with(existing_len + 25, || DataInfo::default());
+                .resize_with(existing_len + 25, DataInfo::default);
         }
     }
     (lParse.varData[nCol as usize]).data = ptr::null_mut();
