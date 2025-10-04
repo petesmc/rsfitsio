@@ -1549,7 +1549,7 @@ pub unsafe extern "C" fn ffpcn(
         let array: &[u8] = slice::from_raw_parts(array.cast::<u8>(), bytes);
         let nulval = NullValue::from_raw_ptr(datatype, nulval);
 
-        ffpcn_safer(
+        ffpcn_safe(
             fptr,
             datatype,
             colnum,
@@ -1568,7 +1568,7 @@ pub unsafe extern "C" fn ffpcn(
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
-pub unsafe fn ffpcn_safer(
+pub fn ffpcn_safe(
     fptr: &mut fitsfile,       /* I - FITS file pointer                       */
     datatype: c_int,           /* I - datatype of the value                   */
     colnum: c_int,             /* I - number of column to write (1 = 1st col) */
@@ -1579,256 +1579,256 @@ pub unsafe fn ffpcn_safer(
     nulval: Option<NullValue>, /* I - pointer to the null value               */
     status: &mut c_int,        /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
 
-        if nulval.is_none() {
-            /* null value not defined? */
-            ffpcl_safe(
-                fptr,
-                datatype,
-                colnum,
-                firstrow as LONGLONG,
-                firstelem as LONGLONG,
-                nelem as LONGLONG,
-                array,
-                status,
-            );
-            return *status;
-        }
+    if nulval.is_none() {
+        /* null value not defined? */
+        ffpcl_safe(
+            fptr,
+            datatype,
+            colnum,
+            firstrow as LONGLONG,
+            firstelem as LONGLONG,
+            nelem as LONGLONG,
+            array,
+            status,
+        );
+        return *status;
+    }
 
-        let nulval = nulval.unwrap();
+    let nulval = nulval.unwrap();
 
-        if datatype == TBYTE {
-            let array = cast_slice(array);
-            ffpcnb_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::UByte(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TSBYTE {
-            let array = cast_slice(array);
-            ffpcnsb_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Byte(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TUSHORT {
-            let array = cast_slice(array);
-            ffpcnui_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::UShort(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TSHORT {
-            let array = cast_slice(array);
-            ffpcni_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Short(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TUINT {
-            let array = cast_slice(array);
-            ffpcnuk_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::UInt(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TINT {
-            let array = cast_slice(array);
-            ffpcnk_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Int(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TULONG {
-            let array = cast_slice(array);
-            ffpcnuj_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::ULong(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TLONG {
-            let array = cast_slice(array);
-            ffpcnj_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Long(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TULONGLONG {
-            let array = cast_slice(array);
-            ffpcnujj_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::ULONGLONG(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TLONGLONG {
-            let array = cast_slice(array);
-            ffpcnjj_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::LONGLONG(x) => x,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TFLOAT {
-            let array = cast_slice(array);
-            ffpcne_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Float(x) => x,
-                    _ => 0.0,
-                },
-                status,
-            );
-        } else if datatype == TDOUBLE {
-            let array = cast_slice(array);
-            ffpcnd_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Double(x) => x,
-                    _ => 0.0,
-                },
-                status,
-            );
-        } else if datatype == TCOMPLEX {
-            let array = cast_slice(array);
-            ffpcne_safe(
-                fptr,
-                colnum,
-                firstrow,
-                (firstelem - 1) * 2 + 1,
-                nelem * 2,
-                array,
-                match nulval {
-                    NullValue::Float(x) => x,
-                    _ => 0.0,
-                },
-                status,
-            );
-        } else if datatype == TDBLCOMPLEX {
-            let array = cast_slice(array);
-            ffpcnd_safe(
-                fptr,
-                colnum,
-                firstrow,
-                (firstelem - 1) * 2 + 1,
-                nelem * 2,
-                array,
-                match nulval {
-                    NullValue::Double(x) => x,
-                    _ => 0.0,
-                },
-                status,
-            );
-        } else if datatype == TLOGICAL {
-            let array = cast_slice(array);
-            ffpcnl_safe(
-                fptr,
-                colnum,
-                firstrow,
-                firstelem,
-                nelem,
-                array,
-                match nulval {
-                    NullValue::Byte(x) => x as c_char,
-                    NullValue::UByte(x) => x as c_char,
-                    _ => 0,
-                },
-                status,
-            );
-        } else if datatype == TSTRING {
+    if datatype == TBYTE {
+        let array = cast_slice(array);
+        ffpcnb_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::UByte(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TSBYTE {
+        let array = cast_slice(array);
+        ffpcnsb_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Byte(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TUSHORT {
+        let array = cast_slice(array);
+        ffpcnui_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::UShort(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TSHORT {
+        let array = cast_slice(array);
+        ffpcni_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Short(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TUINT {
+        let array = cast_slice(array);
+        ffpcnuk_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::UInt(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TINT {
+        let array = cast_slice(array);
+        ffpcnk_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Int(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TULONG {
+        let array = cast_slice(array);
+        ffpcnuj_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::ULong(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TLONG {
+        let array = cast_slice(array);
+        ffpcnj_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Long(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TULONGLONG {
+        let array = cast_slice(array);
+        ffpcnujj_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::ULONGLONG(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TLONGLONG {
+        let array = cast_slice(array);
+        ffpcnjj_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::LONGLONG(x) => x,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TFLOAT {
+        let array = cast_slice(array);
+        ffpcne_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Float(x) => x,
+                _ => 0.0,
+            },
+            status,
+        );
+    } else if datatype == TDOUBLE {
+        let array = cast_slice(array);
+        ffpcnd_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Double(x) => x,
+                _ => 0.0,
+            },
+            status,
+        );
+    } else if datatype == TCOMPLEX {
+        let array = cast_slice(array);
+        ffpcne_safe(
+            fptr,
+            colnum,
+            firstrow,
+            (firstelem - 1) * 2 + 1,
+            nelem * 2,
+            array,
+            match nulval {
+                NullValue::Float(x) => x,
+                _ => 0.0,
+            },
+            status,
+        );
+    } else if datatype == TDBLCOMPLEX {
+        let array = cast_slice(array);
+        ffpcnd_safe(
+            fptr,
+            colnum,
+            firstrow,
+            (firstelem - 1) * 2 + 1,
+            nelem * 2,
+            array,
+            match nulval {
+                NullValue::Double(x) => x,
+                _ => 0.0,
+            },
+            status,
+        );
+    } else if datatype == TLOGICAL {
+        let array = cast_slice(array);
+        ffpcnl_safe(
+            fptr,
+            colnum,
+            firstrow,
+            firstelem,
+            nelem,
+            array,
+            match nulval {
+                NullValue::Byte(x) => x as c_char,
+                NullValue::UByte(x) => x as c_char,
+                _ => 0,
+            },
+            status,
+        );
+    } else if datatype == TSTRING {
+        unsafe {
             let array: &[*const c_char] =
                 slice::from_raw_parts(array.as_ptr().cast(), nelem as usize);
             let mut v_array = Vec::new();
@@ -1864,12 +1864,12 @@ pub unsafe fn ffpcn_safer(
                     );
                 }
             }
-        } else {
-            *status = BAD_DATATYPE;
         }
-
-        *status
+    } else {
+        *status = BAD_DATATYPE;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3647,7 +3647,7 @@ pub fn ffiter_safe(
                                     );
                                 }
 
-                                if ffpcn_safer(
+                                if ffpcn_safe(
                                     cols[jj].fptr.as_mut().unwrap(),
                                     cols[jj].datatype,
                                     cols[jj].colnum,

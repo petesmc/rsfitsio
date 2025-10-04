@@ -856,7 +856,7 @@ pub mod rust_api {
     pub use crate::getkey::ffcnvthdr2str_safer as fits_convert_hdr2str;
     pub use crate::getkey::ffdtdm_safe as fits_decode_tdim;
     pub use crate::getkey::ffdtdmll_safe as fits_decode_tdimll;
-    pub use crate::getkey::fffree_safer as fits_free_memory;
+    pub use crate::getkey::fffree_safe as fits_free_memory;
     pub use crate::getkey::ffgcrd_safe as fits_read_card;
     pub use crate::getkey::ffghbn_safer as fits_read_btblhdr;
     pub use crate::getkey::ffghbnll_safer as fits_read_btblhdrll;
@@ -1276,7 +1276,7 @@ pub mod rust_api {
     pub use crate::putcoluj::ffpclujj_safe as fits_write_col_ulnglng;
     pub use crate::putcoluk::ffpcluk_safe as fits_write_col_uint;
 
-    pub use crate::putcol::ffpcn_safer as fits_write_colnull;
+    pub use crate::putcol::ffpcn_safe as fits_write_colnull;
     pub use crate::putcolb::ffpcnb_safe as fits_write_colnull_byt;
     pub use crate::putcold::ffpcnd_safe as fits_write_colnull_dbl;
     pub use crate::putcole::ffpcne_safe as fits_write_colnull_flt;
@@ -1354,9 +1354,9 @@ pub mod rust_api {
     pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
     pub use crate::cfileio::ffstmo_safe as fits_set_timeout;
 
-    pub use crate::cfileio::ffchtps_safer as fits_cleanup_https;
-    pub use crate::cfileio::ffihtps_safer as fits_init_https;
-    pub use crate::cfileio::ffvhtps_safer as fits_verbose_https;
+    pub use crate::cfileio::ffchtps_safe as fits_cleanup_https;
+    pub use crate::cfileio::ffihtps_safe as fits_init_https;
+    pub use crate::cfileio::ffvhtps_safe as fits_verbose_https;
 
     // Exposed by no aliases
     pub use crate::fitscore::fits_is_compressed_image_safe as fits_is_compressed_image;

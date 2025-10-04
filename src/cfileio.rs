@@ -2448,112 +2448,112 @@ fn comma2semicolon(string: &mut [c_char]) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// modify columns in a table and/or header keywords in the HDU
-pub(crate) unsafe fn ffedit_columns(
+pub(crate) fn ffedit_columns(
     infptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
     /*      points to the new selected rows table */
     outfile: &[c_char],  /* I - name for output file */
     expr: &mut [c_char], /* I - column edit expression    */
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut newptr: Option<Box<fitsfile>> = None;
-        let mut hdunum: c_int = 0;
-        let mut slen: c_int = 0;
-        let mut colnum: c_int = -1;
-        let mut testnum: c_int = 0;
-        let mut deletecol: c_int = 0;
-        let mut savecol: c_int = 0;
-        let mut numcols: c_int = 0;
+    let mut newptr: Option<Box<fitsfile>> = None;
+    let mut hdunum: c_int = 0;
+    let mut slen: c_int = 0;
+    let mut colnum: c_int = -1;
+    let mut testnum: c_int = 0;
+    let mut deletecol: c_int = 0;
+    let mut savecol: c_int = 0;
+    let mut numcols: c_int = 0;
 
-        let mut tstatus: c_int = 0;
+    let mut tstatus: c_int = 0;
 
-        let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut colname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut oldname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut colformat: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut colname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut oldname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut colformat: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
-        let mut testname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut testname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        let mut colindex: Vec<c_int> = Vec::new();
+    let mut colindex: Vec<c_int> = Vec::new();
+
+    let fptr: &mut Box<fitsfile> = (infptr).as_mut().unwrap();
+
+    if outfile[0] != 0 {
+        /* create new empty file in to hold the selected rows */
+        if ffinit_safe(&mut newptr, outfile, status) > 0 {
+            ffpmsg_str("failed to create file for copy (ffedit_columns)");
+            return *status;
+        }
+
+        let mut newptr = newptr.expect(NULL_MSG);
+
+        ffghdn_safe(fptr, &mut hdunum); /* current HDU number in input file */
+
+        /* copy all HDUs to the output copy, if the 'only_one' flag is not set */
+        if fptr.Fptr.only_one == 0 {
+            let mut ii = 1;
+            loop {
+                if ffmahd_safe(fptr, ii, None, status) > 0 {
+                    break;
+                }
+
+                ffcopy_safe(fptr, &mut newptr, 0, status);
+                ii += 1;
+            }
+
+            if *status == END_OF_FILE {
+                *status = 0; /* got the expected EOF error; reset = 0  */
+            } else if *status > 0 {
+                ffclos_safe(newptr, status);
+                ffpmsg_str("failed to copy all HDUs from input file (ffedit_columns)");
+                return *status;
+            }
+        } else {
+            /* only copy the primary array and the designated table extension */
+            ffmahd_safe(fptr, 1, None, status);
+            ffcopy_safe(fptr, &mut newptr, 0, status);
+            ffmahd_safe(fptr, hdunum, None, status);
+            ffcopy_safe(fptr, &mut newptr, 0, status);
+            if *status > 0 {
+                ffclos_safe(newptr, status);
+                ffpmsg_str("failed to copy all HDUs from input file (ffedit_columns)");
+                return *status;
+            }
+            hdunum = 2;
+        }
+
+        /* close the original file and return ptr to the new image */
+        let f_tmp = infptr.take().unwrap();
+        ffclos_safe(f_tmp, status);
+
+        *infptr = Some(newptr); /* reset the pointer to the new table */
 
         let fptr: &mut Box<fitsfile> = (infptr).as_mut().unwrap();
 
-        if outfile[0] != 0 {
-            /* create new empty file in to hold the selected rows */
-            if ffinit_safe(&mut newptr, outfile, status) > 0 {
-                ffpmsg_str("failed to create file for copy (ffedit_columns)");
-                return *status;
-            }
+        /* move back to the selected table HDU */
+        if ffmahd_safe(fptr, hdunum, None, status) > 0 {
+            ffpmsg_str("failed to copy the input file (ffedit_columns)");
+            return *status;
+        }
+    }
 
-            let mut newptr = newptr.expect(NULL_MSG);
+    let fptr: &mut Box<fitsfile> = (infptr).as_mut().unwrap();
 
-            ffghdn_safe(fptr, &mut hdunum); /* current HDU number in input file */
+    /* remove the "col " from the beginning of the column edit expression */
+    let mut cptr = &mut expr[4..]; // &expr
 
-            /* copy all HDUs to the output copy, if the 'only_one' flag is not set */
-            if fptr.Fptr.only_one == 0 {
-                let mut ii = 1;
-                loop {
-                    if ffmahd_safe(fptr, ii, None, status) > 0 {
-                        break;
-                    }
+    while cptr[0] == bb(b' ') {
+        cptr = &mut cptr[1..]; /* skip leading white space */
+    }
 
-                    ffcopy_safe(fptr, &mut newptr, 0, status);
-                    ii += 1;
-                }
-
-                if *status == END_OF_FILE {
-                    *status = 0; /* got the expected EOF error; reset = 0  */
-                } else if *status > 0 {
-                    ffclos_safe(newptr, status);
-                    ffpmsg_str("failed to copy all HDUs from input file (ffedit_columns)");
-                    return *status;
-                }
-            } else {
-                /* only copy the primary array and the designated table extension */
-                ffmahd_safe(fptr, 1, None, status);
-                ffcopy_safe(fptr, &mut newptr, 0, status);
-                ffmahd_safe(fptr, hdunum, None, status);
-                ffcopy_safe(fptr, &mut newptr, 0, status);
-                if *status > 0 {
-                    ffclos_safe(newptr, status);
-                    ffpmsg_str("failed to copy all HDUs from input file (ffedit_columns)");
-                    return *status;
-                }
-                hdunum = 2;
-            }
-
-            /* close the original file and return ptr to the new image */
-            let f_tmp = infptr.take().unwrap();
-            ffclos_safe(f_tmp, status);
-
-            *infptr = Some(newptr); /* reset the pointer to the new table */
-
-            let fptr: &mut Box<fitsfile> = (infptr).as_mut().unwrap();
-
-            /* move back to the selected table HDU */
-            if ffmahd_safe(fptr, hdunum, None, status) > 0 {
-                ffpmsg_str("failed to copy the input file (ffedit_columns)");
-                return *status;
-            }
+    /* Check if need to import expression from a file */
+    let mut file_expr = ptr::null_mut();
+    if cptr[0] == bb(b'@') {
+        if ffimport_file_safe(&cptr[1..], &mut file_expr, status) != 0 {
+            return *status;
         }
 
-        let fptr: &mut Box<fitsfile> = (infptr).as_mut().unwrap();
-
-        /* remove the "col " from the beginning of the column edit expression */
-        let mut cptr = &mut expr[4..]; // &expr
-
-        while cptr[0] == bb(b' ') {
-            cptr = &mut cptr[1..]; /* skip leading white space */
-        }
-
-        /* Check if need to import expression from a file */
-        let mut file_expr = ptr::null_mut();
-        if cptr[0] == bb(b'@') {
-            if ffimport_file_safe(&cptr[1..], &mut file_expr, status) != 0 {
-                return *status;
-            }
-
+        unsafe {
             let _len = CStr::from_ptr(file_expr).to_bytes_with_nul().len();
 
             cptr = slice::from_raw_parts_mut(file_expr, _len);
@@ -2561,618 +2561,616 @@ pub(crate) unsafe fn ffedit_columns(
                 cptr = &mut cptr[1..]; /* skip leading white space... again */
             }
         }
+    }
 
-        tstatus = 0;
-        ffgncl_safe(fptr, &mut numcols, &mut tstatus); /* get initial # of cols */
+    tstatus = 0;
+    ffgncl_safe(fptr, &mut numcols, &mut tstatus); /* get initial # of cols */
 
-        /* as of July 2012, the CFITSIO column filter syntax was modified */
-        /* so that commas may be used to separate clauses, as well as semi-colons. */
-        /* This was done because users cannot enter the semi-colon in the HEASARC's */
-        /* Hera on-line data processing system for computer security reasons.  */
-        /* Therefore, we must convert those commas back to semi-colons here, but we */
-        /* must not convert any columns that occur within parenthesies.  */
+    /* as of July 2012, the CFITSIO column filter syntax was modified */
+    /* so that commas may be used to separate clauses, as well as semi-colons. */
+    /* This was done because users cannot enter the semi-colon in the HEASARC's */
+    /* Hera on-line data processing system for computer security reasons.  */
+    /* Therefore, we must convert those commas back to semi-colons here, but we */
+    /* must not convert any columns that occur within parenthesies.  */
 
-        if comma2semicolon(cptr) != 0 {
-            ffpmsg_str("parsing error in column filter expression");
-            ffpmsg_slice(cptr);
+    if comma2semicolon(cptr) != 0 {
+        ffpmsg_str("parsing error in column filter expression");
+        ffpmsg_slice(cptr);
 
-            *status = PARSE_SYNTAX_ERR;
-            return *status;
+        *status = PARSE_SYNTAX_ERR;
+        return *status;
+    }
+
+    /* parse expression and get first clause, if more than 1 */
+    let mut tmp_clause = None;
+    let mut cptr_idx = 0;
+
+    loop {
+        slen = fits_get_token2_safe(
+            cptr,
+            &mut cptr_idx,
+            cast_slice(c";".to_bytes_with_nul()),
+            &mut tmp_clause,
+            None,
+            status,
+        );
+
+        if slen <= 0 {
+            break;
         }
 
-        /* parse expression and get first clause, if more than 1 */
-        let mut tmp_clause = None;
-        let mut cptr_idx = 0;
+        let _clause_len = tmp_clause.as_deref().unwrap().len();
+        let clause = tmp_clause.as_deref_mut().unwrap();
+        if cptr[0] == bb(b';') {
+            cptr = &mut cptr[1..];
+        }
+        clause[slen as usize] = 0;
 
-        loop {
-            slen = fits_get_token2_safe(
-                cptr,
-                &mut cptr_idx,
-                cast_slice(c";".to_bytes_with_nul()),
-                &mut tmp_clause,
-                None,
-                status,
-            );
+        if clause[0] == bb(b'!') || clause[0] == bb(b'-') {
+            let mut clause1 = 1;
+            let mut clen = if clause[clause1] != 0 {
+                strlen_safe(&clause[clause1..])
+            } else {
+                0
+            };
+            /* ===================================== */
+            /* Case I. delete this column or keyword */
+            /* ===================================== */
 
-            if slen <= 0 {
-                break;
-            }
+            /* Case Ia. delete column names with 0-or-more wildcard
+                    -COLNAME+ - delete repeated columns with exact name
+                -COLNAM*+ - delete columns matching patterns
+            */
+            if *status == 0
+                && clen > 1
+                && clause[clause1] != bb(b'#')
+                && clause[clause1 + clen - 1] == bb(b'+')
+            {
+                clause[clause1 + clen - 1] = 0;
+                clen -= 1;
 
-            let _clause_len = tmp_clause.as_deref().unwrap().len();
-            let clause = tmp_clause.as_deref_mut().unwrap();
-            if cptr[0] == bb(b';') {
-                cptr = &mut cptr[1..];
-            }
-            clause[slen as usize] = 0;
+                /* Note that this is a delete 0 or more specification,
+                which means that no matching columns is not an error. */
+                loop {
+                    let mut status_del = 0;
 
-            if clause[0] == bb(b'!') || clause[0] == bb(b'-') {
-                let mut clause1 = 1;
-                let mut clen = if clause[clause1] != 0 {
-                    strlen_safe(&clause[clause1..])
-                } else {
-                    0
-                };
-                /* ===================================== */
-                /* Case I. delete this column or keyword */
-                /* ===================================== */
-
-                /* Case Ia. delete column names with 0-or-more wildcard
-                        -COLNAME+ - delete repeated columns with exact name
-                    -COLNAM*+ - delete columns matching patterns
-                */
-                if *status == 0
-                    && clen > 1
-                    && clause[clause1] != bb(b'#')
-                    && clause[clause1 + clen - 1] == bb(b'+')
-                {
-                    clause[clause1 + clen - 1] = 0;
-                    clen -= 1;
-
-                    /* Note that this is a delete 0 or more specification,
-                    which means that no matching columns is not an error. */
-                    loop {
-                        let mut status_del = 0;
-
-                        /* Have to set status=0 so we can reset the search at
-                        start column.  Because we are deleting columns on
-                        the fly here, we have to reset the search every
-                        time. The only penalty here is execution time
-                        because leaving *status == COL_NOT_UNIQUE is merely
-                        an optimization for tables assuming the tables do
-                        not change from one call to the next. (an
-                        assumption broken in this loop) */
-                        *status = 0;
-                        ffgcno_safe(
-                            fptr,
-                            CASEINSEN as c_int,
-                            &clause[clause1..],
-                            &mut colnum,
-                            status,
-                        );
-                        /* ffgcno returns COL_NOT_UNIQUE if there are multiple columns,
-                        and COL_NOT_FOUND after the last column is found, and
-                        COL_NOT_FOUND if no matches were found */
-                        if *status != 0 && *status != COL_NOT_UNIQUE {
-                            break;
-                        }
-
-                        if ffdcol_safe(fptr, colnum, &mut status_del) > 0 {
-                            ffpmsg_str("failed to delete column in input file:");
-                            ffpmsg_slice(clause);
-
-                            *status = status_del;
-                            return *status;
-                        }
-                        deletecol = 1; /* set flag that at least one col was deleted */
-                        numcols -= 1;
-                        if *status != COL_NOT_UNIQUE {
-                            break;
-                        }
-                    }
-
-                    *status = 0; /* No matches are still successful */
-                    colnum = -1; /* Ignore the column we found */
-
-                /* Case Ib. delete column names with wildcard or not
-                        -COLNAME  - deleted exact column
-                    -COLNAM*  - delete first column that matches pattern
-                   Note no leading '#'
-                */
-                } else if clause[clause1] != 0
-                    && clause[clause1] != bb(b'#')
-                    && ((ffgcno_safe(
+                    /* Have to set status=0 so we can reset the search at
+                    start column.  Because we are deleting columns on
+                    the fly here, we have to reset the search every
+                    time. The only penalty here is execution time
+                    because leaving *status == COL_NOT_UNIQUE is merely
+                    an optimization for tables assuming the tables do
+                    not change from one call to the next. (an
+                    assumption broken in this loop) */
+                    *status = 0;
+                    ffgcno_safe(
                         fptr,
                         CASEINSEN as c_int,
                         &clause[clause1..],
                         &mut colnum,
                         status,
-                    ) <= 0)
-                        || *status == COL_NOT_UNIQUE)
-                {
-                    /* a column with this name exists, so try to delete it */
-                    *status = 0; /* Clear potential status=COL_NOT_UNIQUE */
-                    if ffdcol_safe(fptr, colnum, status) > 0 {
+                    );
+                    /* ffgcno returns COL_NOT_UNIQUE if there are multiple columns,
+                    and COL_NOT_FOUND after the last column is found, and
+                    COL_NOT_FOUND if no matches were found */
+                    if *status != 0 && *status != COL_NOT_UNIQUE {
+                        break;
+                    }
+
+                    if ffdcol_safe(fptr, colnum, &mut status_del) > 0 {
                         ffpmsg_str("failed to delete column in input file:");
                         ffpmsg_slice(clause);
 
+                        *status = status_del;
                         return *status;
                     }
                     deletecol = 1; /* set flag that at least one col was deleted */
                     numcols -= 1;
-                    colnum = -1;
+                    if *status != COL_NOT_UNIQUE {
+                        break;
+                    }
                 }
-                /* Case Ic. delete keyword(s)
-                        -KEYNAME,#KEYNAME  - delete exact keyword (first match)
-                    -KEYNAM*,#KEYNAM*  - delete first matching keyword
-                    -KEYNAME+,-#KEYNAME+ - delete 0-or-more exact matches of exact keyword
-                    -KEYNAM*+,-#KEYNAM*+ - delete 0-or-more wildcard matches
-                   Note the preceding # is optional if no conflicting column name exists
-                   and that wildcard patterns are described in "colfilter" section of
-                   documentation.
-                */
-                else {
-                    let mut delall = false;
-                    let mut haswild = false;
-                    ffcmsg_safe(); /* clear previous error message from ffgcno */
-                    /* try deleting a keyword with this name */
-                    *status = 0;
-                    /* skip past leading '#' if any */
-                    if clause[clause1] == bb(b'#') {
-                        clause1 += 1;
-                    }
-                    clen = strlen_safe(&clause[clause1..]);
 
-                    /* Repeat deletion of keyword if requested with trailing '+' */
-                    if clen > 1 && clause[clause1 + clen - 1] == bb(b'+') {
-                        delall = true;
-                        clause[clause1 + clen - 1] = 0;
-                    }
-                    /* Determine if this pattern has wildcards */
-                    if strchr_safe(&clause[clause1..], bb(b'?')).is_some()
-                        || strchr_safe(&clause[clause1..], bb(b'*')).is_some()
-                        || strchr_safe(&clause[clause1..], bb(b'#')).is_some()
-                    {
-                        haswild = true;
-                    }
+                *status = 0; /* No matches are still successful */
+                colnum = -1; /* Ignore the column we found */
 
-                    if haswild {
-                        /* ffdkey() behaves differently if the pattern has a wildcard:
-                        it only checks from the "current" header position to the end, and doesn't
-                        check before the "current" header position.  Therefore, for the
-                        case of wildcards we will have to reset to the beginning. */
-                        ffmaky_safe(fptr, 1, status); /* reset pointer to beginning of header */
-                    }
-
-                    /* Single or repeated deletions until done */
-                    loop {
-                        if ffdkey_safe(fptr, &clause[clause1..], status) > 0 {
-                            if delall && *status == KEY_NO_EXIST {
-                                /* Found last wildcard item. Stop deleting */
-                                ffcmsg_safe();
-                                *status = 0;
-                                delall = false; /* Force end of this loop */
-                            } else {
-                                /* This was not a wildcard deletion, or it resulted in
-                                another kind of error */
-                                ffpmsg_str("column or keyword to be deleted does not exist:");
-                                ffpmsg_slice(&clause[clause1..]);
-                                return *status;
-                            }
-                        }
-                        if !delall {
-                            break;
-                        }
-                    } /* end do{} */
-                }
-            } else {
-                /* ===================================================== */
-                /* Case II:
-                this is either a column name, (case 1)
-
-                    or a new column name followed by double = ("==") followed
-                    by the old name which is to be renamed. (case 2A)
-
-                    or a column or keyword name followed by a single "=" and a
-                calculation expression (case 2B) */
-                /* ===================================================== */
-                let mut cptr2 = 0; //clause
-                let mut tstbuff = None;
-                let mut ptr_index = 0;
-                slen = fits_get_token2_safe(
-                    &clause[cptr2..],
-                    &mut ptr_index,
-                    cs!(c"( ="),
-                    &mut tstbuff,
-                    None,
+            /* Case Ib. delete column names with wildcard or not
+                    -COLNAME  - deleted exact column
+                -COLNAM*  - delete first column that matches pattern
+               Note no leading '#'
+            */
+            } else if clause[clause1] != 0
+                && clause[clause1] != bb(b'#')
+                && ((ffgcno_safe(
+                    fptr,
+                    CASEINSEN as c_int,
+                    &clause[clause1..],
+                    &mut colnum,
                     status,
-                );
-
-                cptr2 += ptr_index;
-
-                if slen == 0 || *status != 0 {
-                    ffpmsg_str("error: column or keyword name is blank (ffedit_columns):");
+                ) <= 0)
+                    || *status == COL_NOT_UNIQUE)
+            {
+                /* a column with this name exists, so try to delete it */
+                *status = 0; /* Clear potential status=COL_NOT_UNIQUE */
+                if ffdcol_safe(fptr, colnum, status) > 0 {
+                    ffpmsg_str("failed to delete column in input file:");
                     ffpmsg_slice(clause);
-                    if *status == 0 {
-                        *status = URL_PARSE_ERROR;
-                    }
+
                     return *status;
                 }
+                deletecol = 1; /* set flag that at least one col was deleted */
+                numcols -= 1;
+                colnum = -1;
+            }
+            /* Case Ic. delete keyword(s)
+                    -KEYNAME,#KEYNAME  - delete exact keyword (first match)
+                -KEYNAM*,#KEYNAM*  - delete first matching keyword
+                -KEYNAME+,-#KEYNAME+ - delete 0-or-more exact matches of exact keyword
+                -KEYNAM*+,-#KEYNAM*+ - delete 0-or-more wildcard matches
+               Note the preceding # is optional if no conflicting column name exists
+               and that wildcard patterns are described in "colfilter" section of
+               documentation.
+            */
+            else {
+                let mut delall = false;
+                let mut haswild = false;
+                ffcmsg_safe(); /* clear previous error message from ffgcno */
+                /* try deleting a keyword with this name */
+                *status = 0;
+                /* skip past leading '#' if any */
+                if clause[clause1] == bb(b'#') {
+                    clause1 += 1;
+                }
+                clen = strlen_safe(&clause[clause1..]);
 
-                let tstbuff = tstbuff.unwrap(); // Since slen != 0, can assume this is valid unwrap
+                /* Repeat deletion of keyword if requested with trailing '+' */
+                if clen > 1 && clause[clause1 + clen - 1] == bb(b'+') {
+                    delall = true;
+                    clause[clause1 + clen - 1] = 0;
+                }
+                /* Determine if this pattern has wildcards */
+                if strchr_safe(&clause[clause1..], bb(b'?')).is_some()
+                    || strchr_safe(&clause[clause1..], bb(b'*')).is_some()
+                    || strchr_safe(&clause[clause1..], bb(b'#')).is_some()
+                {
+                    haswild = true;
+                }
 
-                if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
-                    ffpmsg_str("error: column or keyword name is too long (ffedit_columns):");
-                    ffpmsg_slice(clause);
+                if haswild {
+                    /* ffdkey() behaves differently if the pattern has a wildcard:
+                    it only checks from the "current" header position to the end, and doesn't
+                    check before the "current" header position.  Therefore, for the
+                    case of wildcards we will have to reset to the beginning. */
+                    ffmaky_safe(fptr, 1, status); /* reset pointer to beginning of header */
+                }
+
+                /* Single or repeated deletions until done */
+                loop {
+                    if ffdkey_safe(fptr, &clause[clause1..], status) > 0 {
+                        if delall && *status == KEY_NO_EXIST {
+                            /* Found last wildcard item. Stop deleting */
+                            ffcmsg_safe();
+                            *status = 0;
+                            delall = false; /* Force end of this loop */
+                        } else {
+                            /* This was not a wildcard deletion, or it resulted in
+                            another kind of error */
+                            ffpmsg_str("column or keyword to be deleted does not exist:");
+                            ffpmsg_slice(&clause[clause1..]);
+                            return *status;
+                        }
+                    }
+                    if !delall {
+                        break;
+                    }
+                } /* end do{} */
+            }
+        } else {
+            /* ===================================================== */
+            /* Case II:
+            this is either a column name, (case 1)
+
+                or a new column name followed by double = ("==") followed
+                by the old name which is to be renamed. (case 2A)
+
+                or a column or keyword name followed by a single "=" and a
+            calculation expression (case 2B) */
+            /* ===================================================== */
+            let mut cptr2 = 0; //clause
+            let mut tstbuff = None;
+            let mut ptr_index = 0;
+            slen = fits_get_token2_safe(
+                &clause[cptr2..],
+                &mut ptr_index,
+                cs!(c"( ="),
+                &mut tstbuff,
+                None,
+                status,
+            );
+
+            cptr2 += ptr_index;
+
+            if slen == 0 || *status != 0 {
+                ffpmsg_str("error: column or keyword name is blank (ffedit_columns):");
+                ffpmsg_slice(clause);
+                if *status == 0 {
+                    *status = URL_PARSE_ERROR;
+                }
+                return *status;
+            }
+
+            let tstbuff = tstbuff.unwrap(); // Since slen != 0, can assume this is valid unwrap
+
+            if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
+                ffpmsg_str("error: column or keyword name is too long (ffedit_columns):");
+                ffpmsg_slice(clause);
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            strcpy_safe(&mut colname, &tstbuff);
+            drop(tstbuff);
+
+            /* If this is a keyword of the form
+                 #KEYWORD#
+               then transform to the form
+                 #KEYWORDn
+               where n is the previously used column number
+            */
+            if colname[0] == bb(b'#')
+                && strstr_safe(&colname[1..], cs!(c"#")) == Some(strlen_safe(&colname) - 1)
+            {
+                if colnum <= 0 {
+                    ffpmsg_str("The keyword name:");
+                    ffpmsg_slice(&colname);
+                    ffpmsg_str("is invalid unless a column has been previously");
+                    ffpmsg_str("created or editted by a calculator command");
                     *status = URL_PARSE_ERROR;
                     return *status;
                 }
-
-                strcpy_safe(&mut colname, &tstbuff);
-                drop(tstbuff);
-
-                /* If this is a keyword of the form
-                     #KEYWORD#
-                   then transform to the form
-                     #KEYWORDn
-                   where n is the previously used column number
+                colname[strlen_safe(&colname) - 1] = 0;
+                /* Make keyword name and put it in oldname */
+                ffkeyn_safe(&colname[1..], colnum, &mut oldname, status);
+                if *status != 0 {
+                    return *status;
+                }
+                /* Re-copy back into colname */
+                strcpy_safe(&mut colname[1..], &oldname);
+            } else if strstr_safe(&colname, cs!(c"#")) == Some(strlen_safe(&colname) - 1) {
+                /*  colname is of the form "NAME#";  if
+                      a) colnum is defined, and
+                      b) a column with literal name "NAME#" does not exist, and
+                      c) a keyword with name "NAMEn" (where n=colnum) exists, then
+                    transfrom the colname string to "NAMEn", otherwise
+                    do nothing.
                 */
-                if colname[0] == bb(b'#')
-                    && strstr_safe(&colname[1..], cs!(c"#")) == Some(strlen_safe(&colname) - 1)
-                {
-                    if colnum <= 0 {
-                        ffpmsg_str("The keyword name:");
-                        ffpmsg_slice(&colname);
-                        ffpmsg_str("is invalid unless a column has been previously");
-                        ffpmsg_str("created or editted by a calculator command");
-                        *status = URL_PARSE_ERROR;
-                        return *status;
-                    }
-                    colname[strlen_safe(&colname) - 1] = 0;
-                    /* Make keyword name and put it in oldname */
-                    ffkeyn_safe(&colname[1..], colnum, &mut oldname, status);
-                    if *status != 0 {
-                        return *status;
-                    }
-                    /* Re-copy back into colname */
-                    strcpy_safe(&mut colname[1..], &oldname);
-                } else if strstr_safe(&colname, cs!(c"#")) == Some(strlen_safe(&colname) - 1) {
-                    /*  colname is of the form "NAME#";  if
-                          a) colnum is defined, and
-                          b) a column with literal name "NAME#" does not exist, and
-                          c) a keyword with name "NAMEn" (where n=colnum) exists, then
-                        transfrom the colname string to "NAMEn", otherwise
-                        do nothing.
-                    */
-                    if colnum > 0 {
-                        /* colnum must be defined */
-                        tstatus = 0;
-                        ffgcno_safe(
-                            fptr,
-                            CASEINSEN as c_int,
-                            &colname,
-                            &mut testnum,
-                            &mut tstatus,
-                        );
-                        if tstatus != 0 && tstatus != COL_NOT_UNIQUE {
-                            /* OK, column doesn't exist, now see if keyword exists */
-                            ffcmsg_safe(); /* clear previous error message from ffgcno */
-                            strcpy_safe(&mut testname, &colname);
-                            testname[strlen_safe(&testname) - 1] = 0;
-                            /* Make keyword name and put it in oldname */
-                            ffkeyn_safe(&testname, colnum, &mut oldname, status);
-                            if *status != 0 {
-                                return *status;
-                            }
+                if colnum > 0 {
+                    /* colnum must be defined */
+                    tstatus = 0;
+                    ffgcno_safe(
+                        fptr,
+                        CASEINSEN as c_int,
+                        &colname,
+                        &mut testnum,
+                        &mut tstatus,
+                    );
+                    if tstatus != 0 && tstatus != COL_NOT_UNIQUE {
+                        /* OK, column doesn't exist, now see if keyword exists */
+                        ffcmsg_safe(); /* clear previous error message from ffgcno */
+                        strcpy_safe(&mut testname, &colname);
+                        testname[strlen_safe(&testname) - 1] = 0;
+                        /* Make keyword name and put it in oldname */
+                        ffkeyn_safe(&testname, colnum, &mut oldname, status);
+                        if *status != 0 {
+                            return *status;
+                        }
 
-                            tstatus = 0;
-                            if ffgcrd_safe(fptr, &oldname, &mut card, &mut tstatus) == 0 {
-                                /* Keyword does exist; copy real name back into colname */
-                                strcpy_safe(&mut colname, &oldname);
-                            }
+                        tstatus = 0;
+                        if ffgcrd_safe(fptr, &oldname, &mut card, &mut tstatus) == 0 {
+                            /* Keyword does exist; copy real name back into colname */
+                            strcpy_safe(&mut colname, &oldname);
                         }
                     }
                 }
+            }
 
-                /* if we encountered an opening parenthesis, then we need to */
-                /* find the closing parenthesis, and concatinate the 2 strings */
-                /* This supports expressions like:
-                    [col #EXTNAME(Extension name)="GTI"]
-                */
-                if clause[cptr2] == bb(b'(') {
+            /* if we encountered an opening parenthesis, then we need to */
+            /* find the closing parenthesis, and concatinate the 2 strings */
+            /* This supports expressions like:
+                [col #EXTNAME(Extension name)="GTI"]
+            */
+            if clause[cptr2] == bb(b'(') {
+                let mut tstbuff = None;
+                let mut ptr_index = 0;
+                if fits_get_token2_safe(
+                    &clause[cptr2..],
+                    &mut ptr_index,
+                    cs!(c")"),
+                    &mut tstbuff,
+                    None,
+                    status,
+                ) == 0
+                {
+                    strcat_safe(&mut colname, cs!(c")"));
+                } else {
+                    cptr2 += ptr_index;
+                    let tstbuff = tstbuff.unwrap();
+                    if (strlen_safe(&tstbuff) + strlen_safe(&colname) + 1) > FLEN_VALUE - 1 {
+                        ffpmsg_str("error: column name is too long (ffedit_columns):");
+                        *status = URL_PARSE_ERROR;
+                        return *status;
+                    }
+                    strcat_safe(&mut colname, &tstbuff);
+                    strcat_safe(&mut colname, cs!(c")"));
+                    drop(tstbuff);
+                }
+                cptr2 += 1;
+            }
+
+            while clause[cptr2] == bb(b' ') {
+                cptr2 += 1; /* skip white space */
+            }
+
+            if clause[cptr2] != bb(b'=') {
+                /* ------------------------------------ */
+                /* case 1 - simply the name of a column */
+                /* ------------------------------------ */
+
+                /* look for matching column */
+                ffgcno_safe(fptr, CASEINSEN as c_int, &colname, &mut testnum, status);
+
+                while *status == COL_NOT_UNIQUE {
+                    /* the column name contained wild cards, and it */
+                    /* matches more than one column in the table. */
+
+                    colnum = testnum;
+
+                    /* keep this column in the output file */
+                    savecol = 1;
+
+                    if colindex.is_empty() {
+                        colindex = vec![0; 999];
+                    }
+
+                    colindex[(colnum - 1) as usize] = 1; /* flag this column number */
+
+                    /* look for other matching column names */
+                    ffgcno_safe(fptr, CASEINSEN as c_int, &colname, &mut testnum, status);
+
+                    if *status == COL_NOT_FOUND {
+                        *status = 999; /* temporary status flag value */
+                    }
+                }
+
+                if *status <= 0 {
+                    colnum = testnum;
+
+                    /* keep this column in the output file */
+                    savecol = 1;
+
+                    if colindex.is_empty() {
+                        colindex = vec![0; 999];
+                    }
+
+                    colindex[(colnum - 1) as usize] = 1; /* flag this column number */
+                } else if *status == 999 {
+                    /* this special flag value does not represent an error */
+                    *status = 0;
+                } else {
+                    ffpmsg_str("Syntax error in columns specifier in input URL:");
+                    ffpmsg_slice(&clause[cptr2..]);
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+            } else {
+                /* ----------------------------------------------- */
+                /* case 2 where the token ends with an equals sign */
+                /* ----------------------------------------------- */
+
+                cptr2 += 1; /* skip over the first '=' */
+
+                if clause[cptr2] == bb(b'=') {
+                    /*................................................. */
+                    /*  Case A:  rename a column or keyword;  syntax is
+                    "new_name == old_name"  */
+                    /*................................................. */
+
+                    cptr2 += 1; /* skip the 2nd '=' */
+                    while clause[cptr2] == bb(b' ') {
+                        cptr2 += 1; /* skip white space */
+                    }
+
                     let mut tstbuff = None;
                     let mut ptr_index = 0;
                     if fits_get_token2_safe(
                         &clause[cptr2..],
                         &mut ptr_index,
-                        cs!(c")"),
+                        cs!(c" "),
                         &mut tstbuff,
                         None,
                         status,
                     ) == 0
                     {
-                        strcat_safe(&mut colname, cs!(c")"));
+                        oldname[0] = 0;
                     } else {
                         cptr2 += ptr_index;
                         let tstbuff = tstbuff.unwrap();
-                        if (strlen_safe(&tstbuff) + strlen_safe(&colname) + 1) > FLEN_VALUE - 1 {
-                            ffpmsg_str("error: column name is too long (ffedit_columns):");
+
+                        if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
+                            ffpmsg_str("error: column name syntax is too long (ffedit_columns):");
                             *status = URL_PARSE_ERROR;
                             return *status;
                         }
-                        strcat_safe(&mut colname, &tstbuff);
-                        strcat_safe(&mut colname, cs!(c")"));
-                        drop(tstbuff);
+                        strcpy_safe(&mut oldname, &tstbuff);
                     }
-                    cptr2 += 1;
-                }
 
-                while clause[cptr2] == bb(b' ') {
-                    cptr2 += 1; /* skip white space */
-                }
+                    /* get column number of the existing column */
+                    if ffgcno_safe(fptr, CASEINSEN as c_int, &oldname, &mut colnum, status) <= 0 {
+                        /* modify the TTYPEn keyword value with the new name */
+                        ffkeyn_safe(cs!(c"TTYPE"), colnum, &mut keyname, status);
 
-                if clause[cptr2] != bb(b'=') {
-                    /* ------------------------------------ */
-                    /* case 1 - simply the name of a column */
-                    /* ------------------------------------ */
-
-                    /* look for matching column */
-                    ffgcno_safe(fptr, CASEINSEN as c_int, &colname, &mut testnum, status);
-
-                    while *status == COL_NOT_UNIQUE {
-                        /* the column name contained wild cards, and it */
-                        /* matches more than one column in the table. */
-
-                        colnum = testnum;
-
+                        if ffmkys_safe(fptr, &keyname, &colname, None, status) > 0 {
+                            ffpmsg_str("failed to rename column in input file");
+                            ffpmsg_str(" oldname =");
+                            ffpmsg_slice(&oldname);
+                            ffpmsg_str(" newname =");
+                            ffpmsg_slice(&colname);
+                            return *status;
+                        }
                         /* keep this column in the output file */
                         savecol = 1;
-
                         if colindex.is_empty() {
                             colindex = vec![0; 999];
                         }
 
                         colindex[(colnum - 1) as usize] = 1; /* flag this column number */
-
-                        /* look for other matching column names */
-                        ffgcno_safe(fptr, CASEINSEN as c_int, &colname, &mut testnum, status);
-
-                        if *status == COL_NOT_FOUND {
-                            *status = 999; /* temporary status flag value */
-                        }
-                    }
-
-                    if *status <= 0 {
-                        colnum = testnum;
-
-                        /* keep this column in the output file */
-                        savecol = 1;
-
-                        if colindex.is_empty() {
-                            colindex = vec![0; 999];
-                        }
-
-                        colindex[(colnum - 1) as usize] = 1; /* flag this column number */
-                    } else if *status == 999 {
-                        /* this special flag value does not represent an error */
-                        *status = 0;
                     } else {
-                        ffpmsg_str("Syntax error in columns specifier in input URL:");
-                        ffpmsg_slice(&clause[cptr2..]);
-                        *status = URL_PARSE_ERROR;
-                        return *status;
+                        /* try renaming a keyword */
+                        ffcmsg_safe(); /* clear error message stack */
+                        *status = 0;
+                        if ffmnam_safe(fptr, &oldname, &colname, status) > 0 {
+                            ffpmsg_str("column or keyword to be renamed does not exist:");
+                            ffpmsg_slice(clause);
+                            return *status;
+                        }
                     }
                 } else {
-                    /* ----------------------------------------------- */
-                    /* case 2 where the token ends with an equals sign */
-                    /* ----------------------------------------------- */
+                    /*...................................................... */
+                    /* Case B: */
+                    /* this must be a general column/keyword calc expression */
+                    /* "name = expression" or "colname(TFORM) = expression" */
+                    /*...................................................... */
 
-                    cptr2 += 1; /* skip over the first '=' */
+                    /* parse the name and TFORM values, if present */
+                    colformat[0] = 0;
+                    let mut cptr3 = &colname[..];
 
-                    if clause[cptr2] == bb(b'=') {
-                        /*................................................. */
-                        /*  Case A:  rename a column or keyword;  syntax is
-                        "new_name == old_name"  */
-                        /*................................................. */
-
-                        cptr2 += 1; /* skip the 2nd '=' */
-                        while clause[cptr2] == bb(b' ') {
-                            cptr2 += 1; /* skip white space */
-                        }
-
-                        let mut tstbuff = None;
-                        let mut ptr_index = 0;
-                        if fits_get_token2_safe(
-                            &clause[cptr2..],
-                            &mut ptr_index,
-                            cs!(c" "),
-                            &mut tstbuff,
-                            None,
-                            status,
-                        ) == 0
-                        {
-                            oldname[0] = 0;
-                        } else {
-                            cptr2 += ptr_index;
-                            let tstbuff = tstbuff.unwrap();
-
-                            if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
-                                ffpmsg_str(
-                                    "error: column name syntax is too long (ffedit_columns):",
-                                );
-                                *status = URL_PARSE_ERROR;
-                                return *status;
-                            }
-                            strcpy_safe(&mut oldname, &tstbuff);
-                        }
-
-                        /* get column number of the existing column */
-                        if ffgcno_safe(fptr, CASEINSEN as c_int, &oldname, &mut colnum, status) <= 0
-                        {
-                            /* modify the TTYPEn keyword value with the new name */
-                            ffkeyn_safe(cs!(c"TTYPE"), colnum, &mut keyname, status);
-
-                            if ffmkys_safe(fptr, &keyname, &colname, None, status) > 0 {
-                                ffpmsg_str("failed to rename column in input file");
-                                ffpmsg_str(" oldname =");
-                                ffpmsg_slice(&oldname);
-                                ffpmsg_str(" newname =");
-                                ffpmsg_slice(&colname);
-                                return *status;
-                            }
-                            /* keep this column in the output file */
-                            savecol = 1;
-                            if colindex.is_empty() {
-                                colindex = vec![0; 999];
-                            }
-
-                            colindex[(colnum - 1) as usize] = 1; /* flag this column number */
-                        } else {
-                            /* try renaming a keyword */
-                            ffcmsg_safe(); /* clear error message stack */
-                            *status = 0;
-                            if ffmnam_safe(fptr, &oldname, &colname, status) > 0 {
-                                ffpmsg_str("column or keyword to be renamed does not exist:");
-                                ffpmsg_slice(clause);
-                                return *status;
-                            }
-                        }
+                    let mut tstbuff = None;
+                    let mut ptr_index = 0;
+                    if fits_get_token2_safe(
+                        cptr3,
+                        &mut ptr_index,
+                        cs!(c"("),
+                        &mut tstbuff,
+                        None,
+                        status,
+                    ) == 0
+                    {
+                        oldname[0] = 0;
                     } else {
-                        /*...................................................... */
-                        /* Case B: */
-                        /* this must be a general column/keyword calc expression */
-                        /* "name = expression" or "colname(TFORM) = expression" */
-                        /*...................................................... */
+                        cptr3 = &cptr3[ptr_index..];
+                        let tstbuff = tstbuff.unwrap();
 
-                        /* parse the name and TFORM values, if present */
-                        colformat[0] = 0;
-                        let mut cptr3 = &colname[..];
+                        if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
+                            ffpmsg_str("column expression is too long (ffedit_columns)");
+                            *status = URL_PARSE_ERROR;
+                            return *status;
+                        }
+                        strcpy_safe(&mut oldname, &tstbuff);
+                        drop(tstbuff);
+                    }
+
+                    if cptr3[0] == bb(b'(') {
+                        cptr3 = &cptr3[1..]; /* skip the '(' */
 
                         let mut tstbuff = None;
                         let mut ptr_index = 0;
                         if fits_get_token2_safe(
                             cptr3,
                             &mut ptr_index,
-                            cs!(c"("),
+                            cs!(c")"),
                             &mut tstbuff,
                             None,
                             status,
                         ) == 0
                         {
-                            oldname[0] = 0;
+                            colformat[0] = 0;
                         } else {
                             cptr3 = &cptr3[ptr_index..];
                             let tstbuff = tstbuff.unwrap();
-
                             if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
                                 ffpmsg_str("column expression is too long (ffedit_columns)");
                                 *status = URL_PARSE_ERROR;
                                 return *status;
                             }
-                            strcpy_safe(&mut oldname, &tstbuff);
+                            strcpy_safe(&mut colformat, &tstbuff);
                             drop(tstbuff);
                         }
-
-                        if cptr3[0] == bb(b'(') {
-                            cptr3 = &cptr3[1..]; /* skip the '(' */
-
-                            let mut tstbuff = None;
-                            let mut ptr_index = 0;
-                            if fits_get_token2_safe(
-                                cptr3,
-                                &mut ptr_index,
-                                cs!(c")"),
-                                &mut tstbuff,
-                                None,
-                                status,
-                            ) == 0
-                            {
-                                colformat[0] = 0;
-                            } else {
-                                cptr3 = &cptr3[ptr_index..];
-                                let tstbuff = tstbuff.unwrap();
-                                if strlen_safe(&tstbuff) > FLEN_VALUE - 1 {
-                                    ffpmsg_str("column expression is too long (ffedit_columns)");
-                                    *status = URL_PARSE_ERROR;
-                                    return *status;
-                                }
-                                strcpy_safe(&mut colformat, &tstbuff);
-                                drop(tstbuff);
-                            }
-                        }
-
-                        /* calculate values for the column or keyword */
-                        /*   cptr2 = the expression to be calculated */
-                        /*   oldname = name of the column or keyword */
-                        /*   colformat = column format, or keyword comment string */
-
-                        // WARNING / SAFETY / TODO
-                        let same_ftpr = &mut *(fptr.as_mut() as *mut _);
-
-                        if ffcalc_safe(
-                            fptr,
-                            &clause[cptr2..],
-                            same_ftpr,
-                            &oldname,
-                            &colformat,
-                            status,
-                        ) > 0
-                        {
-                            ffpmsg_str("Unable to calculate expression");
-                            return *status;
-                        }
-
-                        /* test if this is a column and not a keyword */
-                        tstatus = 0;
-                        ffgcno_safe(
-                            fptr,
-                            CASEINSEN as c_int,
-                            &oldname,
-                            &mut testnum,
-                            &mut tstatus,
-                        );
-                        if tstatus == 0 {
-                            /* keep this column in the output file */
-                            colnum = testnum;
-                            savecol = 1;
-
-                            if colindex.is_empty() {
-                                colindex = vec![0; 999];
-                            }
-
-                            colindex[(colnum - 1) as usize] = 1;
-                            if colnum > numcols {
-                                numcols += 1;
-                            }
-                        } else {
-                            ffcmsg_safe(); /* clear the error message stack */
-                        }
                     }
-                }
-            }
-            //clause = NULL;
-        }
 
-        let clause = tmp_clause.as_deref_mut().unwrap();
+                    /* calculate values for the column or keyword */
+                    /*   cptr2 = the expression to be calculated */
+                    /*   oldname = name of the column or keyword */
+                    /*   colformat = column format, or keyword comment string */
 
-        if savecol != 0 && deletecol == 0 {
-            /* need to delete all but the specified columns */
-            let mut ii = numcols;
-            while ii > 0 {
-                if colindex[(ii - 1) as usize] == 0 {
-                    /* delete this column */
+                    // WARNING / SAFETY / TODO:  This is really ugly, but we need to
+                    // pass a mutable reference to fptr into ffcalc_safe.
+                    let same_ftpr = unsafe { &mut *(fptr.as_mut() as *mut _) };
 
-                    if ffdcol_safe(fptr, ii, status) > 0 {
-                        ffpmsg_str("failed to delete column in input file:");
-                        ffpmsg_slice(clause);
+                    if ffcalc_safe(
+                        fptr,
+                        &clause[cptr2..],
+                        same_ftpr,
+                        &oldname,
+                        &colformat,
+                        status,
+                    ) > 0
+                    {
+                        ffpmsg_str("Unable to calculate expression");
                         return *status;
                     }
+
+                    /* test if this is a column and not a keyword */
+                    tstatus = 0;
+                    ffgcno_safe(
+                        fptr,
+                        CASEINSEN as c_int,
+                        &oldname,
+                        &mut testnum,
+                        &mut tstatus,
+                    );
+                    if tstatus == 0 {
+                        /* keep this column in the output file */
+                        colnum = testnum;
+                        savecol = 1;
+
+                        if colindex.is_empty() {
+                            colindex = vec![0; 999];
+                        }
+
+                        colindex[(colnum - 1) as usize] = 1;
+                        if colnum > numcols {
+                            numcols += 1;
+                        }
+                    } else {
+                        ffcmsg_safe(); /* clear the error message stack */
+                    }
                 }
-                ii -= 1;
             }
         }
-
-        *status
+        //clause = NULL;
     }
+
+    let clause = tmp_clause.as_deref_mut().unwrap();
+
+    if savecol != 0 && deletecol == 0 {
+        /* need to delete all but the specified columns */
+        let mut ii = numcols;
+        while ii > 0 {
+            if colindex[(ii - 1) as usize] == 0 {
+                /* delete this column */
+
+                if ffdcol_safe(fptr, ii, status) > 0 {
+                    ffpmsg_str("failed to delete column in input file:");
+                    ffpmsg_slice(clause);
+                    return *status;
+                }
+            }
+            ii -= 1;
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7253,13 +7251,13 @@ pub fn pixel_filter_helper(
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffihtps() {
-    unsafe { ffihtps_safer() }
+    ffihtps_safe()
 }
 
 /*-------------------------------------------------------------------*/
 /// Wrapper function for global initialization of curl library.
 /// This is NOT THREAD-SAFE
-pub unsafe fn ffihtps_safer() {
+pub fn ffihtps_safe() {
     todo!();
 }
 
@@ -7268,13 +7266,13 @@ pub unsafe fn ffihtps_safer() {
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffchtps() {
-    unsafe { ffchtps_safer() }
+    ffchtps_safe()
 }
 
 /*-------------------------------------------------------------------*/
 /// Wrapper function for global cleanup of curl library.
 /// This is NOT THREAD-SAFE
-pub unsafe fn ffchtps_safer() {
+pub fn ffchtps_safe() {
     todo!();
 }
 
@@ -7283,13 +7281,13 @@ pub unsafe fn ffchtps_safer() {
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffvhtps(flag: c_int) {
-    unsafe { ffvhtps_safer(flag) }
+    ffvhtps_safe(flag)
 }
 
 /*-------------------------------------------------------------------*/
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
-pub unsafe fn ffvhtps_safer(flag: c_int) {
+pub fn ffvhtps_safe(flag: c_int) {
     #[cfg(feature = "net_services")]
     {
         https_set_verbose(flag);

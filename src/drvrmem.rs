@@ -42,7 +42,6 @@ use crate::{bb, cs};
 pub const RECBUFLEN: usize = 1000;
 
 static STDIN_OUTFILE: Mutex<[c_char; FLEN_FILENAME]> = Mutex::new([0; FLEN_FILENAME]);
-//static mut stdin_outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
 /* structure containing mem file structure */
 #[derive(Debug, Copy, Clone)]

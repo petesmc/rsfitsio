@@ -1161,15 +1161,15 @@ pub unsafe extern "C" fn ffibin(
 /*--------------------------------------------------------------------------*/
 /// Insert a Binary table extension following the current HDU.
 pub fn ffibin_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
-    naxis2: LONGLONG,              /* I - number of rows in the table              */
-    tfields: c_int,                /* I - number of columns in the table           */
-    v_ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    v_tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    v_tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnmx: Option<&[c_char]>,     /* I - value of EXTNAME keyword, if any         */
-    pcount: LONGLONG,              /* I - size of special data area (heap)         */
-    status: &mut c_int,            /* IO - error status                            */
+    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
+    naxis2: LONGLONG,            /* I - number of rows in the table              */
+    tfields: c_int,              /* I - number of columns in the table           */
+    ttype: &[Option<&[c_char]>], /* I - name of each column                      */
+    tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
+    tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
+    extnmx: Option<&[c_char]>,   /* I - value of EXTNAME keyword, if any         */
+    pcount: LONGLONG,            /* I - size of special data area (heap)         */
+    status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
     let mut nunit: c_int = 0;
 
@@ -1199,10 +1199,10 @@ pub fn ffibin_safe(
 
     let headstart = fptr.Fptr.get_headstart_as_slice();
     /* if the current header is completely empty ...  */
-    if ( fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize] )
     /* or, if we are at the end of the file, ... */
-||  ( ((fptr.Fptr.curhdu) == maxhdu ) &&
-   (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize ) )
+    if (fptr.Fptr.headend == headstart[fptr.Fptr.curhdu as usize])
+        || (((fptr.Fptr.curhdu) == maxhdu)
+            && (headstart[(maxhdu + 1) as usize] >= fptr.Fptr.logfilesize))
     {
         /* then simply append new image extension */
         ffcrtb_safe(
@@ -1210,9 +1210,9 @@ pub fn ffibin_safe(
             BINARY_TBL,
             naxis2,
             tfields,
-            v_ttype,
-            v_tform,
-            v_tunit,
+            ttype,
+            tform,
+            tunit,
             Some(&extnm),
             status,
         );
@@ -1236,7 +1236,7 @@ pub fn ffibin_safe(
 
     /* count number of optional TUNIT keywords to be written */
     for ii in 0..(tfields as usize) {
-        if let Some(v_tunit) = v_tunit
+        if let Some(v_tunit) = tunit
             && v_tunit[ii].is_some()
         {
             nunit += 1;
@@ -1251,7 +1251,7 @@ pub fn ffibin_safe(
 
     /* calculate total width of the table */
     for ii in 0..(tfields as usize) {
-        let tform_item = v_tform[ii];
+        let tform_item = tform[ii];
         ffbnfm_safe(
             tform_item,
             Some(&mut datacode),
@@ -1326,9 +1326,9 @@ pub fn ffibin_safe(
         fptr,
         naxis2,
         tfields,
-        v_ttype,
-        v_tform,
-        v_tunit,
+        ttype,
+        tform,
+        tunit,
         Some(&extnm),
         pcount,
         status,

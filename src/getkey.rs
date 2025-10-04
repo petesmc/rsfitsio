@@ -1946,7 +1946,7 @@ pub unsafe extern "C" fn fffree(
 ) -> c_int {
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        fffree_safer(value, status)
+        fffree_safe(value, status)
     }
 }
 
@@ -1954,7 +1954,7 @@ pub unsafe extern "C" fn fffree(
 /// Free memory allocated by FITS library functions.
 /// This function deallocates memory that was previously allocated by other
 /// FITS library functions and tracked in the global allocations map.
-pub unsafe fn fffree_safer(
+pub fn fffree_safe(
     value: *mut c_void, /* I - pointer to keyword value  */
     status: &mut c_int, /* IO - error status             */
 ) -> c_int {
@@ -3921,7 +3921,7 @@ pub unsafe extern "C" fn ffghpr(
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
-pub unsafe fn ffghpr_safe(
+pub fn ffghpr_safe(
     fptr: &mut fitsfile,           /* I - FITS file pointer                        */
     maxdim: c_int,                 /* I - maximum no. of dimensions to read;       */
     simple: &mut c_int,            /* O - does file conform to FITS standard? 1/0  */

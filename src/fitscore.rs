@@ -8347,7 +8347,7 @@ pub unsafe extern "C" fn ffgdessll(
     }
 }
 
-pub unsafe fn ffgdessll_safe(
+pub fn ffgdessll_safe(
     fptr: &mut fitsfile,
     colnum: c_int,
     firstrow: LONGLONG,
@@ -8356,95 +8356,98 @@ pub unsafe fn ffgdessll_safe(
     heapaddr: *mut LONGLONG,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut ii: LONGLONG;
-        let mut descript4: [INT32BIT; 2] = [0, 0];
-        let mut descript8: [LONGLONG; 2] = [0, 0];
+    let mut ii: LONGLONG;
+    let mut descript4: [INT32BIT; 2] = [0, 0];
+    let mut descript8: [LONGLONG; 2] = [0, 0];
 
-        if *status > 0 {
-            return *status;
-        }
+    let mut length = match length.is_null() {
+        true => None,
+        false => unsafe { Some(slice::from_raw_parts_mut(length, nrows as usize)) },
+    };
 
-        /* reset position to the correct HDU if necessary */
-        if fptr.HDUposition != fptr.Fptr.curhdu {
-            ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
-        } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0
-        {
-            /* rescan header */
-            return *status;
-        }
+    let mut heapaddr = match heapaddr.is_null() {
+        true => None,
+        false => unsafe { Some(slice::from_raw_parts_mut(heapaddr, nrows as usize)) },
+    };
 
-        /* point to first column structure */
-        let c = fptr.Fptr.get_tableptr_as_mut_slice();
-        let ci = colnum as usize - 1; /* offset to the correct column */
-
-        if c[ci].tdatatype >= 0 {
-            *status = NOT_VARI_LEN;
-            return *status;
-        }
-
-        let tbcol = c[ci].tbcol;
-
-        let rowsize = fptr.Fptr.rowlength;
-        let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1)) + tbcol;
-
-        let c = fptr.Fptr.get_tableptr_as_mut_slice();
-        let ci = colnum as usize - 1; /* offset to the correct column */
-
-        if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
-            /* read 4-byte descriptors */
-            ii = 0;
-            let mut length_i = 0;
-            let mut heapaddr_i = 0;
-            while ii < nrows {
-                /* read descriptors */
-                if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
-                    if !length.is_null() {
-                        let length = slice::from_raw_parts_mut(length, nrows as usize);
-                        length[length_i] = LONGLONG::from(descript4[0]); /* 1st word is the length  */
-                        length_i += 1;
-                    }
-                    if !heapaddr.is_null() {
-                        let heapaddr = slice::from_raw_parts_mut(heapaddr, nrows as usize);
-                        heapaddr[heapaddr_i] = LONGLONG::from(descript4[1]); /* 2nd word is the address */
-                        heapaddr_i += 1;
-                    }
-                    bytepos += rowsize;
-                } else {
-                    return *status;
-                };
-                ii += 1
-            }
-        } else {
-            /* this is for 'Q' columns */
-
-            /* read 8-byte descriptors */
-            ii = 0;
-            let mut length_i = 0;
-            let mut heapaddr_i = 0;
-            while ii < nrows {
-                /* read descriptors */
-                /* cast to type (long *) even though it is actually (LONGLONG *) */
-                if ffgi8b(fptr, bytepos, 2, 8, cast_slice_mut(&mut descript8), status) <= 0 {
-                    if !length.is_null() {
-                        let length = slice::from_raw_parts_mut(length, nrows as usize);
-                        length[length_i] = descript8[0] as LONGLONG; /* 1st word is the length  */
-                        length_i += 1;
-                    }
-                    if !heapaddr.is_null() {
-                        let heapaddr = slice::from_raw_parts_mut(heapaddr, nrows as usize);
-                        heapaddr[heapaddr_i] = descript8[1] as LONGLONG; /* 2nd word is the address */
-                        heapaddr_i += 1;
-                    }
-                    bytepos += rowsize;
-                } else {
-                    return *status;
-                };
-                ii += 1
-            }
-        }
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    /* point to first column structure */
+    let c = fptr.Fptr.get_tableptr_as_mut_slice();
+    let ci = colnum as usize - 1; /* offset to the correct column */
+
+    if c[ci].tdatatype >= 0 {
+        *status = NOT_VARI_LEN;
+        return *status;
+    }
+
+    let tbcol = c[ci].tbcol;
+
+    let rowsize = fptr.Fptr.rowlength;
+    let mut bytepos = fptr.Fptr.datastart + (rowsize * (firstrow - 1)) + tbcol;
+
+    let c = fptr.Fptr.get_tableptr_as_mut_slice();
+    let ci = colnum as usize - 1; /* offset to the correct column */
+
+    if c[ci].tform[0] == bb(b'P') || c[ci].tform[1] == bb(b'P') {
+        /* read 4-byte descriptors */
+        ii = 0;
+        let mut length_i = 0;
+        let mut heapaddr_i = 0;
+        while ii < nrows {
+            /* read descriptors */
+            if ffgi4b(fptr, bytepos, 2, 4, &mut descript4, status) <= 0 {
+                if let Some(length) = length.as_deref_mut() {
+                    length[length_i] = LONGLONG::from(descript4[0]); /* 1st word is the length  */
+                    length_i += 1;
+                }
+                if let Some(heapaddr) = heapaddr.as_deref_mut() {
+                    heapaddr[heapaddr_i] = LONGLONG::from(descript4[1]); /* 2nd word is the address */
+                    heapaddr_i += 1;
+                }
+                bytepos += rowsize;
+            } else {
+                return *status;
+            };
+            ii += 1
+        }
+    } else {
+        /* this is for 'Q' columns */
+
+        /* read 8-byte descriptors */
+        ii = 0;
+        let mut length_i = 0;
+        let mut heapaddr_i = 0;
+        while ii < nrows {
+            /* read descriptors */
+            /* cast to type (long *) even though it is actually (LONGLONG *) */
+            if ffgi8b(fptr, bytepos, 2, 8, cast_slice_mut(&mut descript8), status) <= 0 {
+                if let Some(length) = length.as_deref_mut() {
+                    length[length_i] = descript8[0] as LONGLONG; /* 1st word is the length  */
+                    length_i += 1;
+                }
+                if let Some(heapaddr) = heapaddr.as_deref_mut() {
+                    heapaddr[heapaddr_i] = descript8[1] as LONGLONG; /* 2nd word is the address */
+                    heapaddr_i += 1;
+                }
+                bytepos += rowsize;
+            } else {
+                return *status;
+            };
+            ii += 1
+        }
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

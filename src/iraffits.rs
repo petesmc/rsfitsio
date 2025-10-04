@@ -200,62 +200,61 @@ pub fn fits_delete_iraf_file_safe(
 /*--------------------------------------------------------------------------*/
 /// Driver routine that reads an IRAF image into memory, also converting
 /// it into FITS format.
-pub(crate) unsafe fn iraf2mem(
+pub(crate) fn iraf2mem(
     filename: &[c_char],       /* name of input file                 */
     buffptr: *mut *mut c_char, /* O - memory pointer (initially ptr::null_mut())    */
     buffsize: &mut usize,      /* O - size of mem buffer, in bytes        */
     filesize: &mut usize,      /* O - size of FITS file, in bytes         */
     status: &mut c_int,        /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        let mut lenirafhead: usize = 0;
+    let mut lenirafhead: usize = 0;
+    let buffptr = unsafe { buffptr.as_mut().expect(NULL_MSG) };
 
-        *buffptr = ptr::null_mut();
-        *buffsize = 0;
-        *filesize = 0;
+    *buffptr = ptr::null_mut();
+    *buffsize = 0;
+    *filesize = 0;
 
-        let mut b_ptr = Vec::new();
+    let mut b_ptr = Vec::new();
 
-        /* read IRAF header into dynamically created char array (free it later!) */
-        let irafheader = irafrdhead(filename, &mut lenirafhead);
+    /* read IRAF header into dynamically created char array (free it later!) */
+    let irafheader = irafrdhead(filename, &mut lenirafhead);
 
-        if irafheader.is_err() {
-            *status = FILE_NOT_OPENED;
-            return *status;
-        }
-
-        let irafheader = irafheader.unwrap();
-
-        /* convert IRAF header to FITS header in memory */
-        let _tmp_buffer = iraftofits(
-            filename,
-            &irafheader,
-            lenirafhead,
-            &mut b_ptr,
-            buffsize,
-            filesize,
-            status,
-        );
-
-        /* don't need the IRAF header any more */
-        // free(irafheader);
-
-        if *status > 0 {
-            return *status;
-        }
-
-        *filesize = (((*filesize - 1) / BL!()) + 1) * BL!(); /* multiple of 2880 */
-
-        /* append the image data onto the FITS header */
-        irafrdimage(&mut b_ptr, buffsize, filesize, status);
-
-        let (raw_ptr, l, c) = vec_into_raw_parts(b_ptr);
-        ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
-
-        *buffptr = raw_ptr;
-
-        *status
+    if irafheader.is_err() {
+        *status = FILE_NOT_OPENED;
+        return *status;
     }
+
+    let irafheader = irafheader.unwrap();
+
+    /* convert IRAF header to FITS header in memory */
+    let _tmp_buffer = iraftofits(
+        filename,
+        &irafheader,
+        lenirafhead,
+        &mut b_ptr,
+        buffsize,
+        filesize,
+        status,
+    );
+
+    /* don't need the IRAF header any more */
+    // free(irafheader);
+
+    if *status > 0 {
+        return *status;
+    }
+
+    *filesize = (((*filesize - 1) / BL!()) + 1) * BL!(); /* multiple of 2880 */
+
+    /* append the image data onto the FITS header */
+    irafrdimage(&mut b_ptr, buffsize, filesize, status);
+
+    let (raw_ptr, l, c) = vec_into_raw_parts(b_ptr);
+    ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
+
+    *buffptr = raw_ptr;
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
