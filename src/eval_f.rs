@@ -1424,17 +1424,17 @@ pub(crate) fn ffiprs(
 
         if expr[0] == b'@' as c_char {
             // Handle file import case
-            let mut temp_ptr: *mut c_char = std::ptr::null_mut();
+            let mut temp_ptr = None;
             if ffimport_file_safe(&expr[1..], &mut temp_ptr, status) != 0 {
                 return *status;
             }
-            if !temp_ptr.is_null() {
-                lexpr = strlen(temp_ptr) as c_int;
+
+            if let Some(temp_ptr) = temp_ptr {
+                lexpr = strlen_safe(&temp_ptr) as c_int;
                 // Convert C string to Vec<u8> and then to Box<[u8]>
-                let lexpr_cstr = CStr::from_ptr(temp_ptr);
+                let lexpr_cstr = CStr::from_bytes_until_nul(cast_slice(&temp_ptr)).unwrap();
                 let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
                 lParse.expr = Some(vec.into_boxed_slice());
-                free(temp_ptr.cast::<libc::c_void>()); // Don't forget to free
             }
         } else {
             lexpr = strlen_safe(expr) as c_int;
@@ -1531,7 +1531,7 @@ pub(crate) fn ffiprs(
 
 /*---------------------------------------------------------------------------*/
 /// Clear the parser, making it ready to accept a new expression.
-fn ffcprs(lParse: &mut ParseData) {
+pub(crate) fn ffcprs(lParse: &mut ParseData) {
     unsafe {
         let col: c_int = 0;
         let mut node: c_int = 0;
@@ -1593,7 +1593,7 @@ fn ffcprs(lParse: &mut ParseData) {
 /// Iterator work function which calls the parser and copies the results
 /// into either an OutputCol or a data pointer supplied in the userPtr
 /// structure.
-extern "C" fn fits_parser_workfn(
+pub(crate) extern "C" fn fits_parser_workfn(
     totalrows: c_long,         /* I - Total rows to be processed     */
     offset: c_long,            /* I - Number of rows skipped at start*/
     firstrow: c_long,          /* I - First row of this iteration    */
@@ -1611,7 +1611,7 @@ extern "C" fn fits_parser_workfn(
 /// Iterator work function which calls the parser and copies the results
 /// into either an OutputCol or a data pointer supplied in the userPtr
 /// structure.
-fn fits_parser_workfn_safe(
+pub(crate) fn fits_parser_workfn_safe(
     totalrows: c_long,           /* I - Total rows to be processed     */
     offset: c_long,              /* I - Number of rows skipped at start*/
     mut firstrow: c_long,        /* I - First row of this iteration    */
@@ -3572,7 +3572,7 @@ pub fn ffffrw_safer(
 
 /*---------------------------------------------------------------------------*/
 ///  Setup iterator column and parser information to be ready to compute temporary calculator expression
-fn fits_parser_set_temporary_col(
+pub(crate) fn fits_parser_set_temporary_col(
     lParse: &mut ParseData,
     Info: &mut parseInfo,
     nrows: c_long,

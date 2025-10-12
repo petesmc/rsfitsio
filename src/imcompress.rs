@@ -8532,8 +8532,7 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_short>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP
-             */
+            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
@@ -8644,8 +8643,7 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_int>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP
-             */
+            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {

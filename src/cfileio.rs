@@ -809,13 +809,13 @@ pub fn ffopen_safe(
         let mut histfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut filtfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let wtcol: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let minname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let maxname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let binname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let minin: [f64; 4] = [0.0; 4];
-        let maxin: [f64; 4] = [0.0; 4];
-        let binsizein: [f64; 4] = [0.0; 4];
+        let mut wtcol: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut minname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+        let mut maxname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+        let mut binname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+        let mut minin: [f64; 4] = [0.0; 4];
+        let mut maxin: [f64; 4] = [0.0; 4];
+        let mut binsizein: [f64; 4] = [0.0; 4];
         let mut weight: f64 = 0.0;
         let mut imagetype = 0;
         let mut naxis = 1;
@@ -826,7 +826,7 @@ pub fn ffopen_safe(
         let mut skip_table = false;
         let mut no_primary_data = false;
         let mut open_disk_file = false;
-        let colname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+        let mut colname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
         let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
         let hdtype: [*const c_char; 3] =
             [c"IMAGE".as_ptr(), c"TABLE".as_ptr(), c"BINTABLE".as_ptr()];
@@ -1599,7 +1599,7 @@ pub fn ffopen_safe(
         /* ------------------------------------------------------------------- */
 
         if binspec[0] != 0 {
-            let mut exprs = None; // This is a valid pointer to an empty value, i.e. is expecting a return value
+            let mut exprs: [Box<[c_char]>; 5] = Default::default(); // This is a valid pointer to an empty value, i.e. is expecting a return value
             if histfilename[0] != 0 && (pixfilter[0]) == 0 {
                 strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
             } else {
@@ -1612,15 +1612,15 @@ pub fn ffopen_safe(
                 &binspec,
                 &mut imagetype,
                 &mut haxis,
-                &colname,
-                &minin,
-                &maxin,
-                &binsizein,
-                &minname,
-                &maxname,
-                &binname,
+                &mut colname,
+                &mut minin,
+                &mut maxin,
+                &mut binsizein,
+                &mut minname,
+                &mut maxname,
+                &mut binname,
                 &mut weight,
-                &wtcol,
+                &mut wtcol,
                 &mut recip,
                 Some(&mut exprs),
                 status,
@@ -1629,52 +1629,41 @@ pub fn ffopen_safe(
             /* Create the histogram primary array and open it as the current fptr */
             /* This will close the table that was used to create the histogram. */
 
-            match exprs {
-                Some(e) => {
-                    ffhist2e(
-                        fptr,
-                        &outfile,
-                        imagetype,
-                        haxis,
-                        &colname,
-                        Some(&[&e[0], &e[1], &e[2], &e[3]]),
-                        &minin,
-                        &maxin,
-                        &binsizein,
-                        Some(&minname),
-                        Some(&maxname),
-                        Some(&binname),
-                        weight,
-                        Some(&wtcol),
-                        Some(&e[4]),
-                        recip,
-                        rowselect,
-                        status,
-                    );
-                }
-                None => {
-                    ffhist2e(
-                        fptr,
-                        &outfile,
-                        imagetype,
-                        haxis,
-                        &colname,
-                        None,
-                        &minin,
-                        &maxin,
-                        &binsizein,
-                        Some(&minname),
-                        Some(&maxname),
-                        Some(&binname),
-                        weight,
-                        Some(&wtcol),
-                        None,
-                        recip,
-                        rowselect,
-                        status,
-                    );
-                }
-            };
+            // Check if any expressions exist
+            let has_exprs = exprs.iter().any(|e| !e.is_empty() && e[0] != 0);
+
+            if has_exprs {
+                ffhist2e(
+                    fptr,
+                    &outfile,
+                    imagetype,
+                    haxis,
+                    &colname,
+                    Some(&[
+                        Some(&exprs[0]),
+                        Some(&exprs[1]),
+                        Some(&exprs[2]),
+                        Some(&exprs[3]),
+                    ]),
+                    &minin,
+                    &maxin,
+                    &binsizein,
+                    &minname,
+                    &maxname,
+                    &binname,
+                    weight,
+                    &wtcol,
+                    Some(&exprs[4]),
+                    recip,
+                    rowselect,
+                    status,
+                );
+            } else {
+                ffhist2e(
+                    fptr, &outfile, imagetype, haxis, &colname, None, &minin, &maxin, &binsizein,
+                    &minname, &maxname, &binname, weight, &wtcol, None, recip, rowselect, status,
+                );
+            }
 
             let f = (*fptr).as_mut().unwrap();
             if *status > 0 {
@@ -2184,7 +2173,7 @@ fn find_quote(string: &[c_char]) -> Option<usize> {
 
   returns: pointer to character after delimiter, or 0 if not found
 */
-fn fits_find_match_delim(string: &mut [c_char], delim: c_char) -> Option<usize> {
+pub(crate) fn fits_find_match_delim(string: &[c_char], delim: c_char) -> Option<usize> {
     if string.is_empty() {
         return None;
     }
@@ -2547,19 +2536,23 @@ pub(crate) fn ffedit_columns(
     }
 
     /* Check if need to import expression from a file */
-    let mut file_expr = ptr::null_mut();
+    let mut contents = None;
+    let mut c: Vec<c_char>;
+
     if cptr[0] == bb(b'@') {
-        if ffimport_file_safe(&cptr[1..], &mut file_expr, status) != 0 {
+        if ffimport_file_safe(&cptr[1..], &mut contents, status) != 0 {
             return *status;
         }
 
-        unsafe {
-            let _len = CStr::from_ptr(file_expr).to_bytes_with_nul().len();
+        c = contents.unwrap();
+        let _len = CStr::from_bytes_until_nul(cast_slice(&c))
+            .unwrap()
+            .to_bytes_with_nul()
+            .len();
+        cptr = &mut c[.._len];
 
-            cptr = slice::from_raw_parts_mut(file_expr, _len);
-            while cptr[0] == bb(b' ') {
-                cptr = &mut cptr[1..]; /* skip leading white space... again */
-            }
+        while cptr[0] == bb(b' ') {
+            cptr = &mut cptr[1..]; /* skip leading white space... again */
         }
     }
 
@@ -5434,7 +5427,7 @@ pub fn ffifile2_safe(
         }
 
         /* delete the binning spec from the row filter string */
-        let ptr2 = fits_find_match_delim(&mut rowfilter[(p1 + 1)..], bb(b']'));
+        let ptr2 = fits_find_match_delim(&rowfilter[(p1 + 1)..], bb(b']'));
         if let Some(mut p2) = ptr2 {
             p2 = p2 + p1 + 1;
 
@@ -6425,7 +6418,18 @@ pub unsafe extern "C" fn ffimport_file(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(filename);
 
-        ffimport_file_safe(filename, contents, status)
+        let mut safe_contents = None;
+        let result = ffimport_file_safe(filename, &mut safe_contents, status);
+
+        if let Some(safe_contents) = safe_contents {
+            // HEAP ALLOCATION
+            let (p, l, c) = vec_into_raw_parts(safe_contents);
+            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+
+            *contents = p;
+        }
+
+        result
     }
 }
 
@@ -6436,9 +6440,9 @@ pub unsafe extern "C" fn ffimport_file(
 /// calling routine to append (or prepend) a newline (or quotes?) without
 /// reallocating memory.
 pub fn ffimport_file_safe(
-    filename: &[c_char],        /* Text file to read                   */
-    contents: *mut *mut c_char, /* Pointer to pointer to hold file     */
-    status: &mut c_int,         /* CFITSIO error code                  */
+    filename: &[c_char],                /* Text file to read                   */
+    contents: &mut Option<Vec<c_char>>, /* Pointer to pointer to hold file     */
+    status: &mut c_int,                 /* CFITSIO error code                  */
 ) -> c_int {
     let mut eoline = true;
     let mut line: [c_char; 256] = [0; 256];
@@ -6521,15 +6525,8 @@ pub fn ffimport_file_safe(
 
     drop(aFile);
 
-    // HEAP ALLOCATION
-    let (p, l, c) = vec_into_raw_parts(lines);
-    ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
+    *contents = Some(lines);
 
-    if !contents.is_null() {
-        unsafe {
-            *contents = p;
-        }
-    }
     *status
 }
 
@@ -7407,7 +7404,7 @@ pub fn fits_get_token2_safe(
 
         let p_tmp = &ptr[*ptr_index..];
         strncat_safe(&mut t, p_tmp, slen); /* copy token */
-        *ptr_index += 1; /* skip over the token */
+        *ptr_index += slen; /* skip over the token */
 
         if let Some(isanumber) = isanumber {
             /* check if token is a number */

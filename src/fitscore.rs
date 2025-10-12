@@ -12394,12 +12394,73 @@ pub(crate) fn fits_strncasecmp(s1: &[c_char], s2: &[c_char], n: usize) -> c_int 
  *
  * */
 pub(crate) unsafe fn fits_recalloc(
-    _ptr: *mut c_void,
-    _old_num: usize,
-    _new_num: usize,
-    _size: usize,
+    ptr: *mut c_void,
+    old_num: usize,
+    new_num: usize,
+    size: usize,
 ) -> *mut c_void {
-    todo!();
+    unsafe {
+        use std::alloc::{Layout, alloc_zeroed, dealloc, realloc};
+        use std::ptr;
+
+        if ptr.is_null() || old_num == 0 {
+            /* Starting from nothing */
+            let layout = match Layout::array::<u8>(new_num * size) {
+                Ok(l) => l,
+                Err(_) => return ptr::null_mut(),
+            };
+            return alloc_zeroed(layout) as *mut c_void;
+        } else if new_num == old_num {
+            /* Same size, do nothing */
+            return ptr;
+        } else if new_num == 0 {
+            /* Freeing */
+            if !ptr.is_null() {
+                let layout = match Layout::array::<u8>(old_num * size) {
+                    Ok(l) => l,
+                    Err(_) => return ptr::null_mut(),
+                };
+                dealloc(ptr as *mut u8, layout);
+            }
+            return ptr::null_mut();
+        } else if new_num < old_num {
+            /* Shrinking */
+            let old_layout = match Layout::array::<u8>(old_num * size) {
+                Ok(l) => l,
+                Err(_) => {
+                    let layout =
+                        Layout::array::<u8>(old_num * size).unwrap_or_else(|_| Layout::new::<u8>());
+                    dealloc(ptr as *mut u8, layout);
+                    return ptr::null_mut();
+                }
+            };
+            let newptr = realloc(ptr as *mut u8, old_layout, new_num * size);
+            if newptr.is_null() {
+                dealloc(ptr as *mut u8, old_layout);
+            }
+            return newptr as *mut c_void;
+        }
+
+        /* Growing */
+        let old_layout = match Layout::array::<u8>(old_num * size) {
+            Ok(l) => l,
+            Err(_) => {
+                let layout =
+                    Layout::array::<u8>(old_num * size).unwrap_or_else(|_| Layout::new::<u8>());
+                dealloc(ptr as *mut u8, layout);
+                return ptr::null_mut();
+            }
+        };
+        let newptr = realloc(ptr as *mut u8, old_layout, new_num * size);
+        if newptr.is_null() {
+            dealloc(ptr as *mut u8, old_layout);
+            return newptr as *mut c_void;
+        }
+
+        /* Zero the new portion of the array */
+        ptr::write_bytes(newptr.add(old_num * size), 0, (new_num - old_num) * size);
+        newptr as *mut c_void
+    }
 }
 
 #[cfg(test)]
