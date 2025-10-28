@@ -736,7 +736,7 @@ pub mod rust_api {
     pub use crate::cfileio::ffomem_safer as fits_open_memfile;
     pub use crate::editcol::ffrwrg_safe as fits_parse_range;
     pub use crate::editcol::ffrwrgll_safe as fits_parse_rangell;
-    pub use crate::histo::ffbinr_safer as fits_parse_binrange;
+    pub use crate::histo::ffbinr_safe as fits_parse_binrange;
     pub use crate::histo::ffbins_safe as fits_parse_binspec;
 
     /*
