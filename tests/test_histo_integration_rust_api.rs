@@ -10,8 +10,8 @@ use std::ffi::CString;
 
 use rsfitsio::aliases::rust_api::*;
 use rsfitsio::fitsio::{
-    BINARY_TBL, FLEN_VALUE, LONG_IMG, READONLY, READWRITE, SHORT_IMG, TDOUBLE, TINT, TLONG,
-    fitsfile,
+    BINARY_TBL, FLEN_VALUE, LONG_IMG, LONGLONG, READONLY, READWRITE, SHORT_IMG, TDOUBLE, TINT,
+    TLONG, fitsfile,
 };
 use rsfitsio::histo::{
     ffhist2_safe, ffhist3_safe, fits_calc_binning_safe, fits_calc_binningd_safe,
@@ -81,14 +81,16 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
 
         let extname = CString::new("TEST_DATA").unwrap();
 
-        let ttype_casted: Vec<Option<&[i8]>> = ttype.iter().map(|s| Some(cast_slice(s))).collect();
-        let tform_casted: Vec<&[i8]> = tform.iter().map(|s| cast_slice(s)).collect();
-        let tunit_casted: Vec<Option<&[i8]>> = tunit.iter().map(|s| Some(cast_slice(s))).collect();
+        let ttype_casted: Vec<Option<&[c_char]>> =
+            ttype.iter().map(|s| Some(cast_slice(s))).collect();
+        let tform_casted: Vec<&[c_char]> = tform.iter().map(|s| cast_slice(s)).collect();
+        let tunit_casted: Vec<Option<&[c_char]>> =
+            tunit.iter().map(|s| Some(cast_slice(s))).collect();
 
         fits_create_tbl(
             fptr_box,
             BINARY_TBL,
-            nrows as c_long,
+            nrows as LONGLONG,
             4,
             &ttype_casted,
             &tform_casted,
@@ -122,7 +124,7 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
             1,
             1,
             1,
-            nrows as c_long,
+            nrows as LONGLONG,
             cast_slice(&xdata),
             &mut status,
         );
@@ -132,7 +134,7 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
             2,
             1,
             1,
-            nrows as c_long,
+            nrows as LONGLONG,
             cast_slice(&ydata),
             &mut status,
         );
@@ -142,7 +144,7 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
             3,
             1,
             1,
-            nrows as c_long,
+            nrows as LONGLONG,
             cast_slice(&zdata),
             &mut status,
         );
@@ -152,7 +154,7 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
             4,
             1,
             1,
-            nrows as c_long,
+            nrows as LONGLONG,
             cast_slice(&wdata),
             &mut status,
         );
@@ -212,7 +214,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             fptr_box,
             TLONG,
             1,
-            npixels,
+            npixels.into(),
             None,
             cast_slice_mut(&mut pixels),
             None,
@@ -225,7 +227,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             return false;
         }
 
-        let sum: i64 = pixels.iter().map(|&x| x).sum();
+        let sum: i64 = pixels.iter().map(|&x| x as i64).sum();
 
         if let Some(fptr_box) = fptr {
             fits_close_file(fptr_box, &mut status);
