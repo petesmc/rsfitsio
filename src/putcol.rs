@@ -27,7 +27,6 @@ use crate::getkey::ffgkys_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 use libc::{calloc, free, memcmp, memcpy, memset};
-use std::cmp;
 use std::mem::size_of;
 use std::os::raw::{c_char, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 

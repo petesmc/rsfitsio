@@ -29,7 +29,7 @@
     //clippy::std_instead_of_core,
 )]
 */
-#![deny(deprecated)]
+#![allow(deprecated)]
 
 pub mod c_types;
 pub mod helpers;
@@ -164,7 +164,7 @@ macro_rules! int_snprintf {
             let s_bytes = s.as_bytes();
             let mut s_len = s_bytes.len();
 
-            s_len = cmp::min($len-1, s_len);
+            s_len = std::cmp::min($len-1, s_len);
 
             let w = cast_slice_mut::<c_char, u8>(&mut $dst[..s_len]);
             w.copy_from_slice(&s_bytes[..s_len]);
@@ -256,6 +256,11 @@ impl<'a> TKeywords<'a> {
         Option<Vec<Option<&'a [c_char]>>>,
     ) {
         unsafe {
+            // Handle case where tfields is 0 or pointers are null
+            if self.tfields == 0 || self.ttype.is_null() || self.tform.is_null() {
+                return (Vec::new(), Vec::new(), None);
+            }
+
             // Convert ttype to rust types
             let ttype = core::slice::from_raw_parts(self.ttype, self.tfields as usize);
             let mut v_ttype = Vec::new();

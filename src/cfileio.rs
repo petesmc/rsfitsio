@@ -9,11 +9,11 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
-use std::{cmp, mem, ptr};
+use std::{mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
-use crate::grparser::fits_execute_template_safer;
+use crate::grparser::fits_execute_template;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -7143,7 +7143,9 @@ pub(crate) fn ffoptplt(
     if tstatus != 0 {
         /* not a FITS file, so treat it as an ASCII template */
         ffxmsg_safer(2, Some(&mut card)); /* clear the  error message */
-        fits_execute_template_safer(fptr, tempname, status);
+        unsafe {
+            fits_execute_template(fptr, tempname.as_ptr(), status);
+        }
 
         ffmahd_safe(fptr, 1, None, status); /* move back to the primary array */
         return *status;

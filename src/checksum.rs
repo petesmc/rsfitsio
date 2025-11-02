@@ -6,7 +6,6 @@
 /*------------------------------------------------------------------------*/
 
 use core::slice;
-use std::cmp;
 
 use crate::c_types::{c_char, c_int, c_long, c_uint, c_ulong};
 

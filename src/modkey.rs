@@ -5,7 +5,6 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
-use std::cmp;
 use std::ffi::CStr;
 
 use bytemuck::{cast_slice, cast_slice_mut};

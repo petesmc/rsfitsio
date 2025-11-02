@@ -53,7 +53,6 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::sync::Mutex;
 use std::{
-    cmp,
     io::{Error, ErrorKind},
     ptr,
 };

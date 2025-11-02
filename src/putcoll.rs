@@ -6,7 +6,6 @@
 /*  Goddard Space Flight Center.                                           */
 
 use core::slice;
-use std::cmp;
 
 use crate::c_types::*;
 
