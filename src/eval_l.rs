@@ -347,18 +347,20 @@ pub(crate) fn fits_parser_yylex(
                         yyscanner.yy_last_accepting_state = yy_current_state;
                         yyscanner.yy_last_accepting_cpos = yy_cp;
                     }
-                    while YY_CHK[(c_int::from(YY_BASE[yy_current_state as usize])
-                        + c_int::from(yy_c)) as usize] as c_int
-                        != yy_current_state
+                    while c_int::from(
+                        YY_CHK[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c))
+                            as usize],
+                    ) != yy_current_state
                     {
                         yy_current_state = c_int::from(YY_DEF[yy_current_state as usize]);
                         if yy_current_state >= 174 as c_int {
                             yy_c = YY_META[yy_c as usize];
                         }
                     }
-                    yy_current_state = YY_NXT[(c_int::from(YY_BASE[yy_current_state as usize])
-                        + c_int::from(yy_c)) as usize]
-                        as yy_state_type;
+                    yy_current_state = yy_state_type::from(
+                        YY_NXT[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c))
+                            as usize],
+                    );
                     yy_cp = yy_cp.offset(1);
                     if c_int::from(YY_BASE[yy_current_state as usize]) == 413 as c_int {
                         break;
@@ -582,7 +584,7 @@ pub(crate) fn fits_parser_yylex(
                                     as *mut c_char;
                                 while *p != 0 {
                                     constval = constval << 1
-                                        | (c_int::from(*p) == '1' as i32) as c_int as c_long;
+                                        | c_int::from(c_int::from(*p) == '1' as i32) as c_long;
                                     p = p.offset(1);
                                 }
                                 (*yyscanner.yylval_r).lng = constval;
@@ -595,7 +597,7 @@ pub(crate) fn fits_parser_yylex(
                                     as *mut c_char;
                                 while *p_0 != 0 {
                                     constval_0 = constval_0 << 3 as c_int
-                                        | (c_int::from(*p_0) - '0' as i32) as c_long;
+                                        | c_long::from(c_int::from(*p_0) - '0' as i32);
                                     p_0 = p_0.offset(1);
                                 }
                                 (*yyscanner.yylval_r).lng = constval_0;
@@ -1109,19 +1111,20 @@ fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
                 yyscanner.yy_last_accepting_state = yy_current_state;
                 yyscanner.yy_last_accepting_cpos = yy_cp;
             }
-            while YY_CHK
-                [(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize]
-                as c_int
-                != yy_current_state
+            while c_int::from(
+                YY_CHK[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c))
+                    as usize],
+            ) != yy_current_state
             {
                 yy_current_state = c_int::from(YY_DEF[yy_current_state as usize]);
                 if yy_current_state >= 174 as c_int {
                     yy_c = YY_META[yy_c as usize];
                 }
             }
-            yy_current_state = YY_NXT
-                [(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize]
-                as yy_state_type;
+            yy_current_state = yy_state_type::from(
+                YY_NXT[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c))
+                    as usize],
+            );
             yy_cp = yy_cp.offset(1);
         }
         yy_current_state
@@ -1140,18 +1143,18 @@ fn yy_try_NUL_trans(
         yyscanner.yy_last_accepting_state = yy_current_state;
         yyscanner.yy_last_accepting_cpos = yy_cp;
     }
-    while YY_CHK[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize]
-        as c_int
-        != yy_current_state
+    while c_int::from(
+        YY_CHK[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize],
+    ) != yy_current_state
     {
         yy_current_state = c_int::from(YY_DEF[yy_current_state as usize]);
         if yy_current_state >= 174 as c_int {
             yy_c = YY_META[yy_c as usize];
         }
     }
-    yy_current_state = YY_NXT
-        [(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize]
-        as yy_state_type;
+    yy_current_state = yy_state_type::from(
+        YY_NXT[(c_int::from(YY_BASE[yy_current_state as usize]) + c_int::from(yy_c)) as usize],
+    );
     yy_is_jam = c_int::from(yy_current_state == 173 as c_int);
     if yy_is_jam != 0 { 0 } else { yy_current_state }
 }

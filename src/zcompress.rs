@@ -169,8 +169,8 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
                         }
                     } else if let Some(mem_realloc) = mem_realloc {
                         panic!("Realloc function not implemented for uncompress2mem");
-                        *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR)
-                            as *mut _;
+                        *buffptr =
+                            mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
                         if (*buffptr).is_null() {
                             inflateEnd(&mut d_stream);
                             *status = DATA_DECOMPRESSION_ERR;
@@ -295,7 +295,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 
             if let Some(mem_realloc) = mem_realloc {
                 panic!("Realloc function not implemented for uncompress2mem_from_mem");
-                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR) as *mut _;
+                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
                 if (*buffptr).is_null() {
                     inflateEnd(&mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
@@ -578,7 +578,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
             /* need more space in output buffer */
             if let Some(mem_realloc) = mem_realloc {
                 panic!("Realloc function not implemented for compress2mem_from_mem");
-                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR) as *mut _;
+                *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
                 if (*buffptr).is_null() {
                     deflateEnd(&mut c_stream);
                     *status = DATA_COMPRESSION_ERR;

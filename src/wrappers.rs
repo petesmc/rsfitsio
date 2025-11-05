@@ -575,15 +575,15 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use libc::c_longlong;
 
+    use crate::c_types::*;
     use crate::wrappers::*;
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_strtol() {
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"12345 XC");
-        let mut endpu: *mut libc::c_char = std::ptr::null_mut();
+        let s: &[c_char] = bytemuck::cast_slice(b"12345 XC");
+        let mut endpu: *mut c_char = std::ptr::null_mut();
 
         let ru = unsafe { libc::strtol(s.as_ptr(), &mut endpu, 10) };
         let (rs, endps): (c_longlong, usize) = strtol_safe(s).unwrap();
@@ -601,7 +601,7 @@ mod tests {
     fn test_strtol_safer_vs_strtol() {
         // Test with leadng whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   12345 XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
@@ -611,7 +611,7 @@ mod tests {
 
         // Test with leading zeros
         let s: &[c_char] = bytemuck::cast_slice(b"00012345 XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
@@ -621,7 +621,7 @@ mod tests {
 
         // Test with negative number
         let s: &[c_char] = bytemuck::cast_slice(b"-12345 XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
@@ -631,7 +631,7 @@ mod tests {
 
         // Test with invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"12345a XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
@@ -641,7 +641,7 @@ mod tests {
 
         // Test with empty string
         let s: &[c_char] = bytemuck::cast_slice(b"\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
@@ -650,7 +650,7 @@ mod tests {
 
         // Test with only whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   \0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
@@ -659,7 +659,7 @@ mod tests {
 
         // Test with only invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"abcde\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
@@ -668,7 +668,7 @@ mod tests {
 
         // Test with leading zeros and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"00012345a XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
@@ -678,7 +678,7 @@ mod tests {
 
         // Test with negative number and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"-12345a XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
@@ -688,7 +688,7 @@ mod tests {
 
         // Test with leading whitespace and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"   12345a XC\0");
-        let mut endps: *mut libc::c_char = std::ptr::null_mut();
+        let mut endps: *mut c_char = std::ptr::null_mut();
         let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_strlen() {
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"12345 XC\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"12345 XC\0");
 
         let ru = unsafe { libc::strlen(s.as_ptr()) };
         let rs = strlen_safe(s);
@@ -710,8 +710,8 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_toupper() {
-        let ru = unsafe { libc::toupper(b'a' as libc::c_int) as libc::c_char };
-        let rs = toupper(b'a' as libc::c_char);
+        let ru = unsafe { libc::toupper(c_int::from(b'a')) as c_char };
+        let rs = toupper(b'a' as c_char);
 
         assert_eq!(ru, rs);
     }
@@ -719,26 +719,26 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_islower() {
-        let ru = unsafe { libc::islower(b'a' as libc::c_int) > 0 };
-        let rs = islower(b'a' as libc::c_char);
+        let ru = unsafe { libc::islower(c_int::from(b'a')) > 0 };
+        let rs = islower(b'a' as c_char);
         assert_eq!(ru, rs);
 
-        let ru = unsafe { libc::islower(b'A' as libc::c_int) > 0 };
-        let rs = islower(b'A' as libc::c_char);
+        let ru = unsafe { libc::islower(c_int::from(b'A')) > 0 };
+        let rs = islower(b'A' as c_char);
         assert_eq!(ru, rs);
 
-        let ru = unsafe { libc::islower(b'.' as libc::c_int) > 0 };
-        let rs = islower(b'.' as libc::c_char);
+        let ru = unsafe { libc::islower(c_int::from(b'.')) > 0 };
+        let rs = islower(b'.' as c_char);
         assert_eq!(ru, rs);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_strncmp_safe() {
-        let s1: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s2: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s3: &[libc::c_char] = bytemuck::cast_slice(b"world\0");
-        let s4: &[libc::c_char] = bytemuck::cast_slice(b"worl\0");
+        let s1: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s2: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s3: &[c_char] = bytemuck::cast_slice(b"world\0");
+        let s4: &[c_char] = bytemuck::cast_slice(b"worl\0");
 
         let rs = strncmp_safe(s1, s2, 5);
         assert_eq!(rs, 0);
@@ -762,10 +762,10 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_compare_strncmp_strncmp_safe() {
-        let s1: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s2: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s3: &[libc::c_char] = bytemuck::cast_slice(b"world\0");
-        let s4: &[libc::c_char] = bytemuck::cast_slice(b"worl\0");
+        let s1: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s2: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s3: &[c_char] = bytemuck::cast_slice(b"world\0");
+        let s4: &[c_char] = bytemuck::cast_slice(b"worl\0");
 
         let ru = unsafe { libc::strncmp(s1.as_ptr(), s2.as_ptr(), 5) };
         let rs = strncmp_safe(s1, s2, 5);
@@ -795,10 +795,10 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_compare_strcmp_strcmp_safe() {
-        let s1: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s2: &[libc::c_char] = bytemuck::cast_slice(b"hello\0");
-        let s3: &[libc::c_char] = bytemuck::cast_slice(b"world\0");
-        let s4: &[libc::c_char] = bytemuck::cast_slice(b"worl\0");
+        let s1: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s2: &[c_char] = bytemuck::cast_slice(b"hello\0");
+        let s3: &[c_char] = bytemuck::cast_slice(b"world\0");
+        let s4: &[c_char] = bytemuck::cast_slice(b"worl\0");
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s1, s2);
@@ -824,12 +824,12 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_compare_strcmp_strcmp_safe_shorter() {
-        let s1: &[libc::c_char] = bytemuck::cast_slice(b"..\0");
-        let s2: &[libc::c_char] = bytemuck::cast_slice(b".\0");
+        let s1: &[c_char] = bytemuck::cast_slice(b"..\0");
+        let s2: &[c_char] = bytemuck::cast_slice(b".\0");
 
         // Without nulls
-        let s3: &[libc::c_char] = bytemuck::cast_slice(b"..");
-        let s4: &[libc::c_char] = bytemuck::cast_slice(b".");
+        let s3: &[c_char] = bytemuck::cast_slice(b"..");
+        let s4: &[c_char] = bytemuck::cast_slice(b".");
 
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s3, s4);
@@ -842,37 +842,37 @@ mod tests {
         let mut endptr: usize = 0;
 
         // Test with valid float
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"123.456\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"123.456\0");
         let result = strto_float_impl(s, &mut endptr);
         assert_eq!(result, 123.456);
         assert_eq!(endptr, 7); // "123.456" + null terminator
 
         // Test with negative float
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"-123.456\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"-123.456\0");
         let result = strto_float_impl(s, &mut endptr);
         assert_eq!(result, -123.456);
         assert_eq!(endptr, 8); // "-123.456" + null terminator
 
         // Test with scientific notation
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"1.23e4\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"1.23e4\0");
         let result = strto_float_impl(s, &mut endptr);
         assert_eq!(result, 12300.0);
         assert_eq!(endptr, 6); // "1.23e4" + null terminator
 
         // Test with invalid float
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"abc\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"abc\0");
         let result = strto_float_impl(s, &mut endptr);
         assert_eq!(result, 0.0);
         assert_eq!(endptr, 0); // No valid float parsed
 
         // Test with empty string
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"\0");
         let result = strto_float_impl(s, &mut endptr);
         assert_eq!(result, 0.0);
         assert_eq!(endptr, 0); // No valid float parsed
 
         // Test with Nan
-        let s: &[libc::c_char] = bytemuck::cast_slice(b"nan\0");
+        let s: &[c_char] = bytemuck::cast_slice(b"nan\0");
         let result = strto_float_impl(s, &mut endptr);
         assert!(result.is_nan());
         assert_eq!(endptr, 3); // NaN parsed
@@ -881,7 +881,7 @@ mod tests {
     #[test]
     fn test_strtod_safe() {
         // Write test where input is "(21,21)"
-        let input: &[libc::c_char] = bytemuck::cast_slice(b"(21,21)\0");
+        let input: &[c_char] = bytemuck::cast_slice(b"(21,21)\0");
         let mut endp = 0;
 
         let result = strtod_safe(&input[1..], &mut endp);

@@ -357,7 +357,7 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
             (code) =
                 ((c_long::from(p[0]) | (c_long::from(p[1]) << 8) | (c_long::from(p[2]) << 16))
                     >> ((posbits) & 0x7))
-                    & (bitmask as c_long);
+                    & c_long::from(bitmask);
             (posbits) += c_long::from(n_bits);
 
             if oldcode == -1 {
@@ -533,7 +533,7 @@ mod tests {
 
                 let fd = compressed_file.as_raw_fd();
 
-                fdopen(fd, c"rb".as_ptr() as *const c_char)
+                fdopen(fd, c"rb".as_ptr().cast::<c_char>())
             }
         };
 

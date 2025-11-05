@@ -487,7 +487,7 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
 
         loop {
             /* allocate memory for another FITS block */
-            memptr = realloc(memptr.cast::<c_void>(), memsize + delta) as *mut c_char;
+            memptr = realloc(memptr.cast::<c_void>(), memsize + delta).cast::<c_char>();
 
             if memptr.is_null() {
                 ffpmsg_str("realloc failed while copying stdin (stdin2mem)");
@@ -791,7 +791,8 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             let ptr = realloc(
                 (*(m[*hdl as usize].memaddrptr)).cast(),
                 m[*hdl as usize].fitsfilesize as usize,
-            ) as *mut c_char;
+            )
+            .cast::<c_char>();
             if ptr.is_null() {
                 ffpmsg_str("Failed to reduce size of allocated memory (compress_open)");
                 return MEMORY_ALLOCATION;
@@ -849,7 +850,8 @@ pub(crate) unsafe fn mem_compress_stdin_open(
             let ptr = realloc(
                 (*(m[*hdl as usize].memaddrptr)).cast::<c_void>(),
                 m[*hdl as usize].fitsfilesize as usize,
-            ) as *mut c_char;
+            )
+            .cast::<c_char>();
             if ptr.is_null() {
                 ffpmsg_str("Failed to reduce size of allocated memory (compress_stdin_open)");
                 return MEMORY_ALLOCATION;
