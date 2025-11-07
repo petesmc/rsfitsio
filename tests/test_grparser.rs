@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use bytemuck::cast_slice;
-    use libc::c_int;
     use rsfitsio::aliases::rust_api::*;
+    use rsfitsio::c_types::{c_int, c_long};
     use rsfitsio::fitsio::fitsfile;
     use rsfitsio::helpers::testhelpers::with_temp_file;
     use std::ffi::CString;
@@ -52,7 +52,7 @@ mod tests {
                     assert_eq!(status, 0);
                     assert_eq!(naxis, 2);
 
-                    let mut naxes: [i64; 2] = [0; 2];
+                    let mut naxes: [c_long; 2] = [0; 2];
                     fits_get_img_size(fptr.as_mut().unwrap().as_mut(), 2, &mut naxes, &mut status);
                     assert_eq!(status, 0);
                     assert_eq!(naxes[0], 10);
@@ -154,7 +154,7 @@ mod tests {
                     assert_eq!(status, 0);
 
                     // Create a minimal primary HDU
-                    let naxes: [i64; 0] = [];
+                    let naxes: [c_long; 0] = [];
                     fits_create_img(fptr.as_mut().unwrap().as_mut(), 8, 0, &naxes, &mut status);
                     assert_eq!(status, 0);
 

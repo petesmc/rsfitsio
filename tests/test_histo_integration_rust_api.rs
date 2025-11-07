@@ -214,7 +214,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             fptr_box,
             TLONG,
             1,
-            npixels,
+            npixels.into(),
             None,
             cast_slice_mut(&mut pixels),
             None,
@@ -227,7 +227,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             return false;
         }
 
-        let sum: i64 = pixels.iter().map(|&x| x).sum();
+        let sum: i64 = pixels.iter().map(|&x| x as i64).sum();
 
         if let Some(fptr_box) = fptr {
             fits_close_file(fptr_box, &mut status);

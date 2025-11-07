@@ -1,3 +1,4 @@
+use core::slice;
 use std::ffi::{CStr, c_void};
 use std::mem;
 use std::ptr;
@@ -11,13 +12,14 @@ use crate::fitsio::{
     NGP_TOKEN_NOT_EXPECT, NGP_UNREAD_QUEUE_FULL, NULL_MSG, OPT_RM_GPT, TDBLCOMPLEX, TDOUBLE,
     TLOGICAL, TLONG, TSTRING, VALUE_UNDEFINED, fitsfile,
 };
+use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
 use crate::wrappers::{ffstrtok, strcat, strchr, strcmp, strcpy, strlen, strncmp, strncpy};
 use crate::{FFLOCK, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use libc::{
     EOF, FILE, c_uint, fclose, ferror, fgetc, fopen, free, getenv, malloc, memcmp, memcpy, realloc,
-    size_t, snprintf, sscanf,
+    size_t,
 };
 
 const NGP_ALLOCCHUNK: c_int = 1000;
@@ -981,7 +983,7 @@ unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: *const c_char
 unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> c_int {
     unsafe {
         let mut r: c_int;
-        let nc: c_int = 0;
+        let mut nc: c_int = 0;
         let savec: c_int;
         let mut k: c_uint;
 
@@ -1127,15 +1129,21 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                         1
                     };
                 }
+
+                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_len = cstr_tmp.to_bytes_with_nul().len();
+                let str_slice =
+                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* complex type test */
                     && 2
-                        == sscanf(
-                            parser_state.NGP_CURLINE.value,
-                            c"(%lg,%lg)%n".as_ptr(),
-                            std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.value.c.re),
-                            std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.value.c.im),
-                            &nc,
+                        == sscanf_lg_lg_n(
+                            str_slice,
+                            cs!(c"(%lg,%lg)%n"),
+                            &mut (parser_state.NGP_LINKEY.value.c.re),
+                            &mut (parser_state.NGP_LINKEY.value.c.im),
+                            &mut nc,
                         )
                         && ((bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
                             || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
@@ -1144,26 +1152,38 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_COMPLEX;
                 }
+
+                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_len = cstr_tmp.to_bytes_with_nul().len();
+                let str_slice =
+                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* real type test */
                     && !strchr(parser_state.NGP_CURLINE.value, c_int::from(bb(b'.'))).is_null()
                         && (1
-                            == sscanf(
-                                parser_state.NGP_CURLINE.value,
-                                c"%lg%n".as_ptr(),
-                                std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.value.d),
-                                &nc,
+                            == sscanf_lg_n(
+                                str_slice,
+                                cs!(c"%lg%n"),
+                                &mut (parser_state.NGP_LINKEY.value.d),
+                                &mut nc,
                             ))
                 {
                     if bb(b'D') == *parser_state.NGP_CURLINE.value.offset(nc as isize) {
                         /* test if template used a 'D' rather than an 'E' as the exponent character (added by WDP in 12/2010) */
                         savec = nc;
                         *parser_state.NGP_CURLINE.value.offset(nc as isize) = bb(b'E');
-                        sscanf(
-                            parser_state.NGP_CURLINE.value,
-                            c"%lg%n".as_ptr(),
-                            std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.value.d),
-                            &nc,
+
+                        let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                        let cstr_len = cstr_tmp.to_bytes_with_nul().len();
+                        let str_slice =
+                            slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+
+                        sscanf_lg_n(
+                            str_slice,
+                            cs!(c"%lg%n"),
+                            &mut (parser_state.NGP_LINKEY.value.d),
+                            &mut nc,
                         );
                         if (bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
                             || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
@@ -1183,14 +1203,20 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                         parser_state.NGP_LINKEY.type_ = NGP_TTYPE_REAL;
                     }
                 }
+
+                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_len = cstr_tmp.to_bytes_with_nul().len();
+                let str_slice =
+                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* integer type test */
                     && 1
-                        == sscanf(
-                            parser_state.NGP_CURLINE.value,
-                            c"%d%n".as_ptr(),
-                            std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.value.i),
-                            &nc,
+                        == sscanf_d_n(
+                            str_slice,
+                            cs!(c"%d%n"),
+                            &mut parser_state.NGP_LINKEY.value.i,
+                            &mut nc,
                         )
                         && ((bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
                             || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
@@ -1444,12 +1470,22 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
                             skip = true;
                         }
                         if !skip {
-                            snprintf(
-                                buf.as_mut_ptr(),
+                            int_snprintf!(
+                                &mut buf,
                                 200,
-                                c"%-8.8s%s".as_ptr(),
-                                (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                                (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                                "{:-8.8}{}",
+                                CStr::from_bytes_with_nul(cast_slice(
+                                    &(*(*ngph).tok.offset(i as isize)).name
+                                ))
+                                .unwrap()
+                                .to_str()
+                                .unwrap(),
+                                CStr::from_bytes_with_nul(cast_slice(
+                                    &(*(*ngph).tok.offset(i as isize)).comment
+                                ))
+                                .unwrap()
+                                .to_str()
+                                .unwrap(),
                             );
                             fits_write_record(ffp, buf.as_mut_ptr(), &mut r);
                         }
@@ -1608,9 +1644,9 @@ unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_i
 
             i = 0;
             loop {
-                if 1 == sscanf(
-                    (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                    c"TFORM%d%c".as_ptr(),
+                if 1 == sscanf_d_c(
+                    &mut (*(*ngph).tok.offset(i as isize)).name,
+                    cs!(c"TFORM%d%c"),
                     &mut ngph_i,
                     &mut ngph_ctmp,
                 ) {
@@ -1620,11 +1656,11 @@ unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_i
                         my_tform = (*(*ngph).tok.offset(i as isize)).value.s;
                     }
                 } else if 1
-                    == sscanf(
-                        (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                        c"TTYPE%d%c".as_ptr(),
-                        &ngph_i,
-                        &ngph_ctmp,
+                    == sscanf_d_c(
+                        &mut (*(*ngph).tok.offset(i as isize)).name,
+                        cs!(c"TTYPE%d%c"),
+                        &mut ngph_i,
+                        &mut ngph_ctmp,
                     )
                     && (NGP_TTYPE_STRING == (*(*ngph).tok.offset(i as isize)).type_)
                     && (ngph_i == (j + 1))
@@ -1670,20 +1706,20 @@ unsafe fn ngp_read_xtension(
         let mut tmp0: c_int = 0;
         let mut incrementor_index: c_int;
         let mut i: c_int;
-        let j: c_int = 0;
+        let mut j: c_int = 0;
         let mut ngph_dim: c_int;
         let mut ngph_bitpix: c_int;
         let mut ngph_node_type: c_int;
         let mut my_version: c_int = 0;
         let mut incrementor_name: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
-        let ngph_ctmp: c_char = 0;
+        let mut ngph_ctmp: c_char = 0;
         let mut ngph_extname: *mut c_char = ptr::null_mut();
         let mut ngph_size: [c_long; NGP_MAX_ARRAY_DIM] = [0; NGP_MAX_ARRAY_DIM];
         let mut ngph: NgpHdu = NgpHdu {
             tokcnt: 0,
             tok: ptr::null_mut(),
         };
-        let lv: c_long;
+        let mut lv: c_long;
 
         incrementor_name[0] = 0; /* signal no keyword+'#' found yet */
         incrementor_index = 0;
@@ -1757,12 +1793,10 @@ unsafe fn ngp_read_xtension(
                         {
                             incrementor_index += 1;
                         }
-                        snprintf(
-                            std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.name)
-                                .cast::<c_char>()
-                                .offset((l - 1) as isize),
+                        int_snprintf!(
+                            &mut (parser_state.NGP_LINKEY.name[(l - 1) as usize..]),
                             ((NGP_MAX_NAME as c_int) - l + 1) as size_t,
-                            c"%d".as_ptr(),
+                            "{}",
                             incrementor_index,
                         );
                     }
@@ -1847,11 +1881,11 @@ unsafe fn ngp_read_xtension(
                         ngph_extname = (*ngph.tok.add(i)).value.s;
                     }
                 } else if 1
-                    == sscanf(
-                        (*ngph.tok.add(i)).name.as_ptr(),
-                        c"NAXIS%d%c".as_ptr(),
-                        &j,
-                        &ngph_ctmp,
+                    == sscanf_d_c(
+                        &mut (*ngph.tok.add(i)).name,
+                        cs!(c"NAXIS%d%c"),
+                        &mut j,
+                        &mut ngph_ctmp,
                     )
                     && NGP_TTYPE_INT == (*ngph.tok.add(i)).type_
                     && (j >= 1)
@@ -1918,7 +1952,7 @@ unsafe fn ngp_read_xtension(
 
                         /* if requested add rows */
                         if ngph_size[1] > 0 {
-                            fits_insert_rows(ff, 0, ngph_size[1], &mut r);
+                            fits_insert_rows(ff, 0, ngph_size[1].into(), &mut r);
                         }
                         break;
                     }
@@ -2032,10 +2066,10 @@ unsafe fn ngp_read_group(
                             NGP_MAX_STRING,
                         );
                     } else {
-                        snprintf(
-                            grnm.as_mut_ptr(),
+                        int_snprintf!(
+                            &mut grnm,
                             NGP_MAX_STRING as size_t,
-                            c"DEFAULT_GROUP_%d".as_ptr(),
+                            "DEFAULT_GROUP_{}",
                             parser_state.MASTER_GRP_IDX,
                         );
                         parser_state.MASTER_GRP_IDX += 1;
@@ -2331,10 +2365,10 @@ pub unsafe extern "C" fn fits_execute_template(
                             NGP_MAX_STRING,
                         );
                     } else {
-                        snprintf(
-                            grnm.as_mut_ptr(),
+                        int_snprintf!(
+                            &mut grnm,
                             NGP_MAX_STRING as size_t,
-                            c"DEFAULT_GROUP_%d".as_ptr(),
+                            "DEFAULT_GROUP_{}",
                             parser_state.MASTER_GRP_IDX,
                         );
                         parser_state.MASTER_GRP_IDX += 1;
