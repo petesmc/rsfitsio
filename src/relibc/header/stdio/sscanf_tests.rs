@@ -2259,4 +2259,499 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_debug() {
+        // Simple debug test for %n
+        unsafe {
+            let input = "42";
+            let format = "%d%n";
+
+            let mut our_val: c_int = 0;
+            let mut our_n: c_int = -1;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+
+            let input_cstr = to_c_string(input);
+            let format_cstr = to_c_string(format);
+            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+            println!("Debug: result={our_result}, val={our_val}, n={our_n}");
+            println!("Expected: result=1, val=42, n=2");
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_basic() {
+        // Test 1: %n at the beginning
+        unsafe {
+            let input = "42";
+            let format = "%n%d";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_n: c_int = -1;
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_n as *mut c_int,
+                    &mut libc_val as *mut c_int,
+                );
+
+                let mut our_n: c_int = -1;
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "%n at beginning - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    our_n, libc_n,
+                    "%n at beginning - n value mismatch: our={our_n}, libc={libc_n}"
+                );
+                assert_eq!(
+                    our_val, libc_val,
+                    "%n at beginning - val mismatch: our={our_val}, libc={libc_val}"
+                );
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_n: c_int = -1;
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Expected: 1 conversion (%d), n should be 0 (no chars read yet)
+                assert_eq!(our_result, 1, "%n at beginning - result should be 1");
+                assert_eq!(our_n, 0, "%n at beginning - n should be 0");
+                assert_eq!(our_val, 42, "%n at beginning - val should be 42");
+            }
+        }
+
+        // Test 2: %n after %d
+        unsafe {
+            let input = "42";
+            let format = "%d%n";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let mut libc_n: c_int = -1;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                    &mut libc_n as *mut c_int,
+                );
+
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "%d%n - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    our_val, libc_val,
+                    "%d%n - val mismatch: our={our_val}, libc={libc_val}"
+                );
+                assert_eq!(
+                    our_n, libc_n,
+                    "%d%n - n value mismatch: our={our_n}, libc={libc_n}"
+                );
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Expected: 1 conversion (%d), n should be 2 (after reading "42")
+                assert_eq!(our_result, 1, "%d%n - result should be 1");
+                assert_eq!(our_val, 42, "%d%n - val should be 42");
+                assert_eq!(our_n, 2, "%d%n - n should be 2");
+            }
+        }
+
+        // Test 3: %n in the middle: %d%n%s
+        unsafe {
+            let input = "42 hello";
+            let format = "%d%n%s";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let mut libc_n: c_int = -1;
+                let mut libc_str: [c_char; 20] = [0; 20];
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                    &mut libc_n as *mut c_int,
+                    libc_str.as_mut_ptr(),
+                );
+
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut our_str: [c_char; 20] = [0; 20];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "%d%n%s - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    our_val, libc_val,
+                    "%d%n%s - val mismatch: our={our_val}, libc={libc_val}"
+                );
+                assert_eq!(
+                    our_n, libc_n,
+                    "%d%n%s - n value mismatch: our={our_n}, libc={libc_n}"
+                );
+                assert_eq!(
+                    our_str, libc_str,
+                    "%d%n%s - string mismatch"
+                );
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut our_str: [c_char; 20] = [0; 20];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Expected: 2 conversions (%d and %s), n should be 2 (after "42")
+                assert_eq!(our_result, 2, "%d%n%s - result should be 2");
+                assert_eq!(our_val, 42, "%d%n%s - val should be 42");
+                assert_eq!(our_n, 2, "%d%n%s - n should be 2");
+
+                let expected_str = to_c_string("hello");
+                assert_eq!(&our_str[..6], &expected_str[..6], "%d%n%s - string should be 'hello'");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_with_whitespace() {
+        // Test %n with whitespace handling
+        unsafe {
+            let input = "  42  hello";
+            let format = "%d%n %s";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let mut libc_n: c_int = -1;
+                let mut libc_str: [c_char; 20] = [0; 20];
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                    &mut libc_n as *mut c_int,
+                    libc_str.as_mut_ptr(),
+                );
+
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut our_str: [c_char; 20] = [0; 20];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "whitespace %n - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    our_val, libc_val,
+                    "whitespace %n - val mismatch: our={our_val}, libc={libc_val}"
+                );
+                assert_eq!(
+                    our_n, libc_n,
+                    "whitespace %n - n value mismatch: our={our_n}, libc={libc_n}"
+                );
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut our_str: [c_char; 20] = [0; 20];
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Expected: 2 conversions, n should count chars read after %d including leading whitespace
+                assert_eq!(our_result, 2, "whitespace %n - result should be 2");
+                assert_eq!(our_val, 42, "whitespace %n - val should be 42");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_multiple() {
+        // Test multiple %n in one format string
+        unsafe {
+            let input = "123 456 789";
+            let format = "%d%n %d%n %d%n";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_v1: c_int = 0;
+                let mut libc_n1: c_int = -1;
+                let mut libc_v2: c_int = 0;
+                let mut libc_n2: c_int = -1;
+                let mut libc_v3: c_int = 0;
+                let mut libc_n3: c_int = -1;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_v1 as *mut c_int,
+                    &mut libc_n1 as *mut c_int,
+                    &mut libc_v2 as *mut c_int,
+                    &mut libc_n2 as *mut c_int,
+                    &mut libc_v3 as *mut c_int,
+                    &mut libc_n3 as *mut c_int,
+                );
+
+                let mut our_v1: c_int = 0;
+                let mut our_n1: c_int = -1;
+                let mut our_v2: c_int = 0;
+                let mut our_n2: c_int = -1;
+                let mut our_v3: c_int = 0;
+                let mut our_n3: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_v1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_v2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_v3 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n3 as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "multiple %n - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(our_v1, libc_v1, "multiple %n - v1 mismatch");
+                assert_eq!(our_n1, libc_n1, "multiple %n - n1 mismatch: our={our_n1}, libc={libc_n1}");
+                assert_eq!(our_v2, libc_v2, "multiple %n - v2 mismatch");
+                assert_eq!(our_n2, libc_n2, "multiple %n - n2 mismatch: our={our_n2}, libc={libc_n2}");
+                assert_eq!(our_v3, libc_v3, "multiple %n - v3 mismatch");
+                assert_eq!(our_n3, libc_n3, "multiple %n - n3 mismatch: our={our_n3}, libc={libc_n3}");
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_v1: c_int = 0;
+                let mut our_n1: c_int = -1;
+                let mut our_v2: c_int = 0;
+                let mut our_n2: c_int = -1;
+                let mut our_v3: c_int = 0;
+                let mut our_n3: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_v1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n1 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_v2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_v3 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n3 as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Expected: 3 conversions
+                assert_eq!(our_result, 3, "multiple %n - result should be 3");
+                assert_eq!(our_v1, 123, "multiple %n - v1 should be 123");
+                assert_eq!(our_v2, 456, "multiple %n - v2 should be 456");
+                assert_eq!(our_v3, 789, "multiple %n - v3 should be 789");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_does_not_increment_count() {
+        // %n should NOT increment the matched count
+        unsafe {
+            let input = "42";
+            let format = "%d%n";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_val: c_int = 0;
+                let mut libc_n: c_int = -1;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_val as *mut c_int,
+                    &mut libc_n as *mut c_int,
+                );
+
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Result should be 1 (only %d counts), not 2
+                assert_eq!(
+                    our_result, libc_result,
+                    "%n count - result should be 1 (only %d counts): our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(libc_result, 1, "%n should not increment matched count");
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_val: c_int = 0;
+                let mut our_n: c_int = -1;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                // Result should be 1 (only %d counts), not 2
+                assert_eq!(our_result, 1, "%n should not increment matched count");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_scanf_n_with_literal() {
+        // Test %n with literal characters in format
+        unsafe {
+            let input = "value=42";
+            let format = "value=%n%d";
+
+            #[cfg(not(target_family = "windows"))]
+            {
+                let input_cstring = CString::new(input).unwrap();
+                let format_cstring = CString::new(format).unwrap();
+                let mut libc_n: c_int = -1;
+                let mut libc_val: c_int = 0;
+                let libc_result = libc::sscanf(
+                    input_cstring.as_ptr(),
+                    format_cstring.as_ptr(),
+                    &mut libc_n as *mut c_int,
+                    &mut libc_val as *mut c_int,
+                );
+
+                let mut our_n: c_int = -1;
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(
+                    our_result, libc_result,
+                    "literal %n - result mismatch: our={our_result}, libc={libc_result}"
+                );
+                assert_eq!(
+                    our_n, libc_n,
+                    "literal %n - n value should be 6 (after 'value='): our={our_n}, libc={libc_n}"
+                );
+                assert_eq!(
+                    our_val, libc_val,
+                    "literal %n - val mismatch: our={our_val}, libc={libc_val}"
+                );
+            }
+            #[cfg(target_family = "windows")]
+            {
+                let mut our_n: c_int = -1;
+                let mut our_val: c_int = 0;
+                let mut valist = CustomVaList::new();
+                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+
+                let input_cstr = to_c_string(input);
+                let format_cstr = to_c_string(format);
+                let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+
+                assert_eq!(our_result, 1, "literal %n - result should be 1");
+                assert_eq!(our_n, 6, "literal %n - n should be 6 (after 'value=')");
+                assert_eq!(our_val, 42, "literal %n - val should be 42");
+            }
+        }
+    }
 }

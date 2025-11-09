@@ -51,7 +51,6 @@ unsafe fn inner_scanf_custom(
         let mut matched = 0;
         let mut byte = 0;
         let mut skip_read = false;
-        let mut count = 0;
         let mut first_read = true;
 
         macro_rules! read {
@@ -60,7 +59,6 @@ unsafe fn inner_scanf_custom(
                     Ok(None) => false,
                     Ok(Some(b)) => {
                         byte = b;
-                        count += 1;
                         true
                     }
                     Err(x) => return Err(x),
@@ -479,9 +477,8 @@ unsafe fn inner_scanf_custom(
                             }
                         }
 
-                        if eof {
-                            return Ok(matched);
-                        }
+                        // Don't return early due to eof here - we might still need to process %n or other
+                        // format specifiers that don't consume input
 
                         if width != Some(0) && c != b'n' {
                             // It didn't hit the width, so an extra character was read and matched.
@@ -630,14 +627,43 @@ unsafe fn inner_scanf_custom(
                                 VaArg::pointer(p) => p as *mut c_int,
                                 _ => panic!("Expected pointer for %n conversion"),
                             };
-                            *ptr = count as c_int;
+                            *ptr = r.position() as c_int;
                         }
                     }
                     _ => return Err(-1),
                 }
 
+                // If we hit EOF and we've successfully parsed at least one item, return.
+                // But allow %n to be processed even at EOF since it doesn't consume input.
                 if eof {
-                    return Ok(matched);
+                    // Check if the next format character is %n
+                    let next_is_n = unsafe {
+                        *format == b'%' as c_char && {
+                            let next_char = *format.offset(1);
+                            // Skip any width specifiers and modifiers to find the actual format char
+                            let mut temp_format = format.offset(1);
+                            let mut temp_c = *temp_format as u8;
+                            // Skip '*' (ignore flag)
+                            if temp_c == b'*' {
+                                temp_format = temp_format.offset(1);
+                                temp_c = *temp_format as u8;
+                            }
+                            // Skip width digits
+                            while temp_c >= b'0' && temp_c <= b'9' {
+                                temp_format = temp_format.offset(1);
+                                temp_c = *temp_format as u8;
+                            }
+                            // Skip length modifiers (h, l, j, z, t)
+                            while temp_c == b'h' || temp_c == b'l' || temp_c == b'j' || temp_c == b'z' || temp_c == b't' {
+                                temp_format = temp_format.offset(1);
+                                temp_c = *temp_format as u8;
+                            }
+                            temp_c == b'n'
+                        }
+                    };
+                    if !next_is_n {
+                        return Ok(matched);
+                    }
                 }
 
                 if width != Some(0) && c != b'n' && c != b'%' {
