@@ -712,211 +712,107 @@ pub(crate) fn ffbinre(
     binname: &mut [c_char],
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut slen: c_int;
-        let mut isanumber: c_int = 0;
-        let mut token: Option<Vec<c_char>> = None;
+    let mut slen: c_int;
+    let mut isanumber: c_int = 0;
+    let mut token: Option<Vec<c_char>> = None;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        // Initialize expression indices to 0 (no expression)
-        if let Some(exprbeg_ref) = exprbeg.as_deref_mut() {
-            *exprbeg_ref = 0;
-        }
-        if let Some(exprend_ref) = exprend.as_deref_mut() {
-            *exprend_ref = 0;
-        }
+    // Initialize expression indices to 0 (no expression)
+    if let Some(exprbeg_ref) = exprbeg.as_deref_mut() {
+        *exprbeg_ref = 0;
+    }
+    if let Some(exprend_ref) = exprend.as_deref_mut() {
+        *exprend_ref = 0;
+    }
 
-        let mut ptr_index = 0;
-        slen = fits_get_token2_safe(
-            ptr,
-            &mut ptr_index,
-            cs!(c" ,=:;("),
-            &mut token,
-            Some(&mut isanumber),
-            status,
-        ); /* get 1st token */
+    let mut ptr_index = 0;
+    slen = fits_get_token2_safe(
+        ptr,
+        &mut ptr_index,
+        cs!(c" ,=:;("),
+        &mut token,
+        Some(&mut isanumber),
+        status,
+    ); /* get 1st token */
 
-        if (*status != 0)
-            || (slen == 0
-                && ((*ptr)[ptr_index] == 0
-                    || (*ptr)[ptr_index] == bb(b',')
-                    || (*ptr)[ptr_index] == bb(b';')))
-        {
-            *ptr = &(*ptr)[ptr_index..];
-            return *status; /* a null range string */
-        }
+    if (*status != 0)
+        || (slen == 0
+            && ((*ptr)[ptr_index] == 0
+                || (*ptr)[ptr_index] == bb(b',')
+                || (*ptr)[ptr_index] == bb(b';')))
+    {
+        *ptr = &(*ptr)[ptr_index..];
+        return *status; /* a null range string */
+    }
 
-        if isanumber == 0 && (*ptr)[ptr_index] != bb(b':') {
-            /* this looks like the column name */
+    if isanumber == 0 && (*ptr)[ptr_index] != bb(b':') {
+        /* this looks like the column name */
 
-            /* Check for case where col name string is empty but '='
-            is still there (indicating a following specification string).
-            Musn't enter this block as token would not have been allocated. */
-            if let Some(ref token_vec) = token {
-                if strlen_safe(token_vec) > FLEN_VALUE - 1 {
-                    ffpmsg_str("column name too long (ffbinr)");
+        /* Check for case where col name string is empty but '='
+        is still there (indicating a following specification string).
+        Musn't enter this block as token would not have been allocated. */
+        if let Some(ref token_vec) = token {
+            if strlen_safe(token_vec) > FLEN_VALUE - 1 {
+                ffpmsg_str("column name too long (ffbinr)");
 
-                    *status = PARSE_SYNTAX_ERR;
-                    return *status;
-                }
-                if token_vec[0] == bb(b'#') && isdigit_safe(token_vec[1]) {
-                    /* omit the leading '#' in the column number */
-                    strcpy_safe(colname, &token_vec[1..]);
-                } else {
-                    strcpy_safe(colname, token_vec);
-                }
-
-                token = None;
-            }
-            while (*ptr)[ptr_index] == bb(b' ') {
-                /* skip over blanks */
-                ptr_index += 1;
-            }
-
-            /* An optional expression of the form XCOL(expr) is allowed here, but only if exprbeg and exprend are non-null */
-            if (*ptr)[ptr_index] == bb(b'(')
-                && let Some(exprbeg) = exprbeg
-                && let Some(exprend) = exprend
-            {
-                *exprbeg = ptr_index;
-                let tmp = fits_find_match_delim(&ptr[ptr_index + 1..], bb(b')'));
-                match tmp {
-                    None => {
-                        /* find ')' */
-                        ffpmsg_str("bin expression syntax error (ffbinr)");
-                        *status = PARSE_SYNTAX_ERR;
-                        return *status;
-                    }
-                    Some(tmp) => {
-                        *exprend = ptr_index + tmp + 1; /* +1 to include the closing paren */
-                        ptr_index += tmp + 1; /* Advance pointer past delimiter */
-                    }
-                };
-            }
-
-            while (*ptr)[ptr_index] == bb(b' ') {
-                ptr_index += 1; /* skip over more possible blanks */
-            }
-
-            if (*ptr)[ptr_index] != bb(b'=') {
-                *ptr = &(*ptr)[ptr_index..];
-                return *status; /* reached the end */
-            }
-
-            ptr_index += 1; /* skip over the = sign */
-
-            while (*ptr)[ptr_index] == bb(b' ') {
-                /* skip over blanks */
-                ptr_index += 1;
-            }
-
-            /* get specification info */
-            let mut ptr_index2 = 0;
-            let ptr_sub = &(*ptr)[ptr_index..];
-            slen = fits_get_token2_safe(
-                ptr_sub,
-                &mut ptr_index2,
-                cs!(c" ,:;"),
-                &mut token,
-                Some(&mut isanumber),
-                status,
-            );
-            ptr_index += ptr_index2;
-
-            if *status != 0 {
-                *ptr = &(*ptr)[ptr_index..];
+                *status = PARSE_SYNTAX_ERR;
                 return *status;
             }
-        }
-
-        if (*ptr)[ptr_index] != bb(b':') {
-            /* This is the first token, and since it is not followed by
-            a ':' this must be the binsize token. Or it could be empty. */
-            if let Some(ref token_vec) = token {
-                if isanumber == 0 {
-                    if strlen_safe(token_vec) > FLEN_VALUE - 1 {
-                        ffpmsg_str("binname too long (ffbinr)");
-
-                        *status = PARSE_SYNTAX_ERR;
-                        return *status;
-                    }
-                    strcpy_safe(binname, token_vec);
-                } else {
-                    let mut endp = 0;
-                    *binsizein = strtod_safe(token_vec, &mut endp);
-                }
-            }
-
-            *ptr = &(*ptr)[ptr_index..];
-            return *status; /* reached the end */
-        } else {
-            /* the token contains the min value */
-            if slen > 0
-                && let Some(ref token_vec) = token
-            {
-                if isanumber == 0 {
-                    if strlen_safe(token_vec) > FLEN_VALUE - 1 {
-                        ffpmsg_str("minname too long (ffbinr)");
-
-                        *status = PARSE_SYNTAX_ERR;
-                        return *status;
-                    }
-                    strcpy_safe(minname, token_vec);
-                } else {
-                    let mut endp = 0;
-                    *minin = strtod_safe(token_vec, &mut endp);
-                }
-
-                token = None;
-            }
-        }
-
-        ptr_index += 1; /* skip the colon between the min and max values */
-        let mut ptr_index2 = 0;
-        let ptr_sub = &(*ptr)[ptr_index..];
-        slen = fits_get_token2_safe(
-            ptr_sub,
-            &mut ptr_index2,
-            cs!(c" ,:;"),
-            &mut token,
-            Some(&mut isanumber),
-            status,
-        ); /* get token */
-        ptr_index += ptr_index2;
-        if *status != 0 {
-            *ptr = &(*ptr)[ptr_index..];
-            return *status;
-        }
-
-        /* the token contains the max value */
-        if slen > 0
-            && let Some(ref token_vec) = token
-        {
-            if isanumber == 0 {
-                if strlen_safe(token_vec) > FLEN_VALUE - 1 {
-                    ffpmsg_str("maxname too long (ffbinr)");
-
-                    *status = PARSE_SYNTAX_ERR;
-                    return *status;
-                }
-                strcpy_safe(maxname, token_vec);
+            if token_vec[0] == bb(b'#') && isdigit_safe(token_vec[1]) {
+                /* omit the leading '#' in the column number */
+                strcpy_safe(colname, &token_vec[1..]);
             } else {
-                let mut endp = 0;
-                *maxin = strtod_safe(token_vec, &mut endp);
+                strcpy_safe(colname, token_vec);
             }
 
             token = None;
         }
-
-        if (*ptr)[ptr_index] != bb(b':') {
-            *ptr = &(*ptr)[ptr_index..];
-            return *status; /* reached the end; no binsize token */
+        while (*ptr)[ptr_index] == bb(b' ') {
+            /* skip over blanks */
+            ptr_index += 1;
         }
 
-        ptr_index += 1; /* skip the colon between the max and binsize values */
+        /* An optional expression of the form XCOL(expr) is allowed here, but only if exprbeg and exprend are non-null */
+        if (*ptr)[ptr_index] == bb(b'(')
+            && let Some(exprbeg) = exprbeg
+            && let Some(exprend) = exprend
+        {
+            *exprbeg = ptr_index;
+            let tmp = fits_find_match_delim(&ptr[ptr_index + 1..], bb(b')'));
+            match tmp {
+                None => {
+                    /* find ')' */
+                    ffpmsg_str("bin expression syntax error (ffbinr)");
+                    *status = PARSE_SYNTAX_ERR;
+                    return *status;
+                }
+                Some(tmp) => {
+                    *exprend = ptr_index + tmp + 1; /* +1 to include the closing paren */
+                    ptr_index += tmp + 1; /* Advance pointer past delimiter */
+                }
+            };
+        }
+
+        while (*ptr)[ptr_index] == bb(b' ') {
+            ptr_index += 1; /* skip over more possible blanks */
+        }
+
+        if (*ptr)[ptr_index] != bb(b'=') {
+            *ptr = &(*ptr)[ptr_index..];
+            return *status; /* reached the end */
+        }
+
+        ptr_index += 1; /* skip over the = sign */
+
+        while (*ptr)[ptr_index] == bb(b' ') {
+            /* skip over blanks */
+            ptr_index += 1;
+        }
+
+        /* get specification info */
         let mut ptr_index2 = 0;
         let ptr_sub = &(*ptr)[ptr_index..];
         slen = fits_get_token2_safe(
@@ -926,19 +822,19 @@ pub(crate) fn ffbinre(
             &mut token,
             Some(&mut isanumber),
             status,
-        ); /* get token */
-
+        );
         ptr_index += ptr_index2;
 
         if *status != 0 {
             *ptr = &(*ptr)[ptr_index..];
             return *status;
         }
+    }
 
-        /* the token contains the binsize value */
-        if slen > 0
-            && let Some(ref token_vec) = token
-        {
+    if (*ptr)[ptr_index] != bb(b':') {
+        /* This is the first token, and since it is not followed by
+        a ':' this must be the binsize token. Or it could be empty. */
+        if let Some(ref token_vec) = token {
             if isanumber == 0 {
                 if strlen_safe(token_vec) > FLEN_VALUE - 1 {
                     ffpmsg_str("binname too long (ffbinr)");
@@ -953,11 +849,113 @@ pub(crate) fn ffbinre(
             }
         }
 
-        /* Update the pointer to point past what we've parsed */
         *ptr = &(*ptr)[ptr_index..];
+        return *status; /* reached the end */
+    } else {
+        /* the token contains the min value */
+        if slen > 0
+            && let Some(ref token_vec) = token
+        {
+            if isanumber == 0 {
+                if strlen_safe(token_vec) > FLEN_VALUE - 1 {
+                    ffpmsg_str("minname too long (ffbinr)");
 
-        *status
+                    *status = PARSE_SYNTAX_ERR;
+                    return *status;
+                }
+                strcpy_safe(minname, token_vec);
+            } else {
+                let mut endp = 0;
+                *minin = strtod_safe(token_vec, &mut endp);
+            }
+
+            token = None;
+        }
     }
+
+    ptr_index += 1; /* skip the colon between the min and max values */
+    let mut ptr_index2 = 0;
+    let ptr_sub = &(*ptr)[ptr_index..];
+    slen = fits_get_token2_safe(
+        ptr_sub,
+        &mut ptr_index2,
+        cs!(c" ,:;"),
+        &mut token,
+        Some(&mut isanumber),
+        status,
+    ); /* get token */
+    ptr_index += ptr_index2;
+    if *status != 0 {
+        *ptr = &(*ptr)[ptr_index..];
+        return *status;
+    }
+
+    /* the token contains the max value */
+    if slen > 0
+        && let Some(ref token_vec) = token
+    {
+        if isanumber == 0 {
+            if strlen_safe(token_vec) > FLEN_VALUE - 1 {
+                ffpmsg_str("maxname too long (ffbinr)");
+
+                *status = PARSE_SYNTAX_ERR;
+                return *status;
+            }
+            strcpy_safe(maxname, token_vec);
+        } else {
+            let mut endp = 0;
+            *maxin = strtod_safe(token_vec, &mut endp);
+        }
+
+        token = None;
+    }
+
+    if (*ptr)[ptr_index] != bb(b':') {
+        *ptr = &(*ptr)[ptr_index..];
+        return *status; /* reached the end; no binsize token */
+    }
+
+    ptr_index += 1; /* skip the colon between the max and binsize values */
+    let mut ptr_index2 = 0;
+    let ptr_sub = &(*ptr)[ptr_index..];
+    slen = fits_get_token2_safe(
+        ptr_sub,
+        &mut ptr_index2,
+        cs!(c" ,:;"),
+        &mut token,
+        Some(&mut isanumber),
+        status,
+    ); /* get token */
+
+    ptr_index += ptr_index2;
+
+    if *status != 0 {
+        *ptr = &(*ptr)[ptr_index..];
+        return *status;
+    }
+
+    /* the token contains the binsize value */
+    if slen > 0
+        && let Some(ref token_vec) = token
+    {
+        if isanumber == 0 {
+            if strlen_safe(token_vec) > FLEN_VALUE - 1 {
+                ffpmsg_str("binname too long (ffbinr)");
+
+                *status = PARSE_SYNTAX_ERR;
+                return *status;
+            }
+            strcpy_safe(binname, token_vec);
+        } else {
+            let mut endp = 0;
+            *binsizein = strtod_safe(token_vec, &mut endp);
+        }
+    }
+
+    /* Update the pointer to point past what we've parsed */
+    *ptr = &(*ptr)[ptr_index..];
+
+    *status
 }
 /*--------------------------------------------------------------------------*/
 /// Parse the input binning range specification string, returning
@@ -2128,15 +2126,15 @@ pub fn ffhist_safe(
             /* treat each case separately.                                    */
 
             if datatype <= TLONG
-                && (imin as f64) == amin[ii]
-                && (imax as f64) == amax[ii]
-                && (ibin as f64) == binsize[ii]
+                && f64::from(imin) == amin[ii]
+                && f64::from(imax) == amax[ii]
+                && f64::from(ibin) == binsize[ii]
             {
                 /* This is an integer column and integer limits were entered. */
                 /* Shift the lower and upper histogramming limits by 0.5, so that */
                 /* the values fall in the center of the bin, not on the edge. */
 
-                haxes[ii] = ((imax - imin) / ibin + 1) as c_long; /* last bin may only */
+                haxes[ii] = c_long::from((imax - imin) / ibin + 1); /* last bin may only */
                 /* be partially full */
                 maxbin[ii] = haxes[ii] as f64 + 1.0; /* add 1. instead of 0.5 to avoid roundoff */
 
@@ -2285,7 +2283,7 @@ pub fn ffhist_safe(
             offset,
             n_per_loop,
             ffwritehisto,
-            (&mut histData) as *mut _ as *mut c_void,
+            ((&mut histData) as *mut HistType).cast::<c_void>(),
             status,
         ) != 0
         {
@@ -2820,7 +2818,7 @@ pub fn fits_calc_binning_safe(
         }
     }
 
-    return *status;
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3345,15 +3343,15 @@ pub(crate) fn fits_calc_binningde(
         /* treat each case separately.                                    */
 
         if datatype <= TLONG
-            && (imin as f64) == amin[ii]
-            && (imax as f64) == amax[ii]
-            && (ibin as f64) == binsize[ii]
+            && f64::from(imin) == amin[ii]
+            && f64::from(imax) == amax[ii]
+            && f64::from(ibin) == binsize[ii]
         {
             /* This is an integer column and integer limits were entered. */
             /* Shift the lower and upper histogramming limits by 0.5, so that */
             /* the values fall in the center of the bin, not on the edge. */
 
-            haxes[ii] = ((imax - imin) / ibin + 1) as c_long; /* last bin may only */
+            haxes[ii] = c_long::from((imax - imin) / ibin + 1); /* last bin may only */
             /* be partially full */
             if amin[ii] < amax[ii] {
                 amin[ii] -= 0.5;
@@ -3414,12 +3412,13 @@ pub unsafe extern "C" fn fits_calc_binningd(
 ) -> c_int {
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
-        let colname = (colname as *mut [[c_char; FLEN_VALUE]; 4])
+        let colname = colname
+            .cast::<[[c_char; FLEN_VALUE]; 4]>()
             .as_mut()
             .unwrap();
-        let minin = slice::from_raw_parts_mut(minin as *mut f64, naxis as usize);
-        let maxin = slice::from_raw_parts_mut(maxin as *mut f64, naxis as usize);
-        let binsizein = slice::from_raw_parts_mut(binsizein as *mut f64, naxis as usize);
+        let minin = slice::from_raw_parts_mut(minin.cast::<f64>(), naxis as usize);
+        let maxin = slice::from_raw_parts_mut(maxin.cast::<f64>(), naxis as usize);
+        let binsizein = slice::from_raw_parts_mut(binsizein.cast::<f64>(), naxis as usize);
 
         let minname = minname.as_ref().unwrap();
         let maxname = maxname.as_ref().unwrap();
@@ -4026,7 +4025,8 @@ pub(crate) fn fits_make_histde(
                 0,
                 numAllocCols as usize,
                 std::mem::size_of::<iteratorCol>(),
-            ) as *mut iteratorCol
+            )
+            .cast::<iteratorCol>()
         };
         if iterCols.is_null() {
             ffpmsg_str("memory allocation failure (fits_make_histde)");
@@ -4149,7 +4149,7 @@ pub(crate) fn fits_make_histde(
                     &mut (parsers[ii]),
                     &mut (infos[ii]),
                     nrows,
-                    &mut (double_nulval) as *mut f64 as *mut c_void,
+                    (&mut (double_nulval) as *mut f64).cast::<c_void>(),
                     status,
                 ) != 0
                 {
@@ -4159,7 +4159,7 @@ pub(crate) fn fits_make_histde(
                 /* Copy iterator columns from the parser to the master iterator columns */
                 iterCols = unsafe {
                     fits_recalloc(
-                        iterCols as *mut c_void,
+                        iterCols.cast::<c_void>(),
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
                         std::mem::size_of::<iteratorCol>(),
@@ -4231,7 +4231,7 @@ pub(crate) fn fits_make_histde(
                 &mut (parsers[4]),
                 &mut (infos[4]),
                 nrows,
-                &mut (double_nulval) as *mut f64 as *mut c_void,
+                (&mut (double_nulval) as *mut f64).cast::<c_void>(),
                 status,
             ) != 0
             {
@@ -4241,7 +4241,7 @@ pub(crate) fn fits_make_histde(
             /* Copy iterator columns from the parser to the master iterator columns */
             iterCols = unsafe {
                 fits_recalloc(
-                    iterCols as *mut c_void,
+                    iterCols.cast::<c_void>(),
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
                     std::mem::size_of::<iteratorCol>(),
@@ -4353,7 +4353,7 @@ pub(crate) fn fits_make_histde(
             offset,
             n_per_loop,
             ffwritehisto,
-            &mut histData as *mut HistType as *mut c_void,
+            (&mut histData as *mut HistType).cast::<c_void>(),
             status,
         );
 
@@ -4532,7 +4532,7 @@ extern "C" fn histo_minmax_expr_workfn(
     userPtr: *mut c_void,      /* I - Data handling instructions     */
 ) -> c_int {
     let colData = unsafe { slice::from_raw_parts_mut(colData, nCols as usize) };
-    let userPtr = unsafe { &mut *(userPtr as *mut histo_minmax_workfn_struct) };
+    let userPtr = unsafe { &mut *userPtr.cast::<histo_minmax_workfn_struct>() };
     let mut status: c_int = 0;
     let mut i: c_long;
     let mut data: *mut f64;
@@ -4548,16 +4548,16 @@ extern "C" fn histo_minmax_expr_workfn(
         nrows,
         nCols,
         colData,
-        wf.Info as *mut c_void,
+        wf.Info.cast::<c_void>(),
     );
 
     let outcol: &mut iteratorCol = &mut (colData[nCols as usize - 1]);
 
     /* The result of the calculation is in pv->Data, and null value in pv->Null */
     let data = unsafe {
-        slice::from_raw_parts(outcol.array as *mut f64, (nrows * pv.repeat + 1) as usize)
+        slice::from_raw_parts(outcol.array.cast::<f64>(), (nrows * pv.repeat + 1) as usize)
     };
-    let nulval: f64 = unsafe { *((*(wf.Info)).nullPtr as *mut f64) };
+    let nulval: f64 = unsafe { *(*(wf.Info)).nullPtr.cast::<f64>() };
 
     for i in 1..=(nrows * pv.repeat) as usize {
         /* Note that data[0] == 0 indicates no null values at all!!! */
@@ -4708,7 +4708,7 @@ fn fits_get_expr_minmax(
         &mut lParse,
         &mut Info,
         nrows,
-        &mut double_nulval as *mut _ as *mut c_void,
+        (&mut double_nulval as *mut f64).cast::<c_void>(),
         status,
     ) != 0
     {
@@ -4738,7 +4738,7 @@ fn fits_get_expr_minmax(
                 *mut iteratorCol,
                 *mut c_void,
             ) -> c_int,
-        &mut minmaxWorkFn as *mut _ as *mut c_void,
+        (&mut minmaxWorkFn as *mut histo_minmax_workfn_struct).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -4772,7 +4772,7 @@ extern "C" fn ffwritehisto(
     unsafe {
         let imagepars = imagepars.as_mut().expect(NULL_MSG);
 
-        let userPointer = userPointer as *mut HistType;
+        let userPointer = userPointer.cast::<HistType>();
         let userPointer = userPointer.as_mut().expect(NULL_MSG);
 
         ffwritehisto_safe(
@@ -4859,7 +4859,7 @@ fn ffwritehisto_safe(
                     *mut iteratorCol,
                     *mut c_void,
                 ) -> c_int,
-            histData as *mut _ as *mut c_void,
+            (histData as *mut HistType).cast::<c_void>(),
             &mut status,
         );
     }
@@ -4879,7 +4879,7 @@ extern "C" fn ffcalchist(
     userPointer: *mut c_void,
 ) -> c_int {
     let colpars = unsafe { &mut *colpars };
-    let userPointer = unsafe { &mut *(userPointer as *mut HistType) };
+    let userPointer = unsafe { &mut *userPointer.cast::<HistType>() };
     let mut ii: c_long;
     let mut ipix: c_long;
     let mut iaxisbin: c_long;
@@ -4922,7 +4922,7 @@ extern "C" fn ffcalchist(
                 nrows,
                 nCols,
                 colData_slice,
-                (&mut (histData.infos[ii])) as *mut parseInfo as *mut c_void,
+                ((&mut (histData.infos[ii])) as *mut parseInfo).cast::<c_void>(),
             );
             if status != 0 {
                 return status;
@@ -5107,7 +5107,7 @@ mod tests {
         let slice = &c_arr[..len];
 
         // Convert to bytes for comparison
-        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u8, len) };
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<u8>(), len) };
 
         expected.as_bytes() == bytes
     }

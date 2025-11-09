@@ -6,7 +6,7 @@
 /*  Goddard Space Flight Center.                                           */
 
 use core::slice;
-use std::{cmp, mem};
+use std::mem;
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};

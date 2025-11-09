@@ -129,6 +129,60 @@ pub(crate) fn sscanf_lf(s: &[c_char], format: &[c_char], val: *mut c_double) -> 
     sscanf_internal(s.as_ptr(), format.as_ptr(), valist)
 }
 
+pub(crate) fn sscanf_lg_n(
+    s: &[c_char],
+    format: &[c_char],
+    val_lg: *mut c_double,
+    val_n: *mut c_int,
+) -> c_int {
+    let mut valist = CustomVaList::new();
+    valist.push(VaArg::pointer(val_lg as *const c_void));
+    valist.push(VaArg::pointer(val_n as *const c_void));
+
+    sscanf_internal(s.as_ptr(), format.as_ptr(), valist)
+}
+
+pub(crate) fn sscanf_lg_lg_n(
+    s: &[c_char],
+    format: &[c_char],
+    val_lg1: *mut c_double,
+    val_lg2: *mut c_double,
+    val_n: *mut c_int,
+) -> c_int {
+    let mut valist = CustomVaList::new();
+    valist.push(VaArg::pointer(val_lg1 as *const c_void));
+    valist.push(VaArg::pointer(val_lg2 as *const c_void));
+    valist.push(VaArg::pointer(val_n as *const c_void));
+
+    sscanf_internal(s.as_ptr(), format.as_ptr(), valist)
+}
+
+pub(crate) fn sscanf_d_n(
+    s: &[c_char],
+    format: &[c_char],
+    val_d: *mut c_int,
+    val_n: *mut c_int,
+) -> c_int {
+    let mut valist = CustomVaList::new();
+    valist.push(VaArg::pointer(val_d as *const c_void));
+    valist.push(VaArg::pointer(val_n as *const c_void));
+
+    sscanf_internal(s.as_ptr(), format.as_ptr(), valist)
+}
+
+pub(crate) fn sscanf_d_c(
+    s: &[c_char],
+    format: &[c_char],
+    val_d: *mut c_int,
+    val_c: *mut c_char,
+) -> c_int {
+    let mut valist = CustomVaList::new();
+    valist.push(VaArg::pointer(val_d as *const c_void));
+    valist.push(VaArg::pointer(val_c as *const c_void));
+
+    sscanf_internal(s.as_ptr(), format.as_ptr(), valist)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

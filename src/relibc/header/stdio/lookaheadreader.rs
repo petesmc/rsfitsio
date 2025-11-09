@@ -51,6 +51,11 @@ impl LookAheadReader {
             LookAheadReaderEnum::BUFFER(b) => b.commit(),
         }
     }
+    pub fn position(&self) -> isize {
+        match &self.0 {
+            LookAheadReaderEnum::BUFFER(b) => b.pos,
+        }
+    }
 }
 
 impl From<*const u8> for LookAheadReader {

@@ -1,4 +1,3 @@
-use std::cmp;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;

@@ -1817,7 +1817,8 @@ pub(crate) fn fits_parser_workfn_safe(
             (pv.Data) = outcol
                 .array
                 .cast::<c_char>()
-                .add(pv.datasize.try_into().unwrap()) as *mut c_void;
+                .add(pv.datasize.try_into().unwrap())
+                .cast::<c_void>();
 
             /* A TemporaryCol with null value specified explicitly */
             if outcol.iotype == TEMPORARY_COL && !(*(pv.userInfo)).nullPtr.is_null() {
@@ -1905,11 +1906,14 @@ pub(crate) fn fits_parser_workfn_safe(
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
                                     pv.Null,
-                                    pv.Data.cast::<c_char>().add(
-                                        ((kk * (pv.repeat) + jj) * c_long::from(pv.datasize))
-                                            .try_into()
-                                            .unwrap(),
-                                    ) as *mut c_void,
+                                    pv.Data
+                                        .cast::<c_char>()
+                                        .add(
+                                            ((kk * (pv.repeat) + jj) * c_long::from(pv.datasize))
+                                                .try_into()
+                                                .unwrap(),
+                                        )
+                                        .cast::<c_void>(),
                                     &mut anyNullThisTime,
                                     &mut lParse.status,
                                 );
@@ -1948,11 +1952,15 @@ pub(crate) fn fits_parser_workfn_safe(
                                         1,
                                         (*(pv.userInfo)).datatype,
                                         pv.Null,
-                                        pv.Data.cast::<c_char>().add(
-                                            ((kk * (pv.repeat) + jj) * c_long::from(pv.datasize))
+                                        pv.Data
+                                            .cast::<c_char>()
+                                            .add(
+                                                ((kk * (pv.repeat) + jj)
+                                                    * c_long::from(pv.datasize))
                                                 .try_into()
                                                 .unwrap(),
-                                        ) as *mut c_void,
+                                            )
+                                            .cast::<c_void>(),
                                         &mut anyNullThisTime,
                                         &mut lParse.status,
                                     );
@@ -1978,22 +1986,28 @@ pub(crate) fn fits_parser_workfn_safe(
                                     c_long::from(nCopy),
                                     (*(pv.userInfo)).datatype,
                                     pv.Null,
-                                    pv.Data.cast::<c_char>().add(
-                                        ((kk * (pv.repeat)) * c_long::from(pv.datasize))
-                                            .try_into()
-                                            .unwrap(),
-                                    ) as *mut c_void,
+                                    pv.Data
+                                        .cast::<c_char>()
+                                        .add(
+                                            ((kk * (pv.repeat)) * c_long::from(pv.datasize))
+                                                .try_into()
+                                                .unwrap(),
+                                        )
+                                        .cast::<c_void>(),
                                     &mut anyNullThisTime,
                                     &mut lParse.status,
                                 );
                                 if c_long::from(nCopy) < (pv.repeat) {
                                     memset(
-                                        pv.Data.cast::<c_char>().add(
-                                            ((kk * (pv.repeat) + c_long::from(nCopy))
-                                                * c_long::from(pv.datasize))
-                                            .try_into()
-                                            .unwrap(),
-                                        ) as *mut c_void,
+                                        pv.Data
+                                            .cast::<c_char>()
+                                            .add(
+                                                ((kk * (pv.repeat) + c_long::from(nCopy))
+                                                    * c_long::from(pv.datasize))
+                                                .try_into()
+                                                .unwrap(),
+                                            )
+                                            .cast::<c_void>(),
                                         0,
                                         (((pv.repeat) - c_long::from(nCopy))
                                             * c_long::from(pv.datasize))
@@ -2165,23 +2179,31 @@ pub(crate) fn fits_parser_workfn_safe(
             if result.ntype == fits_parser_yytokentype::BITSTR as c_int
                 && (*(pv.userInfo)).datatype == TBYTE
             {
-                (pv.Data) = pv.Data.cast::<c_char>().add(
-                    (c_long::from(pv.datasize) * ((result.value.nelem + 7) / 8) * ntodo)
-                        .try_into()
-                        .unwrap(),
-                ) as *mut c_void;
+                (pv.Data) = pv
+                    .Data
+                    .cast::<c_char>()
+                    .add(
+                        (c_long::from(pv.datasize) * ((result.value.nelem + 7) / 8) * ntodo)
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .cast::<c_void>();
             } else if result.ntype == fits_parser_yytokentype::STRING as c_int {
                 (pv.Data) = pv
                     .Data
                     .cast::<c_char>()
                     .add((c_long::from(pv.datasize) * ntodo).try_into().unwrap())
-                    as *mut c_void;
+                    .cast::<c_void>();
             } else {
-                (pv.Data) = pv.Data.cast::<c_char>().add(
-                    (c_long::from(pv.datasize) * ntodo * (pv.repeat))
-                        .try_into()
-                        .unwrap(),
-                ) as *mut c_void;
+                (pv.Data) = pv
+                    .Data
+                    .cast::<c_char>()
+                    .add(
+                        (c_long::from(pv.datasize) * ntodo * (pv.repeat))
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .cast::<c_void>();
             }
         }
 
@@ -2202,12 +2224,13 @@ pub(crate) fn fits_parser_workfn_safe(
                 == outcol
                     .array
                     .cast::<c_char>()
-                    .add((pv.datasize).try_into().unwrap()) as *mut c_void
+                    .add((pv.datasize).try_into().unwrap())
+                    .cast::<c_void>()
         {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
                     outcol.array,
-                    (*pv.Null.cast::<*mut c_char>()) as *mut c_void,
+                    (*pv.Null.cast::<*mut c_char>()).cast::<c_void>(),
                     2,
                 );
             } else {
@@ -2223,7 +2246,7 @@ pub(crate) fn fits_parser_workfn_safe(
         } else if pv.Null == outcol.array {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
-                    (*pv.Null.cast::<*mut c_char>()) as *mut c_void,
+                    (*pv.Null.cast::<*mut c_char>()).cast::<c_void>(),
                     zeros.as_mut_ptr().cast::<c_void>(),
                     2,
                 );
@@ -2709,8 +2732,9 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_short;
+                            *(output.cast::<c_short>().add(i.try_into().unwrap())) = c_short::from(
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
+                            );
                         }
                     }
                     TSHORT => {
@@ -2817,13 +2841,13 @@ fn ffcvtn(
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
                             *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_int;
+                                c_int::from(*(input.cast::<c_uchar>().add(i.try_into().unwrap())));
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
                             *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_int;
+                                c_int::from(*(input.cast::<c_short>().add(i.try_into().unwrap())));
                         }
                     }
                     TLONG => {
@@ -2905,13 +2929,13 @@ fn ffcvtn(
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
                             *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_long;
+                                c_long::from(*(input.cast::<c_uchar>().add(i.try_into().unwrap())));
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
                             *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_long;
+                                c_long::from(*(input.cast::<c_short>().add(i.try_into().unwrap())));
                         }
                     }
                     TLONG => {
@@ -2993,13 +3017,17 @@ fn ffcvtn(
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
                             *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as LONGLONG;
+                                LONGLONG::from(
+                                    *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
+                                );
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
                             *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as LONGLONG;
+                                LONGLONG::from(
+                                    *(input.cast::<c_short>().add(i.try_into().unwrap())),
+                                );
                         }
                     }
                     TLONG => {
@@ -3080,14 +3108,16 @@ fn ffcvtn(
                 match inputType {
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_float;
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) = c_float::from(
+                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
+                            );
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_float;
+                            *(output.cast::<c_float>().add(i.try_into().unwrap())) = c_float::from(
+                                *(input.cast::<c_short>().add(i.try_into().unwrap())),
+                            );
                         }
                     }
                     TLONG => {
@@ -3147,13 +3177,17 @@ fn ffcvtn(
                     TLOGICAL | TBYTE => {
                         for i in 0..ntodo {
                             *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())) as c_double;
+                                c_double::from(
+                                    *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
+                                );
                         }
                     }
                     TSHORT => {
                         for i in 0..ntodo {
                             *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())) as c_double;
+                                c_double::from(
+                                    *(input.cast::<c_short>().add(i.try_into().unwrap())),
+                                );
                         }
                     }
                     TLONG => {
@@ -3165,7 +3199,9 @@ fn ffcvtn(
                     TFLOAT => {
                         for i in 0..ntodo {
                             *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_float>().add(i.try_into().unwrap())) as c_double;
+                                c_double::from(
+                                    *(input.cast::<c_float>().add(i.try_into().unwrap())),
+                                );
                         }
                     }
                     TDOUBLE => {

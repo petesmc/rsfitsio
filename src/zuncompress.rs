@@ -533,7 +533,7 @@ mod tests {
 
                 let fd = compressed_file.as_raw_fd();
 
-                fdopen(fd, c"rb".as_ptr() as *const c_char)
+                fdopen(fd, c"rb".as_ptr().cast::<c_char>())
             }
         };
 

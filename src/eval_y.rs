@@ -1178,7 +1178,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 let mut yynewbytes: c_long = 0;
                 libc::memcpy(
                     (&mut (*yyptr).yyss_alloc as *mut yy_state_t).cast::<c_void>(),
-                    yyss.as_ptr() as *const c_void,
+                    yyss.as_ptr().cast::<c_void>(),
                     (yysize as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<yy_state_t>() as c_ulong)
                         as libc::size_t,
@@ -1193,7 +1193,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 let mut yynewbytes_0: c_long = 0;
                 libc::memcpy(
                     (&mut (*yyptr).yyvs_alloc as *mut FITS_PARSER_YYSTYPE).cast::<c_void>(),
-                    yyvs.as_ptr() as *const c_void,
+                    yyvs.as_ptr().cast::<c_void>(),
                     (yysize as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong)
                         as libc::size_t,
@@ -8896,13 +8896,15 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         if const1 != 0 && const2 != 0 {
             match (lParse.Nodes[this_node_idx]).operation {
                 280 | 279 => {
-                    val = ((if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
-                        -(1)
-                    } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
-                        1
-                    } else {
-                        strcmp(sptr1, sptr2)
-                    }) == 0) as c_int;
+                    val = c_int::from(
+                        (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                            -(1)
+                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                            1
+                        } else {
+                            strcmp(sptr1, sptr2)
+                        }) == 0,
+                    );
                     (lParse.Nodes[this_node_idx]).value.data.log = (if (lParse.Nodes[this_node_idx])
                         .operation
                         == fits_parser_yytokentype::EQ as c_int
@@ -9017,15 +9019,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                                 sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
                                     .offset(rows as isize);
                             }
-                            val = ((if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0))
-                            {
-                                -(1)
-                            } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0))
-                            {
-                                1
-                            } else {
-                                strcmp(sptr1, sptr2)
-                            }) == 0) as c_int;
+                            val = c_int::from(
+                                (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                                    -(1)
+                                } else if c_int::from(*sptr1.offset(0))
+                                    > c_int::from(*sptr2.offset(0))
+                                {
+                                    1
+                                } else {
+                                    strcmp(sptr1, sptr2)
+                                }) == 0,
+                            );
                             *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::EQ as c_int
@@ -9226,11 +9230,9 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                         };
                 }
                 279 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = (c_int::from(val1) != 0
-                        && c_int::from(val2) != 0
-                        || val1 == 0 && val2 == 0)
-                        as c_int
-                        as c_char;
+                    (lParse.Nodes[this_node_idx]).value.data.log = c_int::from(
+                        c_int::from(val1) != 0 && c_int::from(val2) != 0 || val1 == 0 && val2 == 0,
+                    ) as c_char;
                 }
                 280 => {
                     (lParse.Nodes[this_node_idx]).value.data.log = if c_int::from(val1) != 0
@@ -9382,16 +9384,18 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             279 => {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                    .offset(elem as isize) =
-                                    (c_int::from(val1) != 0 && c_int::from(val2) != 0
-                                        || val1 == 0 && val2 == 0)
-                                        as c_int as c_char;
+                                    .offset(elem as isize) = c_int::from(
+                                    c_int::from(val1) != 0 && c_int::from(val2) != 0
+                                        || val1 == 0 && val2 == 0,
+                                )
+                                    as c_char;
                             }
                             280 => {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                    .offset(elem as isize) = (c_int::from(val1) != 0 && val2 == 0
-                                    || val1 == 0 && c_int::from(val2) != 0)
-                                    as c_int
+                                    .offset(elem as isize) = c_int::from(
+                                    c_int::from(val1) != 0 && val2 == 0
+                                        || val1 == 0 && c_int::from(val2) != 0,
+                                )
                                     as c_char;
                             }
                             _ => {}
@@ -10225,11 +10229,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.data.lng =
-                            (if c_int::from(pVals[0].data.log) != 0 {
+                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
                                 1
                             } else {
                                 0
-                            }) as c_long;
+                            });
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
@@ -10269,11 +10273,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.data.lng =
-                            (if c_int::from(pVals[0].data.log) != 0 {
+                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
                                 1
                             } else {
                                 0
-                            }) as c_long;
+                            });
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
@@ -10906,16 +10910,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         == 0
                                     {
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(row as isize) += (if c_int::from(
-                                            *((lParse.Nodes[theParams[0]]).value.data.logptr)
-                                                .offset(elem as isize),
-                                        ) != 0
-                                        {
-                                            1
-                                        } else {
-                                            0
-                                        })
-                                            as c_long;
+                                            .offset(row as isize) += c_long::from(
+                                            if c_int::from(
+                                                *((lParse.Nodes[theParams[0]]).value.data.logptr)
+                                                    .offset(elem as isize),
+                                            ) != 0
+                                            {
+                                                1
+                                            } else {
+                                                0
+                                            },
+                                        );
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(row as isize) = 0;
                                     }
@@ -12133,11 +12138,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let fresh142 = &mut *((lParse.Nodes[this_node_idx]).value.undef)
                                 .offset(elem as isize);
-                            *fresh142 = (c_int::from(pNull[0]) != 0
-                                || c_int::from(pNull[1]) != 0
-                                || c_int::from(pNull[2]) != 0
-                                || c_int::from(pNull[3]) != 0)
-                                as c_int as c_char;
+                            *fresh142 = c_int::from(
+                                c_int::from(pNull[0]) != 0
+                                    || c_int::from(pNull[1]) != 0
+                                    || c_int::from(pNull[2]) != 0
+                                    || c_int::from(pNull[3]) != 0,
+                            ) as c_char;
                             if *fresh142 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
                                     .offset(elem as isize) = angsep_calc(
@@ -12760,10 +12766,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let fresh168 = &mut *((lParse.Nodes[this_node_idx]).value.undef)
                                 .offset(elem as isize);
-                            *fresh168 = (c_int::from(pNull[0]) != 0
-                                || c_int::from(pNull[1]) != 0
-                                || c_int::from(pNull[2]) != 0)
-                                as c_int as c_char;
+                            *fresh168 = c_int::from(
+                                c_int::from(pNull[0]) != 0
+                                    || c_int::from(pNull[1]) != 0
+                                    || c_int::from(pNull[2]) != 0,
+                            ) as c_char;
                             if *fresh168 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                     .offset(elem as isize) =
@@ -12810,12 +12817,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let fresh172 = &mut *((lParse.Nodes[this_node_idx]).value.undef)
                                 .offset(elem as isize);
-                            *fresh172 = (c_int::from(pNull[0]) != 0
-                                || c_int::from(pNull[1]) != 0
-                                || c_int::from(pNull[2]) != 0
-                                || c_int::from(pNull[3]) != 0
-                                || c_int::from(pNull[4]) != 0)
-                                as c_int as c_char;
+                            *fresh172 = c_int::from(
+                                c_int::from(pNull[0]) != 0
+                                    || c_int::from(pNull[1]) != 0
+                                    || c_int::from(pNull[2]) != 0
+                                    || c_int::from(pNull[3]) != 0
+                                    || c_int::from(pNull[4]) != 0,
+                            ) as c_char;
                             if *fresh172 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                     .offset(elem as isize) = circle(
@@ -12867,14 +12875,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let fresh176 = &mut *((lParse.Nodes[this_node_idx]).value.undef)
                                 .offset(elem as isize);
-                            *fresh176 = (c_int::from(pNull[0]) != 0
-                                || c_int::from(pNull[1]) != 0
-                                || c_int::from(pNull[2]) != 0
-                                || c_int::from(pNull[3]) != 0
-                                || c_int::from(pNull[4]) != 0
-                                || c_int::from(pNull[5]) != 0
-                                || c_int::from(pNull[6]) != 0)
-                                as c_int as c_char;
+                            *fresh176 = c_int::from(
+                                c_int::from(pNull[0]) != 0
+                                    || c_int::from(pNull[1]) != 0
+                                    || c_int::from(pNull[2]) != 0
+                                    || c_int::from(pNull[3]) != 0
+                                    || c_int::from(pNull[4]) != 0
+                                    || c_int::from(pNull[5]) != 0
+                                    || c_int::from(pNull[6]) != 0,
+                            ) as c_char;
                             if *fresh176 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                     .offset(elem as isize) = saobox(
@@ -12928,14 +12937,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let fresh180 = &mut *((lParse.Nodes[this_node_idx]).value.undef)
                                 .offset(elem as isize);
-                            *fresh180 = (c_int::from(pNull[0]) != 0
-                                || c_int::from(pNull[1]) != 0
-                                || c_int::from(pNull[2]) != 0
-                                || c_int::from(pNull[3]) != 0
-                                || c_int::from(pNull[4]) != 0
-                                || c_int::from(pNull[5]) != 0
-                                || c_int::from(pNull[6]) != 0)
-                                as c_int as c_char;
+                            *fresh180 = c_int::from(
+                                c_int::from(pNull[0]) != 0
+                                    || c_int::from(pNull[1]) != 0
+                                    || c_int::from(pNull[2]) != 0
+                                    || c_int::from(pNull[3]) != 0
+                                    || c_int::from(pNull[4]) != 0
+                                    || c_int::from(pNull[5]) != 0
+                                    || c_int::from(pNull[6]) != 0,
+                            ) as c_char;
                             if *fresh180 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr)
                                     .offset(elem as isize) = ellipse(
@@ -13582,7 +13592,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(
                                     (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
                                         as isize,
-                                ) as *mut c_void,
+                                )
+                                .cast::<c_void>(),
                             (lParse.Nodes[theVar])
                                 .value
                                 .data
@@ -13775,7 +13786,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(
                                         (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
                                             as isize,
-                                    ) as *mut c_void,
+                                    )
+                                    .cast::<c_void>(),
                                 (lParse.Nodes[theVar])
                                     .value
                                     .data
