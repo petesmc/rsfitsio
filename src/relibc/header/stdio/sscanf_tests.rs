@@ -2450,10 +2450,7 @@ mod tests {
                     our_n, libc_n,
                     "%d%n%s - n value mismatch: our={our_n}, libc={libc_n}"
                 );
-                assert_eq!(
-                    our_str, libc_str,
-                    "%d%n%s - string mismatch"
-                );
+                assert_eq!(our_str, libc_str, "%d%n%s - string mismatch");
             }
             #[cfg(target_family = "windows")]
             {
@@ -2475,7 +2472,11 @@ mod tests {
                 assert_eq!(our_n, 2, "%d%n%s - n should be 2");
 
                 let expected_str = to_c_string("hello");
-                assert_eq!(&our_str[..6], &expected_str[..6], "%d%n%s - string should be 'hello'");
+                assert_eq!(
+                    &our_str[..6],
+                    &expected_str[..6],
+                    "%d%n%s - string should be 'hello'"
+                );
             }
         }
     }
@@ -2601,11 +2602,20 @@ mod tests {
                     "multiple %n - result mismatch: our={our_result}, libc={libc_result}"
                 );
                 assert_eq!(our_v1, libc_v1, "multiple %n - v1 mismatch");
-                assert_eq!(our_n1, libc_n1, "multiple %n - n1 mismatch: our={our_n1}, libc={libc_n1}");
+                assert_eq!(
+                    our_n1, libc_n1,
+                    "multiple %n - n1 mismatch: our={our_n1}, libc={libc_n1}"
+                );
                 assert_eq!(our_v2, libc_v2, "multiple %n - v2 mismatch");
-                assert_eq!(our_n2, libc_n2, "multiple %n - n2 mismatch: our={our_n2}, libc={libc_n2}");
+                assert_eq!(
+                    our_n2, libc_n2,
+                    "multiple %n - n2 mismatch: our={our_n2}, libc={libc_n2}"
+                );
                 assert_eq!(our_v3, libc_v3, "multiple %n - v3 mismatch");
-                assert_eq!(our_n3, libc_n3, "multiple %n - n3 mismatch: our={our_n3}, libc={libc_n3}");
+                assert_eq!(
+                    our_n3, libc_n3,
+                    "multiple %n - n3 mismatch: our={our_n3}, libc={libc_n3}"
+                );
             }
             #[cfg(target_family = "windows")]
             {

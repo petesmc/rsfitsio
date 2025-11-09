@@ -654,7 +654,12 @@ unsafe fn inner_scanf_custom(
                                 temp_c = *temp_format as u8;
                             }
                             // Skip length modifiers (h, l, j, z, t)
-                            while temp_c == b'h' || temp_c == b'l' || temp_c == b'j' || temp_c == b'z' || temp_c == b't' {
+                            while temp_c == b'h'
+                                || temp_c == b'l'
+                                || temp_c == b'j'
+                                || temp_c == b'z'
+                                || temp_c == b't'
+                            {
                                 temp_format = temp_format.offset(1);
                                 temp_c = *temp_format as u8;
                             }

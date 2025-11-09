@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use bytemuck::cast_slice;
+    use bytemuck::{cast_slice, cast_slice_mut};
     use rsfitsio::aliases::rust_api::*;
-    use rsfitsio::c_types::{c_int, c_long};
+    use rsfitsio::c_types::{c_char, c_int, c_long};
     use rsfitsio::fitsio::fitsfile;
     use rsfitsio::helpers::testhelpers::with_temp_file;
     use std::ffi::CString;
@@ -103,7 +103,7 @@ mod tests {
                     assert_eq!(status, 0, "Failed to execute template");
 
                     // Verify keywords were written
-                    let mut telescop = vec![0i8; 80];
+                    let mut telescop: Vec<c_char> = vec![0; 80];
                     let telescop_key = CString::new("TELESCOP").unwrap();
                     fits_read_key_str(
                         fptr.as_mut().unwrap().as_mut(),
