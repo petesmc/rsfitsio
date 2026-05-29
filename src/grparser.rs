@@ -984,7 +984,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                     break;
                 }
                 let name_slice = &parser_state.NGP_CURLINE.line[name_idx..];
-                if 0 == strcmp_safe(name_slice, NGP_TKDEF[k as usize].name.to_bytes_with_nul()) {
+                if 0 == strcmp_safe(name_slice, cast_slice(NGP_TKDEF[k as usize].name.to_bytes_with_nul())) {
                     break;
                 }
                 k += 1;
@@ -2107,7 +2107,7 @@ pub unsafe extern "C" fn fits_execute_template(
 
         // Convert C string pointer to slice for ngp_include_file
         let template_cstr = CStr::from_ptr(ngp_template);
-        let template_slice = template_cstr.to_bytes_with_nul();
+        let template_slice = cast_slice(template_cstr.to_bytes_with_nul());
         *status = ngp_include_file(&mut parser_state, template_slice);
         if NGP_OK != (*status) {
             return *status;
@@ -2312,7 +2312,7 @@ mod tests {
             let mut version: c_int = 0;
 
             let status =
-                ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
+                ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(version, 1);
@@ -2334,17 +2334,17 @@ mod tests {
 
             ngp_get_extver(
                 &mut parser_state,
-                extname.as_bytes_with_nul(),
+                cast_slice(extname.as_bytes_with_nul()),
                 &mut version1,
             );
             ngp_get_extver(
                 &mut parser_state,
-                extname.as_bytes_with_nul(),
+                cast_slice(extname.as_bytes_with_nul()),
                 &mut version2,
             );
             ngp_get_extver(
                 &mut parser_state,
-                extname.as_bytes_with_nul(),
+                cast_slice(extname.as_bytes_with_nul()),
                 &mut version3,
             );
 
@@ -2370,11 +2370,11 @@ mod tests {
             let mut ver_ext2: c_int = 0;
             let mut ver_ext1_again: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, ext1.as_bytes_with_nul(), &mut ver_ext1);
-            ngp_get_extver(&mut parser_state, ext2.as_bytes_with_nul(), &mut ver_ext2);
+            ngp_get_extver(&mut parser_state, cast_slice(ext1.as_bytes_with_nul()), &mut ver_ext1);
+            ngp_get_extver(&mut parser_state, cast_slice(ext2.as_bytes_with_nul()), &mut ver_ext2);
             ngp_get_extver(
                 &mut parser_state,
-                ext1.as_bytes_with_nul(),
+                cast_slice(ext1.as_bytes_with_nul()),
                 &mut ver_ext1_again,
             );
 
@@ -2410,7 +2410,7 @@ mod tests {
 
         let extname = to_cstring("TEST_EXT");
 
-        let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(), 5);
+        let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
         assert_eq!(status, NGP_OK);
 
         ngp_delete_extver_tab(&mut parser_state);
@@ -2432,16 +2432,16 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 3 first
-            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(), 3);
+            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 3);
             assert_eq!(status, NGP_OK);
 
             // Set to 5 - should update to higher value
-            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(), 5);
+            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
+            ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
             assert_eq!(
                 version, 6,
                 "Should update to higher version and return 6 on next get"
@@ -2460,16 +2460,16 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 5 first
-            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(), 5);
+            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
             assert_eq!(status, NGP_OK);
 
             // Set to 3 - should keep 5 (the higher value)
-            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(), 3);
+            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 3);
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1, not 4)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
+            ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
             assert_eq!(
                 version, 6,
                 "Should keep higher version 5 and return 6 on next get"
@@ -2500,8 +2500,8 @@ mod tests {
             let mut ver1: c_int = 0;
             let mut ver2: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, ext1.as_bytes_with_nul(), &mut ver1);
-            ngp_get_extver(&mut parser_state, ext2.as_bytes_with_nul(), &mut ver2);
+            ngp_get_extver(&mut parser_state, cast_slice(ext1.as_bytes_with_nul()), &mut ver1);
+            ngp_get_extver(&mut parser_state, cast_slice(ext2.as_bytes_with_nul()), &mut ver2);
 
             let status = ngp_delete_extver_tab(&mut parser_state);
             assert_eq!(status, NGP_OK);
@@ -2787,8 +2787,8 @@ mod tests {
     // Helper to create NgpRawLine from string for testing
     fn create_test_line(s: &str) -> NgpRawLine {
         let line_str = to_cstring(s);
-        let bytes = line_str.as_bytes_with_nul();
-        let mut vec = Vec::with_capacity(bytes.len());
+        let bytes = cast_slice(line_str.as_bytes_with_nul());
+        let mut vec: Vec<c_char> = Vec::with_capacity(bytes.len());
         vec.extend_from_slice(bytes);
         NgpRawLine {
             line: vec.into_boxed_slice(),
