@@ -12,7 +12,7 @@ use crate::fitsio::{
     TLOGICAL, TLONG, TSTRING, VALUE_UNDEFINED, fitsfile,
 };
 use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
-use crate::wrappers::{ffstrtok, strcat, strchr, strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp, strncpy};
+use crate::wrappers::{ffstrtok, strcat, strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp, strncpy};
 use crate::{FFLOCK, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -92,13 +92,13 @@ unsafe fn ngp_alloc_boxed(size: usize) -> Result<Box<[c_char]>, c_int> {
 /* type definitions */
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct NgpRawLine {
-    pub line: *mut c_char,
-    pub name: *mut c_char,
-    pub value: *mut c_char,
+    pub line: Box<[c_char]>,
+    pub name_idx: Option<usize>,
+    pub value_idx: Option<usize>,
     pub type_: c_int,
-    pub comment: *mut c_char,
+    pub comment_idx: Option<usize>,
     pub format: c_int,
     pub flags: c_int,
 }
@@ -335,40 +335,31 @@ impl Default for GRParseState {
     }
 }
 
- unsafe fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
+fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
     // Simply clear the vector - Box will handle cleanup automatically
     parser_state.NGP_EXTVER_TAB.clear();
     NGP_OK
 }
 
 /// read one line from file
-unsafe fn ngp_line_from_file(fp: *mut FILE, p: *mut *mut c_char) -> c_int {
+unsafe fn ngp_line_from_file(fp: *mut FILE, line_out: &mut Box<[c_char]>) -> c_int {
     unsafe {
-        let mut c: c_int;
-        let mut r: c_int;
-        let mut llen: c_int;
-        let mut allocsize: c_int;
-        let mut alen: c_int;
-        let mut p2: *mut c_char;
-
         if fp.is_null() {
             return NGP_NUL_PTR; /* check for stupid args */
         }
-        if p.is_null() {
-            return NGP_NUL_PTR; /* more foolproof checks */
-        }
 
-        r = NGP_OK; /* initialize stuff, reset err code */
-        llen = 0; /* 0 characters read so far */
-        // TODO: Convert to ngp_alloc_boxed and Vec for dynamic reallocation
-        *p = ngp_alloc(1).cast::<c_char>(); /* preallocate 1 byte */
-        allocsize = 1; /* signal that we have allocated 1 byte */
-        if (*p).is_null() {
-            return NGP_NO_MEMORY; /* if this failed, system is in dire straits */
+        let mut r = NGP_OK; /* initialize stuff, reset err code */
+        let mut llen: usize = 0; /* 0 characters read so far */
+        let mut allocsize: usize = 1; /* preallocate 1 byte */
+
+        let mut vec = Vec::new();
+        if vec.try_reserve_exact(1).is_err() {
+            return NGP_NO_MEMORY;
         }
+        vec.resize(1, 0);
 
         loop {
-            c = fgetc(fp); /* get next character */
+            let c = fgetc(fp); /* get next character */
             if c_int::from(bb(b'\r')) == c {
                 continue; /* carriage return character ?  Just ignore it */
             }
@@ -388,38 +379,37 @@ unsafe fn ngp_line_from_file(fp: *mut FILE, p: *mut *mut c_char) -> c_int {
             }
 
             llen += 1; /* we have new character, make room for it */
-            alen = ((llen + NGP_ALLOCCHUNK) / NGP_ALLOCCHUNK) * NGP_ALLOCCHUNK;
+            let alen = ((llen + NGP_ALLOCCHUNK as usize) / NGP_ALLOCCHUNK as usize) * NGP_ALLOCCHUNK as usize;
             if alen > allocsize {
-                p2 = ngp_realloc((*p).cast::<c_void>(), alen as size_t) as *mut c_char; /* realloc buffer, if there is need */
-                if p2.is_null() {
+                /* realloc buffer if needed - grow in chunks */
+                let additional = alen - vec.len();
+                if vec.try_reserve_exact(additional).is_err() {
                     r = NGP_NO_MEMORY;
                     break;
                 }
-                *p = p2;
+                vec.resize(alen, 0);
                 allocsize = alen;
             }
-            *(*p).offset((llen - 1) as isize) = c as c_char; /* copy character to buffer */
+            vec[llen - 1] = c as c_char; /* copy character to buffer */
+        }
+
+        if (NGP_EOF != r) && (NGP_OK != r) {
+            /* in case of errors, return empty box */
+            *line_out = Box::default();
+            return r;
         }
 
         llen += 1; /* place for terminating \0 */
         if llen != allocsize {
-            p2 = ngp_realloc((*p).cast::<c_void>(), llen as size_t) as *mut c_char;
-            if p2.is_null() {
-                r = NGP_NO_MEMORY;
-            } else {
-                *p = p2;
-                *(*p).offset((llen - 1) as isize) = 0; /* copy \0 to buffer */
-            }
-        } else {
-            *(*p).offset((llen - 1) as isize) = 0; /* necessary when line read was empty */
+            /* shrink to exact size */
+            vec.truncate(llen);
+            vec.shrink_to_fit();
+        }
+        if llen > 0 {
+            vec[llen - 1] = 0; /* add terminating \0 */
         }
 
-        if (NGP_EOF != r) && (NGP_OK != r)
-        /* in case of errors free resources */
-        {
-            ngp_free((*p).cast::<c_void>());
-            *p = ptr::null_mut();
-        }
+        *line_out = vec.into_boxed_slice();
 
         r /* return  status code */
     }
@@ -427,36 +417,30 @@ unsafe fn ngp_line_from_file(fp: *mut FILE, p: *mut *mut c_char) -> c_int {
 
 /// free current line structure
  fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
-    unsafe {
-        if !parser_state.NGP_CURLINE.line.is_null() {
-            ngp_free(parser_state.NGP_CURLINE.line.cast::<c_void>());
-            parser_state.NGP_CURLINE.line = ptr::null_mut();
-            parser_state.NGP_CURLINE.name = ptr::null_mut();
-            parser_state.NGP_CURLINE.value = ptr::null_mut();
-            parser_state.NGP_CURLINE.comment = ptr::null_mut();
-            parser_state.NGP_CURLINE.type_ = NGP_TTYPE_UNKNOWN;
-            parser_state.NGP_CURLINE.format = NGP_FORMAT_OK;
-            parser_state.NGP_CURLINE.flags = 0;
-        }
-        NGP_OK
+    if !parser_state.NGP_CURLINE.line.is_empty() {
+        parser_state.NGP_CURLINE.line = Box::default();
+        parser_state.NGP_CURLINE.name_idx = None;
+        parser_state.NGP_CURLINE.value_idx = None;
+        parser_state.NGP_CURLINE.comment_idx = None;
+        parser_state.NGP_CURLINE.type_ = NGP_TTYPE_UNKNOWN;
+        parser_state.NGP_CURLINE.format = NGP_FORMAT_OK;
+        parser_state.NGP_CURLINE.flags = 0;
     }
+    NGP_OK
 }
 
 /// free cached line structure
  unsafe fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
-    unsafe {
-        if !parser_state.NGP_PREVLINE.line.is_null() {
-            ngp_free(parser_state.NGP_PREVLINE.line.cast::<c_void>());
-            parser_state.NGP_PREVLINE.line = ptr::null_mut();
-            parser_state.NGP_PREVLINE.name = ptr::null_mut();
-            parser_state.NGP_PREVLINE.value = ptr::null_mut();
-            parser_state.NGP_PREVLINE.comment = ptr::null_mut();
-            parser_state.NGP_PREVLINE.type_ = NGP_TTYPE_UNKNOWN;
-            parser_state.NGP_PREVLINE.format = NGP_FORMAT_OK;
-            parser_state.NGP_PREVLINE.flags = 0;
-        }
-        NGP_OK
+    if !parser_state.NGP_PREVLINE.line.is_empty() {
+        parser_state.NGP_PREVLINE.line = Box::default();
+        parser_state.NGP_PREVLINE.name_idx = None;
+        parser_state.NGP_PREVLINE.value_idx = None;
+        parser_state.NGP_PREVLINE.comment_idx = None;
+        parser_state.NGP_PREVLINE.type_ = NGP_TTYPE_UNKNOWN;
+        parser_state.NGP_PREVLINE.format = NGP_FORMAT_OK;
+        parser_state.NGP_PREVLINE.flags = 0;
     }
+    NGP_OK
 }
 
 /// read one line
@@ -464,108 +448,102 @@ unsafe fn ngp_read_line_buffered(parser_state: &mut GRParseState, fp: *mut FILE)
     unsafe {
         ngp_free_line(parser_state); /* first free current line (if any) */
 
-        if !parser_state.NGP_PREVLINE.line.is_null()
+        if !parser_state.NGP_PREVLINE.line.is_empty()
         /* if cached, return cached line */
         {
-            parser_state.NGP_CURLINE = parser_state.NGP_PREVLINE;
-            parser_state.NGP_PREVLINE.line = ptr::null_mut();
-            parser_state.NGP_PREVLINE.name = ptr::null_mut();
-            parser_state.NGP_PREVLINE.value = ptr::null_mut();
-            parser_state.NGP_PREVLINE.comment = ptr::null_mut();
-            parser_state.NGP_PREVLINE.type_ = NGP_TTYPE_UNKNOWN;
-            parser_state.NGP_PREVLINE.format = NGP_FORMAT_OK;
-            parser_state.NGP_PREVLINE.flags = 0;
+            parser_state.NGP_CURLINE = parser_state.NGP_PREVLINE.clone();
+            parser_state.NGP_PREVLINE = NgpRawLine::default();
             parser_state.NGP_CURLINE.flags = NGP_LINE_REREAD;
             return NGP_OK;
         }
 
         parser_state.NGP_CURLINE.flags = 0; /* if not cached really read line from file */
-        ngp_line_from_file(fp, std::ptr::addr_of_mut!(parser_state.NGP_CURLINE.line))
+        ngp_line_from_file(fp, &mut parser_state.NGP_CURLINE.line)
     }
 }
 
 /// unread line
  fn ngp_unread_line(parser_state: &mut GRParseState) -> c_int {
-    if parser_state.NGP_CURLINE.line.is_null() {
+    if parser_state.NGP_CURLINE.line.is_empty() {
         /* nothing to unread */
         return NGP_EMPTY_CURLINE;
     }
 
-    if !parser_state.NGP_PREVLINE.line.is_null() {
+    if !parser_state.NGP_PREVLINE.line.is_empty() {
         /* we cannot unread line twice */
         return NGP_UNREAD_QUEUE_FULL;
     }
 
-    parser_state.NGP_PREVLINE = parser_state.NGP_CURLINE;
-    parser_state.NGP_CURLINE.line = ptr::null_mut();
+    parser_state.NGP_PREVLINE = parser_state.NGP_CURLINE.clone();
+    parser_state.NGP_CURLINE = NgpRawLine::default();
     NGP_OK
 }
 
 /// a first guess line decomposition
  fn ngp_extract_tokens(cl: &mut NgpRawLine) -> c_int {
     unsafe {
-        let mut p: *mut c_char;
-        let mut s: *mut c_char;
+        let mut p_idx: usize;  // Index into line buffer
+        let mut s_idx: usize;
         let mut cl_flags: c_int;
         let mut i: c_int;
 
-        p = (*cl).line; /* start from beginning of line */
-        if p.is_null() {
+        if cl.line.is_empty() {
             return NGP_NUL_PTR;
         }
 
-        (*cl).comment = ptr::null_mut();
-        (*cl).name = ptr::null_mut();
-        (*cl).value = ptr::null_mut();
-        (*cl).type_ = NGP_TTYPE_UNKNOWN;
-        (*cl).format = NGP_FORMAT_OK;
+        cl.comment_idx = None;
+        cl.name_idx = None;
+        cl.value_idx = None;
+        cl.type_ = NGP_TTYPE_UNKNOWN;
+        cl.format = NGP_FORMAT_OK;
 
         cl_flags = 0;
+        p_idx = 0; /* start from beginning of line */
 
         i = 0;
         loop {
             /* if 8 spaces at beginning then line is comment */
 
-            if (0 == *p) || (bb(b'\n') == *p) {
+            if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx]) {
                 /* if line has only blanks -> write blank keyword */
-                *(*cl).line.offset(0) = 0; /* create empty name (0 length string) */
-                (*cl).name = (*cl).line;
-                (*cl).comment = (*cl).line;
-                (*cl).type_ = NGP_TTYPE_RAW; /* signal write unformatted to FITS file */
+                cl.line[0] = 0; /* create empty name (0 length string) */
+                cl.name_idx = Some(0);
+                cl.comment_idx = Some(0);
+                cl.type_ = NGP_TTYPE_RAW; /* signal write unformatted to FITS file */
                 return NGP_OK;
             }
-            if (bb(b' ') != *p) && (bb(b'\t') != *p) {
+            if (bb(b' ') != cl.line[p_idx]) && (bb(b'\t') != cl.line[p_idx]) {
                 break;
             }
             if i >= 7 {
-                (*cl).comment = p.offset(1);
-                s = (*cl).comment;
+                cl.comment_idx = Some(p_idx + 1);
+                s_idx = cl.comment_idx.unwrap();
                 loop {
                     /* filter out any EOS characters in comment */
-                    if bb(b'\n') == *s {
-                        *s = 0;
+                    if bb(b'\n') == cl.line[s_idx] {
+                        cl.line[s_idx] = 0;
                     }
-                    if 0 == *s {
+                    if 0 == cl.line[s_idx] {
                         break;
                     }
-                    s = s.offset(1);
+                    s_idx += 1;
                 }
-                *(*cl).line.offset(0) = 0; /* create empty name (0 length string) */
-                (*cl).name = (*cl).line;
-                (*cl).type_ = NGP_TTYPE_RAW;
+                cl.line[0] = 0; /* create empty name (0 length string) */
+                cl.name_idx = Some(0);
+                cl.type_ = NGP_TTYPE_RAW;
                 return NGP_OK;
             }
-            p = p.offset(1);
+            p_idx += 1;
             i += 1;
         }
 
-        (*cl).name = p;
+        cl.name_idx = Some(p_idx);
 
         loop
         /* we need to find 1st whitespace */
         {
-            if (0 == *p) || (bb(b'\n') == *p) {
-                *p = 0;
+            if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx]) {
+                cl.line[p_idx] = 0;
                 break;
             }
 
@@ -573,236 +551,251 @@ unsafe fn ngp_read_line_buffered(parser_state: &mut GRParseState, fp: *mut FILE)
               from Richard Mathar, 2002-05-03, add 10 lines:
               if upper/lowercase HIERARCH followed also by an equal sign...
             */
-            if fits_strncasecmp(
-                cs!(c"HIERARCH"),
-                std::slice::from_raw_parts(p as *const c_char, 9),
-                8,
-            ) == 0
+            if p_idx + 9 <= cl.line.len()
+                && fits_strncasecmp(
+                    cs!(c"HIERARCH"),
+                    &cl.line[p_idx..p_idx + 9],
+                    8,
+                ) == 0
             {
-                let eqsi: *mut c_char = strchr(p, c_int::from(bb(b'=')));
-                if !eqsi.is_null() {
+                // Find '=' sign starting from current position
+                let mut found_eq = None;
+                for idx in p_idx..cl.line.len() {
+                    if cl.line[idx] == bb(b'=') {
+                        found_eq = Some(idx);
+                        break;
+                    }
+                    if cl.line[idx] == 0 {
+                        break;
+                    }
+                }
+                if let Some(eq_idx) = found_eq {
                     cl_flags |= NGP_FOUND_EQUAL_SIGN;
-                    p = eqsi;
+                    p_idx = eq_idx;
                     break;
                 }
             }
 
-            if (bb(b' ') == *p) || (bb(b'\t') == *p) {
+            if (bb(b' ') == cl.line[p_idx]) || (bb(b'\t') == cl.line[p_idx]) {
                 break;
             }
-            if bb(b'=') == *p {
+            if bb(b'=') == cl.line[p_idx] {
                 cl_flags |= NGP_FOUND_EQUAL_SIGN;
                 break;
             }
 
-            p = p.offset(1);
+            p_idx += 1;
         }
 
-        if 0 != *p {
-            *(p) = 0; /* found end of keyname so terminate string with zero */
-            p = p.offset(1);
+        if 0 != cl.line[p_idx] {
+            cl.line[p_idx] = 0; /* found end of keyname so terminate string with zero */
+            p_idx += 1;
         }
+
+        // Get name as a slice for comparison
+        let name_idx = cl.name_idx.unwrap();
+        let name_slice = &cl.line[name_idx..];
 
         if (0
             == fits_strcasecmp(
                 cast_slice::<u8, c_char>(c"HISTORY".to_bytes_with_nul()),
-                cast_slice(CStr::from_ptr((*cl).name).to_bytes_with_nul()),
+                name_slice,
             ))
             || (0
                 == fits_strcasecmp(
                     cast_slice::<u8, c_char>(c"COMMENT".to_bytes_with_nul()),
-                    cast_slice(CStr::from_ptr((*cl).name).to_bytes_with_nul()),
+                    name_slice,
                 ))
             || (0
                 == fits_strcasecmp(
                     cast_slice::<u8, c_char>(c"CONTINUE".to_bytes_with_nul()),
-                    cast_slice(CStr::from_ptr((*cl).name).to_bytes_with_nul()),
+                    name_slice,
                 ))
         {
-            (*cl).comment = p;
-            s = (*cl).comment;
+            cl.comment_idx = Some(p_idx);
+            s_idx = cl.comment_idx.unwrap();
             loop {
                 /* filter out any EOS characters in comment */
 
-                if bb(b'\n') == *s {
-                    *s = 0;
+                if bb(b'\n') == cl.line[s_idx] {
+                    cl.line[s_idx] = 0;
                 }
-                if 0 == *s {
+                if 0 == cl.line[s_idx] {
                     break;
                 }
-                s = s.offset(1);
+                s_idx += 1;
             }
-            (*cl).type_ = NGP_TTYPE_RAW;
+            cl.type_ = NGP_TTYPE_RAW;
             return NGP_OK;
         }
 
         if 0 == fits_strcasecmp(
             cast_slice::<u8, c_char>(c"\\INCLUDE".to_bytes_with_nul()),
-            cast_slice(CStr::from_ptr((*cl).name).to_bytes_with_nul()),
+            name_slice,
         ) {
             loop {
-                if (bb(b' ') != *p) && (bb(b'\t') != *p) {
+                if (bb(b' ') != cl.line[p_idx]) && (bb(b'\t') != cl.line[p_idx]) {
                     break; /* skip whitespace */
                 }
-                p = p.offset(1);
+                p_idx += 1;
             }
 
-            (*cl).value = p;
-            s = (*cl).value;
+            cl.value_idx = Some(p_idx);
+            s_idx = cl.value_idx.unwrap();
             loop {
                 /* filter out any EOS characters */
-                if bb(b'\n') == *s {
-                    *s = 0;
+                if bb(b'\n') == cl.line[s_idx] {
+                    cl.line[s_idx] = 0;
                 }
-                if 0 == *s {
+                if 0 == cl.line[s_idx] {
                     break;
                 }
-                s = s.offset(1);
+                s_idx += 1;
             }
-            (*cl).type_ = NGP_TTYPE_UNKNOWN;
+            cl.type_ = NGP_TTYPE_UNKNOWN;
             return NGP_OK;
         }
 
         loop {
-            if (0 == *p) || (bb(b'\n') == *p) {
+            if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx]) {
                 return NGP_OK; /* test if at end of string */
             }
-            if (bb(b' ') == *p) || (bb(b'\t') == *p) {
-                p = p.offset(1);
+            if (bb(b' ') == cl.line[p_idx]) || (bb(b'\t') == cl.line[p_idx]) {
+                p_idx += 1;
                 continue; /* skip whitespace */
             }
             if 0 != (cl_flags & NGP_FOUND_EQUAL_SIGN) {
                 break;
             }
-            if bb(b'=') != *p {
+            if bb(b'=') != cl.line[p_idx] {
                 break; /* ignore initial equal sign */
             }
             cl_flags |= NGP_FOUND_EQUAL_SIGN;
-            p = p.offset(1);
+            p_idx += 1;
         }
 
-        if bb(b'/') == *p
+        if bb(b'/') == cl.line[p_idx]
         /* no value specified, comment only */
         {
-            p = p.offset(1);
-            if (bb(b' ') == *p) || (bb(b'\t') == *p) {
-                p = p.offset(1);
+            p_idx += 1;
+            if (bb(b' ') == cl.line[p_idx]) || (bb(b'\t') == cl.line[p_idx]) {
+                p_idx += 1;
             }
-            (*cl).comment = p;
-            s = (*cl).comment;
+            cl.comment_idx = Some(p_idx);
+            s_idx = cl.comment_idx.unwrap();
             loop {
                 /* filter out any EOS characters in comment */
-                if bb(b'\n') == *s {
-                    *s = 0;
+                if bb(b'\n') == cl.line[s_idx] {
+                    cl.line[s_idx] = 0;
                 }
-                if 0 == *s {
+                if 0 == cl.line[s_idx] {
                     break;
                 }
-                s = s.offset(1);
+                s_idx += 1;
             }
             return NGP_OK;
         }
 
-        if bb(b'\'') == *p
+        if bb(b'\'') == cl.line[p_idx]
         /* we have found string within quotes */
         {
-            p = p.offset(1);
-            s = p;
-            (*cl).value = s; /* set pointer to beginning of that string */
-            (*cl).type_ = NGP_TTYPE_STRING; /* signal that it is of string type */
+            p_idx += 1;
+            s_idx = p_idx;
+            cl.value_idx = Some(s_idx); /* set pointer to beginning of that string */
+            cl.type_ = NGP_TTYPE_STRING; /* signal that it is of string type */
 
             loop {
                 /* analyze it */
 
-                if (0 == *p) || (bb(b'\n') == *p)
+                if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx])
                 /* end of line -> end of string */
                 {
-                    *s = 0;
+                    cl.line[s_idx] = 0;
                     return NGP_OK;
                 }
 
-                if bb(b'\'') == *p
+                if bb(b'\'') == cl.line[p_idx]
                 /* we have found doublequote */
                 {
-                    if (0 == *p.offset(1)) || (bb(b'\n') == *p.offset(1))
+                    if (0 == cl.line[p_idx + 1]) || (bb(b'\n') == cl.line[p_idx + 1])
                     /* doublequote is the last character in line */
                     {
-                        *s = 0;
+                        cl.line[s_idx] = 0;
                         return NGP_OK;
                     }
-                    if (bb(b'\t') == *p.offset(1)) || (bb(b' ') == *p.offset(1))
+                    if (bb(b'\t') == cl.line[p_idx + 1]) || (bb(b' ') == cl.line[p_idx + 1])
                     /* duoblequote was string terminator */
                     {
-                        *s = 0;
-                        p = p.offset(1);
+                        cl.line[s_idx] = 0;
+                        p_idx += 1;
                         break;
                     }
-                    if bb(b'\'') == *p.offset(1) {
-                        p = p.offset(1); /* doublequote is inside string, convert "" -> " */
+                    if bb(b'\'') == cl.line[p_idx + 1] {
+                        p_idx += 1; /* doublequote is inside string, convert "" -> " */
                     }
                 }
 
-                *(s) = *(p); /* compact string in place, necess. by "" -> " conversion */
-                s = s.offset(1);
-                p = p.offset(1);
+                cl.line[s_idx] = cl.line[p_idx]; /* compact string in place, necess. by "" -> " conversion */
+                s_idx += 1;
+                p_idx += 1;
             }
         } else
         /* regular token */
         {
-            (*cl).value = p; /* set pointer to token */
-            (*cl).type_ = NGP_TTYPE_UNKNOWN; /* we dont know type at the moment */
+            cl.value_idx = Some(p_idx); /* set pointer to token */
+            cl.type_ = NGP_TTYPE_UNKNOWN; /* we dont know type at the moment */
 
             loop {
                 /* we need to find 1st whitespace */
 
-                if (0 == *p) || (bb(b'\n') == *p) {
-                    *p = 0;
+                if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx]) {
+                    cl.line[p_idx] = 0;
                     return NGP_OK;
                 }
-                if (bb(b' ') == *p) || (bb(b'\t') == *p) {
+                if (bb(b' ') == cl.line[p_idx]) || (bb(b'\t') == cl.line[p_idx]) {
                     break;
                 }
-                p = p.offset(1);
+                p_idx += 1;
             }
-            if *p != 0 {
-                *(p) = 0; /* found so terminate string with zero */
-                p = p.offset(1);
+            if cl.line[p_idx] != 0 {
+                cl.line[p_idx] = 0; /* found so terminate string with zero */
+                p_idx += 1;
             }
         }
 
         loop {
-            if (0 == *p) || (bb(b'\n') == *p) {
+            if (0 == cl.line[p_idx]) || (bb(b'\n') == cl.line[p_idx]) {
                 return NGP_OK; /* test if at end of string */
             }
-            if (bb(b' ') != *p) && (bb(b'\t') != *p) {
+            if (bb(b' ') != cl.line[p_idx]) && (bb(b'\t') != cl.line[p_idx]) {
                 break; /* skip whitespace */
             }
-            p = p.offset(1);
+            p_idx += 1;
         }
 
-        if bb(b'/') == *p
+        if bb(b'/') == cl.line[p_idx]
         /* no value specified, comment only */
         {
-            p = p.offset(1);
-            if (bb(b' ') == *p) || (bb(b'\t') == *p) {
-                p = p.offset(1);
+            p_idx += 1;
+            if (bb(b' ') == cl.line[p_idx]) || (bb(b'\t') == cl.line[p_idx]) {
+                p_idx += 1;
             }
-            (*cl).comment = p;
-            s = (*cl).comment;
+            cl.comment_idx = Some(p_idx);
+            s_idx = cl.comment_idx.unwrap();
             loop {
                 /* filter out any EOS characters in comment */
-                if bb(b'\n') == *s {
-                    *s = 0;
+                if bb(b'\n') == cl.line[s_idx] {
+                    cl.line[s_idx] = 0;
                 }
-                if 0 == *s {
+                if 0 == cl.line[s_idx] {
                     break;
                 }
-                s = s.offset(1);
+                s_idx += 1;
             }
             return NGP_OK;
         }
 
-        (*cl).format = NGP_FORMAT_ERROR;
+        cl.format = NGP_FORMAT_ERROR;
         NGP_OK /* too many tokens ... */
     }
 }
@@ -974,7 +967,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 }
             }
 
-            match (*parser_state.NGP_CURLINE.line.offset(0)) as u8 {
+            match parser_state.NGP_CURLINE.line.get(0).copied().unwrap_or(0) as u8 {
                 0 => {
                     if 0 == ignore_blank_lines {
                         // break;
@@ -992,18 +985,22 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 return r;
             }
 
-            if parser_state.NGP_CURLINE.name.is_null() {
+            if parser_state.NGP_CURLINE.name_idx.is_none() {
                 continue; /* skip lines consisting only of whitespaces */
             }
 
-            for k in 0..strlen(parser_state.NGP_CURLINE.name) {
-                if (*parser_state.NGP_CURLINE.name.add(k) >= bb(b'a'))
-                    && (*parser_state.NGP_CURLINE.name.add(k) <= bb(b'z'))
-                {
-                    *parser_state.NGP_CURLINE.name.add(k) += bb(b'A') - bb(b'a'); /* force keyword to be upper case */
+            let name_idx = parser_state.NGP_CURLINE.name_idx.unwrap();
+            for k in 0..8 {
+                if name_idx + k >= parser_state.NGP_CURLINE.line.len() {
+                    break;
                 }
-                if k == 7 {
-                    break; /* only first 8 chars are required to be upper case */
+                if parser_state.NGP_CURLINE.line[name_idx + k] == 0 {
+                    break;
+                }
+                if (parser_state.NGP_CURLINE.line[name_idx + k] >= bb(b'a'))
+                    && (parser_state.NGP_CURLINE.line[name_idx + k] <= bb(b'z'))
+                {
+                    parser_state.NGP_CURLINE.line[name_idx + k] += bb(b'A') - bb(b'a'); /* force keyword to be upper case */
                 }
             }
 
@@ -1013,7 +1010,8 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 if NGP_TOKEN_UNKNOWN == NGP_TKDEF[k as usize].code {
                     break;
                 }
-                if 0 == strcmp(parser_state.NGP_CURLINE.name, NGP_TKDEF[k as usize].name.as_ptr()) {
+                let name_slice = &parser_state.NGP_CURLINE.line[name_idx..];
+                if 0 == strcmp_safe(name_slice, NGP_TKDEF[k as usize].name.to_bytes_with_nul()) {
                     break;
                 }
                 k += 1;
@@ -1024,7 +1022,10 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
             if NGP_TOKEN_INCLUDE == parser_state.NGP_KEYIDX
             /* if this is \INCLUDE keyword, try to include file */
             {
-                r = ngp_include_file(parser_state, parser_state.NGP_CURLINE.value);
+                let value_ptr = parser_state.NGP_CURLINE.value_idx
+                    .map(|idx| parser_state.NGP_CURLINE.line[idx..].as_ptr())
+                    .unwrap_or(ptr::null());
+                r = ngp_include_file(parser_state, value_ptr);
                 if NGP_OK != (r) {
                     return r;
                 }
@@ -1033,39 +1034,35 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
 
             parser_state.NGP_LINKEY.type_ = NGP_TTYPE_UNKNOWN; /* now, get the keyword type, it's a long story ... */
 
-            if !parser_state.NGP_CURLINE.value.is_null()
+            if let Some(value_idx) = parser_state.NGP_CURLINE.value_idx
             /* if no value given signal it */
             {
+                let value_slice = &parser_state.NGP_CURLINE.line[value_idx..];
+                let value_ptr = value_slice.as_ptr() as *mut c_char;
+
                 if NGP_TTYPE_STRING == parser_state.NGP_CURLINE.type_
                 /* string type test */
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_STRING;
-                    parser_state.NGP_LINKEY.value.s = parser_state.NGP_CURLINE.value;
+                    parser_state.NGP_LINKEY.value.s = value_ptr;
                 }
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* bool type test */
                     && ((0
                         == fits_strcasecmp(
                             cast_slice::<u8, c_char>(c"T".to_bytes_with_nul()),
-                            cast_slice::<u8, c_char>(
-                                CStr::from_ptr(parser_state.NGP_CURLINE.value).to_bytes_with_nul(),
-                            ),
+                            value_slice,
                         ))
                         || (0
                             == fits_strcasecmp(
                                 cast_slice::<u8, c_char>(c"F".to_bytes_with_nul()),
-                                cast_slice::<u8, c_char>(
-                                    CStr::from_ptr(parser_state.NGP_CURLINE.value)
-                                        .to_bytes_with_nul(),
-                                ),
+                                value_slice,
                             )))
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_BOOL;
                     parser_state.NGP_LINKEY.value.b = if fits_strcasecmp(
                         cast_slice::<u8, c_char>(c"T".to_bytes_with_nul()),
-                        cast_slice::<u8, c_char>(
-                            CStr::from_ptr(parser_state.NGP_CURLINE.value).to_bytes_with_nul(),
-                        ),
+                        value_slice,
                     ) != 0
                     {
                         0
@@ -1074,7 +1071,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                     };
                 }
 
-                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
                     slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
@@ -1089,22 +1086,25 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                             &mut (parser_state.NGP_LINKEY.value.c.im),
                             &mut nc,
                         )
-                        && ((bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\n') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (0 == *parser_state.NGP_CURLINE.value.offset(nc as isize)))
+                        && ((bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\n') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (0 == parser_state.NGP_CURLINE.line[value_idx + nc as usize]))
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_COMPLEX;
                 }
 
-                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
                     slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
 
+                // Check for decimal point in value
+                let has_decimal = value_slice.iter().any(|&ch| ch == bb(b'.'));
+
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* real type test */
-                    && !strchr(parser_state.NGP_CURLINE.value, c_int::from(bb(b'.'))).is_null()
+                    && has_decimal
                         && (1
                             == sscanf_lg_n(
                                 str_slice,
@@ -1113,12 +1113,12 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                                 &mut nc,
                             ))
                 {
-                    if bb(b'D') == *parser_state.NGP_CURLINE.value.offset(nc as isize) {
+                    if bb(b'D') == parser_state.NGP_CURLINE.line[value_idx + nc as usize] {
                         /* test if template used a 'D' rather than an 'E' as the exponent character (added by WDP in 12/2010) */
                         savec = nc;
-                        *parser_state.NGP_CURLINE.value.offset(nc as isize) = bb(b'E');
+                        parser_state.NGP_CURLINE.line[value_idx + nc as usize] = bb(b'E');
 
-                        let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                        let cstr_tmp = CStr::from_ptr(value_ptr);
                         let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                         let str_slice =
                             slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
@@ -1129,26 +1129,26 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                             &mut (parser_state.NGP_LINKEY.value.d),
                             &mut nc,
                         );
-                        if (bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\n') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (0 == *parser_state.NGP_CURLINE.value.offset(nc as isize))
+                        if (bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\n') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (0 == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
                         {
                             parser_state.NGP_LINKEY.type_ = NGP_TTYPE_REAL;
                         } else {
                             /* no, this is not a real value */
-                            *parser_state.NGP_CURLINE.value.offset(savec as isize) = bb(b'D'); /* restore the original D character */
+                            parser_state.NGP_CURLINE.line[value_idx + savec as usize] = bb(b'D'); /* restore the original D character */
                         }
-                    } else if (bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                        || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                        || (bb(b'\n') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                        || (0 == *parser_state.NGP_CURLINE.value.offset(nc as isize))
+                    } else if (bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                        || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                        || (bb(b'\n') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                        || (0 == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
                     {
                         parser_state.NGP_LINKEY.type_ = NGP_TTYPE_REAL;
                     }
                 }
 
-                let cstr_tmp = CStr::from_ptr(parser_state.NGP_CURLINE.value);
+                let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
                     slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
@@ -1162,10 +1162,10 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                             &mut parser_state.NGP_LINKEY.value.i,
                             &mut nc,
                         )
-                        && ((bb(b' ') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\t') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (bb(b'\n') == *parser_state.NGP_CURLINE.value.offset(nc as isize))
-                            || (0 == *parser_state.NGP_CURLINE.value.offset(nc as isize)))
+                        && ((bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (bb(b'\n') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
+                            || (0 == parser_state.NGP_CURLINE.line[value_idx + nc as usize]))
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_INT;
                 }
@@ -1173,7 +1173,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 /* force string type */
                 {
                     parser_state.NGP_LINKEY.type_ = NGP_TTYPE_STRING;
-                    parser_state.NGP_LINKEY.value.s = parser_state.NGP_CURLINE.value;
+                    parser_state.NGP_LINKEY.value.s = value_ptr;
                 }
             } else if NGP_TTYPE_RAW == parser_state.NGP_CURLINE.type_ {
                 parser_state.NGP_LINKEY.type_ = NGP_TTYPE_RAW;
@@ -1181,10 +1181,11 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 parser_state.NGP_LINKEY.type_ = NGP_TTYPE_NULL;
             }
 
-            if !parser_state.NGP_CURLINE.comment.is_null() {
+            if let Some(comment_idx) = parser_state.NGP_CURLINE.comment_idx {
+                let comment_ptr = parser_state.NGP_CURLINE.line[comment_idx..].as_ptr();
                 strncpy(
                     std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.comment).cast(),
-                    parser_state.NGP_CURLINE.comment,
+                    comment_ptr,
                     NGP_MAX_COMMENT,
                 ); /* store comment */
                 parser_state.NGP_LINKEY.comment[NGP_MAX_COMMENT - 1] = 0;
@@ -1192,9 +1193,10 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 parser_state.NGP_LINKEY.comment[0] = 0;
             }
 
+            let name_ptr = parser_state.NGP_CURLINE.line[name_idx..].as_ptr();
             strncpy(
                 std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.name).cast(),
-                parser_state.NGP_CURLINE.name,
+                name_ptr,
                 NGP_MAX_NAME,
             ); /* and keyword's name */
             parser_state.NGP_LINKEY.name[NGP_MAX_NAME - 1] = 0;
@@ -2832,217 +2834,138 @@ mod tests {
         }
     }
 
+    // Helper to create NgpRawLine from string for testing
+    fn create_test_line(s: &str) -> NgpRawLine {
+        let line_str = to_cstring(s);
+        let bytes = line_str.as_bytes_with_nul();
+        let mut vec = Vec::with_capacity(bytes.len());
+        vec.extend_from_slice(bytes);
+        NgpRawLine {
+            line: vec.into_boxed_slice(),
+            name_idx: None,
+            value_idx: None,
+            type_: 0,
+            comment_idx: None,
+            format: 0,
+            flags: 0,
+        }
+    }
+
     #[test]
     fn test_ngp_extract_tokens_simple_keyword() {
         unsafe {
-            let line_str = to_cstring("KEYWORD");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("KEYWORD");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "KEYWORD"), "Name should be KEYWORD");
-            assert!(line.value.is_null(), "Value should be null");
-            assert!(line.comment.is_null(), "Comment should be null");
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
+            assert!(line.name_idx.is_some(), "Name should be set");
+            let name_slice = &line.line[line.name_idx.unwrap()..];
+            assert!(cstr_eq(name_slice.as_ptr(), "KEYWORD"), "Name should be KEYWORD");
+            assert!(line.value_idx.is_none(), "Value should be null");
+            assert!(line.comment_idx.is_none(), "Comment should be null");
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_int() {
         unsafe {
-            let line_str = to_cstring("BITPIX = 16");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("BITPIX = 16");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "BITPIX"), "Name should be BITPIX");
-            assert!(cstr_eq(line.value, "16"), "Value should be 16");
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "BITPIX"), "Name should be BITPIX");
+            assert!(cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "16"), "Value should be 16");
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_string() {
         unsafe {
-            let line_str = to_cstring("EXTNAME = 'test value'");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("EXTNAME = 'test value'");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "EXTNAME"), "Name should be EXTNAME");
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "EXTNAME"), "Name should be EXTNAME");
             assert!(
-                cstr_eq(line.value, "test value"),
+                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "test value"),
                 "Value should be 'test value'"
             );
             assert_eq!(line.type_, NGP_TTYPE_STRING, "Type should be STRING");
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_comment() {
         unsafe {
-            let line_str = to_cstring("BITPIX = 16 / bits per pixel");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("BITPIX = 16 / bits per pixel");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "BITPIX"), "Name should be BITPIX");
-            assert!(cstr_eq(line.value, "16"), "Value should be 16");
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "BITPIX"), "Name should be BITPIX");
+            assert!(cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "16"), "Value should be 16");
             assert!(
-                cstr_eq(line.comment, "bits per pixel"),
+                cstr_eq(line.line[line.comment_idx.unwrap()..].as_ptr(), "bits per pixel"),
                 "Comment should be 'bits per pixel'"
             );
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_comment_only() {
         unsafe {
-            let line_str = to_cstring("KEYWORD = / comment only");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("KEYWORD = / comment only");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "KEYWORD"), "Name should be KEYWORD");
-            assert!(line.value.is_null(), "Value should be null");
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "KEYWORD"), "Name should be KEYWORD");
+            assert!(line.value_idx.is_none(), "Value should be null");
             assert!(
-                cstr_eq(line.comment, "comment only"),
+                cstr_eq(line.line[line.comment_idx.unwrap()..].as_ptr(), "comment only"),
                 "Comment should be 'comment only'"
             );
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_history() {
         unsafe {
-            let line_str = to_cstring("HISTORY This is a history record");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("HISTORY This is a history record");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "HISTORY"), "Name should be HISTORY");
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "HISTORY"), "Name should be HISTORY");
             assert!(
-                cstr_eq(line.comment, "This is a history record"),
+                cstr_eq(line.line[line.comment_idx.unwrap()..].as_ptr(), "This is a history record"),
                 "Comment should be 'This is a history record'"
             );
             assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_comment_keyword() {
         unsafe {
-            let line_str = to_cstring("COMMENT This is a comment");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("COMMENT This is a comment");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
-            assert!(cstr_eq(line.name, "COMMENT"), "Name should be COMMENT");
+            assert!(cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "COMMENT"), "Name should be COMMENT");
             assert!(
-                cstr_eq(line.comment, "This is a comment"),
+                cstr_eq(line.line[line.comment_idx.unwrap()..].as_ptr(), "This is a comment"),
                 "Comment should be 'This is a comment'"
             );
             assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-
-            // Cleanup - only free line, as name/value/comment point into line buffer
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_null_pointer() {
             let mut line = NgpRawLine {
-                line: ptr::null_mut(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
+                line: Box::new([]),
+                name_idx: None,
+                value_idx: None,
                 type_: 0,
-                comment: ptr::null_mut(),
+                comment_idx: None,
                 format: 0,
                 flags: 0,
             };
@@ -3050,127 +2973,71 @@ mod tests {
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(
                 status, NGP_NUL_PTR,
-                "Null line pointer should return NGP_NUL_PTR"
+                "Empty line should return NGP_NUL_PTR"
             );
     }
 
     #[test]
     fn test_ngp_extract_tokens_string_with_double_quotes() {
         unsafe {
-            let line_str = to_cstring("TEST = 'it''s a test'");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("TEST = 'it''s a test'");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
             assert!(
-                cstr_eq(line.value, "it's a test"),
+                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "it's a test"),
                 "Value should convert '' to '"
             );
-
-            // Cleanup
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_blank_line_8spaces() {
         unsafe {
-            let line_str = to_cstring("        This is a blank keyword");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("        This is a blank keyword");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
             assert!(
-                cstr_eq(line.name, ""),
+                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), ""),
                 "Name should be empty for 8-space line"
             );
             assert!(
-                cstr_eq(line.comment, "This is a blank keyword"),
+                cstr_eq(line.line[line.comment_idx.unwrap()..].as_ptr(), "This is a blank keyword"),
                 "Comment should be preserved"
             );
             assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-
-            // Cleanup
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_empty_line() {
         unsafe {
-            let line_str = to_cstring("");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
             assert_eq!(line.type_, NGP_TTYPE_RAW, "Empty line should have RAW type");
-
-            // Cleanup
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
         }
     }
 
     #[test]
     fn test_ngp_extract_tokens_hierarch() {
         unsafe {
-            let line_str = to_cstring("HIERARCH LongKeywordName = 'value'");
-            let mut line = NgpRawLine {
-                line: line_str.into_raw(),
-                name: ptr::null_mut(),
-                value: ptr::null_mut(),
-                type_: 0,
-                comment: ptr::null_mut(),
-                format: 0,
-                flags: 0,
-            };
+            let mut line = create_test_line("HIERARCH LongKeywordName = 'value'");
 
             let status = ngp_extract_tokens(&mut line);
             assert_eq!(status, NGP_OK);
 
             // Name should contain HIERARCH
-            if !line.name.is_null() {
-                let name_str = CStr::from_ptr(line.name).to_str().unwrap();
+            if let Some(name_idx) = line.name_idx {
+                let name_str = CStr::from_ptr(line.line[name_idx..].as_ptr()).to_str().unwrap();
                 assert!(
                     name_str.contains("HIERARCH"),
                     "Name should contain HIERARCH"
                 );
             }
-            assert!(cstr_eq(line.value, "value"), "Value should be 'value'");
-
-            // Cleanup
-            if !line.line.is_null() {
-                let _ = CString::from_raw(line.line);
-            }
+            assert!(cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "value"), "Value should be 'value'");
         }
     }
 }
