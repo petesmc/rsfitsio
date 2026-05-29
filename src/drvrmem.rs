@@ -186,7 +186,10 @@ pub(crate) fn mem_create_comp_unsafe(
         let status = mem_createmem(BL!(), handle);
 
         if status != 0 {
-            fclose(diskfile);
+            // Close the file description if it isn't stdout
+            if diskfile != STDOUT!() {
+                fclose(diskfile);
+            }
             ffpmsg_str("failed to create empty memory file (mem_create_comp)");
             return status;
         }
