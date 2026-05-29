@@ -1,6 +1,5 @@
 use core::slice;
 use std::ffi::{CStr, c_void};
-use std::mem;
 use std::ptr;
 
 use crate::aliases::c_api::*;
@@ -13,7 +12,7 @@ use crate::fitsio::{
     TLOGICAL, TLONG, TSTRING, VALUE_UNDEFINED, fitsfile,
 };
 use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
-use crate::wrappers::{ffstrtok, strcat, strchr, strcmp, strcpy, strlen, strncmp, strncpy};
+use crate::wrappers::{ffstrtok, strcat, strchr, strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp, strncpy};
 use crate::{FFLOCK, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -79,6 +78,17 @@ unsafe fn ngp_realloc(x: *mut c_void, y: size_t) -> *mut c_void {
     unsafe { realloc(x, y) }
 }
 
+/// Safe allocation function that returns a boxed slice
+/// Uses try_reserve_exact for proper error handling
+unsafe fn ngp_alloc_boxed(size: usize) -> Result<Box<[c_char]>, c_int> {
+    let mut vec = Vec::new();
+    if vec.try_reserve_exact(size).is_err() {
+        return Err(NGP_NO_MEMORY);
+    }
+    vec.resize(size, 0);
+    Ok(vec.into_boxed_slice())
+}
+
 /* type definitions */
 
 #[repr(C)]
@@ -139,40 +149,40 @@ pub struct NgpHdu {
 
 #[repr(C)]
 pub struct NgpTkdef {
-    pub name: *const c_char,
+    pub name: &'static CStr,
     pub code: c_int,
 }
 
 #[repr(C)]
 pub struct NgpExtverTab {
-    pub extname: *mut c_char,
+    pub extname: Box<[c_char]>,
     pub version: c_int,
 }
 
 /// Token definitions - constant lookup table for recognized tokens
 pub const NGP_TKDEF: [NgpTkdef; 6] = [
     NgpTkdef {
-        name: c"\\INCLUDE".as_ptr(),
+        name: c"\\INCLUDE",
         code: NGP_TOKEN_INCLUDE,
     },
     NgpTkdef {
-        name: c"\\GROUP".as_ptr(),
+        name: c"\\GROUP",
         code: NGP_TOKEN_GROUP,
     },
     NgpTkdef {
-        name: c"\\END".as_ptr(),
+        name: c"\\END",
         code: NGP_TOKEN_END,
     },
     NgpTkdef {
-        name: c"XTENSION".as_ptr(),
+        name: c"XTENSION",
         code: NGP_TOKEN_XTENSION,
     },
     NgpTkdef {
-        name: c"SIMPLE".as_ptr(),
+        name: c"SIMPLE",
         code: NGP_TOKEN_SIMPLE,
     },
     NgpTkdef {
-        name: ptr::null_mut(),
+        name: c"",
         code: NGP_TOKEN_UNKNOWN,
     },
 ];
@@ -185,10 +195,7 @@ struct GRParseState {
     NGP_PREVLINE: NgpRawLine,
 
     /// Extension version table
-    NGP_EXTVER_TAB: *mut NgpExtverTab,
-
-    // Size of extension version table
-    NGP_EXTVER_TAB_SIZE: c_int,
+    NGP_EXTVER_TAB: Vec<NgpExtverTab>,
 
     // More global variables from grparser.c
     /// Include file nesting level (1 means main file)
@@ -218,8 +225,7 @@ impl Default for GRParseState {
         Self {
             NGP_CURLINE: Default::default(),
             NGP_PREVLINE: Default::default(),
-            NGP_EXTVER_TAB: Default::default(),
-            NGP_EXTVER_TAB_SIZE: Default::default(),
+            NGP_EXTVER_TAB: Vec::new(),
             NGP_INCLEVEL: Default::default(),
             NGP_GRPLEVEL: Default::default(),
             NGP_FP: Default::default(),
@@ -233,67 +239,48 @@ impl Default for GRParseState {
 
  unsafe fn ngp_get_extver(
     parser_state: &mut GRParseState,
-    extname: *const c_char,
+    extname: &[c_char],
     version: *mut c_int,
 ) -> c_int {
     unsafe {
-        let p: *mut NgpExtverTab;
-
-        let mut i: c_int;
-
-        if extname.is_null() || version.is_null() {
-            return NGP_BAD_ARG;
-        }
-        if parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE > 0) {
-            return NGP_BAD_ARG;
-        }
-        if !parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE <= 0) {
+        if extname.is_empty() || version.is_null() {
             return NGP_BAD_ARG;
         }
 
-        for i in 0..parser_state.NGP_EXTVER_TAB_SIZE {
-            if 0 == strcmp(
-                extname,
-                (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).extname,
-            ) {
-                (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).version += 1;
-                *version = (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).version;
+        // Search for existing entry
+        for entry in &mut parser_state.NGP_EXTVER_TAB {
+            if 0 == strcmp_safe(extname, &entry.extname) {
+                entry.version += 1;
+                *version = entry.version;
                 return NGP_OK;
             }
         }
 
-        if parser_state.NGP_EXTVER_TAB.is_null() {
-            p = ngp_alloc(mem::size_of::<NgpExtverTab>()).cast::<NgpExtverTab>();
-        } else {
-            p = ngp_realloc(
-                parser_state.NGP_EXTVER_TAB.cast::<c_void>(),
-                (parser_state.NGP_EXTVER_TAB_SIZE + 1) as size_t * mem::size_of::<NgpExtverTab>(),
-            ) as *mut NgpExtverTab;
-        }
+        // Not found, create new entry
+        // Calculate length including null terminator
+        let len = strlen_safe(extname) + 1;
 
-        if p.is_null() {
+        // Allocate Vec with error checking
+        let mut vec = Vec::new();
+        if vec.try_reserve_exact(len).is_err() {
             return NGP_NO_MEMORY;
         }
 
-        let p2: *mut c_char = ngp_alloc(strlen(extname) + 1).cast::<c_char>();
-        if p2.is_null() {
-            ngp_free(p.cast::<c_void>());
+        // Copy the C string into the Vec
+        vec.extend_from_slice(&extname[..len]);
+
+        let new_entry = NgpExtverTab {
+            extname: vec.into_boxed_slice(),
+            version: 1,
+        };
+
+        // Check if we can allocate space for the new entry
+        if parser_state.NGP_EXTVER_TAB.try_reserve_exact(1).is_err() {
             return NGP_NO_MEMORY;
         }
 
-        strcpy(p2, extname);
-        parser_state.NGP_EXTVER_TAB = p.cast::<NgpExtverTab>();
-        (*parser_state
-            .NGP_EXTVER_TAB
-            .offset(parser_state.NGP_EXTVER_TAB_SIZE as isize))
-        .extname = p2;
-        (*parser_state
-            .NGP_EXTVER_TAB
-            .offset(parser_state.NGP_EXTVER_TAB_SIZE as isize))
-        .version = 1;
+        parser_state.NGP_EXTVER_TAB.push(new_entry);
         *version = 1;
-
-        parser_state.NGP_EXTVER_TAB_SIZE += 1;
 
         NGP_OK
     }
@@ -301,105 +288,57 @@ impl Default for GRParseState {
 
  unsafe fn ngp_set_extver(
     parser_state: &mut GRParseState,
-    extname: *const c_char,
+    extname: &[c_char],
     version: c_int,
 ) -> c_int {
     unsafe {
-        let p: *mut NgpExtverTab;
-
-        let mut i: c_int;
-
-        if extname.is_null() {
-            return NGP_BAD_ARG;
-        }
-        if parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE > 0) {
-            return NGP_BAD_ARG;
-        }
-        if !parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE <= 0) {
+        if extname.is_empty() {
             return NGP_BAD_ARG;
         }
 
-        for i in 0..parser_state.NGP_EXTVER_TAB_SIZE {
-            if 0 == strcmp(
-                extname,
-                (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).extname,
-            ) {
-                if version > (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).version {
-                    (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).version = version;
+        // Search for existing entry
+        for entry in &mut parser_state.NGP_EXTVER_TAB {
+            if 0 == strcmp_safe(extname, &entry.extname) {
+                if version > entry.version {
+                    entry.version = version;
                 }
                 return NGP_OK;
             }
         }
 
-        if parser_state.NGP_EXTVER_TAB.is_null() {
-            p = ngp_alloc(mem::size_of::<NgpExtverTab>()).cast::<NgpExtverTab>();
-        } else {
-            p = ngp_realloc(
-                parser_state.NGP_EXTVER_TAB.cast::<c_void>(),
-                (parser_state.NGP_EXTVER_TAB_SIZE + 1) as size_t * mem::size_of::<NgpExtverTab>(),
-            ) as *mut NgpExtverTab;
-        }
+        // Not found, create new entry
+        // Calculate length including null terminator
+        let len = strlen_safe(extname) + 1;
 
-        if p.is_null() {
+        // Allocate Vec with error checking
+        let mut vec = Vec::new();
+        if vec.try_reserve_exact(len).is_err() {
             return NGP_NO_MEMORY;
         }
 
-        let p2: *mut c_char = ngp_alloc(strlen(extname) + 1).cast::<c_char>();
-        if p2.is_null() {
-            ngp_free(p.cast::<c_void>());
+        // Copy the C string into the Vec
+        vec.extend_from_slice(&extname[..len]);
+
+        let new_entry = NgpExtverTab {
+            extname: vec.into_boxed_slice(),
+            version,
+        };
+
+        // Check if we can allocate space for the new entry
+        if parser_state.NGP_EXTVER_TAB.try_reserve_exact(1).is_err() {
             return NGP_NO_MEMORY;
         }
 
-        strcpy(p2, extname);
-        parser_state.NGP_EXTVER_TAB = p.cast::<NgpExtverTab>();
-        (*parser_state
-            .NGP_EXTVER_TAB
-            .offset(parser_state.NGP_EXTVER_TAB_SIZE as isize))
-        .extname = p2;
-        (*parser_state
-            .NGP_EXTVER_TAB
-            .offset(parser_state.NGP_EXTVER_TAB_SIZE as isize))
-        .version = version;
-
-        parser_state.NGP_EXTVER_TAB_SIZE += 1;
+        parser_state.NGP_EXTVER_TAB.push(new_entry);
 
         NGP_OK
     }
 }
 
  unsafe fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
-    unsafe {
-        let mut i: c_int;
-
-        if parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE > 0) {
-            return NGP_BAD_ARG;
-        }
-        if !parser_state.NGP_EXTVER_TAB.is_null() && (parser_state.NGP_EXTVER_TAB_SIZE <= 0) {
-            return NGP_BAD_ARG;
-        }
-        if parser_state.NGP_EXTVER_TAB.is_null() && (0 == parser_state.NGP_EXTVER_TAB_SIZE) {
-            return NGP_OK;
-        }
-
-        for i in 0..parser_state.NGP_EXTVER_TAB_SIZE {
-            if !(*parser_state.NGP_EXTVER_TAB.offset(i as isize))
-                .extname
-                .is_null()
-            {
-                ngp_free(
-                    (*parser_state.NGP_EXTVER_TAB.offset(i as isize))
-                        .extname
-                        .cast::<c_void>(),
-                );
-                (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).extname = ptr::null_mut();
-            }
-            (*parser_state.NGP_EXTVER_TAB.offset(i as isize)).version = 0;
-        }
-        ngp_free(parser_state.NGP_EXTVER_TAB.cast::<c_void>());
-        parser_state.NGP_EXTVER_TAB = ptr::null_mut();
-        parser_state.NGP_EXTVER_TAB_SIZE = 0;
-        NGP_OK
-    }
+    // Simply clear the vector - Box will handle cleanup automatically
+    parser_state.NGP_EXTVER_TAB.clear();
+    NGP_OK
 }
 
 /// read one line from file
@@ -421,6 +360,7 @@ unsafe fn ngp_line_from_file(fp: *mut FILE, p: *mut *mut c_char) -> c_int {
 
         r = NGP_OK; /* initialize stuff, reset err code */
         llen = 0; /* 0 characters read so far */
+        // TODO: Convert to ngp_alloc_boxed and Vec for dynamic reallocation
         *p = ngp_alloc(1).cast::<c_char>(); /* preallocate 1 byte */
         allocsize = 1; /* signal that we have allocated 1 byte */
         if (*p).is_null() {
@@ -906,10 +846,11 @@ unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: *const c_char
 
                 p2 = ffstrtok(envfiles.as_mut_ptr(), c":".as_ptr(), &mut saveptr);
                 while !p2.is_null() {
-                    cp = ngp_alloc(strlen(fname) + strlen(p2) + 2).cast::<c_char>();
-                    if cp.is_null() {
-                        return NGP_NO_MEMORY;
-                    }
+                    let path_boxed = match ngp_alloc_boxed(strlen(fname) + strlen(p2) + 2) {
+                        Ok(b) => b,
+                        Err(e) => return e,
+                    };
+                    let cp = Box::into_raw(path_boxed).cast::<c_char>();
 
                     strcpy(cp, p2);
                     if cfg!(target_os = "windows") {
@@ -921,7 +862,12 @@ unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: *const c_char
 
                     parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize] =
                         fopen(cp, c"r".as_ptr());
-                    ngp_free(cp.cast::<c_void>());
+
+                    // Free by reconstructing the Box
+                    drop(Box::from_raw(slice::from_raw_parts_mut(
+                        cp,
+                        strlen(fname) + strlen(p2) + 2,
+                    )));
 
                     if !parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize].is_null() {
                         break;
@@ -944,21 +890,22 @@ unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: *const c_char
                     return NGP_ERR_FOPEN;
                 }
 
-                p = ngp_alloc(
-                    strlen(fname)
-                        + strlen(std::ptr::addr_of!(parser_state.NGP_MASTER_DIR).cast())
-                        + 1,
-                )
-                .cast::<c_char>();
-                if p.is_null() {
-                    return NGP_NO_MEMORY;
-                }
+                let master_path_len = strlen(fname)
+                    + strlen(std::ptr::addr_of!(parser_state.NGP_MASTER_DIR).cast())
+                    + 1;
+                let master_path_boxed = match ngp_alloc_boxed(master_path_len) {
+                    Ok(b) => b,
+                    Err(e) => return e,
+                };
+                let p = Box::into_raw(master_path_boxed).cast::<c_char>();
 
                 strcpy(p, std::ptr::addr_of!(parser_state.NGP_MASTER_DIR).cast()); /* construct composite pathname */
                 strcat(p, fname); /* comp = master + fname */
 
                 parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize] = fopen(p, c"r".as_ptr()); /* try to open composite */
-                ngp_free(p.cast::<c_void>()); /* we don't need buffer anymore */
+
+                // Free by reconstructing the Box
+                drop(Box::from_raw(slice::from_raw_parts_mut(p, master_path_len)));
 
                 if parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize].is_null() {
                     return NGP_ERR_FOPEN; /* fail if error */
@@ -1066,7 +1013,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 if NGP_TOKEN_UNKNOWN == NGP_TKDEF[k as usize].code {
                     break;
                 }
-                if 0 == strcmp(parser_state.NGP_CURLINE.name, NGP_TKDEF[k as usize].name) {
+                if 0 == strcmp(parser_state.NGP_CURLINE.name, NGP_TKDEF[k as usize].name.as_ptr()) {
                     break;
                 }
                 k += 1;
@@ -1504,7 +1451,12 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
         for i in 0..(*ngph).tokcnt {
             let token = &mut (&mut *ngph).tok[i as usize];
             if NGP_TTYPE_STRING == token.type_ && !token.value.s.is_null() {
-                ngp_free(token.value.s.cast::<c_void>());
+                // Free by reconstructing the Box
+                let str_len = 1 + strlen(token.value.s);
+                drop(Box::from_raw(slice::from_raw_parts_mut(
+                    token.value.s,
+                    str_len,
+                )));
                 token.value.s = ptr::null_mut();
             }
         }
@@ -1523,11 +1475,12 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
 
         if NGP_TTYPE_STRING == (*newtok).type_ && !(*newtok).value.s.is_null() {
             let last_idx = (&*ngph).tok.len() - 1;
-            (&mut *ngph).tok[last_idx].value.s =
-                ngp_alloc(1 + strlen((*newtok).value.s)).cast::<c_char>();
-            if (&*ngph).tok[last_idx].value.s.is_null() {
-                return NGP_NO_MEMORY;
-            }
+            let str_len = 1 + strlen((*newtok).value.s);
+            let str_boxed = match ngp_alloc_boxed(str_len) {
+                Ok(b) => b,
+                Err(e) => return e,
+            };
+            (&mut *ngph).tok[last_idx].value.s = Box::into_raw(str_boxed).cast::<c_char>();
             strcpy((&*ngph).tok[last_idx].value.s, (*newtok).value.s);
         }
 
@@ -1871,7 +1824,8 @@ unsafe fn ngp_read_xtension(
         }
 
         if (NGP_OK == r) && !ngph_extname.is_null() {
-            r = ngp_get_extver(parser_state, ngph_extname, &mut my_version); /* write correct ext version number */
+            let extname_slice = slice::from_raw_parts(ngph_extname, strlen(ngph_extname) + 1);
+            r = ngp_get_extver(parser_state, extname_slice, &mut my_version); /* write correct ext version number */
             lv = c_long::from(my_version); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
             fits_write_key(
                 ff,
@@ -2173,7 +2127,7 @@ pub unsafe extern "C" fn fits_execute_template(
                 }
 
                 if NGP_OK == *status {
-                    *status = ngp_set_extver(&mut parser_state, used_name.as_ptr(), used_ver);
+                    *status = ngp_set_extver(&mut parser_state, &used_name, used_ver);
                 }
                 i += 1;
             }
@@ -2348,14 +2302,21 @@ mod tests {
             let str_value = to_cstring(name);
             let str_bytes = str_value.as_bytes_with_nul();
             unsafe {
-                let ptr = ngp_alloc(str_bytes.len()).cast::<c_char>();
-                if !ptr.is_null() {
-                    std::ptr::copy_nonoverlapping(
-                        str_bytes.as_ptr().cast::<c_char>(),
-                        ptr,
-                        str_bytes.len(),
-                    );
-                }
+                let str_boxed = match ngp_alloc_boxed(str_bytes.len()) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        token.value = NgpTokval {
+                            s: ptr::null_mut(),
+                        };
+                        return token;
+                    }
+                };
+                let ptr = Box::into_raw(str_boxed).cast::<c_char>();
+                std::ptr::copy_nonoverlapping(
+                    str_bytes.as_ptr().cast::<c_char>(),
+                    ptr,
+                    str_bytes.len(),
+                );
                 token.value = NgpTokval { s: ptr };
             }
         } else {
@@ -2377,7 +2338,12 @@ mod tests {
     unsafe fn free_test_token(token: &mut NgpToken) {
         unsafe {
             if token.type_ == NGP_TTYPE_STRING && !token.value.s.is_null() {
-                ngp_free(token.value.s.cast::<c_void>());
+                // Free by reconstructing the Box
+                let str_len = 1 + strlen(token.value.s);
+                drop(Box::from_raw(slice::from_raw_parts_mut(
+                    token.value.s,
+                    str_len,
+                )));
                 token.value.s = ptr::null_mut();
             }
         }
@@ -2398,7 +2364,7 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
             let mut version: c_int = 0;
 
-            let status = ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version);
+            let status = ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(version, 1);
@@ -2418,9 +2384,9 @@ mod tests {
             let mut version2: c_int = 0;
             let mut version3: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version1);
-            ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version2);
-            ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version3);
+            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version1);
+            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version2);
+            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version3);
 
             assert_eq!(version1, 1);
             assert_eq!(version2, 2);
@@ -2444,9 +2410,9 @@ mod tests {
             let mut ver_ext2: c_int = 0;
             let mut ver_ext1_again: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, ext1.as_ptr(), &mut ver_ext1);
-            ngp_get_extver(&mut parser_state, ext2.as_ptr(), &mut ver_ext2);
-            ngp_get_extver(&mut parser_state, ext1.as_ptr(), &mut ver_ext1_again);
+            ngp_get_extver(&mut parser_state, ext1.as_bytes_with_nul(), &mut ver_ext1);
+            ngp_get_extver(&mut parser_state, ext2.as_bytes_with_nul(), &mut ver_ext2);
+            ngp_get_extver(&mut parser_state, ext1.as_bytes_with_nul(), &mut ver_ext1_again);
 
             assert_eq!(ver_ext1, 1);
             assert_eq!(ver_ext2, 1);
@@ -2466,11 +2432,11 @@ mod tests {
             let mut version: c_int = 0;
 
             // Null extname
-            let status = ngp_get_extver(&mut parser_state, ptr::null(), &mut version);
+            let status = ngp_get_extver(&mut parser_state, &[], &mut version);
             assert_eq!(status, NGP_BAD_ARG, "Should fail with null extname");
 
             // Null version pointer
-            let status = ngp_get_extver(&mut parser_state, extname.as_ptr(), ptr::null_mut());
+            let status = ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), ptr::null_mut());
             assert_eq!(status, NGP_BAD_ARG, "Should fail with null version pointer");
 
             ngp_delete_extver_tab(&mut parser_state);
@@ -2485,7 +2451,7 @@ mod tests {
 
             let extname = to_cstring("TEST_EXT");
 
-            let status = ngp_set_extver(&mut parser_state, extname.as_ptr(), 5);
+            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(),5);
             assert_eq!(status, NGP_OK);
 
             ngp_delete_extver_tab(&mut parser_state);
@@ -2496,7 +2462,7 @@ mod tests {
     fn test_ngp_set_extver_null_pointer() {
         unsafe {
             let mut parser_state = GRParseState::default();
-            let status = ngp_set_extver(&mut parser_state, ptr::null(), 1);
+            let status = ngp_set_extver(&mut parser_state, &[], 1);
             assert_eq!(status, NGP_BAD_ARG);
         }
     }
@@ -2510,16 +2476,16 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 3 first
-            let status = ngp_set_extver(&mut parser_state, extname.as_ptr(), 3);
+            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(),3);
             assert_eq!(status, NGP_OK);
 
             // Set to 5 - should update to higher value
-            let status = ngp_set_extver(&mut parser_state, extname.as_ptr(), 5);
+            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(),5);
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version);
+            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
             assert_eq!(
                 version, 6,
                 "Should update to higher version and return 6 on next get"
@@ -2538,16 +2504,16 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 5 first
-            let status = ngp_set_extver(&mut parser_state, extname.as_ptr(), 5);
+            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(),5);
             assert_eq!(status, NGP_OK);
 
             // Set to 3 - should keep 5 (the higher value)
-            let status = ngp_set_extver(&mut parser_state, extname.as_ptr(), 3);
+            let status = ngp_set_extver(&mut parser_state, extname.as_bytes_with_nul(),3);
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1, not 4)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, extname.as_ptr(), &mut version);
+            ngp_get_extver(&mut parser_state, extname.as_bytes_with_nul(), &mut version);
             assert_eq!(
                 version, 6,
                 "Should keep higher version 5 and return 6 on next get"
@@ -2580,8 +2546,8 @@ mod tests {
             let mut ver1: c_int = 0;
             let mut ver2: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, ext1.as_ptr(), &mut ver1);
-            ngp_get_extver(&mut parser_state, ext2.as_ptr(), &mut ver2);
+            ngp_get_extver(&mut parser_state, ext1.as_bytes_with_nul(), &mut ver1);
+            ngp_get_extver(&mut parser_state, ext2.as_bytes_with_nul(), &mut ver2);
 
             let status = ngp_delete_extver_tab(&mut parser_state);
             assert_eq!(status, NGP_OK);
