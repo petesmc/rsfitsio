@@ -186,7 +186,7 @@ pub(crate) fn mem_create_comp_unsafe(
         let status = mem_createmem(BL!(), handle);
 
         if status != 0 {
-            // Close the file description if it isn't stdout
+            // Close the file descriptor if it isn't stdout
             if diskfile != STDOUT!() {
                 fclose(diskfile);
             }
