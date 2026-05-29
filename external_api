@@ -137,7 +137,6 @@ ffgkls
 ffgsky
 ffgskyc
 fffree
-fffkls
 ffgkyl
 ffgkyj
 ffgkyjj
@@ -642,7 +641,6 @@ fits_get_hcomp_scale
 fits_get_hcomp_smooth
 fits_get_dither_seed
 fits_img_compress
-fits_compress_img
 fits_is_compressed_image
 fits_is_reentrant
 fits_decompress_img
