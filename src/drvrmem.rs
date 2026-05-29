@@ -678,12 +678,11 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             let tmp = diskfile.seek(SeekFrom::End(0)); /* move to end of file */
             filesize = tmp.unwrap() as usize; /* position = size of file */
             let _ = diskfile.seek(SeekFrom::Current(-4)); /* move back 4 bytes */
-            
+
             match diskfile.read_exact(&mut buffer[..4]) /* read 4 bytes */ {
                 Ok(_) => (),
                 Err(_) => return READ_ERROR,
             }
-
 
             /* have to worry about integer byte order */
             modulosize = c_uint::from(buffer[0]);

@@ -458,7 +458,9 @@ pub(crate) fn file_truncate(handle: c_int, filesize: usize) -> c_int {
 
         if let Some(f) = &mut h[handle].fileptr {
             // If either set_len or seek fails, we should return -1
-            if f.set_len(filesize as u64).is_err() || f.seek(SeekFrom::Start(filesize as u64)).is_err() {
+            if f.set_len(filesize as u64).is_err()
+                || f.seek(SeekFrom::Start(filesize as u64)).is_err()
+            {
                 return -1;
             }
             h[handle].currentpos = filesize;
