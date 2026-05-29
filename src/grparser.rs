@@ -4,7 +4,7 @@ use std::mem;
 use std::ptr;
 
 use crate::aliases::c_api::*;
-use crate::c_types::{c_char, c_double, c_int, c_long};
+use crate::c_types::{c_char, c_int, c_long};
 use crate::fitscore::{fits_strcasecmp, fits_strncasecmp};
 use crate::fitsio::{
     ASCII_TBL, BINARY_TBL, FLEN_KEYWORD, GT_ID_ALL_URI, NGP_BAD_ARG, NGP_EMPTY_CURLINE, NGP_EOF,
@@ -81,9 +81,8 @@ unsafe fn ngp_realloc(x: *mut c_void, y: size_t) -> *mut c_void {
 
 /* type definitions */
 
-#[derive(Default)]
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct NgpRawLine {
     pub line: *mut c_char,
     pub name: *mut c_char,
@@ -97,8 +96,8 @@ pub struct NgpRawLine {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct NgpComplex {
-    pub re: c_double,
-    pub im: c_double,
+    pub re: f64,
+    pub im: f64,
 }
 
 #[repr(C)]
@@ -108,7 +107,7 @@ pub union NgpTokval {
     pub b: c_char,
     pub i: c_int,
     pub l: c_long,
-    pub d: c_double,
+    pub d: f64,
     pub c: NgpComplex,
 }
 
@@ -135,7 +134,7 @@ impl Default for NgpToken {
 #[repr(C)]
 pub struct NgpHdu {
     pub tokcnt: c_int,
-    pub tok: *mut NgpToken,
+    pub tok: Vec<NgpToken>,
 }
 
 #[repr(C)]
@@ -232,7 +231,7 @@ impl Default for GRParseState {
     }
 }
 
-pub(crate) unsafe fn ngp_get_extver(
+ unsafe fn ngp_get_extver(
     parser_state: &mut GRParseState,
     extname: *const c_char,
     version: *mut c_int,
@@ -300,7 +299,7 @@ pub(crate) unsafe fn ngp_get_extver(
     }
 }
 
-pub(crate) unsafe fn ngp_set_extver(
+ unsafe fn ngp_set_extver(
     parser_state: &mut GRParseState,
     extname: *const c_char,
     version: c_int,
@@ -368,7 +367,7 @@ pub(crate) unsafe fn ngp_set_extver(
     }
 }
 
-pub(crate) unsafe fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
+ unsafe fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
     unsafe {
         let mut i: c_int;
 
@@ -487,7 +486,7 @@ unsafe fn ngp_line_from_file(fp: *mut FILE, p: *mut *mut c_char) -> c_int {
 }
 
 /// free current line structure
-pub(crate) unsafe fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
+ fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
     unsafe {
         if !parser_state.NGP_CURLINE.line.is_null() {
             ngp_free(parser_state.NGP_CURLINE.line.cast::<c_void>());
@@ -504,7 +503,7 @@ pub(crate) unsafe fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
 }
 
 /// free cached line structure
-pub(crate) unsafe fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
+ unsafe fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
     unsafe {
         if !parser_state.NGP_PREVLINE.line.is_null() {
             ngp_free(parser_state.NGP_PREVLINE.line.cast::<c_void>());
@@ -546,26 +545,24 @@ unsafe fn ngp_read_line_buffered(parser_state: &mut GRParseState, fp: *mut FILE)
 }
 
 /// unread line
-pub(crate) unsafe fn ngp_unread_line(parser_state: &mut GRParseState) -> c_int {
-    unsafe {
-        if parser_state.NGP_CURLINE.line.is_null() {
-            /* nothing to unread */
-            return NGP_EMPTY_CURLINE;
-        }
-
-        if !parser_state.NGP_PREVLINE.line.is_null() {
-            /* we cannot unread line twice */
-            return NGP_UNREAD_QUEUE_FULL;
-        }
-
-        parser_state.NGP_PREVLINE = parser_state.NGP_CURLINE;
-        parser_state.NGP_CURLINE.line = ptr::null_mut();
-        NGP_OK
+ fn ngp_unread_line(parser_state: &mut GRParseState) -> c_int {
+    if parser_state.NGP_CURLINE.line.is_null() {
+        /* nothing to unread */
+        return NGP_EMPTY_CURLINE;
     }
+
+    if !parser_state.NGP_PREVLINE.line.is_null() {
+        /* we cannot unread line twice */
+        return NGP_UNREAD_QUEUE_FULL;
+    }
+
+    parser_state.NGP_PREVLINE = parser_state.NGP_CURLINE;
+    parser_state.NGP_CURLINE.line = ptr::null_mut();
+    NGP_OK
 }
 
 /// a first guess line decomposition
-pub(crate) unsafe fn ngp_extract_tokens(cl: *mut NgpRawLine) -> c_int {
+ fn ngp_extract_tokens(cl: &mut NgpRawLine) -> c_int {
     unsafe {
         let mut p: *mut c_char;
         let mut s: *mut c_char;
@@ -1043,7 +1040,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 _ => {}
             }
 
-            r = ngp_extract_tokens(std::ptr::addr_of_mut!(parser_state.NGP_CURLINE)); /* analyse line, extract tokens and comment */
+            r = ngp_extract_tokens(&mut (parser_state.NGP_CURLINE)); /* analyse line, extract tokens and comment */
             if NGP_OK != r {
                 return r;
             }
@@ -1267,7 +1264,7 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
 }
 
 /// check whether keyword can be written as is
-pub(crate) unsafe fn ngp_keyword_is_write(ngp_tok: *const NgpToken) -> c_int {
+ unsafe fn ngp_keyword_is_write(ngp_tok: *const NgpToken) -> c_int {
     unsafe {
         let mut i: c_int;
         let mut j: c_int;
@@ -1378,37 +1375,38 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
         r = NGP_OK;
 
         for i in 0..(*ngph).tokcnt {
-            r = ngp_keyword_is_write(&(*(*ngph).tok.offset(i as isize)));
+            let token = &(&*ngph).tok[i as usize];
+            r = ngp_keyword_is_write(token);
             if (NGP_REALLY_ALL & mode) != 0 || (NGP_OK == r) {
-                match (*(*ngph).tok.offset(i as isize)).type_ {
+                match token.type_ {
                     NGP_TTYPE_BOOL => {
-                        ib = c_int::from((*(*ngph).tok.offset(i as isize)).value.b);
+                        ib = c_int::from(token.value.b);
                         fits_write_key(
                             ffp,
                             TLOGICAL,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
+                            token.name.as_ptr(),
                             (&ib as *const c_int).cast::<c_void>(),
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_STRING => {
                         fits_write_key_longstr(
                             ffp,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                            (*(*ngph).tok.offset(i as isize)).value.s,
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.name.as_ptr(),
+                            token.value.s,
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_INT => {
-                        l = c_long::from((*(*ngph).tok.offset(i as isize)).value.i); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
+                        l = c_long::from(token.value.i); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
                         fits_write_key(
                             ffp,
                             TLONG,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
+                            token.name.as_ptr(),
                             (&l as *const c_long).cast::<c_void>(),
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
@@ -1416,10 +1414,9 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
                         fits_write_key(
                             ffp,
                             TDOUBLE,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                            (&((*(*ngph).tok.offset(i as isize)).value.d) as *const c_double)
-                                .cast::<c_void>(),
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.name.as_ptr(),
+                            (&token.value.d as *const f64).cast::<c_void>(),
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
@@ -1427,46 +1424,28 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
                         fits_write_key(
                             ffp,
                             TDBLCOMPLEX,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                            (&((*(*ngph).tok.offset(i as isize)).value.c) as *const NgpComplex)
-                                .cast::<c_void>(),
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.name.as_ptr(),
+                            (&token.value.c as *const NgpComplex).cast::<c_void>(),
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_NULL => {
                         fits_write_key_null(
                             ffp,
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                            (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
+                            token.name.as_ptr(),
+                            token.comment.as_ptr(),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_RAW => {
                         let mut skip = false;
-                        if 0 == strcmp(
-                            c"HISTORY".as_ptr(),
-                            (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                        ) {
-                            fits_write_history(
-                                ffp,
-                                (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
-                                &mut r,
-                            );
+                        if 0 == strcmp(c"HISTORY".as_ptr(), token.name.as_ptr()) {
+                            fits_write_history(ffp, token.comment.as_ptr(), &mut r);
                             skip = true;
                         }
-                        if !skip
-                            && (0
-                                == strcmp(
-                                    c"COMMENT".as_ptr(),
-                                    (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                                ))
-                        {
-                            fits_write_comment(
-                                ffp,
-                                (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
-                                &mut r,
-                            );
+                        if !skip && (0 == strcmp(c"COMMENT".as_ptr(), token.name.as_ptr())) {
+                            fits_write_comment(ffp, token.comment.as_ptr(), &mut r);
                             skip = true;
                         }
                         if !skip {
@@ -1474,18 +1453,14 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
                                 &mut buf,
                                 200,
                                 "{:-8.8}{}",
-                                CStr::from_bytes_with_nul(cast_slice(
-                                    &(*(*ngph).tok.offset(i as isize)).name
-                                ))
-                                .unwrap()
-                                .to_str()
-                                .unwrap(),
-                                CStr::from_bytes_with_nul(cast_slice(
-                                    &(*(*ngph).tok.offset(i as isize)).comment
-                                ))
-                                .unwrap()
-                                .to_str()
-                                .unwrap(),
+                                CStr::from_bytes_with_nul(cast_slice(&token.name))
+                                    .unwrap()
+                                    .to_str()
+                                    .unwrap(),
+                                CStr::from_bytes_with_nul(cast_slice(&token.comment))
+                                    .unwrap()
+                                    .to_str()
+                                    .unwrap(),
                             );
                             fits_write_record(ffp, buf.as_mut_ptr(), &mut r);
                         }
@@ -1496,15 +1471,10 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
             /* enhancement 10 dec 2003, James Peachey: template comments replace defaults */
             {
                 r = NGP_OK; /* update comments of special keywords like TFORM */
-                if 0 != (*(*ngph).tok.offset(i as isize)).comment[0]
+                if 0 != token.comment[0]
                 /* do not update with a blank comment */
                 {
-                    fits_modify_comment(
-                        ffp,
-                        (*(*ngph).tok.offset(i as isize)).name.as_ptr(),
-                        (*(*ngph).tok.offset(i as isize)).comment.as_ptr(),
-                        &mut r,
-                    );
+                    fits_modify_comment(ffp, token.name.as_ptr(), token.comment.as_ptr(), &mut r);
                 }
             } else
             /* other problem, typically a blank token */
@@ -1522,40 +1492,24 @@ unsafe fn ngp_keyword_all_write(ngph: *mut NgpHdu, ffp: *mut fitsfile, mode: c_i
 }
 
 /// init HDU structure
-pub(crate) unsafe fn ngp_hdu_init(ngph: *mut NgpHdu) -> c_int {
-    unsafe {
-        if ngph.is_null() {
-            return NGP_NUL_PTR;
-        }
-        (*ngph).tok = ptr::null_mut();
-        (*ngph).tokcnt = 0;
-        NGP_OK
-    }
+ fn ngp_hdu_init(ngph: &mut NgpHdu) -> c_int {
+    ngph.tok = Vec::new();
+    ngph.tokcnt = 0;
+    NGP_OK
 }
 
 /// clear HDU structure
-pub(crate) unsafe fn ngp_hdu_clear(ngph: *mut NgpHdu) -> c_int {
+ unsafe fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
     unsafe {
-        let mut i: c_int;
-
-        if ngph.is_null() {
-            return NGP_NUL_PTR;
-        }
-
         for i in 0..(*ngph).tokcnt {
-            if NGP_TTYPE_STRING == (*(*ngph).tok.offset(i as isize)).type_
-                && !(*(*ngph).tok.offset(i as isize)).value.s.is_null()
-            {
-                ngp_free((*(*ngph).tok.offset(i as isize)).value.s.cast::<c_void>());
-                (*(*ngph).tok.offset(i as isize)).value.s = ptr::null_mut();
+            let token = &mut (&mut *ngph).tok[i as usize];
+            if NGP_TTYPE_STRING == token.type_ && !token.value.s.is_null() {
+                ngp_free(token.value.s.cast::<c_void>());
+                token.value.s = ptr::null_mut();
             }
         }
 
-        if !(*ngph).tok.is_null() {
-            ngp_free((*ngph).tok.cast::<c_void>());
-        }
-
-        (*ngph).tok = ptr::null_mut();
+        (*ngph).tok.clear();
         (*ngph).tokcnt = 0;
 
         NGP_OK
@@ -1563,48 +1517,18 @@ pub(crate) unsafe fn ngp_hdu_clear(ngph: *mut NgpHdu) -> c_int {
 }
 
 /// insert new token to HDU structure
-pub(crate) unsafe fn ngp_hdu_insert_token(ngph: *mut NgpHdu, newtok: *mut NgpToken) -> c_int {
+ fn ngp_hdu_insert_token(ngph: &mut NgpHdu, newtok: &mut NgpToken) -> c_int {
     unsafe {
-        let mut tkp: *mut NgpToken = ptr::null_mut();
-
-        if ngph.is_null() {
-            return NGP_NUL_PTR;
-        }
-        if newtok.is_null() {
-            return NGP_NUL_PTR;
-        }
-
-        if 0 == (*ngph).tokcnt {
-            tkp = ngp_alloc(((*ngph).tokcnt + 1) as size_t * mem::size_of::<NgpToken>())
-                .cast::<NgpToken>();
-        } else {
-            tkp = ngp_realloc(
-                (*ngph).tok.cast::<c_void>(),
-                ((*ngph).tokcnt + 1) as size_t * mem::size_of::<NgpToken>(),
-            ) as *mut NgpToken;
-        }
-
-        if tkp.is_null() {
-            return NGP_NO_MEMORY;
-        }
-
-        (*ngph).tok = tkp;
-        (*(*ngph).tok.offset((*ngph).tokcnt as isize)) = *newtok;
+        (&mut *ngph).tok.push(*newtok);
 
         if NGP_TTYPE_STRING == (*newtok).type_ && !(*newtok).value.s.is_null() {
-            (*(*ngph).tok.offset((*ngph).tokcnt as isize)).value.s =
+            let last_idx = (&*ngph).tok.len() - 1;
+            (&mut *ngph).tok[last_idx].value.s =
                 ngp_alloc(1 + strlen((*newtok).value.s)).cast::<c_char>();
-            if (*(*ngph).tok.offset((*ngph).tokcnt as isize))
-                .value
-                .s
-                .is_null()
-            {
+            if (&*ngph).tok[last_idx].value.s.is_null() {
                 return NGP_NO_MEMORY;
             }
-            strcpy(
-                (*(*ngph).tok.offset((*ngph).tokcnt as isize)).value.s,
-                (*newtok).value.s,
-            );
+            strcpy((&*ngph).tok[last_idx].value.s, (*newtok).value.s);
         }
 
         (*ngph).tokcnt += 1;
@@ -1612,7 +1536,7 @@ pub(crate) unsafe fn ngp_hdu_insert_token(ngph: *mut NgpHdu, newtok: *mut NgpTok
     }
 }
 
-unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_int) -> c_int {
+fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> c_int {
     unsafe {
         let mut r: c_int;
         let mut i: c_int;
@@ -1623,12 +1547,6 @@ unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_i
         let mut my_ttype: *mut c_char;
         let mut ngph_ctmp: c_char = 0;
 
-        if ff.is_null() {
-            return NGP_NUL_PTR;
-        }
-        if ngph.is_null() {
-            return NGP_NUL_PTR;
-        }
         if 0 == (*ngph).tokcnt {
             return NGP_OK; /* nothing to do ! */
         }
@@ -1644,28 +1562,27 @@ unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_i
 
             i = 0;
             loop {
+                let token = &(&*ngph).tok[i as usize];
                 if 1 == sscanf_d_c(
-                    &mut (*(*ngph).tok.offset(i as isize)).name,
+                    &mut token.name.clone(),
                     cs!(c"TFORM%d%c"),
                     &mut ngph_i,
                     &mut ngph_ctmp,
                 ) {
-                    if (NGP_TTYPE_STRING == (*(*ngph).tok.offset(i as isize)).type_)
-                        && (ngph_i == (j + 1))
-                    {
-                        my_tform = (*(*ngph).tok.offset(i as isize)).value.s;
+                    if (NGP_TTYPE_STRING == token.type_) && (ngph_i == (j + 1)) {
+                        my_tform = token.value.s;
                     }
                 } else if 1
                     == sscanf_d_c(
-                        &mut (*(*ngph).tok.offset(i as isize)).name,
+                        &mut token.name.clone(),
                         cs!(c"TTYPE%d%c"),
                         &mut ngph_i,
                         &mut ngph_ctmp,
                     )
-                    && (NGP_TTYPE_STRING == (*(*ngph).tok.offset(i as isize)).type_)
+                    && (NGP_TTYPE_STRING == token.type_)
                     && (ngph_i == (j + 1))
                 {
-                    my_ttype = (*(*ngph).tok.offset(i as isize)).value.s;
+                    my_ttype = token.value.s;
                 }
 
                 if !my_tform.is_null() && (*my_ttype.offset(0)) != 0 {
@@ -1694,7 +1611,7 @@ unsafe fn ngp_append_columns(ff: *mut fitsfile, ngph: *mut NgpHdu, aftercol: c_i
 /// read complete HDU
 unsafe fn ngp_read_xtension(
     parser_state: &mut GRParseState,
-    ff: *mut fitsfile,
+    ff: &mut fitsfile,
     parent_hn: c_int,
     simple_mode: c_int,
 ) -> c_int {
@@ -1717,9 +1634,9 @@ unsafe fn ngp_read_xtension(
         let mut ngph_size: [c_long; NGP_MAX_ARRAY_DIM] = [0; NGP_MAX_ARRAY_DIM];
         let mut ngph: NgpHdu = NgpHdu {
             tokcnt: 0,
-            tok: ptr::null_mut(),
+            tok: Vec::new(),
         };
-        let mut lv: c_long;
+        let lv: c_long;
 
         incrementor_name[0] = 0; /* signal no keyword+'#' found yet */
         incrementor_index = 0;
@@ -1745,7 +1662,7 @@ unsafe fn ngp_read_xtension(
             }
         }
 
-        r = ngp_hdu_insert_token(&mut ngph, std::ptr::addr_of_mut!(parser_state.NGP_LINKEY));
+        r = ngp_hdu_insert_token(&mut ngph, &mut (parser_state.NGP_LINKEY));
         if NGP_OK != (r) {
             return r;
         }
@@ -1802,7 +1719,7 @@ unsafe fn ngp_read_xtension(
                     }
                     r = ngp_hdu_insert_token(
                         &mut ngph,
-                        std::ptr::addr_of_mut!(parser_state.NGP_LINKEY),
+                        &mut (parser_state.NGP_LINKEY),
                     );
                     // NO break here - continue the loop to process next keyword
                 }
@@ -1824,14 +1741,12 @@ unsafe fn ngp_read_xtension(
             }
             ngph_dim = 0;
             for i in 0..ngph.tokcnt as usize {
-                if strcmp(c"XTENSION".as_ptr(), (*ngph.tok.add(i)).name.as_ptr()) == 0 {
-                    if NGP_TTYPE_STRING == (*ngph.tok.add(i)).type_ {
+                let token = &ngph.tok[i];
+                if strcmp(c"XTENSION".as_ptr(), token.name.as_ptr()) == 0 {
+                    if NGP_TTYPE_STRING == token.type_ {
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"BINTABLE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(
-                                (*ngph.tok.add(i)).value.s as *const c_char,
-                                9,
-                            ),
+                            std::slice::from_raw_parts(token.value.s as *const c_char, 9),
                             8,
                         ) == 0
                         {
@@ -1839,10 +1754,7 @@ unsafe fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"TABLE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(
-                                (*ngph.tok.add(i)).value.s as *const c_char,
-                                6,
-                            ),
+                            std::slice::from_raw_parts(token.value.s as *const c_char, 6),
                             5,
                         ) == 0
                         {
@@ -1850,48 +1762,43 @@ unsafe fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"IMAGE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(
-                                (*ngph.tok.add(i)).value.s as *const c_char,
-                                6,
-                            ),
+                            std::slice::from_raw_parts(token.value.s as *const c_char, 6),
                             5,
                         ) == 0
                         {
                             ngph_node_type = NGP_NODE_IMAGE;
                         }
                     }
-                } else if strcmp(c"SIMPLE".as_ptr(), (*ngph.tok.add(i)).name.as_ptr()) == 0 {
-                    if NGP_TTYPE_BOOL == (*ngph.tok.add(i)).type_
-                        && ((*ngph.tok.add(i)).value.b) != 0
-                    {
+                } else if strcmp(c"SIMPLE".as_ptr(), token.name.as_ptr()) == 0 {
+                    if NGP_TTYPE_BOOL == token.type_ && token.value.b != 0 {
                         ngph_node_type = NGP_NODE_IMAGE;
                     }
-                } else if strcmp(c"BITPIX".as_ptr(), (*ngph.tok.add(i)).name.as_ptr()) == 0 {
-                    if NGP_TTYPE_INT == (*ngph.tok.add(i)).type_ {
-                        ngph_bitpix = (*ngph.tok.add(i)).value.i;
+                } else if strcmp(c"BITPIX".as_ptr(), token.name.as_ptr()) == 0 {
+                    if NGP_TTYPE_INT == token.type_ {
+                        ngph_bitpix = token.value.i;
                     }
-                } else if strcmp(c"NAXIS".as_ptr(), (*ngph.tok.add(i)).name.as_ptr()) == 0 {
-                    if NGP_TTYPE_INT == (*ngph.tok.add(i)).type_ {
-                        ngph_dim = (*ngph.tok.add(i)).value.i;
+                } else if strcmp(c"NAXIS".as_ptr(), token.name.as_ptr()) == 0 {
+                    if NGP_TTYPE_INT == token.type_ {
+                        ngph_dim = token.value.i;
                     }
-                } else if strcmp(c"EXTNAME".as_ptr(), (*ngph.tok.add(i)).name.as_ptr()) == 0
+                } else if strcmp(c"EXTNAME".as_ptr(), token.name.as_ptr()) == 0
                 /* assign EXTNAME, I hope struct does not move */
                 {
-                    if NGP_TTYPE_STRING == (*ngph.tok.add(i)).type_ {
-                        ngph_extname = (*ngph.tok.add(i)).value.s;
+                    if NGP_TTYPE_STRING == token.type_ {
+                        ngph_extname = token.value.s;
                     }
                 } else if 1
                     == sscanf_d_c(
-                        &mut (*ngph.tok.add(i)).name,
+                        &mut token.name.clone(),
                         cs!(c"NAXIS%d%c"),
                         &mut j,
                         &mut ngph_ctmp,
                     )
-                    && NGP_TTYPE_INT == (*ngph.tok.add(i)).type_
+                    && NGP_TTYPE_INT == token.type_
                     && (j >= 1)
                     && (j <= NGP_MAX_ARRAY_DIM as c_int)
                 {
-                    ngph_size[(j - 1) as usize] = c_long::from((*ngph.tok.add(i)).value.i);
+                    ngph_size[(j - 1) as usize] = c_long::from(token.value.i);
                 }
             }
 
@@ -2001,7 +1908,7 @@ unsafe fn ngp_read_xtension(
 /// read complete GROUP
 unsafe fn ngp_read_group(
     parser_state: &mut GRParseState,
-    ff: *mut fitsfile,
+    ff: &mut fitsfile,
     grpname: *mut c_char,
     parent_hn: c_int,
 ) -> c_int {
@@ -2016,7 +1923,7 @@ unsafe fn ngp_read_group(
         let mut incrementor_name: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
         let mut ngph: NgpHdu = NgpHdu {
             tokcnt: 0,
-            tok: ptr::null_mut(),
+            tok: Vec::new(),
         };
 
         incrementor_name[0] = 0; /* signal no keyword+'#' found yet */
@@ -2119,7 +2026,7 @@ unsafe fn ngp_read_group(
                     }
                     r = ngp_hdu_insert_token(
                         &mut ngph,
-                        std::ptr::addr_of_mut!(parser_state.NGP_LINKEY),
+                        &mut (parser_state.NGP_LINKEY),
                     );
                     /* here we can add keyword */
                 }
@@ -2282,18 +2189,22 @@ pub unsafe extern "C" fn fits_execute_template(
             return *status;
         }
 
-        let mut i = strlen(ngp_template) - 1;
+        let mut i = (strlen(ngp_template) - 1) as isize;
         while i >= 0 {
+            
             /* strlen is > 0, otherwise fopen failed */
             if cfg!(target_os = "windows") {
-                if bb(b'\\') == *ngp_template.add(i) {
+                if bb(b'\\') == *ngp_template.offset(i) {
                     break;
                 }
-            } else if bb(b'/') == *ngp_template.add(i) {
+            } else if bb(b'/') == *ngp_template.offset(i) {
                 break;
             }
+
             i -= 1;
         }
+
+        let mut i = i as usize;
 
         i += 1;
         if i > (NGP_MAX_FNAME - 1) {
@@ -2683,26 +2594,16 @@ mod tests {
 
     #[test]
     fn test_ngp_hdu_init_basic() {
-        unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 999,
-                tok: 0x1234 as *mut NgpToken, // Some garbage value
+                tok: Vec::new(), // Will be initialized properly
             };
 
             let status = ngp_hdu_init(&mut hdu);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(hdu.tokcnt, 0);
-            assert!(hdu.tok.is_null());
-        }
-    }
-
-    #[test]
-    fn test_ngp_hdu_init_null_pointer() {
-        unsafe {
-            let status = ngp_hdu_init(ptr::null_mut());
-            assert_eq!(status, NGP_NUL_PTR);
-        }
+            assert!(hdu.tok.is_empty());
     }
 
     #[test]
@@ -2710,17 +2611,17 @@ mod tests {
         unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 0,
-                tok: ptr::null_mut(),
+                tok: Vec::new(),
             };
             ngp_hdu_init(&mut hdu);
 
-            let token = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "Number of axes");
+            let mut token = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "Number of axes");
 
-            let status = ngp_hdu_insert_token(&mut hdu, &token as *const _ as *mut _);
+            let status = ngp_hdu_insert_token(&mut hdu, &mut token);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(hdu.tokcnt, 1);
-            assert!(!hdu.tok.is_null());
+            assert!(!hdu.tok.is_empty());
 
             // Cleanup
             ngp_hdu_clear(&mut hdu);
@@ -2732,13 +2633,13 @@ mod tests {
         unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 0,
-                tok: ptr::null_mut(),
+                tok: Vec::new(),
             };
             ngp_hdu_init(&mut hdu);
 
             let mut token = create_test_token(NGP_TTYPE_STRING, "EXTNAME", 0, "Extension name");
 
-            let status = ngp_hdu_insert_token(&mut hdu, &token as *const _ as *mut _);
+            let status = ngp_hdu_insert_token(&mut hdu, &mut token);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(hdu.tokcnt, 1);
@@ -2754,21 +2655,21 @@ mod tests {
         unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 0,
-                tok: ptr::null_mut(),
+                tok: Vec::new(),
             };
             ngp_hdu_init(&mut hdu);
 
             // Insert first token
-            let token1 = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "Number of axes");
-            ngp_hdu_insert_token(&mut hdu, &token1 as *const _ as *mut _);
+            let mut token1 = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "Number of axes");
+            ngp_hdu_insert_token(&mut hdu, &mut token1);
 
             // Insert second token
-            let token2 = create_test_token(NGP_TTYPE_INT, "BITPIX", 16, "Bits per pixel");
-            ngp_hdu_insert_token(&mut hdu, &token2 as *const _ as *mut _);
+            let mut token2 = create_test_token(NGP_TTYPE_INT, "BITPIX", 16, "Bits per pixel");
+            ngp_hdu_insert_token(&mut hdu, &mut token2);
 
             // Insert third token
-            let token3 = create_test_token(NGP_TTYPE_BOOL, "SIMPLE", 1, "Standard FITS");
-            ngp_hdu_insert_token(&mut hdu, &token3 as *const _ as *mut _);
+            let mut token3 = create_test_token(NGP_TTYPE_BOOL, "SIMPLE", 1, "Standard FITS");
+            ngp_hdu_insert_token(&mut hdu, &mut token3);
 
             assert_eq!(hdu.tokcnt, 3, "Should have 3 tokens");
 
@@ -2778,52 +2679,29 @@ mod tests {
     }
 
     #[test]
-    fn test_ngp_hdu_insert_token_null_pointer() {
-        unsafe {
-            let mut hdu = NgpHdu {
-                tokcnt: 0,
-                tok: ptr::null_mut(),
-            };
-            ngp_hdu_init(&mut hdu);
-
-            let token = create_test_token(NGP_TTYPE_INT, "TEST", 1, "");
-
-            // Null hdu
-            let status = ngp_hdu_insert_token(ptr::null_mut(), &token as *const _ as *mut _);
-            assert_eq!(status, NGP_NUL_PTR);
-
-            // Null token
-            let status = ngp_hdu_insert_token(&mut hdu, ptr::null_mut());
-            assert_eq!(status, NGP_NUL_PTR);
-
-            ngp_hdu_clear(&mut hdu);
-        }
-    }
-
-    #[test]
     fn test_ngp_hdu_clear_with_data() {
         unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 0,
-                tok: ptr::null_mut(),
+                tok: Vec::new(),
             };
             ngp_hdu_init(&mut hdu);
 
             // Add some tokens
-            let token1 = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "");
-            let token2 = create_test_token(NGP_TTYPE_INT, "BITPIX", 16, "");
-            ngp_hdu_insert_token(&mut hdu, &token1 as *const _ as *mut _);
-            ngp_hdu_insert_token(&mut hdu, &token2 as *const _ as *mut _);
+            let mut token1 = create_test_token(NGP_TTYPE_INT, "NAXIS", 2, "");
+            let mut token2 = create_test_token(NGP_TTYPE_INT, "BITPIX", 16, "");
+            ngp_hdu_insert_token(&mut hdu, &mut token1);
+            ngp_hdu_insert_token(&mut hdu, &mut token2);
 
             assert_eq!(hdu.tokcnt, 2);
-            assert!(!hdu.tok.is_null());
+            assert!(!hdu.tok.is_empty());
 
             // Clear
             let status = ngp_hdu_clear(&mut hdu);
 
             assert_eq!(status, NGP_OK);
             assert_eq!(hdu.tokcnt, 0);
-            assert!(hdu.tok.is_null());
+            assert!(hdu.tok.is_empty());
         }
     }
 
@@ -2832,7 +2710,7 @@ mod tests {
         unsafe {
             let mut hdu = NgpHdu {
                 tokcnt: 0,
-                tok: ptr::null_mut(),
+                tok: Vec::new(),
             };
             ngp_hdu_init(&mut hdu);
 
@@ -2842,26 +2720,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_ngp_hdu_clear_null_pointer() {
-        unsafe {
-            let status = ngp_hdu_clear(ptr::null_mut());
-            assert_eq!(status, NGP_NUL_PTR);
-        }
-    }
-
     //
     // Line Management Tests
     //
 
     #[test]
     fn test_ngp_free_line_empty() {
-        unsafe {
             // Should not crash when freeing empty line
             let mut parser_state = GRParseState::default();
             let status = ngp_free_line(&mut parser_state);
             assert_eq!(status, NGP_OK);
-        }
     }
 
     #[test]
@@ -3203,7 +3071,6 @@ mod tests {
 
     #[test]
     fn test_ngp_extract_tokens_null_pointer() {
-        unsafe {
             let mut line = NgpRawLine {
                 line: ptr::null_mut(),
                 name: ptr::null_mut(),
@@ -3219,7 +3086,6 @@ mod tests {
                 status, NGP_NUL_PTR,
                 "Null line pointer should return NGP_NUL_PTR"
             );
-        }
     }
 
     #[test]
