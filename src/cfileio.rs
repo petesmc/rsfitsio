@@ -2138,7 +2138,6 @@ pub(crate) fn fits_is_this_a_copy(urltype: [c_char; 20] /* I - type of file */) 
     } else if strncmp_safe(&urltype, cs!(c"gsiftp"), 6) == 0 {
         iscopy = 1; /* copied file using gsiftp protocol */
     } else if strncmp_safe(&urltype, cs!(c"stdin"), 5) == 0 {
-        //NOTE looks like a bug in original code
         iscopy = 1; /* piped stdin has been copied to memory */
     } else {
         iscopy = 0; /* file is not known to be a copy */
