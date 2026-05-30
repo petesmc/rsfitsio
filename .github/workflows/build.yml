@@ -16,7 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Temporarily modify the rust toolchain version
-      run: rustup override set 1.88.0
+      run: rustup override set 1.96.0
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -34,7 +34,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Temporarily modify the rust toolchain version
-      run: rustup override set 1.88.0
+      run: rustup override set 1.96.0
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -51,7 +51,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Temporarily modify the rust toolchain version
-      run: rustup override set 1.88.0
+      run: rustup override set 1.96.0
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -99,7 +99,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Temporarily modify the rust toolchain version
-      run: rustup override set 1.88.0
+      run: rustup override set 1.96.0
     - name: Output rust version for educational purposes
       run: rustup --version
 
@@ -117,7 +117,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - name: Temporarily modify the rust toolchain version
-      run: rustup override set 1.88.0
+      run: rustup override set 1.96.0
     - name: Output rust version for educational purposes
       run: rustup --version
 
