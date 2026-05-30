@@ -930,15 +930,20 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                     }
                     continue;
                 }
-                NGP_OK => {
-                    if (parser_state.NGP_CURLINE.flags & NGP_LINE_REREAD) != 0 {
-                        return r;
-                    }
-                }
+                NGP_OK => {}
                 _ => {
                     return r;
                 }
             }
+
+            /* When a line is re-read from the unread cache, its buffer has been
+            freshly cloned (a different heap allocation than the original).
+            The buffer was already destructively tokenized on the first read,
+            so ngp_extract_tokens must NOT run again. We must, however, rebuild
+            NGP_LINKEY/NGP_KEYIDX below so that any pointers borrowed from the
+            line (e.g. NGP_LINKEY.value.s) refer to this fresh buffer instead
+            of the original, now-freed one. */
+            let is_reread = (parser_state.NGP_CURLINE.flags & NGP_LINE_REREAD) != 0;
 
             match parser_state.NGP_CURLINE.line.get(0).copied().unwrap_or(0) as u8 {
                 0 => {
@@ -953,9 +958,11 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                 _ => {}
             }
 
-            r = ngp_extract_tokens(&mut (parser_state.NGP_CURLINE)); /* analyse line, extract tokens and comment */
-            if NGP_OK != r {
-                return r;
+            if !is_reread {
+                r = ngp_extract_tokens(&mut (parser_state.NGP_CURLINE)); /* analyse line, extract tokens and comment */
+                if NGP_OK != r {
+                    return r;
+                }
             }
 
             if parser_state.NGP_CURLINE.name_idx.is_none() {
@@ -984,7 +991,10 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
                     break;
                 }
                 let name_slice = &parser_state.NGP_CURLINE.line[name_idx..];
-                if 0 == strcmp_safe(name_slice, cast_slice(NGP_TKDEF[k as usize].name.to_bytes_with_nul())) {
+                if 0 == strcmp_safe(
+                    name_slice,
+                    cast_slice(NGP_TKDEF[k as usize].name.to_bytes_with_nul()),
+                ) {
                     break;
                 }
                 k += 1;
@@ -2311,8 +2321,11 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
             let mut version: c_int = 0;
 
-            let status =
-                ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
+            let status = ngp_get_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                &mut version,
+            );
 
             assert_eq!(status, NGP_OK);
             assert_eq!(version, 1);
@@ -2370,8 +2383,16 @@ mod tests {
             let mut ver_ext2: c_int = 0;
             let mut ver_ext1_again: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, cast_slice(ext1.as_bytes_with_nul()), &mut ver_ext1);
-            ngp_get_extver(&mut parser_state, cast_slice(ext2.as_bytes_with_nul()), &mut ver_ext2);
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(ext1.as_bytes_with_nul()),
+                &mut ver_ext1,
+            );
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(ext2.as_bytes_with_nul()),
+                &mut ver_ext2,
+            );
             ngp_get_extver(
                 &mut parser_state,
                 cast_slice(ext1.as_bytes_with_nul()),
@@ -2410,7 +2431,11 @@ mod tests {
 
         let extname = to_cstring("TEST_EXT");
 
-        let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
+        let status = ngp_set_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            5,
+        );
         assert_eq!(status, NGP_OK);
 
         ngp_delete_extver_tab(&mut parser_state);
@@ -2432,16 +2457,28 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 3 first
-            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 3);
+            let status = ngp_set_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                3,
+            );
             assert_eq!(status, NGP_OK);
 
             // Set to 5 - should update to higher value
-            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
+            let status = ngp_set_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                5,
+            );
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                &mut version,
+            );
             assert_eq!(
                 version, 6,
                 "Should update to higher version and return 6 on next get"
@@ -2460,16 +2497,28 @@ mod tests {
             let extname = to_cstring("TEST_EXT");
 
             // Set to 5 first
-            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 5);
+            let status = ngp_set_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                5,
+            );
             assert_eq!(status, NGP_OK);
 
             // Set to 3 - should keep 5 (the higher value)
-            let status = ngp_set_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), 3);
+            let status = ngp_set_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                3,
+            );
             assert_eq!(status, NGP_OK);
 
             // Next get should return 6 (5 + 1, not 4)
             let mut version: c_int = 0;
-            ngp_get_extver(&mut parser_state, cast_slice(extname.as_bytes_with_nul()), &mut version);
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(extname.as_bytes_with_nul()),
+                &mut version,
+            );
             assert_eq!(
                 version, 6,
                 "Should keep higher version 5 and return 6 on next get"
@@ -2500,8 +2549,16 @@ mod tests {
             let mut ver1: c_int = 0;
             let mut ver2: c_int = 0;
 
-            ngp_get_extver(&mut parser_state, cast_slice(ext1.as_bytes_with_nul()), &mut ver1);
-            ngp_get_extver(&mut parser_state, cast_slice(ext2.as_bytes_with_nul()), &mut ver2);
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(ext1.as_bytes_with_nul()),
+                &mut ver1,
+            );
+            ngp_get_extver(
+                &mut parser_state,
+                cast_slice(ext2.as_bytes_with_nul()),
+                &mut ver2,
+            );
 
             let status = ngp_delete_extver_tab(&mut parser_state);
             assert_eq!(status, NGP_OK);
