@@ -1344,189 +1344,187 @@ pub(crate) fn ffiprs(
     lParse: &mut ParseData, /* O - parser status                       */
     status: &mut c_int,     /* O - Error status                        */
 ) -> c_int {
-    unsafe {
-        let i: c_int = 0;
-        let mut lexpr: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut xaxis: c_int = 0;
-        let mut bitpix: c_int = 0;
-        let mut xaxes: [c_long; 9] = [0; 9];
+    let i: c_int = 0;
+    let mut lexpr: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut xaxis: c_int = 0;
+    let mut bitpix: c_int = 0;
+    let mut xaxes: [c_long; 9] = [0; 9];
 
-        if *status != 0 {
-            return *status;
-        }
+    if *status != 0 {
+        return *status;
+    }
 
-        /* make sure all internal structures for this HDU are current */
-        if ffrdef_safe(fptr, status) != 0 {
-            return *status;
-        }
+    /* make sure all internal structures for this HDU are current */
+    if ffrdef_safe(fptr, status) != 0 {
+        return *status;
+    }
 
-        /*  Initialize the Parser structure  */
+    /*  Initialize the Parser structure  */
 
-        /* Unfortunately we need to preserve the pixFilter value since it is pre-set when ffiprs() is called */
-        let pixFilter: *mut PixelFilter = lParse.pixFilter;
+    /* Unfortunately we need to preserve the pixFilter value since it is pre-set when ffiprs() is called */
+    let pixFilter: *mut PixelFilter = lParse.pixFilter;
 
-        lParse.reset();
+    lParse.reset();
 
-        lParse.pixFilter = pixFilter;
+    lParse.pixFilter = pixFilter;
 
-        lParse.def_fptr = fptr;
-        lParse.compressed = compressed;
-        lParse.nCols = 0;
-        lParse.colData = Vec::new();
-        lParse.varData = Vec::new();
-        lParse.getData = Some(find_column);
-        lParse.loadData = Some(load_column);
-        lParse.Nodes = Vec::new();
-        lParse.nNodesAlloc = 0;
-        lParse.nNodes = 0;
-        lParse.hdutype = 0;
-        lParse.status = 0;
+    lParse.def_fptr = fptr;
+    lParse.compressed = compressed;
+    lParse.nCols = 0;
+    lParse.colData = Vec::new();
+    lParse.varData = Vec::new();
+    lParse.getData = Some(find_column);
+    lParse.loadData = Some(load_column);
+    lParse.Nodes = Vec::new();
+    lParse.nNodesAlloc = 0;
+    lParse.nNodes = 0;
+    lParse.hdutype = 0;
+    lParse.status = 0;
 
-        fits_get_hdu_type(fptr, &mut (lParse.hdutype), status);
+    fits_get_hdu_type(fptr, &mut (lParse.hdutype), status);
 
-        if lParse.hdutype == IMAGE_HDU {
-            fits_get_img_param(
-                fptr,
-                9,
-                Some(&mut bitpix),
-                Some(&mut xaxis),
-                Some(&mut xaxes[..]),
-                status,
-            );
-            if *status != 0 {
-                ffpmsg_str("ffiprs: unable to get image dimensions");
-                return *status;
-            }
-
-            lParse.totalRows = if xaxis > 0 { 1 } else { 0 };
-
-            for i in 0..(xaxis as usize) {
-                lParse.totalRows *= xaxes[i];
-            }
-
-            if DEBUG_PIXFILTER != 0 {
-                println!("naxis={}, (*lParse).totalRows={}", xaxis, lParse.totalRows,);
-            }
-        } else if ffgkyj_safe(
+    if lParse.hdutype == IMAGE_HDU {
+        fits_get_img_param(
             fptr,
-            cs!(c"NAXIS2"),
-            &mut lParse.totalRows,
-            None,
-            &mut tstatus,
-        ) != 0
-        {
-            /* this might be a 1D or null image with no NAXIS2 keyword */
-            lParse.totalRows = 0;
+            9,
+            Some(&mut bitpix),
+            Some(&mut xaxis),
+            Some(&mut xaxes[..]),
+            status,
+        );
+        if *status != 0 {
+            ffpmsg_str("ffiprs: unable to get image dimensions");
+            return *status;
         }
 
-        /*  Copy expression into parser... read from file if necessary  */
+        lParse.totalRows = if xaxis > 0 { 1 } else { 0 };
 
-        if expr[0] == b'@' as c_char {
-            // Handle file import case
-            let mut temp_ptr = None;
-            if ffimport_file_safe(&expr[1..], &mut temp_ptr, status) != 0 {
-                return *status;
-            }
+        for i in 0..(xaxis as usize) {
+            lParse.totalRows *= xaxes[i];
+        }
 
-            if let Some(temp_ptr) = temp_ptr {
-                lexpr = strlen_safe(&temp_ptr) as c_int;
-                // Convert C string to Vec<u8> and then to Box<[u8]>
-                let lexpr_cstr = CStr::from_bytes_until_nul(cast_slice(&temp_ptr)).unwrap();
-                let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
-                lParse.expr = Some(vec.into_boxed_slice());
-            }
-        } else {
-            lexpr = strlen_safe(expr) as c_int;
-            // Create a new boxed slice with the expression
-            let mut vec = Vec::with_capacity((lexpr + 2) as usize);
-            for i in 0..lexpr {
-                vec.push(expr[i as usize] as u8);
-            }
-            vec.push(b'\n');
-            vec.push(0);
+        if DEBUG_PIXFILTER != 0 {
+            println!("naxis={}, (*lParse).totalRows={}", xaxis, lParse.totalRows,);
+        }
+    } else if ffgkyj_safe(
+        fptr,
+        cs!(c"NAXIS2"),
+        &mut lParse.totalRows,
+        None,
+        &mut tstatus,
+    ) != 0
+    {
+        /* this might be a 1D or null image with no NAXIS2 keyword */
+        lParse.totalRows = 0;
+    }
+
+    /*  Copy expression into parser... read from file if necessary  */
+
+    if expr[0] == b'@' as c_char {
+        // Handle file import case
+        let mut temp_ptr = None;
+        if ffimport_file_safe(&expr[1..], &mut temp_ptr, status) != 0 {
+            return *status;
+        }
+
+        if let Some(temp_ptr) = temp_ptr {
+            lexpr = strlen_safe(&temp_ptr) as c_int;
+            // Convert C string to Vec<u8> and then to Box<[u8]>
+            let lexpr_cstr = CStr::from_bytes_until_nul(cast_slice(&temp_ptr)).unwrap();
+            let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
             lParse.expr = Some(vec.into_boxed_slice());
         }
-        lParse.index = 0;
-        lParse.is_eobuf = 0;
-
-        /*  Parse the expression, building the Nodes and determing  */
-        /*  which columns are needed and what data type is returned  */
-
-        let mut yylex_scanner: Option<Box<yyguts_t>> = None; /* Used internally by FLEX lexer */
-
-        fits_parser_yylex_init_extra(lParse, &mut yylex_scanner);
-        fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
-        *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
-        fits_parser_yylex_destroy(yylex_scanner.unwrap());
-
-        if *status != 0 {
-            *status = PARSE_SYNTAX_ERR;
-            return *status;
+    } else {
+        lexpr = strlen_safe(expr) as c_int;
+        // Create a new boxed slice with the expression
+        let mut vec = Vec::with_capacity((lexpr + 2) as usize);
+        for i in 0..lexpr {
+            vec.push(expr[i as usize] as u8);
         }
-
-        /*  Check results  */
-        *status = lParse.status;
-        if *status != 0 {
-            return *status;
-        }
-
-        if lParse.nNodes == 0 {
-            ffpmsg_str("Blank expression");
-            *status = PARSE_SYNTAX_ERR;
-            return *status;
-        }
-        if lParse.nCols == 0 {
-            if lParse.colData.try_reserve_exact(1).is_err() {
-                ffpmsg_str("memory allocation failed (ffiprs)");
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            } else {
-                lParse.colData.resize(1, iteratorCol::default());
-            }
-
-            /* This allows iterator to know value of fptr when no columns are referenced   */
-            (lParse.colData[0]).fptr = fptr;
-        }
-
-        let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
-
-        lParse.nAxis = result.value.naxis;
-        *naxis = lParse.nAxis;
-        lParse.nElements = result.value.nelem;
-        *nelem = lParse.nElements;
-
-        for i in 0..cmp::min(*naxis, maxdim) {
-            lParse.nAxes[i as usize] = result.value.naxes[i as usize];
-            naxes[i as usize] = lParse.nAxes[i as usize];
-        }
-
-        match result.ntype {
-            val if val == fits_parser_yytokentype::BOOLEAN as c_int => *datatype = TLOGICAL,
-
-            val if val == fits_parser_yytokentype::LONG as c_int => *datatype = TLONG,
-
-            val if val == fits_parser_yytokentype::DOUBLE as c_int => *datatype = TDOUBLE,
-
-            val if val == fits_parser_yytokentype::BITSTR as c_int => *datatype = TBIT,
-
-            val if val == fits_parser_yytokentype::STRING as c_int => *datatype = TSTRING,
-
-            _ => {
-                *datatype = 0;
-                ffpmsg_str("Bad return data type");
-                lParse.status = PARSE_BAD_TYPE;
-                *status = lParse.status;
-            }
-        }
-        lParse.datatype = *datatype;
-        lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
-
-        if result.operation == CONST_OP {
-            *nelem = -*nelem;
-        }
-        *status
+        vec.push(b'\n');
+        vec.push(0);
+        lParse.expr = Some(vec.into_boxed_slice());
     }
+    lParse.index = 0;
+    lParse.is_eobuf = 0;
+
+    /*  Parse the expression, building the Nodes and determing  */
+    /*  which columns are needed and what data type is returned  */
+
+    let mut yylex_scanner: Option<Box<yyguts_t>> = None; /* Used internally by FLEX lexer */
+
+    fits_parser_yylex_init_extra(lParse, &mut yylex_scanner);
+    fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
+    *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
+    fits_parser_yylex_destroy(yylex_scanner.unwrap());
+
+    if *status != 0 {
+        *status = PARSE_SYNTAX_ERR;
+        return *status;
+    }
+
+    /*  Check results  */
+    *status = lParse.status;
+    if *status != 0 {
+        return *status;
+    }
+
+    if lParse.nNodes == 0 {
+        ffpmsg_str("Blank expression");
+        *status = PARSE_SYNTAX_ERR;
+        return *status;
+    }
+    if lParse.nCols == 0 {
+        if lParse.colData.try_reserve_exact(1).is_err() {
+            ffpmsg_str("memory allocation failed (ffiprs)");
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        } else {
+            lParse.colData.resize(1, iteratorCol::default());
+        }
+
+        /* This allows iterator to know value of fptr when no columns are referenced   */
+        (lParse.colData[0]).fptr = fptr;
+    }
+
+    let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
+
+    lParse.nAxis = result.value.naxis;
+    *naxis = lParse.nAxis;
+    lParse.nElements = result.value.nelem;
+    *nelem = lParse.nElements;
+
+    for i in 0..cmp::min(*naxis, maxdim) {
+        lParse.nAxes[i as usize] = result.value.naxes[i as usize];
+        naxes[i as usize] = lParse.nAxes[i as usize];
+    }
+
+    match result.ntype {
+        val if val == fits_parser_yytokentype::BOOLEAN as c_int => *datatype = TLOGICAL,
+
+        val if val == fits_parser_yytokentype::LONG as c_int => *datatype = TLONG,
+
+        val if val == fits_parser_yytokentype::DOUBLE as c_int => *datatype = TDOUBLE,
+
+        val if val == fits_parser_yytokentype::BITSTR as c_int => *datatype = TBIT,
+
+        val if val == fits_parser_yytokentype::STRING as c_int => *datatype = TSTRING,
+
+        _ => {
+            *datatype = 0;
+            ffpmsg_str("Bad return data type");
+            lParse.status = PARSE_BAD_TYPE;
+            *status = lParse.status;
+        }
+    }
+    lParse.datatype = *datatype;
+    lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
+
+    if result.operation == CONST_OP {
+        *nelem = -*nelem;
+    }
+    *status
 }
 
 /*---------------------------------------------------------------------------*/

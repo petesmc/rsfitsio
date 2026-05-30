@@ -637,7 +637,7 @@ unsafe fn inner_scanf_custom(
                 // But allow %n to be processed even at EOF since it doesn't consume input.
                 if eof {
                     // Check if the next format character is %n
-                    let next_is_n = unsafe {
+                    let next_is_n = {
                         *format == b'%' as c_char && {
                             let next_char = *format.offset(1);
                             // Skip any width specifiers and modifiers to find the actual format char

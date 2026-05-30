@@ -44,7 +44,7 @@ Updated `SYNCED_COMMIT.md` file with the commit hash of the upstream cfitsio lib
 ## Testprog
 
 ```
-cargo run --bin testprog > rust_testprog.lis
+cargo run --example testprog > rust_testprog.lis
 ```
 
 ## Windows
