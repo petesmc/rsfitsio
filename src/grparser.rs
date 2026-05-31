@@ -16,7 +16,7 @@ use crate::fitsio::{
     TLOGICAL, TLONG, TSTRING, VALUE_UNDEFINED, fitsfile,
 };
 use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
-use crate::wrappers::{strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp, strncpy};
+use crate::wrappers::{strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp_safe, strncpy};
 use crate::{FFLOCK, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -335,7 +335,7 @@ fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
 }
 
 /// read one line from file
-unsafe fn ngp_line_from_file(reader: &mut BufReader<File>, line_out: &mut Box<[c_char]>) -> c_int {
+fn ngp_line_from_file(reader: &mut BufReader<File>, line_out: &mut Box<[c_char]>) -> c_int {
     let mut r = NGP_OK; /* initialize stuff, reset err code */
     let mut llen: usize = 0; /* 0 characters read so far */
     let mut allocsize: usize = 1; /* preallocate 1 byte */
@@ -442,7 +442,7 @@ fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
 }
 
 /// read one line
-unsafe fn ngp_read_line_buffered(
+fn ngp_read_line_buffered(
     parser_state: &mut GRParseState,
     reader: &mut BufReader<File>,
 ) -> c_int {
@@ -458,7 +458,7 @@ unsafe fn ngp_read_line_buffered(
     }
 
     parser_state.NGP_CURLINE.flags = 0; /* if not cached really read line from file */
-    unsafe { ngp_line_from_file(reader, &mut parser_state.NGP_CURLINE.line) }
+    ngp_line_from_file(reader, &mut parser_state.NGP_CURLINE.line)
 }
 
 /// unread line
@@ -800,10 +800,10 @@ fn ngp_extract_tokens(cl: &mut NgpRawLine) -> c_int {
 /// 1. Direct path (as provided)
 /// 2. Directories in CFITSIO_INCLUDE_FILES environment variable
 /// 3. Relative to master_dir
-unsafe fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathBuf> {
-    unsafe {
+fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathBuf> {
+
         // Convert C string to Rust string
-        let fname_str = match CStr::from_ptr(fname.as_ptr()).to_str() {
+        let fname_str = match CStr::from_bytes_until_nul(cast_slice(fname)).unwrap().to_str() {
             Ok(s) => s,
             Err(_) => return None,
         };
@@ -843,7 +843,7 @@ unsafe fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathB
 
         None
     }
-}
+
 
 /// try to open include file.
 /// If open fails and fname
@@ -852,9 +852,8 @@ unsafe fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathB
 /// environment variable. Finally try to open fname
 /// relative to NGP_MASTER_DIR, which is directory of top
 /// level include file
-unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) -> c_int /* try to open include file */
+fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) -> c_int /* try to open include file */
 {
-    unsafe {
         // Check nesting limit
         if parser_state.NGP_INCLEVEL >= NGP_MAX_INCLUDE as c_int {
             return NGP_INC_NESTING;
@@ -879,7 +878,7 @@ unsafe fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) ->
         parser_state.NGP_INCLEVEL += 1;
         NGP_OK
     }
-}
+
 
 /// read line in the intelligent way.
 /// All \INCLUDE directives are handled,
@@ -1199,97 +1198,73 @@ unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_i
 }
 
 /// check whether keyword can be written as is
-unsafe fn ngp_keyword_is_write(ngp_tok: *const NgpToken) -> c_int {
-    unsafe {
-        let mut i: c_int;
-        let mut j: c_int;
-        let mut l: c_int;
-        let mut spc: c_int;
+fn ngp_keyword_is_write(ngp_tok: &NgpToken) -> c_int {
+    /* indexed variables not to write */
+    let nm: [&[c_char]; 3] = [cs!(c"NAXIS"), cs!(c"TFORM"), cs!(c"TTYPE")];
 
-        /* indexed variables not to write */
-        let nm: [*const c_char; 4] = [
-            c"NAXIS".as_ptr(),
-            c"TFORM".as_ptr(),
-            c"TTYPE".as_ptr(),
-            ptr::null(),
-        ];
+    /* non indexed variables not allowed to write */
+    let nmni: [&[c_char]; 10] = [
+        cs!(c"SIMPLE"),
+        cs!(c"XTENSION"),
+        cs!(c"BITPIX"),
+        cs!(c"NAXIS"),
+        cs!(c"PCOUNT"),
+        cs!(c"GCOUNT"),
+        cs!(c"TFIELDS"),
+        cs!(c"THEAP"),
+        cs!(c"EXTEND"),
+        cs!(c"EXTVER"),
+    ];
 
-        /* non indexed variables not allowed to write */
-        let nmni: [*const c_char; 11] = [
-            c"SIMPLE".as_ptr(),
-            c"XTENSION".as_ptr(),
-            c"BITPIX".as_ptr(),
-            c"NAXIS".as_ptr(),
-            c"PCOUNT".as_ptr(),
-            c"GCOUNT".as_ptr(),
-            c"TFIELDS".as_ptr(),
-            c"THEAP".as_ptr(),
-            c"EXTEND".as_ptr(),
-            c"EXTVER".as_ptr(),
-            ptr::null(),
-        ];
-
-        if ngp_tok.is_null() {
-            return NGP_NUL_PTR;
+    /* first check non indexed */
+    for kw in nmni {
+        if 0 == strcmp_safe(kw, &ngp_tok.name) {
+            return NGP_BAD_ARG;
         }
+    }
 
-        j = 0;
-
-        /* first check non indexed */
-        loop {
-            if nmni[j as usize].is_null() {
-                break;
-            }
-            if 0 == strcmp(nmni[j as usize], (*ngp_tok).name.as_ptr()) {
-                return NGP_BAD_ARG;
-            }
-            j += 1;
+    /* now check indexed */
+    let mut matched_l: Option<c_int> = None;
+    for kw in nm {
+        let l = strlen_safe(kw) as c_int;
+        if (l < 1) || (l > 5) {
+            continue;
         }
+        if 0 == strncmp_safe(kw, &ngp_tok.name, l as usize) {
+            matched_l = Some(l);
+            break;
+        }
+    }
 
-        j = 0;
-        /* now check indexed */
-        loop {
-            if nm[j as usize].is_null() {
+    let l = match matched_l {
+        Some(l) => l,
+        None => return NGP_OK,
+    };
+
+    if (ngp_tok.name[l as usize] < bb(b'1')) || (ngp_tok.name[l as usize] > bb(b'9')) {
+        return NGP_OK;
+    }
+    let mut spc = 0;
+    for i in (l + 1)..8 {
+        if spc != 0 {
+            if bb(b' ') != ngp_tok.name[i as usize] {
                 return NGP_OK;
             }
-            l = strlen(nm[j as usize]) as c_int;
-            if (l < 1) || (l > 5) {
-                j += 1;
+        } else {
+            if (ngp_tok.name[i as usize] >= bb(b'0')) && (ngp_tok.name[i as usize] <= bb(b'9')) {
                 continue;
             }
-            if 0 == strncmp(nm[j as usize], (*ngp_tok).name.as_ptr(), l as usize) {
+            if bb(b' ') == ngp_tok.name[i as usize] {
+                spc = 1;
+                continue;
+            }
+            if 0 == ngp_tok.name[i as usize] {
                 break;
             }
-            j += 1;
-        }
-
-        if ((*ngp_tok).name[l as usize] < bb(b'1')) || ((*ngp_tok).name[l as usize] > bb(b'9')) {
             return NGP_OK;
         }
-        spc = 0;
-        for i in (l + 1)..8 {
-            if spc != 0 {
-                if bb(b' ') != (*ngp_tok).name[i as usize] {
-                    return NGP_OK;
-                }
-            } else {
-                if ((*ngp_tok).name[i as usize] >= bb(b'0'))
-                    && ((*ngp_tok).name[i as usize] <= bb(b'9'))
-                {
-                    continue;
-                }
-                if bb(b' ') == (*ngp_tok).name[i as usize] {
-                    spc = 1;
-                    continue;
-                }
-                if 0 == (*ngp_tok).name[i as usize] {
-                    break;
-                }
-                return NGP_OK;
-            }
-        }
-        NGP_BAD_ARG
     }
+    NGP_BAD_ARG
 }
 
 /// write (almost) all keywords from given HDU to disk
@@ -1428,10 +1403,13 @@ fn ngp_hdu_init(ngph: &mut NgpHdu) -> c_int {
 }
 
 /// clear HDU structure
-unsafe fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
-    unsafe {
-        for i in 0..(*ngph).tokcnt {
-            let token = &mut (&mut *ngph).tok[i as usize];
+fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
+    for i in 0..ngph.tokcnt {
+        let token = &mut ngph.tok[i as usize];
+        // SAFETY: reading the `s` union field and freeing it is valid for a string
+        // token whose `s` is non-null: the pointer was produced by `Box::into_raw` in
+        // `ngp_hdu_insert_token`, so reconstructing the same `Box` frees that allocation.
+        unsafe {
             if NGP_TTYPE_STRING == token.type_ && !token.value.s.is_null() {
                 // Free by reconstructing the Box
                 let str_len = 1 + strlen(token.value.s);
@@ -1442,12 +1420,12 @@ unsafe fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
                 token.value.s = ptr::null_mut();
             }
         }
-
-        (*ngph).tok.clear();
-        (*ngph).tokcnt = 0;
-
-        NGP_OK
     }
+
+    ngph.tok.clear();
+    ngph.tokcnt = 0;
+
+    NGP_OK
 }
 
 /// insert new token to HDU structure
@@ -2812,17 +2790,6 @@ mod tests {
 
             let status = ngp_keyword_is_write(&tok);
             assert_eq!(status, NGP_BAD_ARG, "EXTVER keyword should not be writable");
-        }
-    }
-
-    #[test]
-    fn test_ngp_keyword_is_write_null_pointer() {
-        unsafe {
-            let status = ngp_keyword_is_write(ptr::null());
-            assert_eq!(
-                status, NGP_NUL_PTR,
-                "Null pointer should return NGP_NUL_PTR"
-            );
         }
     }
 

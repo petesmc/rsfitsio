@@ -69,167 +69,180 @@ pub unsafe extern "C" fn fits_read_wcstab(
 ///  constructing -TAB coordinates.  This helper routine is intended for
 ///  use by routines in the WCSLIB library when dealing with the -TAB table
 ///  look up WCS convention.
-pub unsafe fn fits_read_wcstab_safer(
+pub fn fits_read_wcstab_safer(
     fptr: &mut fitsfile, /* I - FITS file pointer           */
     nwtb: c_int,         /* Number of arrays to be read from the binary table(s) */
     wtb: &[wtbarr],
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut anynul: c_int = 0;
-        let mut colnum: c_int = 0;
-        let mut hdunum: c_int = 0;
-        let mut naxis: c_int = 0;
-        let mut nostat: c_int = 0;
-        let mut nelem: c_long = 0;
+    let mut anynul: c_int = 0;
+    let mut colnum: c_int = 0;
+    let mut hdunum: c_int = 0;
+    let mut naxis: c_int = 0;
+    let mut nostat: c_int = 0;
+    let mut nelem: c_long = 0;
 
-        let mut naxes: Vec<c_long> = Vec::new();
+    let mut naxes: Vec<c_long> = Vec::new();
 
-        if nwtb == 0 {
-            return 0;
-        }
+    if nwtb == 0 {
+        return 0;
+    }
 
-        /* Zero the array pointers. */
-        let mut wtbp = wtb;
-        for iwtb in 0..(nwtb as usize) {
+    /* Zero the array pointers. */
+    let mut wtbp = wtb;
+    for iwtb in 0..(nwtb as usize) {
+        // SAFETY: `arrayp` is a valid output pointer supplied by the caller; the
+        // `wtbarr` structs originate from WCSLIB and are validated by the FFI wrapper.
+        unsafe {
             *wtbp[iwtb].arrayp = ptr::null_mut();
         }
+    }
 
-        /* Save HDU number so that we can move back to it later. */
-        ffghdn_safe(fptr, &mut hdunum);
+    /* Save HDU number so that we can move back to it later. */
+    ffghdn_safe(fptr, &mut hdunum);
 
-        wtbp = wtb;
-        for iwtb in 0..(nwtb as usize) {
-            /* Move to the required binary table extension. */
-            if ffmnhd_safe(
-                fptr,
-                BINARY_TBL,
-                &(wtbp[iwtb].extnam),
-                wtbp[iwtb].extver,
-                status,
-            ) != 0
-            {
-                // goto cleanup;
-                break;
-            }
-
-            /* Locate the table column. */
-            if ffgcno_safe(
-                fptr,
-                CASEINSEN as c_int,
-                &(wtbp[iwtb].ttype),
-                &mut colnum,
-                status,
-            ) != 0
-            {
-                // goto cleanup;
-                break;
-            }
-
-            /* Get the array dimensions and check for consistency. */
-            if wtbp[iwtb].ndim < 1 {
-                *status = NEG_AXIS;
-                // goto cleanup;
-                break;
-            }
-
-            if naxes.try_reserve_exact(wtbp[iwtb].ndim as usize).is_err() {
-                *status = MEMORY_ALLOCATION;
-                // goto cleanup;
-                break;
-            } else {
-                naxes.resize(wtbp[iwtb].ndim as usize, 0);
-            }
-
-            if ffgtdm_safe(
-                fptr,
-                colnum,
-                wtbp[iwtb].ndim,
-                &mut naxis,
-                &mut naxes,
-                status,
-            ) != 0
-            {
-                // goto cleanup;
-                break;
-            }
-
-            if naxis != wtbp[iwtb].ndim {
-                if wtbp[iwtb].kind == c_int::from(b'c') && wtbp[iwtb].ndim == 2 {
-                    /* Allow TDIMn to be omitted for degenerate coordinate arrays. */
-                    naxis = 2;
-                    naxes[1] = naxes[0];
-                    naxes[0] = 1;
-                } else {
-                    *status = BAD_TDIM;
-                    // goto cleanup;
-                    break;
-                }
-            }
-
-            if wtbp[iwtb].kind == c_int::from(b'c') {
-                /* Coordinate array; calculate the array size. */
-                nelem = naxes[0];
-
-                for m in 0..(naxis as usize - 1) {
-                    let dimlen = slice::from_raw_parts_mut(wtbp[iwtb].dimlen, naxis as usize - 1);
-                    dimlen[m] = naxes[m + 1] as c_int;
-                    nelem *= naxes[m + 1];
-                }
-            } else {
-                /* Index vector; check length. */
-                nelem = naxes[0];
-                if nelem != c_long::from(*(wtbp[iwtb].dimlen)) {
-                    /* N.B. coordinate array precedes the index vectors. */
-                    *status = BAD_TDIM;
-                    // goto cleanup;
-                    break;
-                }
-            }
-
-            // HEAP ALLOCATION
-            /* Allocate memory for the array. */
-            let mut tmp: Vec<f64> = Vec::new();
-
-            if tmp.try_reserve_exact(nelem as usize).is_err() {
-                *status = MEMORY_ALLOCATION;
-                // goto cleanup;
-                break;
-            } else {
-                tmp.resize(nelem as usize, 0.0);
-            }
-
-            if ffgcvd_safe(
-                fptr,
-                colnum,
-                wtbp[iwtb].row as LONGLONG,
-                1,
-                nelem as LONGLONG,
-                0.0,
-                &mut tmp,
-                Some(&mut anynul),
-                status,
-            ) != 0
-            {
-                // goto cleanup;
-                break;
-            }
-
-            // HEAP ALLOCATION
-            let (ptr, l, c) = vec_into_raw_parts(tmp);
-            ALLOCATIONS.lock().unwrap().insert(ptr as usize, (l, c));
-
-            *wtbp[iwtb].arrayp = ptr;
+    wtbp = wtb;
+    for iwtb in 0..(nwtb as usize) {
+        /* Move to the required binary table extension. */
+        if ffmnhd_safe(
+            fptr,
+            BINARY_TBL,
+            &(wtbp[iwtb].extnam),
+            wtbp[iwtb].extver,
+            status,
+        ) != 0
+        {
+            // goto cleanup;
+            break;
         }
 
-        /* Move back to the starting HDU. */
-        nostat = 0;
-        ffmahd_safe(fptr, hdunum, None, &mut nostat);
+        /* Locate the table column. */
+        if ffgcno_safe(
+            fptr,
+            CASEINSEN as c_int,
+            &(wtbp[iwtb].ttype),
+            &mut colnum,
+            status,
+        ) != 0
+        {
+            // goto cleanup;
+            break;
+        }
 
-        /* Release allocated memory. */
-        if *status != 0 {
-            wtbp = wtb;
-            for iwtb in 0..(nwtb as usize) {
+        /* Get the array dimensions and check for consistency. */
+        if wtbp[iwtb].ndim < 1 {
+            *status = NEG_AXIS;
+            // goto cleanup;
+            break;
+        }
+
+        if naxes.try_reserve_exact(wtbp[iwtb].ndim as usize).is_err() {
+            *status = MEMORY_ALLOCATION;
+            // goto cleanup;
+            break;
+        } else {
+            naxes.resize(wtbp[iwtb].ndim as usize, 0);
+        }
+
+        if ffgtdm_safe(
+            fptr,
+            colnum,
+            wtbp[iwtb].ndim,
+            &mut naxis,
+            &mut naxes,
+            status,
+        ) != 0
+        {
+            // goto cleanup;
+            break;
+        }
+
+        if naxis != wtbp[iwtb].ndim {
+            if wtbp[iwtb].kind == c_int::from(b'c') && wtbp[iwtb].ndim == 2 {
+                /* Allow TDIMn to be omitted for degenerate coordinate arrays. */
+                naxis = 2;
+                naxes[1] = naxes[0];
+                naxes[0] = 1;
+            } else {
+                *status = BAD_TDIM;
+                // goto cleanup;
+                break;
+            }
+        }
+
+        if wtbp[iwtb].kind == c_int::from(b'c') {
+            /* Coordinate array; calculate the array size. */
+            nelem = naxes[0];
+
+            for m in 0..(naxis as usize - 1) {
+                // SAFETY: `dimlen` points to at least (naxis-1) c_ints supplied by the caller.
+                let dimlen =
+                    unsafe { slice::from_raw_parts_mut(wtbp[iwtb].dimlen, naxis as usize - 1) };
+                dimlen[m] = naxes[m + 1] as c_int;
+                nelem *= naxes[m + 1];
+            }
+        } else {
+            /* Index vector; check length. */
+            nelem = naxes[0];
+            // SAFETY: `dimlen` points to a valid c_int supplied by the caller.
+            let dimlen0 = unsafe { *(wtbp[iwtb].dimlen) };
+            if nelem != c_long::from(dimlen0) {
+                /* N.B. coordinate array precedes the index vectors. */
+                *status = BAD_TDIM;
+                // goto cleanup;
+                break;
+            }
+        }
+
+        // HEAP ALLOCATION
+        /* Allocate memory for the array. */
+        let mut tmp: Vec<f64> = Vec::new();
+
+        if tmp.try_reserve_exact(nelem as usize).is_err() {
+            *status = MEMORY_ALLOCATION;
+            // goto cleanup;
+            break;
+        } else {
+            tmp.resize(nelem as usize, 0.0);
+        }
+
+        if ffgcvd_safe(
+            fptr,
+            colnum,
+            wtbp[iwtb].row as LONGLONG,
+            1,
+            nelem as LONGLONG,
+            0.0,
+            &mut tmp,
+            Some(&mut anynul),
+            status,
+        ) != 0
+        {
+            // goto cleanup;
+            break;
+        }
+
+        // HEAP ALLOCATION
+        let (ptr, l, c) = vec_into_raw_parts(tmp);
+        ALLOCATIONS.lock().unwrap().insert(ptr as usize, (l, c));
+
+        // SAFETY: `arrayp` is a valid output pointer supplied by the caller.
+        unsafe {
+            *wtbp[iwtb].arrayp = ptr;
+        }
+    }
+
+    /* Move back to the starting HDU. */
+    nostat = 0;
+    ffmahd_safe(fptr, hdunum, None, &mut nostat);
+
+    /* Release allocated memory. */
+    if *status != 0 {
+        wtbp = wtb;
+        for iwtb in 0..(nwtb as usize) {
+            // SAFETY: `arrayp` was either nulled or set to a `vec_into_raw_parts`
+            // allocation above; reconstructing the Vec frees it.
+            unsafe {
                 if !(*wtbp[iwtb].arrayp).is_null() {
                     // WARNING: Assuming that the ndim hasn't been changed
                     let _ = Vec::from_raw_parts(
@@ -240,9 +253,9 @@ pub unsafe fn fits_read_wcstab_safer(
                 }
             }
         }
-
-        *status
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
