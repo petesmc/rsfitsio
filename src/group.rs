@@ -16,6 +16,7 @@
 
 use std::collections::VecDeque;
 
+use crate::aliases::rust_api::*;
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 use bytemuck::cast_slice;
 
@@ -88,12 +89,43 @@ pub unsafe extern "C" fn ffgtcr(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtcr_safe(
-    _fptr: &mut fitsfile, /* FITS file pointer                         */
-    _grpname: &[c_char],  /* name of the grouping table                */
-    _grouptype: c_int,    /* code specifying the type of  */
-    _status: &mut c_int,  /* return status code                        */
+    fptr: &mut fitsfile, /* FITS file pointer                         */
+    grpname: &[c_char],  /* name of the grouping table                */
+    grouptype: c_int,    /* code specifying the type of  */
+    status: &mut c_int,  /* return status code                        */
 ) -> c_int {
-    todo!();
+    let mut hdutype: c_int = 0;
+    let mut hdunum: c_int = 0;
+
+    if (*status != 0) {
+        return (*status);
+    }
+
+    *status = fits_get_num_hdus(fptr, &mut hdunum, status);
+
+    /* If hdunum is 0 then we are at the beginning of the file and
+    we actually haven't closed the first header yet, so don't do
+    anything more */
+
+    if (0 != hdunum) {
+        *status = fits_movabs_hdu(fptr, hdunum, Some(&mut hdutype), status);
+    }
+
+    /* Now, the whole point of the above two fits_ calls was to get to
+       the end of file.  Let's ignore errors at this point and keep
+       going since any error is likely to mean that we are already at the
+       EOF, or the file is fatally corrupted.  If we are at the EOF then
+       the next fits_ call will be ok.  If it's corrupted then the
+       next call will fail, but that's not big deal at this point.
+    */
+
+    if (0 != *status) {
+        *status = 0;
+    }
+
+    *status = fits_insert_group(fptr, grpname, grouptype, status);
+
+    return (*status);
 }
 
 /*---------------------------------------------------------------------------*/
