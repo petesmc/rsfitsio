@@ -509,9 +509,8 @@ pub unsafe extern "C" fn ffgtam(
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
-        let mfptr = mfptr.as_mut().expect(NULL_MSG);
 
-        ffgtam_safe(gfptr, mfptr, hdupos, status)
+        ffgtam_safe(gfptr, mfptr.as_mut(), hdupos, status)
     }
 }
 
@@ -529,8 +528,8 @@ pub unsafe extern "C" fn ffgtam(
 /// Note that if the member HDU to be added to the grouping table is already
 /// a member of the group then it will not be added a sceond time.
 pub fn ffgtam_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table HDU     */
-    _mfptr: &mut fitsfile, /* FITS file pointer to member HDU             */
+    _gfptr: &mut fitsfile,         /* FITS file pointer to grouping table HDU     */
+    _mfptr: Option<&mut fitsfile>, /* FITS file pointer to member HDU; None if the member is in the same file as the grouping table */
     _hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
     _status: &mut c_int, /* return status code                          */
 ) -> c_int {
@@ -1708,27 +1707,27 @@ mod tests {
 
         // Test cases
         let test_cases = vec![
-            // ("/dir/../file.fits", "/file.fits", 0),
-            // ("/home/user/../file.fits", "/home/file.fits", 0),
-            // ("/home//user///file.fits", "/home/user/file.fits", 0),
-            //("", "", 0),
+            ("/dir/../file.fits", "/file.fits", 0),
+            ("/home/user/../file.fits", "/home/file.fits", 0),
+            ("/home//user///file.fits", "/home/user/file.fits", 0),
+            ("", "", 0),
             ("././.", "", 0),
-            // ("dir/../file?.fits", "file?.fits", 0),
-            // ("/dir/./file.fits", "/dir/file.fits", 0),
-            // ("/dir/././file.fits", "/dir/file.fits", 0),
-            // ("/dir/../dir2/../file.fits", "/file.fits", 0),
-            // ("/dir/dir2/../../file.fits", "/file.fits", 0),
-            // ("dir/./file.fits", "dir/file.fits", 0),
-            // ("dir/../dir2/file.fits", "dir2/file.fits", 0),
-            // ("dir/dir2/../../file.fits", "file.fits", 0),
-            // ("dir/dir2/../../../file.fits", "../file.fits", 0),
-            // ("/dir/dir2/../../../file.fits", "/file.fits", 0),
-            // ("dir/dir2/../../dir3/./file.fits", "dir3/file.fits", 0),
-            // ("dir/dir2/../../dir3/../file.fits", "file.fits", 0),
-            // ("dir/dir2/../../dir3/.././file.fits", "file.fits", 0),
-            // ("/dir/dir2/../../dir3/./file.fits", "/dir3/file.fits", 0),
-            // ("/dir/dir2/../../dir3/../file.fits", "/file.fits", 0),
-            // ("/dir/dir2/../../dir3/.././file.fits", "/file.fits", 0),
+            ("dir/../file?.fits", "file?.fits", 0),
+            ("/dir/./file.fits", "/dir/file.fits", 0),
+            ("/dir/././file.fits", "/dir/file.fits", 0),
+            ("/dir/../dir2/../file.fits", "/file.fits", 0),
+            ("/dir/dir2/../../file.fits", "/file.fits", 0),
+            ("dir/./file.fits", "dir/file.fits", 0),
+            ("dir/../dir2/file.fits", "dir2/file.fits", 0),
+            ("dir/dir2/../../file.fits", "file.fits", 0),
+            ("dir/dir2/../../../file.fits", "../file.fits", 0),
+            ("/dir/dir2/../../../file.fits", "/file.fits", 0),
+            ("dir/dir2/../../dir3/./file.fits", "dir3/file.fits", 0),
+            ("dir/dir2/../../dir3/../file.fits", "file.fits", 0),
+            ("dir/dir2/../../dir3/.././file.fits", "file.fits", 0),
+            ("/dir/dir2/../../dir3/./file.fits", "/dir3/file.fits", 0),
+            ("/dir/dir2/../../dir3/../file.fits", "/file.fits", 0),
+            ("/dir/dir2/../../dir3/.././file.fits", "/file.fits", 0),
         ];
 
         for (input, expected, expected_status) in test_cases {
