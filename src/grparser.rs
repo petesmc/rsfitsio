@@ -1,26 +1,23 @@
 use core::slice;
 use std::env;
-use std::ffi::{CStr, c_void};
+use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::ptr;
 
-use crate::aliases::c_api::*;
-use crate::c_types::{c_char, c_int, c_long};
+use crate::aliases::rust_api::*;
+use crate::c_types::{c_char, c_int, c_long, c_uint, size_t};
 use crate::fitscore::{fits_strcasecmp, fits_strncasecmp};
 use crate::fitsio::{
-    ASCII_TBL, BINARY_TBL, FLEN_KEYWORD, GT_ID_ALL_URI, NGP_BAD_ARG, NGP_EMPTY_CURLINE, NGP_EOF,
-    NGP_ERR_FOPEN, NGP_INC_NESTING, NGP_NO_MEMORY, NGP_NUL_PTR, NGP_OK, NGP_READ_ERR,
-    NGP_TOKEN_NOT_EXPECT, NGP_UNREAD_QUEUE_FULL, NULL_MSG, OPT_RM_GPT, TDBLCOMPLEX, TDOUBLE,
-    TLOGICAL, TLONG, TSTRING, VALUE_UNDEFINED, fitsfile,
+    ASCII_TBL, BINARY_TBL, FLEN_KEYWORD, FLEN_VALUE, GT_ID_ALL_URI, NGP_BAD_ARG, NGP_EMPTY_CURLINE,
+    NGP_EOF, NGP_ERR_FOPEN, NGP_INC_NESTING, NGP_NO_MEMORY, NGP_NUL_PTR, NGP_OK, NGP_READ_ERR,
+    NGP_TOKEN_NOT_EXPECT, NGP_UNREAD_QUEUE_FULL, NULL_MSG, OPT_RM_GPT, VALUE_UNDEFINED, fitsfile,
 };
 use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
-use crate::wrappers::{strcmp, strcmp_safe, strcpy, strlen, strlen_safe, strncmp_safe, strncpy};
-use crate::{FFLOCK, bb, cs, int_snprintf};
+use crate::wrappers::{strcmp_safe, strcpy, strlen, strlen_safe, strncmp_safe, strncpy};
+use crate::{FFLOCK, KeywordDatatype, KeywordDatatypeMut, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
-
-use libc::{c_uint, free, malloc, memcmp, memcpy, realloc, size_t};
 
 const NGP_ALLOCCHUNK: c_int = 1000;
 const NGP_MAX_INCLUDE: usize = 10; /* include file nesting limit */
@@ -68,16 +65,6 @@ const NGP_XTENSION_FIRST: c_int = 2; /* this is first extension in template */
 const NGP_LINE_REREAD: c_int = 1; /* reread line */
 
 const NGP_BITPIX_INVALID: c_int = -12345; /* default BITPIX (to catch errors) */
-
-unsafe fn ngp_alloc(x: size_t) -> *mut c_void {
-    unsafe { malloc(x) }
-}
-unsafe fn ngp_free(x: *mut c_void) {
-    unsafe { free(x) }
-}
-unsafe fn ngp_realloc(x: *mut c_void, y: size_t) -> *mut c_void {
-    unsafe { realloc(x, y) }
-}
 
 /// Safe allocation function that returns a boxed slice
 /// Uses try_reserve_exact for proper error handling
@@ -442,10 +429,7 @@ fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
 }
 
 /// read one line
-fn ngp_read_line_buffered(
-    parser_state: &mut GRParseState,
-    reader: &mut BufReader<File>,
-) -> c_int {
+fn ngp_read_line_buffered(parser_state: &mut GRParseState, reader: &mut BufReader<File>) -> c_int {
     ngp_free_line(parser_state); /* first free current line (if any) */
 
     if !parser_state.NGP_PREVLINE.line.is_empty()
@@ -801,49 +785,50 @@ fn ngp_extract_tokens(cl: &mut NgpRawLine) -> c_int {
 /// 2. Directories in CFITSIO_INCLUDE_FILES environment variable
 /// 3. Relative to master_dir
 fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathBuf> {
+    // Convert C string to Rust string
+    let fname_str = match CStr::from_bytes_until_nul(cast_slice(fname))
+        .unwrap()
+        .to_str()
+    {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
 
-        // Convert C string to Rust string
-        let fname_str = match CStr::from_bytes_until_nul(cast_slice(fname)).unwrap().to_str() {
-            Ok(s) => s,
-            Err(_) => return None,
-        };
-
-        // 1. Try direct path first
-        let direct_path = Path::new(fname_str);
-        if direct_path.exists() {
-            return Some(direct_path.to_path_buf());
-        }
-
-        // 2. Try directories from CFITSIO_INCLUDE_FILES environment variable
-        if let Ok(env_paths) = env::var("CFITSIO_INCLUDE_FILES") {
-            // Split on ':' for Unix or ';' for Windows
-            let separator = if cfg!(target_os = "windows") {
-                ';'
-            } else {
-                ':'
-            };
-
-            for dir_str in env_paths.split(separator) {
-                let dir_path = Path::new(dir_str);
-                let full_path = dir_path.join(fname_str);
-                if full_path.exists() {
-                    return Some(full_path);
-                }
-            }
-        }
-
-        // 3. Try relative to master directory
-        // Only if fname is not an absolute path and master_dir is set
-        if !direct_path.is_absolute() && master_dir != Path::new("") {
-            let master_path = master_dir.join(fname_str);
-            if master_path.exists() {
-                return Some(master_path);
-            }
-        }
-
-        None
+    // 1. Try direct path first
+    let direct_path = Path::new(fname_str);
+    if direct_path.exists() {
+        return Some(direct_path.to_path_buf());
     }
 
+    // 2. Try directories from CFITSIO_INCLUDE_FILES environment variable
+    if let Ok(env_paths) = env::var("CFITSIO_INCLUDE_FILES") {
+        // Split on ':' for Unix or ';' for Windows
+        let separator = if cfg!(target_os = "windows") {
+            ';'
+        } else {
+            ':'
+        };
+
+        for dir_str in env_paths.split(separator) {
+            let dir_path = Path::new(dir_str);
+            let full_path = dir_path.join(fname_str);
+            if full_path.exists() {
+                return Some(full_path);
+            }
+        }
+    }
+
+    // 3. Try relative to master directory
+    // Only if fname is not an absolute path and master_dir is set
+    if !direct_path.is_absolute() && master_dir != Path::new("") {
+        let master_path = master_dir.join(fname_str);
+        if master_path.exists() {
+            return Some(master_path);
+        }
+    }
+
+    None
+}
 
 /// try to open include file.
 /// If open fails and fname
@@ -854,31 +839,30 @@ fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathBuf> {
 /// level include file
 fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) -> c_int /* try to open include file */
 {
-        // Check nesting limit
-        if parser_state.NGP_INCLEVEL >= NGP_MAX_INCLUDE as c_int {
-            return NGP_INC_NESTING;
-        }
-
-        // Use the helper to find the file
-        let file_path = match find_include_file(fname, &parser_state.NGP_MASTER_DIR) {
-            Some(path) => path,
-            None => return NGP_ERR_FOPEN,
-        };
-
-        // Try to open the file
-        let file = match File::open(&file_path) {
-            Ok(f) => f,
-            Err(_) => return NGP_ERR_FOPEN,
-        };
-
-        // Create buffered reader and store it
-        let reader = BufReader::new(file);
-        parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize] = Some(reader);
-
-        parser_state.NGP_INCLEVEL += 1;
-        NGP_OK
+    // Check nesting limit
+    if parser_state.NGP_INCLEVEL >= NGP_MAX_INCLUDE as c_int {
+        return NGP_INC_NESTING;
     }
 
+    // Use the helper to find the file
+    let file_path = match find_include_file(fname, &parser_state.NGP_MASTER_DIR) {
+        Some(path) => path,
+        None => return NGP_ERR_FOPEN,
+    };
+
+    // Try to open the file
+    let file = match File::open(&file_path) {
+        Ok(f) => f,
+        Err(_) => return NGP_ERR_FOPEN,
+    };
+
+    // Create buffered reader and store it
+    let reader = BufReader::new(file);
+    parser_state.NGP_FP[parser_state.NGP_INCLEVEL as usize] = Some(reader);
+
+    parser_state.NGP_INCLEVEL += 1;
+    NGP_OK
+}
 
 /// read line in the intelligent way.
 /// All \INCLUDE directives are handled,
@@ -886,7 +870,7 @@ fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) -> c_int 
 /// decomposed line (name, type, value in proper type and comment) are
 /// stored in NGP_LINKEY structure. ignore_blank_lines parameter is zero
 /// when parser is inside GROUP or HDU definition. Nonzero otherwise.
-unsafe fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> c_int {
+fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> c_int {
     unsafe {
         let mut r: c_int;
         let mut nc: c_int = 0;
@@ -1268,38 +1252,41 @@ fn ngp_keyword_is_write(ngp_tok: &NgpToken) -> c_int {
 }
 
 /// write (almost) all keywords from given HDU to disk
-unsafe fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_int) -> c_int {
-    unsafe {
-        let mut i: c_int;
-        let mut r: c_int;
-        let mut ib: c_int;
-        let mut buf: [c_char; 200] = [0; 200];
-        let mut l: c_long;
+fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_int) -> c_int {
+    let mut ib: c_int;
+    let mut buf: [c_char; 200] = [0; 200];
+    let mut l: c_long;
 
-        r = NGP_OK;
+    let mut r = NGP_OK;
 
-        for i in 0..(*ngph).tokcnt {
-            let token = &(&*ngph).tok[i as usize];
-            r = ngp_keyword_is_write(token);
-            if (NGP_REALLY_ALL & mode) != 0 || (NGP_OK == r) {
+    for i in 0..ngph.tokcnt {
+        let token = &ngph.tok[i as usize];
+        r = ngp_keyword_is_write(token);
+        if (NGP_REALLY_ALL & mode) != 0 || (NGP_OK == r) {
+            // SAFETY: the `token.value` union is read according to `token.type_`, and the
+            // `fits_*` / `strcmp` calls receive valid pointers into the token's owned
+            // name/comment/value buffers.
+            unsafe {
                 match token.type_ {
                     NGP_TTYPE_BOOL => {
                         ib = c_int::from(token.value.b);
                         fits_write_key(
                             ffp,
-                            TLOGICAL,
-                            token.name.as_ptr(),
-                            (&ib as *const c_int).cast::<c_void>(),
-                            token.comment.as_ptr(),
+                            KeywordDatatype::TLOGICAL(&ib),
+                            &token.name,
+                            Some(&token.comment),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_STRING => {
+                        // value.s is a heap C string; build a slice including the NUL terminator.
+                        let val_slice =
+                            slice::from_raw_parts(token.value.s, strlen(token.value.s) + 1);
                         fits_write_key_longstr(
                             ffp,
-                            token.name.as_ptr(),
-                            token.value.s,
-                            token.comment.as_ptr(),
+                            &token.name,
+                            val_slice,
+                            Some(&token.comment),
                             &mut r,
                         );
                     }
@@ -1307,49 +1294,43 @@ unsafe fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_i
                         l = c_long::from(token.value.i); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
                         fits_write_key(
                             ffp,
-                            TLONG,
-                            token.name.as_ptr(),
-                            (&l as *const c_long).cast::<c_void>(),
-                            token.comment.as_ptr(),
+                            KeywordDatatype::TLONG(&l),
+                            &token.name,
+                            Some(&token.comment),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_REAL => {
+                        let dval = token.value.d;
                         fits_write_key(
                             ffp,
-                            TDOUBLE,
-                            token.name.as_ptr(),
-                            (&token.value.d as *const f64).cast::<c_void>(),
-                            token.comment.as_ptr(),
+                            KeywordDatatype::TDOUBLE(&dval),
+                            &token.name,
+                            Some(&token.comment),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_COMPLEX => {
+                        let cval = [token.value.c.re, token.value.c.im];
                         fits_write_key(
                             ffp,
-                            TDBLCOMPLEX,
-                            token.name.as_ptr(),
-                            (&token.value.c as *const NgpComplex).cast::<c_void>(),
-                            token.comment.as_ptr(),
+                            KeywordDatatype::TDBLCOMPLEX(&cval),
+                            &token.name,
+                            Some(&token.comment),
                             &mut r,
                         );
                     }
                     NGP_TTYPE_NULL => {
-                        fits_write_key_null(
-                            ffp,
-                            token.name.as_ptr(),
-                            token.comment.as_ptr(),
-                            &mut r,
-                        );
+                        fits_write_key_null(ffp, &token.name, Some(&token.comment), &mut r);
                     }
                     NGP_TTYPE_RAW => {
                         let mut skip = false;
-                        if 0 == strcmp(c"HISTORY".as_ptr(), token.name.as_ptr()) {
-                            fits_write_history(ffp, token.comment.as_ptr(), &mut r);
+                        if 0 == strcmp_safe(cs!(c"HISTORY"), &token.name) {
+                            fits_write_history(ffp, &token.comment, &mut r);
                             skip = true;
                         }
-                        if !skip && (0 == strcmp(c"COMMENT".as_ptr(), token.name.as_ptr())) {
-                            fits_write_comment(ffp, token.comment.as_ptr(), &mut r);
+                        if !skip && (0 == strcmp_safe(cs!(c"COMMENT"), &token.name)) {
+                            fits_write_comment(ffp, &token.comment, &mut r);
                             skip = true;
                         }
                         if !skip {
@@ -1366,33 +1347,33 @@ unsafe fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_i
                                     .to_str()
                                     .unwrap(),
                             );
-                            fits_write_record(ffp, buf.as_mut_ptr(), &mut r);
+                            fits_write_record(ffp, &buf, &mut r);
                         }
                     }
                     _ => {}
                 }
-            } else if NGP_BAD_ARG == r
-            /* enhancement 10 dec 2003, James Peachey: template comments replace defaults */
-            {
-                r = NGP_OK; /* update comments of special keywords like TFORM */
-                if 0 != token.comment[0]
-                /* do not update with a blank comment */
-                {
-                    fits_modify_comment(ffp, token.name.as_ptr(), token.comment.as_ptr(), &mut r);
-                }
-            } else
-            /* other problem, typically a blank token */
-            {
-                r = NGP_OK; /* skip this token, but continue */
             }
-            if r != 0 {
-                return r;
+        } else if NGP_BAD_ARG == r
+        /* enhancement 10 dec 2003, James Peachey: template comments replace defaults */
+        {
+            r = NGP_OK; /* update comments of special keywords like TFORM */
+            if 0 != token.comment[0]
+            /* do not update with a blank comment */
+            {
+                fits_modify_comment(ffp, &token.name, Some(&token.comment), &mut r);
             }
+        } else
+        /* other problem, typically a blank token */
+        {
+            r = NGP_OK; /* skip this token, but continue */
         }
-
-        fits_set_hdustruc(ffp, &mut r); /* resync cfitsio */
-        r
+        if r != 0 {
+            return r;
+        }
     }
+
+    fits_set_hdustruc(ffp, &mut r); /* resync cfitsio */
+    r
 }
 
 /// init HDU structure
@@ -1510,7 +1491,10 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
                 break;
             }
             if (NGP_OK == r) && !my_tform.is_null() {
-                fits_insert_col(ff, j + 1, my_ttype, my_tform, &mut r);
+                // my_ttype / my_tform are heap C strings; build NUL-terminated slices.
+                let ttype_s = slice::from_raw_parts(my_ttype, strlen(my_ttype) + 1);
+                let tform_s = slice::from_raw_parts(my_tform, strlen(my_tform) + 1);
+                fits_insert_col(ff, j + 1, ttype_s, tform_s, &mut r);
             }
 
             if (NGP_OK != r) || exitflg != 0 {
@@ -1522,7 +1506,7 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
 }
 
 /// read complete HDU
-unsafe fn ngp_read_xtension(
+fn ngp_read_xtension(
     parser_state: &mut GRParseState,
     ff: &mut fitsfile,
     parent_hn: c_int,
@@ -1604,22 +1588,14 @@ unsafe fn ngp_read_xtension(
                         && (l <= 6)
                         && bb(b'#') == parser_state.NGP_LINKEY.name[(l - 1) as usize]
                     {
+                        let n = (l - 1) as usize;
                         if 0 == incrementor_name[0] {
-                            memcpy(
-                                incrementor_name.as_mut_ptr().cast::<c_void>(),
-                                std::ptr::addr_of!(parser_state.NGP_LINKEY.name).cast::<c_void>(),
-                                (l - 1) as size_t,
-                            );
-                            incrementor_name[(l - 1) as usize] = 0;
+                            incrementor_name[..n]
+                                .copy_from_slice(&parser_state.NGP_LINKEY.name[..n]);
+                            incrementor_name[n] = 0;
                         }
                         if ((l - 1) == strlen(incrementor_name.as_ptr()) as c_int)
-                            && (0
-                                == memcmp(
-                                    incrementor_name.as_ptr().cast::<c_void>(),
-                                    std::ptr::addr_of!(parser_state.NGP_LINKEY.name)
-                                        .cast::<c_void>(),
-                                    (l - 1) as size_t,
-                                ))
+                            && incrementor_name[..n] == parser_state.NGP_LINKEY.name[..n]
                         {
                             incrementor_index += 1;
                         }
@@ -1652,7 +1628,7 @@ unsafe fn ngp_read_xtension(
             ngph_dim = 0;
             for i in 0..ngph.tokcnt as usize {
                 let token = &ngph.tok[i];
-                if strcmp(c"XTENSION".as_ptr(), token.name.as_ptr()) == 0 {
+                if strcmp_safe(cs!(c"XTENSION"), &token.name) == 0 {
                     if NGP_TTYPE_STRING == token.type_ {
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"BINTABLE".to_bytes_with_nul()),
@@ -1679,19 +1655,19 @@ unsafe fn ngp_read_xtension(
                             ngph_node_type = NGP_NODE_IMAGE;
                         }
                     }
-                } else if strcmp(c"SIMPLE".as_ptr(), token.name.as_ptr()) == 0 {
+                } else if strcmp_safe(cs!(c"SIMPLE"), &token.name) == 0 {
                     if NGP_TTYPE_BOOL == token.type_ && token.value.b != 0 {
                         ngph_node_type = NGP_NODE_IMAGE;
                     }
-                } else if strcmp(c"BITPIX".as_ptr(), token.name.as_ptr()) == 0 {
+                } else if strcmp_safe(cs!(c"BITPIX"), &token.name) == 0 {
                     if NGP_TTYPE_INT == token.type_ {
                         ngph_bitpix = token.value.i;
                     }
-                } else if strcmp(c"NAXIS".as_ptr(), token.name.as_ptr()) == 0 {
+                } else if strcmp_safe(cs!(c"NAXIS"), &token.name) == 0 {
                     if NGP_TTYPE_INT == token.type_ {
                         ngph_dim = token.value.i;
                     }
-                } else if strcmp(c"EXTNAME".as_ptr(), token.name.as_ptr()) == 0
+                } else if strcmp_safe(cs!(c"EXTNAME"), &token.name) == 0
                 /* assign EXTNAME, I hope struct does not move */
                 {
                     if NGP_TTYPE_STRING == token.type_ {
@@ -1720,10 +1696,10 @@ unsafe fn ngp_read_xtension(
                         /* if caller signals that this is 1st HDU in file */
                         /* and it is IMAGE defined with XTENSION, then we */
                         /* need create dummy Primary HDU */
-                        fits_create_img(ff, 16, 0, ptr::null_mut(), &mut r);
+                        fits_create_img(ff, 16, 0, &[], &mut r);
                     }
                     /* create image */
-                    fits_create_img(ff, ngph_bitpix, ngph_dim, ngph_size.as_ptr(), &mut r);
+                    fits_create_img(ff, ngph_bitpix, ngph_dim, &ngph_size, &mut r);
 
                     /* update keywords */
                     if NGP_OK == r {
@@ -1741,10 +1717,10 @@ unsafe fn ngp_read_xtension(
                         },
                         0,
                         0,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        ptr::null_mut(),
+                        &[],
+                        &[],
+                        None,
+                        None,
                         &mut r,
                     );
 
@@ -1786,19 +1762,18 @@ unsafe fn ngp_read_xtension(
             lv = c_long::from(my_version); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
             fits_write_key(
                 ff,
-                TLONG,
-                c"EXTVER".as_ptr(),
-                (&lv as *const c_long).cast::<c_void>(),
-                c"auto assigned by template parser".as_ptr(),
+                KeywordDatatype::TLONG(&lv),
+                cs!(c"EXTVER"),
+                Some(cs!(c"auto assigned by template parser")),
                 &mut r,
             );
         }
 
         if NGP_OK == r && parent_hn > 0 {
             fits_get_hdu_num(ff, &mut my_hn);
-            fits_movabs_hdu(ff, parent_hn, &mut tmp0, &mut r); /* link us to parent */
-            fits_add_group_member(ff, ptr::null_mut(), my_hn, &mut r);
-            fits_movabs_hdu(ff, my_hn, &mut tmp0, &mut r);
+            fits_movabs_hdu(ff, parent_hn, Some(&mut tmp0), &mut r); /* link us to parent */
+            fits_add_group_member(ff, None, my_hn, &mut r);
+            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), &mut r);
             if NGP_OK != r {
                 return r;
             }
@@ -1808,7 +1783,7 @@ unsafe fn ngp_read_xtension(
         /* in case of error - delete hdu */
         {
             tmp0 = 0;
-            fits_delete_hdu(ff, ptr::null_mut(), &mut tmp0);
+            fits_delete_hdu(ff, None, &mut tmp0);
         }
 
         ngp_hdu_clear(&mut ngph);
@@ -1817,7 +1792,7 @@ unsafe fn ngp_read_xtension(
 }
 
 /// read complete GROUP
-unsafe fn ngp_read_group(
+fn ngp_read_group(
     parser_state: &mut GRParseState,
     ff: &mut fitsfile,
     grpname: &[c_char],
@@ -1847,15 +1822,15 @@ unsafe fn ngp_read_group(
         }
 
         r = NGP_OK;
-        r = fits_create_group(ff, grpname.as_ptr(), GT_ID_ALL_URI as c_int, &mut r);
+        r = fits_create_group(ff, grpname, GT_ID_ALL_URI as c_int, &mut r);
         if NGP_OK != (r) {
             return r;
         }
         fits_get_hdu_num(ff, &mut my_hn);
         if parent_hn > 0 {
-            fits_movabs_hdu(ff, parent_hn, &mut tmp0, &mut r); /* link us to parent */
-            fits_add_group_member(ff, ptr::null_mut(), my_hn, &mut r);
-            fits_movabs_hdu(ff, my_hn, &mut tmp0, &mut r);
+            fits_movabs_hdu(ff, parent_hn, Some(&mut tmp0), &mut r); /* link us to parent */
+            fits_add_group_member(ff, None, my_hn, &mut r);
+            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), &mut r);
             if NGP_OK != r {
                 return r;
             }
@@ -1909,22 +1884,14 @@ unsafe fn ngp_read_group(
                         && (l <= 6)
                         && bb(b'#') == parser_state.NGP_LINKEY.name[(l - 1) as usize]
                     {
+                        let n = (l - 1) as usize;
                         if 0 == incrementor_name[0] {
-                            memcpy(
-                                incrementor_name.as_mut_ptr().cast::<c_void>(),
-                                std::ptr::addr_of!(parser_state.NGP_LINKEY.name).cast::<c_void>(),
-                                (l - 1) as size_t,
-                            );
-                            incrementor_name[(l - 1) as usize] = 0;
+                            incrementor_name[..n]
+                                .copy_from_slice(&parser_state.NGP_LINKEY.name[..n]);
+                            incrementor_name[n] = 0;
                         }
                         if ((l - 1) == strlen(incrementor_name.as_ptr()) as c_int)
-                            && (0
-                                == memcmp(
-                                    incrementor_name.as_ptr().cast::<c_void>(),
-                                    std::ptr::addr_of!(parser_state.NGP_LINKEY.name)
-                                        .cast::<c_void>(),
-                                    (l - 1) as size_t,
-                                ))
+                            && incrementor_name[..n] == parser_state.NGP_LINKEY.name[..n]
                         {
                             incrementor_index += 1;
                         }
@@ -1944,7 +1911,7 @@ unsafe fn ngp_read_group(
             }
         }
 
-        fits_movabs_hdu(ff, my_hn, &mut tmp0, &mut r); /* back to our HDU */
+        fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), &mut r); /* back to our HDU */
 
         if NGP_OK == r {
             /* create additional columns, if requested */
@@ -1990,7 +1957,7 @@ pub unsafe extern "C" fn fits_execute_template(
         let mut more_keys: c_int = 0;
         let mut used_ver: c_int = 0;
         let mut grnm: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
-        let mut used_name: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
+        let mut used_name: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
         let mut luv: c_long = 0;
 
         let mut parser_state = GRParseState::default();
@@ -2032,9 +1999,9 @@ pub unsafe extern "C" fn fits_execute_template(
         if my_hn <= 1
         /* check whether we really need to create PHDU */
         {
-            fits_movabs_hdu(ff, 1, &mut tmp0, status);
-            fits_get_hdrspace(ff, &mut keys_exist, &mut more_keys, status);
-            fits_movabs_hdu(ff, my_hn, &mut tmp0, status);
+            fits_movabs_hdu(ff, 1, Some(&mut tmp0), status);
+            fits_get_hdrspace(ff, Some(&mut keys_exist), Some(&mut more_keys), status);
+            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
             if NGP_OK != *status
             /* error here means file is corrupted */
             {
@@ -2049,17 +2016,16 @@ pub unsafe extern "C" fn fits_execute_template(
             i = 2;
             while i <= my_hn {
                 *status = NGP_OK;
-                fits_movabs_hdu(ff, 1, &mut tmp0, status);
+                fits_movabs_hdu(ff, 1, Some(&mut tmp0), status);
                 if NGP_OK != *status {
                     break;
                 }
 
                 fits_read_key(
                     ff,
-                    TSTRING,
-                    c"EXTNAME".as_ptr(),
-                    used_name.as_mut_ptr().cast::<c_void>(),
-                    ptr::null_mut(),
+                    KeywordDatatypeMut::TSTRING(&mut used_name),
+                    cs!(c"EXTNAME"),
+                    None,
                     status,
                 );
                 if NGP_OK != *status {
@@ -2068,10 +2034,9 @@ pub unsafe extern "C" fn fits_execute_template(
 
                 fits_read_key(
                     ff,
-                    TLONG,
-                    c"EXTVER".as_ptr(),
-                    (&mut luv as *mut c_long).cast::<c_void>(),
-                    ptr::null_mut(),
+                    KeywordDatatypeMut::TLONG(&mut luv),
+                    cs!(c"EXTVER"),
+                    None,
                     status,
                 );
                 used_ver = luv as c_int; /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
@@ -2086,7 +2051,7 @@ pub unsafe extern "C" fn fits_execute_template(
                 i += 1;
             }
 
-            fits_movabs_hdu(ff, my_hn, &mut tmp0, status);
+            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
         }
 
         if NGP_OK != *status {
@@ -2290,116 +2255,108 @@ mod tests {
 
     #[test]
     fn test_ngp_get_extver_new_name() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
+        let mut parser_state = GRParseState::default();
 
-            // Clean slate
-            ngp_delete_extver_tab(&mut parser_state);
+        // Clean slate
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let extname = to_cstring("TEST_EXT");
-            let mut version: c_int = 0;
+        let extname = to_cstring("TEST_EXT");
+        let mut version: c_int = 0;
 
-            let status = ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version,
-            );
+        let status = ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version,
+        );
 
-            assert_eq!(status, NGP_OK);
-            assert_eq!(version, 1);
+        assert_eq!(status, NGP_OK);
+        assert_eq!(version, 1);
 
-            // Cleanup
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        // Cleanup
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
     fn test_ngp_get_extver_increment() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
+        let mut parser_state = GRParseState::default();
 
-            let extname = to_cstring("TEST_EXT");
-            let mut version1: c_int = 0;
-            let mut version2: c_int = 0;
-            let mut version3: c_int = 0;
+        let extname = to_cstring("TEST_EXT");
+        let mut version1: c_int = 0;
+        let mut version2: c_int = 0;
+        let mut version3: c_int = 0;
 
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version1,
-            );
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version2,
-            );
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version3,
-            );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version1,
+        );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version2,
+        );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version3,
+        );
 
-            assert_eq!(version1, 1);
-            assert_eq!(version2, 2);
-            assert_eq!(version3, 3);
+        assert_eq!(version1, 1);
+        assert_eq!(version2, 2);
+        assert_eq!(version3, 3);
 
-            // Cleanup
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        // Cleanup
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
     fn test_ngp_get_extver_multiple_names() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
+        let mut parser_state = GRParseState::default();
 
-            ngp_delete_extver_tab(&mut parser_state);
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let ext1 = to_cstring("EXT1");
-            let ext2 = to_cstring("EXT2");
-            let mut ver_ext1: c_int = 0;
-            let mut ver_ext2: c_int = 0;
-            let mut ver_ext1_again: c_int = 0;
+        let ext1 = to_cstring("EXT1");
+        let ext2 = to_cstring("EXT2");
+        let mut ver_ext1: c_int = 0;
+        let mut ver_ext2: c_int = 0;
+        let mut ver_ext1_again: c_int = 0;
 
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(ext1.as_bytes_with_nul()),
-                &mut ver_ext1,
-            );
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(ext2.as_bytes_with_nul()),
-                &mut ver_ext2,
-            );
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(ext1.as_bytes_with_nul()),
-                &mut ver_ext1_again,
-            );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(ext1.as_bytes_with_nul()),
+            &mut ver_ext1,
+        );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(ext2.as_bytes_with_nul()),
+            &mut ver_ext2,
+        );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(ext1.as_bytes_with_nul()),
+            &mut ver_ext1_again,
+        );
 
-            assert_eq!(ver_ext1, 1);
-            assert_eq!(ver_ext2, 1);
-            assert_eq!(ver_ext1_again, 2);
+        assert_eq!(ver_ext1, 1);
+        assert_eq!(ver_ext2, 1);
+        assert_eq!(ver_ext1_again, 2);
 
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
     fn test_ngp_get_extver_null_pointer() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
-            ngp_delete_extver_tab(&mut parser_state);
+        let mut parser_state = GRParseState::default();
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let extname = to_cstring("TEST");
-            let mut version: c_int = 0;
+        let extname = to_cstring("TEST");
+        let mut version: c_int = 0;
 
-            // Null extname
-            let status = ngp_get_extver(&mut parser_state, &[], &mut version);
-            assert_eq!(status, NGP_BAD_ARG, "Should fail with null extname");
+        // Null extname
+        let status = ngp_get_extver(&mut parser_state, &[], &mut version);
+        assert_eq!(status, NGP_BAD_ARG, "Should fail with null extname");
 
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
@@ -2428,82 +2385,78 @@ mod tests {
 
     #[test]
     fn test_ngp_set_extver_update_higher() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
-            ngp_delete_extver_tab(&mut parser_state);
+        let mut parser_state = GRParseState::default();
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let extname = to_cstring("TEST_EXT");
+        let extname = to_cstring("TEST_EXT");
 
-            // Set to 3 first
-            let status = ngp_set_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                3,
-            );
-            assert_eq!(status, NGP_OK);
+        // Set to 3 first
+        let status = ngp_set_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            3,
+        );
+        assert_eq!(status, NGP_OK);
 
-            // Set to 5 - should update to higher value
-            let status = ngp_set_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                5,
-            );
-            assert_eq!(status, NGP_OK);
+        // Set to 5 - should update to higher value
+        let status = ngp_set_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            5,
+        );
+        assert_eq!(status, NGP_OK);
 
-            // Next get should return 6 (5 + 1)
-            let mut version: c_int = 0;
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version,
-            );
-            assert_eq!(
-                version, 6,
-                "Should update to higher version and return 6 on next get"
-            );
+        // Next get should return 6 (5 + 1)
+        let mut version: c_int = 0;
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version,
+        );
+        assert_eq!(
+            version, 6,
+            "Should update to higher version and return 6 on next get"
+        );
 
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
     fn test_ngp_set_extver_keep_higher() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
-            ngp_delete_extver_tab(&mut parser_state);
+        let mut parser_state = GRParseState::default();
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let extname = to_cstring("TEST_EXT");
+        let extname = to_cstring("TEST_EXT");
 
-            // Set to 5 first
-            let status = ngp_set_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                5,
-            );
-            assert_eq!(status, NGP_OK);
+        // Set to 5 first
+        let status = ngp_set_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            5,
+        );
+        assert_eq!(status, NGP_OK);
 
-            // Set to 3 - should keep 5 (the higher value)
-            let status = ngp_set_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                3,
-            );
-            assert_eq!(status, NGP_OK);
+        // Set to 3 - should keep 5 (the higher value)
+        let status = ngp_set_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            3,
+        );
+        assert_eq!(status, NGP_OK);
 
-            // Next get should return 6 (5 + 1, not 4)
-            let mut version: c_int = 0;
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(extname.as_bytes_with_nul()),
-                &mut version,
-            );
-            assert_eq!(
-                version, 6,
-                "Should keep higher version 5 and return 6 on next get"
-            );
+        // Next get should return 6 (5 + 1, not 4)
+        let mut version: c_int = 0;
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(extname.as_bytes_with_nul()),
+            &mut version,
+        );
+        assert_eq!(
+            version, 6,
+            "Should keep higher version 5 and return 6 on next get"
+        );
 
-            ngp_delete_extver_tab(&mut parser_state);
-        }
+        ngp_delete_extver_tab(&mut parser_state);
     }
 
     #[test]
@@ -2518,29 +2471,27 @@ mod tests {
 
     #[test]
     fn test_ngp_delete_extver_tab_populated() {
-        unsafe {
-            let mut parser_state = GRParseState::default();
-            ngp_delete_extver_tab(&mut parser_state);
+        let mut parser_state = GRParseState::default();
+        ngp_delete_extver_tab(&mut parser_state);
 
-            let ext1 = to_cstring("EXT1");
-            let ext2 = to_cstring("EXT2");
-            let mut ver1: c_int = 0;
-            let mut ver2: c_int = 0;
+        let ext1 = to_cstring("EXT1");
+        let ext2 = to_cstring("EXT2");
+        let mut ver1: c_int = 0;
+        let mut ver2: c_int = 0;
 
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(ext1.as_bytes_with_nul()),
-                &mut ver1,
-            );
-            ngp_get_extver(
-                &mut parser_state,
-                cast_slice(ext2.as_bytes_with_nul()),
-                &mut ver2,
-            );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(ext1.as_bytes_with_nul()),
+            &mut ver1,
+        );
+        ngp_get_extver(
+            &mut parser_state,
+            cast_slice(ext2.as_bytes_with_nul()),
+            &mut ver2,
+        );
 
-            let status = ngp_delete_extver_tab(&mut parser_state);
-            assert_eq!(status, NGP_OK);
-        }
+        let status = ngp_delete_extver_tab(&mut parser_state);
+        assert_eq!(status, NGP_OK);
     }
 
     //
@@ -2662,17 +2613,15 @@ mod tests {
 
     #[test]
     fn test_ngp_hdu_clear_empty() {
-        unsafe {
-            let mut hdu = NgpHdu {
-                tokcnt: 0,
-                tok: Vec::new(),
-            };
-            ngp_hdu_init(&mut hdu);
+        let mut hdu = NgpHdu {
+            tokcnt: 0,
+            tok: Vec::new(),
+        };
+        ngp_hdu_init(&mut hdu);
 
-            // Clear an already empty HDU
-            let status = ngp_hdu_clear(&mut hdu);
-            assert_eq!(status, NGP_OK);
-        }
+        // Clear an already empty HDU
+        let status = ngp_hdu_clear(&mut hdu);
+        assert_eq!(status, NGP_OK);
     }
 
     //
@@ -2797,15 +2746,16 @@ mod tests {
     // Token Extraction Tests
     //
 
-    // Helper to compare C strings
-    unsafe fn cstr_eq(ptr: *const c_char, expected: &str) -> bool {
-        unsafe {
-            if ptr.is_null() {
-                return false;
-            }
-            let c_str = CStr::from_ptr(ptr);
-            c_str.to_str().unwrap() == expected
-        }
+    // Returns the text up to (excluding) the first NUL in a `[c_char]` slice.
+    fn cstr_prefix(slice: &[c_char]) -> &str {
+        let bytes: &[u8] = cast_slice(slice);
+        let nul = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        std::str::from_utf8(&bytes[..nul]).unwrap()
+    }
+
+    // Helper to compare a NUL-terminated `[c_char]` slice against an expected &str
+    fn cstr_eq(slice: &[c_char], expected: &str) -> bool {
+        cstr_prefix(slice) == expected
     }
 
     // Helper to create NgpRawLine from string for testing
@@ -2827,148 +2777,122 @@ mod tests {
 
     #[test]
     fn test_ngp_extract_tokens_simple_keyword() {
-        unsafe {
-            let mut line = create_test_line("KEYWORD");
+        let mut line = create_test_line("KEYWORD");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(line.name_idx.is_some(), "Name should be set");
-            let name_slice = &line.line[line.name_idx.unwrap()..];
-            assert!(
-                cstr_eq(name_slice.as_ptr(), "KEYWORD"),
-                "Name should be KEYWORD"
-            );
-            assert!(line.value_idx.is_none(), "Value should be null");
-            assert!(line.comment_idx.is_none(), "Comment should be null");
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(line.name_idx.is_some(), "Name should be set");
+        let name_slice = &line.line[line.name_idx.unwrap()..];
+        assert!(cstr_eq(name_slice, "KEYWORD"), "Name should be KEYWORD");
+        assert!(line.value_idx.is_none(), "Value should be null");
+        assert!(line.comment_idx.is_none(), "Comment should be null");
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_int() {
-        unsafe {
-            let mut line = create_test_line("BITPIX = 16");
+        let mut line = create_test_line("BITPIX = 16");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "BITPIX"),
-                "Name should be BITPIX"
-            );
-            assert!(
-                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "16"),
-                "Value should be 16"
-            );
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "BITPIX"),
+            "Name should be BITPIX"
+        );
+        assert!(
+            cstr_eq(&line.line[line.value_idx.unwrap()..], "16"),
+            "Value should be 16"
+        );
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_string() {
-        unsafe {
-            let mut line = create_test_line("EXTNAME = 'test value'");
+        let mut line = create_test_line("EXTNAME = 'test value'");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "EXTNAME"),
-                "Name should be EXTNAME"
-            );
-            assert!(
-                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "test value"),
-                "Value should be 'test value'"
-            );
-            assert_eq!(line.type_, NGP_TTYPE_STRING, "Type should be STRING");
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "EXTNAME"),
+            "Name should be EXTNAME"
+        );
+        assert!(
+            cstr_eq(&line.line[line.value_idx.unwrap()..], "test value"),
+            "Value should be 'test value'"
+        );
+        assert_eq!(line.type_, NGP_TTYPE_STRING, "Type should be STRING");
     }
 
     #[test]
     fn test_ngp_extract_tokens_keyword_with_comment() {
-        unsafe {
-            let mut line = create_test_line("BITPIX = 16 / bits per pixel");
+        let mut line = create_test_line("BITPIX = 16 / bits per pixel");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "BITPIX"),
-                "Name should be BITPIX"
-            );
-            assert!(
-                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "16"),
-                "Value should be 16"
-            );
-            assert!(
-                cstr_eq(
-                    line.line[line.comment_idx.unwrap()..].as_ptr(),
-                    "bits per pixel"
-                ),
-                "Comment should be 'bits per pixel'"
-            );
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "BITPIX"),
+            "Name should be BITPIX"
+        );
+        assert!(
+            cstr_eq(&line.line[line.value_idx.unwrap()..], "16"),
+            "Value should be 16"
+        );
+        assert!(
+            cstr_eq(&line.line[line.comment_idx.unwrap()..], "bits per pixel"),
+            "Comment should be 'bits per pixel'"
+        );
     }
 
     #[test]
     fn test_ngp_extract_tokens_comment_only() {
-        unsafe {
-            let mut line = create_test_line("KEYWORD = / comment only");
+        let mut line = create_test_line("KEYWORD = / comment only");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "KEYWORD"),
-                "Name should be KEYWORD"
-            );
-            assert!(line.value_idx.is_none(), "Value should be null");
-            assert!(
-                cstr_eq(
-                    line.line[line.comment_idx.unwrap()..].as_ptr(),
-                    "comment only"
-                ),
-                "Comment should be 'comment only'"
-            );
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "KEYWORD"),
+            "Name should be KEYWORD"
+        );
+        assert!(line.value_idx.is_none(), "Value should be null");
+        assert!(
+            cstr_eq(&line.line[line.comment_idx.unwrap()..], "comment only"),
+            "Comment should be 'comment only'"
+        );
     }
 
     #[test]
     fn test_ngp_extract_tokens_history() {
-        unsafe {
-            let mut line = create_test_line("HISTORY This is a history record");
+        let mut line = create_test_line("HISTORY This is a history record");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "HISTORY"),
-                "Name should be HISTORY"
-            );
-            assert!(
-                cstr_eq(
-                    line.line[line.comment_idx.unwrap()..].as_ptr(),
-                    "This is a history record"
-                ),
-                "Comment should be 'This is a history record'"
-            );
-            assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "HISTORY"),
+            "Name should be HISTORY"
+        );
+        assert!(
+            cstr_eq(
+                &line.line[line.comment_idx.unwrap()..],
+                "This is a history record"
+            ),
+            "Comment should be 'This is a history record'"
+        );
+        assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
     }
 
     #[test]
     fn test_ngp_extract_tokens_comment_keyword() {
-        unsafe {
-            let mut line = create_test_line("COMMENT This is a comment");
+        let mut line = create_test_line("COMMENT This is a comment");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), "COMMENT"),
-                "Name should be COMMENT"
-            );
-            assert!(
-                cstr_eq(
-                    line.line[line.comment_idx.unwrap()..].as_ptr(),
-                    "This is a comment"
-                ),
-                "Comment should be 'This is a comment'"
-            );
-            assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], "COMMENT"),
+            "Name should be COMMENT"
+        );
+        assert!(
+            cstr_eq(&line.line[line.comment_idx.unwrap()..], "This is a comment"),
+            "Comment should be 'This is a comment'"
+        );
+        assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
     }
 
     #[test]
@@ -2989,38 +2913,34 @@ mod tests {
 
     #[test]
     fn test_ngp_extract_tokens_string_with_double_quotes() {
-        unsafe {
-            let mut line = create_test_line("TEST = 'it''s a test'");
+        let mut line = create_test_line("TEST = 'it''s a test'");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "it's a test"),
-                "Value should convert '' to '"
-            );
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.value_idx.unwrap()..], "it's a test"),
+            "Value should convert '' to '"
+        );
     }
 
     #[test]
     fn test_ngp_extract_tokens_blank_line_8spaces() {
-        unsafe {
-            let mut line = create_test_line("        This is a blank keyword");
+        let mut line = create_test_line("        This is a blank keyword");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
-            assert!(
-                cstr_eq(line.line[line.name_idx.unwrap()..].as_ptr(), ""),
-                "Name should be empty for 8-space line"
-            );
-            assert!(
-                cstr_eq(
-                    line.line[line.comment_idx.unwrap()..].as_ptr(),
-                    "This is a blank keyword"
-                ),
-                "Comment should be preserved"
-            );
-            assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
-        }
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
+        assert!(
+            cstr_eq(&line.line[line.name_idx.unwrap()..], ""),
+            "Name should be empty for 8-space line"
+        );
+        assert!(
+            cstr_eq(
+                &line.line[line.comment_idx.unwrap()..],
+                "This is a blank keyword"
+            ),
+            "Comment should be preserved"
+        );
+        assert_eq!(line.type_, NGP_TTYPE_RAW, "Type should be RAW");
     }
 
     #[test]
@@ -3034,26 +2954,22 @@ mod tests {
 
     #[test]
     fn test_ngp_extract_tokens_hierarch() {
-        unsafe {
-            let mut line = create_test_line("HIERARCH LongKeywordName = 'value'");
+        let mut line = create_test_line("HIERARCH LongKeywordName = 'value'");
 
-            let status = ngp_extract_tokens(&mut line);
-            assert_eq!(status, NGP_OK);
+        let status = ngp_extract_tokens(&mut line);
+        assert_eq!(status, NGP_OK);
 
-            // Name should contain HIERARCH
-            if let Some(name_idx) = line.name_idx {
-                let name_str = CStr::from_ptr(line.line[name_idx..].as_ptr())
-                    .to_str()
-                    .unwrap();
-                assert!(
-                    name_str.contains("HIERARCH"),
-                    "Name should contain HIERARCH"
-                );
-            }
+        // Name should contain HIERARCH
+        if let Some(name_idx) = line.name_idx {
+            let name_str = cstr_prefix(&line.line[name_idx..]);
             assert!(
-                cstr_eq(line.line[line.value_idx.unwrap()..].as_ptr(), "value"),
-                "Value should be 'value'"
+                name_str.contains("HIERARCH"),
+                "Name should contain HIERARCH"
             );
         }
+        assert!(
+            cstr_eq(&line.line[line.value_idx.unwrap()..], "value"),
+            "Value should be 'value'"
+        );
     }
 }
