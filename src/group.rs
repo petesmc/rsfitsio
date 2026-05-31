@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 
 use crate::aliases::rust_api::*;
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, cast_slice_mut};
 
 use std::ffi::CStr;
 
@@ -27,7 +27,7 @@ use crate::{
     bb, cs,
     fitscore::*,
     fitsio::*,
-    raw_to_slice,
+    int_snprintf, raw_to_slice,
     wrappers::{
         strcat_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe, strstr_safe,
     },
@@ -170,12 +170,186 @@ pub unsafe extern "C" fn ffgtis(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtis_safe(
-    _fptr: &mut fitsfile, /* FITS file pointer                         */
-    _grpname: &[c_char],  /* name of the grouping table                */
-    _grouptype: c_int,    /* code specifying the type of  */
-    _status: &mut c_int,  /* return status code                        */
+    fptr: &mut fitsfile, /* FITS file pointer                         */
+    grpname: &[c_char],  /* name of the grouping table                */
+    grouptype: c_int,    /* code specifying the type of  */
+    status: &mut c_int,  /* return status code                        */
 ) -> c_int {
-    todo!();
+    let mut tfields: c_int = 0;
+    let mut hdunum: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut extver: c_int;
+
+    let pcount: c_long = 0;
+
+    /* `char *ttype[6]` / `char *tform[6]` are 6 column pointers that in C address    */
+    /* the flat backing buffers `char ttypeBuff[102]` (6*17) and `char tformBuff[54]` */
+    /* (6*9). A 2-D array captures the same "6 columns of fixed width" layout.        */
+    let mut ttype_buff: [[c_char; 17]; 6] = [[0; 17]; 6];
+    let mut tform_buff: [[c_char; 9]; 6] = [[0; 9]; 6];
+
+    let extname = cs!(c"GROUPING"); /* char  extname[] = "GROUPING"; */
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    // `do { ... } while(0)` is modelled as a `loop { ...; break; }`; the C `continue`
+    // statements (which fall through to the `while(0)` test) become `break`.
+    loop {
+        /* set up the ttype and tform character buffers */
+        // Each column is one row of the 2-D array; pass them to ffgtdc as mutable
+        // slices so it can write each column's TTYPE/TFORM string.
+        {
+            let mut ttype: Vec<&mut [c_char]> = ttype_buff.iter_mut().map(|c| &mut c[..]).collect();
+            let mut tform: Vec<&mut [c_char]> = tform_buff.iter_mut().map(|c| &mut c[..]).collect();
+
+            /* define the columns required according to the grouptype parameter */
+
+            *status = ffgtdc(
+                grouptype,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                &mut ttype,
+                &mut tform,
+                &mut tfields,
+                status,
+            );
+        }
+
+        /* create the grouping table using the columns defined above */
+        // Re-borrow the (now populated) columns as immutable views.
+        let ttype: Vec<Option<&[c_char]>> = ttype_buff.iter().map(|c| Some(&c[..])).collect();
+        let tform: Vec<&[c_char]> = tform_buff.iter().map(|c| &c[..]).collect();
+
+        *status = fits_insert_btbl(
+            fptr,
+            0,
+            tfields,
+            &ttype,
+            &tform,
+            None,
+            None,
+            pcount as LONGLONG,
+            status,
+        );
+
+        if *status != 0 {
+            break;
+        }
+
+        /*
+        retrieve the hdu position of the new grouping table for
+        future use
+         */
+
+        fits_get_hdu_num(fptr, &mut hdunum);
+
+        /*
+        add the EXTNAME and EXTVER keywords to the HDU just after the
+        TFIELDS keyword; for now the EXTVER value is set to 0, it will be
+        set to the correct value later on
+         */
+
+        fits_read_keyword(
+            fptr,
+            cs!(c"TFIELDS"),
+            &mut keyvalue,
+            Some(&mut comment),
+            status,
+        );
+
+        fits_insert_key_str(
+            fptr,
+            cs!(c"EXTNAME"),
+            extname,
+            Some(cs!(c"HDU contains a Grouping Table")),
+            status,
+        );
+        fits_insert_key_lng(
+            fptr,
+            cs!(c"EXTVER"),
+            0,
+            Some(cs!(c"Grouping Table vers. (this file)")),
+            status,
+        );
+
+        /*
+        if the grpname parameter value was defined (Non NULL and non zero
+        length) then add the GRPNAME keyword and value
+         */
+
+        if !grpname.is_empty() && strlen_safe(grpname) > 0 {
+            fits_insert_key_str(
+                fptr,
+                cs!(c"GRPNAME"),
+                grpname,
+                Some(cs!(c"Grouping Table name")),
+                status,
+            );
+        }
+
+        /*
+        add the TNULL keywords and values for each integer column defined;
+        integer null values are zero (0) for the MEMBER_POSITION and
+        MEMBER_VERSION columns.
+         */
+
+        let mut i: c_int = 0;
+        while i < tfields && *status == 0 {
+            if fits_strcasecmp(ttype[i as usize].unwrap(), cs!(c"MEMBER_POSITION")) == 0
+                || fits_strcasecmp(ttype[i as usize].unwrap(), cs!(c"MEMBER_VERSION")) == 0
+            {
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "TFORM{}", i + 1);
+                *status =
+                    fits_read_key_str(fptr, &keyword, &mut keyvalue, Some(&mut comment), status);
+
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "TNULL{}", i + 1);
+
+                *status =
+                    fits_insert_key_lng(fptr, &keyword, 0, Some(cs!(c"Column Null Value")), status);
+            }
+            i += 1;
+        }
+
+        /*
+        determine the correct EXTVER value for the new grouping table
+        by finding the highest numbered grouping table EXTVER value
+        the currently exists
+         */
+
+        extver = 1;
+        while fits_movnam_hdu(fptr, ANY_HDU, cs!(c"GROUPING"), extver, status) == 0 {
+            // Use a for loop to find the highest EXTVER value for GROUPING HDUs
+            extver += 1;
+        }
+
+        if *status == BAD_HDU_NUM {
+            *status = 0;
+        }
+
+        /*
+        move back to the new grouping table HDU and update the EXTVER
+        keyword value
+         */
+
+        fits_movabs_hdu(fptr, hdunum, Some(&mut hdutype), status);
+
+        fits_modify_key_lng(
+            fptr,
+            cs!(c"EXTVER"),
+            extver as LONGLONG,
+            Some(cs!(c"&")),
+            status,
+        );
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -942,8 +1116,8 @@ pub(crate) fn ffgtdc(
     _positioncol: c_int, /* does MEMBER_POSITION already exist?         */
     _locationcol: c_int, /* does MEMBER_LOCATION already exist?         */
     _uricol: c_int,      /* does MEMBER_URI_TYPE aleardy exist?         */
-    _ttype: &[Option<&[c_char]>], /* array of grouping table column TTYPE names to define (if *col var false)               */
-    _tform: &[Option<&[c_char]>], /* array of grouping table column TFORM values to define (if*col variable false)           */
+    _ttype: &mut [&mut [c_char]], /* array of grouping table column TTYPE names to define (if *col var false)               */
+    _tform: &mut [&mut [c_char]], /* array of grouping table column TFORM values to define (if*col variable false)           */
     _ncols: &mut c_int,           /* number of TTYPE and TFORM values returned   */
     _status: &mut c_int,          /* return status code                          */
 ) -> c_int {
