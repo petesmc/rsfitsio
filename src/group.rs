@@ -986,14 +986,57 @@ pub unsafe extern "C" fn ffgtmg(
 /// is OPT_MRG_MOV then the source grouping table is deleted after the merge,
 /// and all member HDUs are updated accordingly.
 pub fn ffgtmg_safe(
-    _infptr: &mut fitsfile,  /* FITS file ptr to source grouping table      */
-    _outfptr: &mut fitsfile, /* FITS file ptr to target grouping table      */
-    _mgopt: c_int,           /* code specifying merge options:
-                             OPT_MRG_COPY (0) ==> copy members to target group, leaving source group in place
-                             OPT_MRG_MOV  (1) ==> move members to target group, source group is deleted after merge    */
-    _status: &mut c_int, /* return status code                         */
+    infptr: &mut fitsfile,  /* FITS file ptr to source grouping table      */
+    outfptr: &mut fitsfile, /* FITS file ptr to target grouping table      */
+    mgopt: c_int,           /* code specifying merge options:
+                            OPT_MRG_COPY (0) ==> copy members to target group, leaving source group in place
+                            OPT_MRG_MOV  (1) ==> move members to target group, source group is deleted after merge    */
+    status: &mut c_int, /* return status code                         */
 ) -> c_int {
-    todo!();
+    let mut i: c_long;
+    let mut nmembers: c_long = 0;
+
+    // A C `fitsfile *tmpfptr = NULL;` becomes an owned, nullable handle.
+    let mut tmpfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        *status = fits_get_num_members(infptr, &mut nmembers, status);
+
+        i = 1;
+        while i <= nmembers && *status == 0 {
+            *status = fits_open_member(infptr, i, &mut tmpfptr, status);
+            *status = fits_add_group_member(outfptr, tmpfptr.as_deref_mut(), 0, status);
+
+            if *status == HDU_ALREADY_MEMBER {
+                *status = 0;
+            }
+
+            if let Some(f) = tmpfptr.take() {
+                fits_close_file(f, status);
+            }
+            i += 1;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        if mgopt as u64 == OPT_MRG_MOV {
+            *status = fits_remove_group(infptr, OPT_RM_GPT as c_int, status);
+        }
+
+        break;
+    } // while(0)
+
+    if let Some(f) = tmpfptr.take() {
+        fits_close_file(f, status);
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1031,13 +1074,113 @@ pub unsafe extern "C" fn ffgtcm(
 /// table contains no members that are themselves grouping tables then this
 /// function performs a NOOP.
 pub fn ffgtcm_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
-    _cmopt: c_int,         /* code specifying compact options
-                           OPT_CMT_MBR      (1) ==> compact only direct members (if groups)
-                           OPT_CMT_MBR_DEL (11) ==> (1) + delete all compacted groups    */
-    _status: &mut c_int, /* return status code                           */
+    gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
+    cmopt: c_int,         /* code specifying compact options
+                          OPT_CMT_MBR      (1) ==> compact only direct members (if groups)
+                          OPT_CMT_MBR_DEL (11) ==> (1) + delete all compacted groups    */
+    status: &mut c_int, /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut i: c_long;
+    let mut nmembers: c_long = 0;
+
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let mut mfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        if cmopt as u64 != OPT_CMT_MBR && cmopt as u64 != OPT_CMT_MBR_DEL {
+            *status = BAD_OPTION;
+            ffpmsg_str("Invalid value for cmopt parameter specified (ffgtcm)");
+            break; // C: continue (do-while)
+        }
+
+        /* reteive the number of grouping table members */
+
+        *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+        /*
+        loop over all the grouping table members; if the member is a
+        grouping table then merge its members with the parent grouping
+        table
+          */
+
+        // The loop counter is bumped at the top so the C `continue` statements (which
+        // fall through to the for-loop's ++i) map to a plain Rust `continue`.
+        i = 0;
+        while i < nmembers && *status == 0 {
+            i += 1;
+
+            *status = fits_open_member(gfptr, i, &mut mfptr, status);
+
+            if *status != 0 {
+                continue;
+            }
+
+            *status = fits_read_key_str(
+                mfptr.as_deref_mut().expect(NULL_MSG),
+                cs!(c"EXTNAME"),
+                &mut keyvalue,
+                Some(&mut comment),
+                status,
+            );
+
+            /* if no EXTNAME keyword then cannot be a grouping table */
+
+            if *status == KEY_NO_EXIST {
+                *status = 0;
+                continue;
+            }
+            prepare_keyvalue(&keyvalue);
+
+            if *status != 0 {
+                continue;
+            }
+
+            /* if EXTNAME == "GROUPING" then process member as grouping table */
+
+            if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) == 0 {
+                /* merge the member (grouping table) into the grouping table */
+
+                *status = fits_merge_groups(
+                    mfptr.as_deref_mut().expect(NULL_MSG),
+                    gfptr,
+                    OPT_MRG_COPY as c_int,
+                    status,
+                );
+
+                if let Some(f) = mfptr.take() {
+                    *status = fits_close_file(f, status);
+                }
+
+                /*
+                remove the member from the grouping table now that all of
+                its members have been transferred; if cmopt is set to
+                OPT_CMT_MBR_DEL then remove and delete the member
+                   */
+
+                if cmopt as u64 == OPT_CMT_MBR {
+                    *status = fits_remove_member(gfptr, i, OPT_RM_ENTRY as c_int, status);
+                } else {
+                    *status = fits_remove_member(gfptr, i, OPT_RM_MBR as c_int, status);
+                }
+            } else {
+                /* not a grouping table; just close the opened member */
+
+                if let Some(f) = mfptr.take() {
+                    *status = fits_close_file(f, status);
+                }
+            }
+        }
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1068,11 +1211,97 @@ pub unsafe extern "C" fn ffgtvf(
 /// verification if positive or the first group link to fail if negative;
 /// otherwise firstfailed contains a return value of 0.
 pub fn ffgtvf_safe(
-    _gfptr: &mut fitsfile,     /* FITS file pointer to group             */
-    _firstfailed: &mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
-    _status: &mut c_int,       /* return status code                     */
+    gfptr: &mut fitsfile,     /* FITS file pointer to group             */
+    firstfailed: &mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
+    status: &mut c_int,       /* return status code                     */
 ) -> c_int {
-    todo!();
+    let mut i: c_long;
+    let mut nmembers: c_long = 0;
+    let mut ngroups: c_long = 0;
+
+    let mut errstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    let mut fptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    *firstfailed = 0;
+
+    loop {
+        /*
+        attempt to open all the members of the grouping table. We stop
+        at the first member which cannot be opened (which implies that it
+        cannot be located)
+          */
+
+        *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+        i = 1;
+        while i <= nmembers && *status == 0 {
+            *status = fits_open_member(gfptr, i, &mut fptr, status);
+            if let Some(f) = fptr.take() {
+                fits_close_file(f, status);
+            }
+            i += 1;
+        }
+
+        /*
+        if the status is non-zero from the above loop then record the
+        member index that caused the error
+          */
+
+        if *status != 0 {
+            *firstfailed = i;
+            int_snprintf!(
+                &mut errstr,
+                FLEN_VALUE,
+                "Group table verify failed for member {} (ffgtvf)",
+                i
+            );
+            ffpmsg_slice(&errstr);
+            break;
+        }
+
+        /*
+        attempt to open all the groups linked to this grouping table. We stop
+        at the first group which cannot be opened (which implies that it
+        cannot be located)
+          */
+
+        *status = fits_get_num_groups(gfptr, &mut ngroups, status);
+
+        i = 1;
+        while i <= ngroups && *status == 0 {
+            *status = fits_open_group(gfptr, i as c_int, &mut fptr, status);
+            if let Some(f) = fptr.take() {
+                fits_close_file(f, status);
+            }
+            i += 1;
+        }
+
+        /*
+        if the status from the above loop is non-zero, then record the
+        GRPIDn index of the group that caused the failure
+          */
+
+        if *status != 0 {
+            *firstfailed = -i;
+            int_snprintf!(
+                &mut errstr,
+                FLEN_VALUE,
+                "Group table verify failed for GRPID index {} (ffgtvf)",
+                i
+            );
+            ffpmsg_slice(&errstr);
+            break;
+        }
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1102,7 +1331,11 @@ pub unsafe extern "C" fn ffgtop(
         let mfptr = mfptr.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
 
-        ffgtop_safe(mfptr, grpid, gfptr, status)
+        // Bridge the C `fitsfile**` output to the safe `Option<Box<fitsfile>>` interface.
+        let mut group_fptr: Option<Box<fitsfile>> = None;
+        let r = ffgtop_safe(mfptr, grpid, &mut group_fptr, status);
+        *gfptr = group_fptr.map_or(std::ptr::null_mut(), Box::into_raw);
+        r
     }
 }
 
@@ -1122,12 +1355,351 @@ pub unsafe extern "C" fn ffgtop(
 /// identify the (grpid)th GRPID value. In the above example, if grpid == 3,
 /// then the group specified by GRPID5 would be opened.
 pub fn ffgtop_safe(
-    _mfptr: &mut fitsfile,      /* FITS file pointer to the member HDU          */
-    _grpid: c_int,              /* group ID (GRPIDn index) within member HDU    */
-    _gfptr: &mut *mut fitsfile, /* FITS file pointer to grouping table HDU      */
-    _status: &mut c_int,        /* return status code                           */
+    mfptr: &mut fitsfile, /* FITS file pointer to the member HDU          */
+    grpid: c_int,         /* group ID (GRPIDn index) within member HDU    */
+    gfptr: &mut Option<Box<fitsfile>>, /* FITS file pointer to grouping table HDU      */
+    status: &mut c_int,   /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let mut found: c_int;
+
+    let mut ngroups: c_long = 0;
+    let mut grpExtver: c_long = 0;
+
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyvalue: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut location: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut location1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let location2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /* set the grouping table pointer to NULL for error checking later */
+
+        *gfptr = None;
+
+        /*
+        make sure that the group ID requested is valid ==> cannot be
+        larger than the number of GRPIDn keywords in the member HDU header
+          */
+
+        *status = fits_get_num_groups(mfptr, &mut ngroups, status);
+
+        if grpid as c_long > ngroups {
+            *status = BAD_GROUP_ID;
+            int_snprintf!(
+                &mut comment,
+                FLEN_COMMENT,
+                "GRPID index {} larger total GRPID keywords {} (ffgtop)",
+                grpid,
+                ngroups
+            );
+            ffpmsg_slice(&comment);
+            break 'outer;
+        }
+
+        /*
+        find the (grpid)th group that the member HDU belongs to and read
+        the value of the GRPID(grpid) keyword; fits_get_num_groups()
+        automatically re-enumerates the GRPIDn/GRPLCn keywords to fill in
+        any gaps
+          */
+
+        int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", grpid);
+
+        *status = fits_read_key_lng(mfptr, &keyword, &mut grpExtver, Some(&mut comment), status);
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        if the value of the GRPIDn keyword is positive then the member is
+        in the same FITS file as the grouping table ... else ... another
+        FITS file must be opened as specified by the corresponding GRPLCn
+        keyword.
+
+        The DO WHILE loop only executes once and is used to control the
+        file opening logic.
+          */
+
+        'inner: loop {
+            if grpExtver > 0 {
+                /*
+                the member resides in the same file as the grouping
+                 table, so just reopen the grouping table file
+                  */
+
+                // SAFETY: ffreopen_safer outputs a raw *mut fitsfile (it is not yet
+                // ported to the Box interface); take ownership of it here.
+                let mut raw: *mut fitsfile = std::ptr::null_mut();
+                *status = fits_reopen_file(mfptr, &mut raw, status);
+                *gfptr = if raw.is_null() {
+                    None
+                } else {
+                    Some(unsafe { Box::from_raw(raw) })
+                };
+                break 'inner;
+            } else if grpExtver == 0 {
+                /* a GRPIDn value of zero (0) is undefined */
+
+                *status = BAD_GROUP_ID;
+                int_snprintf!(
+                    &mut comment,
+                    FLEN_COMMENT,
+                    "Invalid value of {} for GRPID{} (ffgtop)",
+                    grpExtver,
+                    grpid
+                );
+                ffpmsg_slice(&comment);
+                break 'inner;
+            }
+
+            /*
+            The GRPLCn keyword value is negative, which implies that
+            the grouping table must reside in another FITS file;
+            search for the corresponding GRPLCn keyword
+             */
+
+            /* set the grpExtver value positive */
+
+            grpExtver = -grpExtver;
+
+            /* read the GRPLCn keyword value */
+
+            int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", grpid);
+            /* SPR 1738 */
+            // SAFETY: ffgkls_safe sets tkeyvalue to a heap-allocated C string tracked in
+            // the ALLOCATIONS table (it is not yet ported to an owned String); copy it out
+            // and release it through the same mechanism.
+            let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+            *status =
+                fits_read_key_longstr(mfptr, &keyword, &mut tkeyvalue, Some(&mut comment), status);
+            if 0 == *status {
+                unsafe {
+                    let bytes =
+                        cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
+                    let n = bytes.len().min(FLEN_FILENAME);
+                    keyvalue[..n].copy_from_slice(&bytes[..n]);
+                    if let Some((l, c)) = ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
+                    {
+                        let _ = Vec::from_raw_parts(tkeyvalue, l, c);
+                    }
+                }
+            }
+
+            /* if the GRPLCn keyword was not found then there is a problem */
+
+            if *status == KEY_NO_EXIST {
+                *status = BAD_GROUP_ID;
+                int_snprintf!(
+                    &mut comment,
+                    FLEN_COMMENT,
+                    "Cannot find GRPLC{} keyword (ffgtop)",
+                    grpid
+                );
+                ffpmsg_slice(&comment);
+                break 'inner;
+            }
+
+            prepare_keyvalue(&keyvalue);
+
+            /*
+            if the GRPLCn keyword value specifies an absolute URL then
+            try to open the file ...
+            */
+
+            if fits_is_url_absolute(&keyvalue) != 0 {
+                ffpmsg_str("Try to open group table file as absolute URL (ffgtop)");
+
+                *status = fits_open_file(gfptr, &keyvalue, READWRITE, status);
+
+                /* if the open was successful then continue */
+
+                if *status == 0 {
+                    break 'inner;
+                }
+
+                /* if READWRITE failed then try opening it READONLY */
+
+                ffpmsg_str("OK, try open group table file as READONLY (ffgtop)");
+
+                *status = 0;
+                *status = fits_open_file(gfptr, &keyvalue, READONLY, status);
+
+                /* continue regardless of the outcome */
+
+                break 'inner;
+            }
+
+            /*
+            see if the URL gives a file path that is absolute on the
+            host machine
+            */
+
+            *status = fits_url2path(&keyvalue, &mut location1, status);
+
+            *status = fits_open_file(gfptr, &location1, READWRITE, status);
+
+            /* if the file opened then continue */
+
+            if *status == 0 {
+                break 'inner;
+            }
+
+            /* if READWRITE failed then try opening it READONLY */
+
+            ffpmsg_str("OK, try open group table file as READONLY (ffgtop)");
+
+            *status = 0;
+            *status = fits_open_file(gfptr, &location1, READONLY, status);
+
+            /* if the file opened then continue */
+
+            if *status == 0 {
+                break 'inner;
+            }
+
+            /*
+            the grouping table location given by GRPLCn must specify a
+            relative URL ...
+            */
+
+            *status = 0;
+
+            /* retrieve the URL information for the member HDU's file */
+
+            // C aliases url[0]=location1, url[1]=location2; model the two-element
+            // `char *url[2]` as a 2-D array of the two location buffers.
+            let mut url: [[c_char; FLEN_FILENAME]; 2] = [location1, location2];
+
+            {
+                // The trailing access/iostate outputs are unused here (C passed NULL).
+                let mut realaccess: c_char = 0;
+                let mut startaccess: c_char = 0;
+                let mut iostate: c_int = 0;
+                let [u0, u1] = url.each_mut();
+                *status = fits_get_url(
+                    mfptr,
+                    u0,
+                    u1,
+                    &mut realaccess,
+                    &mut startaccess,
+                    &mut iostate,
+                    status,
+                );
+            }
+
+            /*
+            For each possible URL try to construct a full grouping-table URL
+            and open it.
+            */
+
+            found = 0;
+            *gfptr = None;
+            // The loop counter is bumped at the top so the C `continue` statements map
+            // to a plain Rust `continue`.
+            i = 0;
+            while i < 2 && found == 0 {
+                let idx = i as usize;
+                i += 1;
+
+                /* the url string could be empty */
+
+                if url[idx][0] == 0 {
+                    continue;
+                }
+
+                /*
+                create a full URL from the partial and the member
+                HDU file URL
+                 */
+
+                *status = fits_relurl2url(url[idx], keyvalue.as_mut_ptr(), location, status);
+
+                /* if an error occured then contniue */
+
+                if *status != 0 {
+                    *status = 0;
+                    continue;
+                }
+
+                /*
+                if the location does not specify an access method
+                then turn it into a host dependent path
+                  */
+
+                if fits_is_url_absolute(&location) == 0 {
+                    *status = fits_url2path(&location, &mut url[idx], status);
+                    strcpy_safe(&mut location, &url[idx]);
+                }
+
+                /* try to open the grouping table file READWRITE */
+
+                *status = fits_open_file(gfptr, &location, READWRITE, status);
+
+                if *status != 0 {
+                    /* try to open the grouping table file READONLY */
+
+                    ffpmsg_str("opening file as READWRITE failed (ffgtop)");
+                    ffpmsg_str("OK, try to open file as READONLY (ffgtop)");
+                    *status = 0;
+                    *status = fits_open_file(gfptr, &location, READONLY, status);
+                }
+
+                /* either set the found flag or reset the status flag */
+
+                if *status == 0 {
+                    found = 1;
+                } else {
+                    *status = 0;
+                }
+            }
+
+            break 'inner;
+        } /* end of file opening loop */
+
+        /* if an error occured with the file opening then exit */
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        if gfptr.is_none() {
+            ffpmsg_str("Cannot open or find grouping table FITS file (ffgtop)");
+            *status = GROUP_NOT_FOUND;
+            break 'outer;
+        }
+
+        /* search for the grouping table in its FITS file */
+
+        *status = fits_movnam_hdu(
+            gfptr.as_deref_mut().expect(NULL_MSG),
+            ANY_HDU,
+            cs!(c"GROUPING"),
+            grpExtver as c_int,
+            status,
+        );
+
+        if *status != 0 {
+            *status = GROUP_NOT_FOUND;
+        }
+
+        break 'outer;
+    } // while(0)
+
+    if *status != 0 && gfptr.is_some() {
+        if let Some(f) = gfptr.take() {
+            fits_close_file(f, status);
+        }
+        *gfptr = None;
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1274,7 +1846,7 @@ pub unsafe extern "C" fn ffgmng(
 /// are re-enumerated to eliminate gaps if gaps are found to be present.
 pub fn ffgmng_safe(
     _mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
-    _ngroups: *mut c_long, /* total number of groups linked to HDU       */
+    _ngroups: &mut c_long, /* total number of groups linked to HDU       */
     _status: &mut c_int,   /* return status code                         */
 ) -> c_int {
     todo!();
@@ -1305,7 +1877,11 @@ pub unsafe extern "C" fn ffgmop(
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
         let mfptr = mfptr.as_mut().expect(NULL_MSG);
 
-        ffgmop_safe(gfptr, member, mfptr, status)
+        // Bridge the C `fitsfile**` output to the safe `Option<Box<fitsfile>>` interface.
+        let mut member_fptr: Option<Box<fitsfile>> = None;
+        let r = ffgmop_safe(gfptr, member, &mut member_fptr, status);
+        *mfptr = member_fptr.map_or(std::ptr::null_mut(), Box::into_raw);
+        r
     }
 }
 
@@ -1323,10 +1899,10 @@ pub unsafe extern "C" fn ffgmop(
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
 pub fn ffgmop_safe(
-    _gfptr: *mut fitsfile,      /* FITS file pointer to grouping table          */
-    _member: c_long,            /* member ID (row num) within grouping table    */
-    _mfptr: *mut *mut fitsfile, /* FITS file pointer to member HDU              */
-    _status: *mut c_int,        /* return status code                           */
+    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
+    _member: c_long,       /* member ID (row num) within grouping table    */
+    _mfptr: &mut Option<Box<fitsfile>>, /* FITS file pointer to member HDU              */
+    _status: &mut c_int,   /* return status code                           */
 ) -> c_int {
     todo!();
 }
