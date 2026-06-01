@@ -762,15 +762,94 @@ pub unsafe extern "C" fn ffgtrm(
 /// tables are also updated. The CHDU of the FITS file pointed to by gfptr must
 /// be positioned to the grouping table to be deleted.
 pub fn ffgtrm_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer to group                   */
-    _rmopt: c_int,         /* code specifying if member
-                           elements are to be deleted:
-                           OPT_RM_GPT ==> remove only group table
-                           OPT_RM_ALL ==> recursively remove members
-                           and their members (if groups)                */
-    _status: &mut c_int, /* return status code                           */
+    gfptr: &mut fitsfile, /* FITS file pointer to group                   */
+    rmopt: c_int,         /* code specifying if member
+                          elements are to be deleted:
+                          OPT_RM_GPT ==> remove only group table
+                          OPT_RM_ALL ==> recursively remove members
+                          and their members (if groups)                */
+    status: &mut c_int, /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut hdutype: c_int = 0;
+
+    let mut i: c_long;
+    let mut nmembers: c_long = 0;
+
+    let mut HDU = HDUtracker {
+        nHDU: 0,
+        filename: [0; MAX_HDU_TRACKER],
+        position: [0; MAX_HDU_TRACKER],
+        newFilename: [0; MAX_HDU_TRACKER],
+        newPosition: [0; MAX_HDU_TRACKER],
+    };
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /*
+     remove the grouping table depending upon the rmopt parameter
+    */
+
+    match rmopt as u64 {
+        OPT_RM_GPT => {
+            /*
+            for this option, the grouping table is deleted, but the member
+            HDUs remain; in this case we only have to remove each member from
+            the grouping table by calling fits_remove_member() with the
+            OPT_RM_ENTRY option
+               */
+
+            /* get the number of members contained by this table */
+
+            *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+            /* loop over all grouping table members and remove them */
+
+            i = nmembers;
+            while i > 0 && *status == 0 {
+                *status = fits_remove_member(gfptr, i, OPT_RM_ENTRY as c_int, status);
+                i -= 1;
+            }
+        }
+
+        OPT_RM_ALL => {
+            /*
+            for this option the entire Group is deleted -- this includes all
+            members and their members (if grouping tables themselves). Call
+            the recursive form of this function to perform the removal.
+                  */
+
+            /* add the current grouping table to the HDUtracker struct */
+
+            HDU.nHDU = 0;
+
+            *status = fftsad(gfptr, &mut HDU, None, None);
+
+            /* call the recursive group remove function */
+
+            *status = ffgtrmr(gfptr, &mut HDU, status);
+
+            /* free the memory allocated to the HDUtracker struct */
+            // In the safe-Rust port the HDUtracker owns its storage and is dropped
+            // automatically, so the C per-entry free() loop is not required.
+        }
+
+        _ => {
+            *status = BAD_OPTION;
+            ffpmsg_str("Invalid value for the rmopt parameter specified (ffgtrm)");
+        }
+    }
+
+    /*
+     if all went well then unlink and delete the grouping table HDU
+    */
+
+    *status = ffgmul(gfptr, 0, status);
+
+    *status = fits_delete_hdu(gfptr, Some(&mut hdutype), status);
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -819,15 +898,53 @@ pub unsafe extern "C" fn ffgtcp(
 /// to perform the group table copy. In the case of cpopt == OPT_GCP_GPT
 /// ffgtcpr() does not actually use recursion.
 pub fn ffgtcp_safe(
-    _infptr: &mut fitsfile,  /* input FITS file pointer                     */
-    _outfptr: &mut fitsfile, /* output FITS file pointer                    */
-    _cpopt: c_int,           /* code specifying copy options:
-                             OPT_GCP_GPT (0) ==> copy only grouping table
-                             OPT_GCP_ALL (2) ==> recusrively copy members
-                             and their members (if  groups)                  */
-    _status: &mut c_int, /* return status code                          */
+    infptr: &mut fitsfile,  /* input FITS file pointer                     */
+    outfptr: &mut fitsfile, /* output FITS file pointer                    */
+    cpopt: c_int,           /* code specifying copy options:
+                            OPT_GCP_GPT (0) ==> copy only grouping table
+                            OPT_GCP_ALL (2) ==> recusrively copy members
+                            and their members (if  groups)                  */
+    status: &mut c_int, /* return status code                          */
 ) -> c_int {
-    todo!()
+    let mut HDU = HDUtracker {
+        nHDU: 0,
+        filename: [0; MAX_HDU_TRACKER],
+        position: [0; MAX_HDU_TRACKER],
+        newFilename: [0; MAX_HDU_TRACKER],
+        newPosition: [0; MAX_HDU_TRACKER],
+    };
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /* make sure infptr and outfptr are not the same pointer */
+    // (In safe Rust two `&mut fitsfile` are guaranteed not to alias, so this can only
+    // be true if the FFI wrapper was handed the same raw pointer twice.)
+
+    if std::ptr::eq(infptr, outfptr) {
+        *status = IDENTICAL_POINTERS;
+    } else {
+        /* initialize the HDUtracker struct */
+
+        HDU.nHDU = 0;
+
+        *status = fftsad(infptr, &mut HDU, None, None);
+
+        /*
+        call the recursive form of this function to copy the grouping table.
+        If the cpopt is OPT_GCP_GPT then there is actually no recursion
+        performed
+         */
+
+        *status = ffgtcpr(infptr, outfptr, cpopt, &mut HDU, status);
+
+        /* free memory allocated for the HDUtracker struct */
+        // In the safe-Rust port the HDUtracker owns its storage and is dropped
+        // automatically, so the C per-entry free() loop is not required.
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1523,8 +1640,8 @@ pub(crate) fn ffgtcpr(
                              OPT_GCP_GPT (0) ==> cp only grouping table
                              OPT_GCP_ALL (2) ==> recusrively copy
                              members and their members (if groups)   */
-    _HDU: &mut [HDUtracker], /* list of already copied HDUs             */
-    _status: &mut c_int,     /* return status code                      */
+    _HDU: &mut HDUtracker, /* list of already copied HDUs             */
+    _status: &mut c_int,   /* return status code                      */
 ) -> c_int {
     todo!();
 }
@@ -1539,10 +1656,10 @@ pub(crate) fn ffgtcpr(
 /// resides in the HDUtracker then the new HDU postion and file name are
 /// returned in  newPosition and newFileName (if != NULL)
 pub(crate) fn fftsad(
-    _mfptr: &mut fitsfile,       /* pointer to an member HDU             */
-    _HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
-    _newPosition: &mut c_int,    /* new HDU position of the member HDU   */
-    _newFileName: &mut [c_char], /* file containing member HDU           */
+    _mfptr: &mut fitsfile,               /* pointer to an member HDU             */
+    _HDU: &mut HDUtracker,               /* pointer to an HDU tracker struct     */
+    _newPosition: Option<&mut c_int>, /* new HDU position of the member HDU; None if not requested   */
+    _newFileName: Option<&mut [c_char]>, /* file containing member HDU; None if not requested           */
 ) -> c_int {
     todo!();
 }
