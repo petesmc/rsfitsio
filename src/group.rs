@@ -185,8 +185,8 @@ pub fn ffgtis_safe(
     /* `char *ttype[6]` / `char *tform[6]` are 6 column pointers that in C address    */
     /* the flat backing buffers `char ttypeBuff[102]` (6*17) and `char tformBuff[54]` */
     /* (6*9). A 2-D array captures the same "6 columns of fixed width" layout.        */
-    let mut ttype_buff: [[c_char; 17]; 6] = [[0; 17]; 6];
-    let mut tform_buff: [[c_char; 9]; 6] = [[0; 9]; 6];
+    let mut ttypeBuff: [[c_char; 17]; 6] = [[0; 17]; 6];
+    let mut tformBuff: [[c_char; 9]; 6] = [[0; 9]; 6];
 
     let extname = cs!(c"GROUPING"); /* char  extname[] = "GROUPING"; */
     let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -198,10 +198,11 @@ pub fn ffgtis_safe(
     loop {
         /* set up the ttype and tform character buffers */
         // Each column is one row of the 2-D array; pass them to ffgtdc as mutable
-        // slices so it can write each column's TTYPE/TFORM string.
+        // slices (stack-allocated, like the C `char *ttype[6]`) so it can write each
+        // column's TTYPE/TFORM string.
         {
-            let mut ttype: Vec<&mut [c_char]> = ttype_buff.iter_mut().map(|c| &mut c[..]).collect();
-            let mut tform: Vec<&mut [c_char]> = tform_buff.iter_mut().map(|c| &mut c[..]).collect();
+            let mut ttype: [&mut [c_char]; 6] = ttypeBuff.each_mut().map(|c| c.as_mut_slice());
+            let mut tform: [&mut [c_char]; 6] = tformBuff.each_mut().map(|c| c.as_mut_slice());
 
             /* define the columns required according to the grouptype parameter */
 
@@ -222,8 +223,8 @@ pub fn ffgtis_safe(
 
         /* create the grouping table using the columns defined above */
         // Re-borrow the (now populated) columns as immutable views.
-        let ttype: Vec<Option<&[c_char]>> = ttype_buff.iter().map(|c| Some(&c[..])).collect();
-        let tform: Vec<&[c_char]> = tform_buff.iter().map(|c| &c[..]).collect();
+        let ttype: [Option<&[c_char]>; 6] = ttypeBuff.each_ref().map(|c| Some(c.as_slice()));
+        let tform: [&[c_char]; 6] = tformBuff.each_ref().map(|c| c.as_slice());
 
         *status = fits_insert_btbl(
             fptr,
@@ -399,11 +400,331 @@ pub unsafe extern "C" fn ffgtch(
 ///   GT_ID_REF_URI 11 ==> (1) + URI info
 ///   GT_ID_POS_URI 12 ==> (2) + URI info  
 pub fn ffgtch_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer                         */
-    _grouptype: c_int,     /* code specifying the type of  */
-    _status: &mut c_int,   /* return status code                        */
+    gfptr: &mut fitsfile, /* FITS file pointer                         */
+    grouptype: c_int,     /* code specifying the type of  */
+    status: &mut c_int,   /* return status code                        */
 ) -> c_int {
-    todo!();
+    let mut xtensionCol: c_int = 0;
+    let mut extnameCol: c_int = 0;
+    let mut extverCol: c_int = 0;
+    let mut positionCol: c_int = 0;
+    let mut locationCol: c_int = 0;
+    let mut uriCol: c_int = 0;
+    let mut ncols: c_int = 0;
+    let mut colnum: c_int = 0;
+    let nrows: c_int = 0;
+    let mut grptype: c_int = 0;
+    let mut i: c_int;
+    let mut j: c_int;
+
+    let intNull: c_long = 0;
+    let mut tfields: c_long = 0;
+
+    /* `char *tform[6]` / `char *ttype[6]` are 6 column pointers that in C address    */
+    /* the flat backing buffers `char ttypeBuff[102]` (6*17) and `char tformBuff[54]` */
+    /* (6*9). A 2-D array captures the same "6 columns of fixed width" layout.        */
+    let mut ttypeBuff: [[c_char; 17]; 6] = [[0; 17]; 6];
+    let mut tformBuff: [[c_char; 9]; 6] = [[0; 9]; 6];
+
+    let charNull: [c_uchar; 1] = [b'\0']; /* unsigned char charNull[1] = {'\0'}; */
+
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    // `do { ... } while(0)` is modelled as a `loop { ...; break; }`; the C `continue`
+    // statements (which fall through to the `while(0)` test) become `break`.
+    loop {
+        /* retrieve positions of all Grouping table reserved columns */
+
+        *status = ffgtgc(
+            gfptr,
+            &mut xtensionCol,
+            &mut extnameCol,
+            &mut extverCol,
+            &mut positionCol,
+            &mut locationCol,
+            &mut uriCol,
+            &mut grptype,
+            status,
+        );
+
+        if *status != 0 {
+            break;
+        }
+
+        /* determine the total number of grouping table columns */
+
+        *status = fits_read_key_lng(
+            gfptr,
+            cs!(c"TFIELDS"),
+            &mut tfields,
+            Some(&mut comment),
+            status,
+        );
+
+        /* set up the ttype and tform character buffers */
+        // Each column is one row of the 2-D buffers; pass them to ffgtdc as mutable
+        // slices (stack-allocated, like the C `char *ttype[6]`) so it can write each
+        // column's TTYPE/TFORM string.
+        {
+            let mut ttype: [&mut [c_char]; 6] = ttypeBuff.each_mut().map(|c| c.as_mut_slice());
+            let mut tform: [&mut [c_char]; 6] = tformBuff.each_mut().map(|c| c.as_mut_slice());
+
+            /* define grouping table columns to be added to the configuration */
+
+            *status = ffgtdc(
+                grouptype,
+                xtensionCol,
+                extnameCol,
+                extverCol,
+                positionCol,
+                locationCol,
+                uriCol,
+                &mut ttype,
+                &mut tform,
+                &mut ncols,
+                status,
+            );
+        }
+
+        // Re-borrow the (now populated) columns as immutable views for the code below.
+        let ttype: [&[c_char]; 6] = ttypeBuff.each_ref().map(|c| c.as_slice());
+        let tform: [&[c_char]; 6] = tformBuff.each_ref().map(|c| c.as_slice());
+
+        /*
+        delete any grouping tables columns that exist but do not belong to
+        new desired configuration; note that we delete before creating new
+        columns for (file size) efficiency reasons
+          */
+
+        match grouptype as u64 {
+            GT_ID_ALL_URI => { /* no columns to be deleted in this case */ }
+
+            GT_ID_REF => {
+                if positionCol != 0 {
+                    *status = fits_delete_col(gfptr, positionCol, status);
+                    tfields -= 1;
+                    if uriCol > positionCol {
+                        uriCol -= 1;
+                    }
+                    if locationCol > positionCol {
+                        locationCol -= 1;
+                    }
+                }
+                if uriCol != 0 {
+                    *status = fits_delete_col(gfptr, uriCol, status);
+                    tfields -= 1;
+                    if locationCol > uriCol {
+                        locationCol -= 1;
+                    }
+                }
+                if locationCol != 0 {
+                    *status = fits_delete_col(gfptr, locationCol, status);
+                }
+            }
+
+            GT_ID_POS => {
+                if xtensionCol != 0 {
+                    *status = fits_delete_col(gfptr, xtensionCol, status);
+                    tfields -= 1;
+                    if extnameCol > xtensionCol {
+                        extnameCol -= 1;
+                    }
+                    if extverCol > xtensionCol {
+                        extverCol -= 1;
+                    }
+                    if uriCol > xtensionCol {
+                        uriCol -= 1;
+                    }
+                    if locationCol > xtensionCol {
+                        locationCol -= 1;
+                    }
+                }
+                if extnameCol != 0 {
+                    *status = fits_delete_col(gfptr, extnameCol, status);
+                    tfields -= 1;
+                    if extverCol > extnameCol {
+                        extverCol -= 1;
+                    }
+                    if uriCol > extnameCol {
+                        uriCol -= 1;
+                    }
+                    if locationCol > extnameCol {
+                        locationCol -= 1;
+                    }
+                }
+                if extverCol != 0 {
+                    *status = fits_delete_col(gfptr, extverCol, status);
+                    tfields -= 1;
+                    if uriCol > extverCol {
+                        uriCol -= 1;
+                    }
+                    if locationCol > extverCol {
+                        locationCol -= 1;
+                    }
+                }
+                if uriCol != 0 {
+                    *status = fits_delete_col(gfptr, uriCol, status);
+                    tfields -= 1;
+                    if locationCol > uriCol {
+                        locationCol -= 1;
+                    }
+                }
+                if locationCol != 0 {
+                    *status = fits_delete_col(gfptr, locationCol, status);
+                    tfields -= 1;
+                }
+            }
+
+            GT_ID_ALL => {
+                if uriCol != 0 {
+                    *status = fits_delete_col(gfptr, uriCol, status);
+                    tfields -= 1;
+                    if locationCol > uriCol {
+                        locationCol -= 1;
+                    }
+                }
+                if locationCol != 0 {
+                    *status = fits_delete_col(gfptr, locationCol, status);
+                    tfields -= 1;
+                }
+            }
+
+            GT_ID_REF_URI => {
+                if positionCol != 0 {
+                    *status = fits_delete_col(gfptr, positionCol, status);
+                    tfields -= 1;
+                }
+            }
+
+            GT_ID_POS_URI => {
+                if xtensionCol != 0 {
+                    *status = fits_delete_col(gfptr, xtensionCol, status);
+                    tfields -= 1;
+                    if extnameCol > xtensionCol {
+                        extnameCol -= 1;
+                    }
+                    if extverCol > xtensionCol {
+                        extverCol -= 1;
+                    }
+                }
+                if extnameCol != 0 {
+                    *status = fits_delete_col(gfptr, extnameCol, status);
+                    tfields -= 1;
+                    if extverCol > extnameCol {
+                        extverCol -= 1;
+                    }
+                }
+                if extverCol != 0 {
+                    *status = fits_delete_col(gfptr, extverCol, status);
+                    tfields -= 1;
+                }
+            }
+
+            _ => {
+                *status = BAD_OPTION;
+                ffpmsg_str("Invalid value for grouptype parameter specified (ffgtch)");
+            }
+        }
+
+        /*
+        add all the new grouping table columns that were not there
+        previously but are called for by the grouptype parameter
+          */
+
+        i = 0;
+        while i < ncols && *status == 0 {
+            *status = fits_insert_col(
+                gfptr,
+                tfields as c_int + i + 1,
+                ttype[i as usize],
+                tform[i as usize],
+                status,
+            );
+            i += 1;
+        }
+
+        /*
+        add the TNULL keywords and values for each new integer column defined;
+        integer null values are zero (0) for the MEMBER_POSITION and
+        MEMBER_VERSION columns. Insert a null ("/0") into each new string
+        column defined: MEMBER_XTENSION, MEMBER_NAME, MEMBER_URI_TYPE and
+        MEMBER_LOCATION. Note that by convention a null string is the
+        TNULL value for character fields so no TNULL is required.
+         */
+
+        i = 0;
+        while i < ncols && *status == 0 {
+            if fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_POSITION")) == 0
+                || fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_VERSION")) == 0
+            {
+                /* col contains int data; set TNULL and insert 0 for each col */
+
+                *status = fits_get_colnum(
+                    gfptr,
+                    CASESEN as c_int,
+                    ttype[i as usize],
+                    &mut colnum,
+                    status,
+                );
+
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "TFORM{}", colnum);
+
+                *status =
+                    fits_read_key_str(gfptr, &keyword, &mut keyvalue, Some(&mut comment), status);
+
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "TNULL{}", colnum);
+
+                *status = fits_insert_key_lng(
+                    gfptr,
+                    &keyword,
+                    0,
+                    Some(cs!(c"Column Null Value")),
+                    status,
+                );
+
+                j = 1;
+                while j <= nrows && *status == 0 {
+                    *status =
+                        fits_write_col_lng(gfptr, colnum, j as LONGLONG, 1, 1, &[intNull], status);
+                    j += 1;
+                }
+            } else if fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_XTENSION")) == 0
+                || fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_NAME")) == 0
+                || fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_URI_TYPE")) == 0
+                || fits_strcasecmp(ttype[i as usize], cs!(c"MEMBER_LOCATION")) == 0
+            {
+                /* new col contains character data; insert NULLs into each col */
+
+                *status = fits_get_colnum(
+                    gfptr,
+                    CASESEN as c_int,
+                    ttype[i as usize],
+                    &mut colnum,
+                    status,
+                );
+
+                j = 1;
+                while j <= nrows && *status == 0
+                /* WILL THIS WORK FOR VAR LENTH CHAR COLS??????*/
+                {
+                    *status =
+                        fits_write_col_byt(gfptr, colnum, j as LONGLONG, 1, 1, &charNull, status);
+                    j += 1;
+                }
+            }
+            i += 1;
+        }
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
