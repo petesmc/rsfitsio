@@ -1580,8 +1580,8 @@ pub fn ffgtop_safe(
 
             {
                 // The trailing access/iostate outputs are unused here (C passed NULL).
-                let mut realaccess: c_char = 0;
-                let mut startaccess: c_char = 0;
+                let mut realaccess: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+                let mut startaccess: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
                 let mut iostate: c_int = 0;
                 let [u0, u1] = url.each_mut();
                 *status = fits_get_url(
@@ -2457,11 +2457,129 @@ pub(crate) fn fits_path2url(
 /// platform dependent code segment is conditionally compiled depending
 /// upon the setting of the appropriate C preprocesser macros.
 pub(crate) fn fits_url2path(
-    _inpath: &[c_char],      /* input file path string  */
-    _outpath: &mut [c_char], /* output file path string */
-    _status: &mut c_int,
+    inpath: &[c_char],      /* input file path string  */
+    outpath: &mut [c_char], /* output file path string */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let mut buff: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /*
+      make a copy of the inpath so that we can manipulate it
+    */
+
+    strcpy_safe(&mut buff, inpath);
+
+    /*
+      convert any encoded characters to their unencoded values
+    */
+
+    *status = fits_unencode_url(inpath, &mut buff, status);
+
+    /*
+      see if the URL is given as absolute w.r.t. the "local" file system
+    */
+
+    let mut absolute = buff[0] == bb(b'/');
+
+    // The C selects a platform branch with #if; mirror it with runtime cfg!() (as
+    // fits_path2url does). The C `ffstrtok(buff,"/")` token loop becomes a split on
+    // '/' that skips empty tokens (strtok merges consecutive/leading delimiters).
+    // The VMS and Windows-NT (`//disk/...`) variants have no Rust target and are not
+    // ported, matching fits_path2url.
+    if cfg!(target_os = "windows") {
+        /*
+           MSDOS or Microsoft windows/NT case. The output path will be of the
+           form
+
+           disk:\path\filename
+
+           All path segments but the last may be null, so that a single file name
+           is the simplist case.
+        */
+
+        /*
+          separate the URL into tokens at each slash '/' and process until
+          all tokens have been examined
+        */
+
+        outpath[0] = 0;
+        let len = strlen_safe(&buff);
+        for tmpStr in buff[..len]
+            .split(|&c| c == bb(b'/'))
+            .filter(|t| !t.is_empty())
+        {
+            // strcat(outpath, tmpStr) — tmpStr is not NUL-terminated, so copy by length
+            let l = strlen_safe(outpath);
+            outpath[l..l + tmpStr.len()].copy_from_slice(tmpStr);
+            outpath[l + tmpStr.len()] = 0;
+
+            /*
+               if the absolute flag is set then process the token as a disk
+               specification; else just process it as a directory path or filename
+            */
+
+            if absolute {
+                strcat_safe(outpath, cs!(c":\\"));
+                absolute = false;
+            } else {
+                strcat_safe(outpath, cs!(c"\\"));
+            }
+        }
+
+        /* remove the last "\" from the outpath, it does not belong there */
+
+        let l = strlen_safe(outpath);
+        if l > 0 {
+            outpath[l - 1] = 0;
+        }
+    } else if cfg!(target_os = "macos") {
+        /*
+           MacOS case. The output path will be of the form
+
+           disk:path:filename
+
+           All path segments but the last may be null, so that a single file name
+           is the simplist case.
+        */
+
+        /*
+          separate the URL into tokens at each slash '/' and process until
+          all tokens have been examined
+        */
+
+        outpath[0] = 0;
+        let len = strlen_safe(&buff);
+        for tmpStr in buff[..len]
+            .split(|&c| c == bb(b'/'))
+            .filter(|t| !t.is_empty())
+        {
+            let l = strlen_safe(outpath);
+            outpath[l..l + tmpStr.len()].copy_from_slice(tmpStr);
+            outpath[l + tmpStr.len()] = 0;
+            strcat_safe(outpath, cs!(c":"));
+        }
+
+        /* remove the last ":" from the outpath, it does not belong there */
+
+        let l = strlen_safe(outpath);
+        if l > 0 {
+            outpath[l - 1] = 0;
+        }
+    } else {
+        /*
+           Default Unix case.
+
+           Nothing special to do here
+        */
+
+        strcpy_safe(outpath, &buff);
+    }
+
+    *status
 }
 
 /****************************************************************************/
@@ -2544,15 +2662,287 @@ pub(crate) fn fits_get_cwd(
 /// It is assumed that the url string has enough room to hold the resulting
 /// URL, and the the accessType string has enough room to hold the access type.
 pub(crate) fn fits_get_url(
-    _fptr: &mut fitsfile,      /* I ptr to FITS file to evaluate    */
-    _realURL: &mut [c_char],   /* O URL of real FITS file           */
-    _startURL: &mut [c_char],  /* O URL of starting FITS file       */
-    _realAccess: &mut c_char,  /* O true access method of FITS file */
-    _startAccess: &mut c_char, /* O "official" access of FITS file  */
-    _iostate: &mut c_int,      /* O can this file be modified?      */
-    _status: &mut c_int,
+    fptr: &mut fitsfile,        /* I ptr to FITS file to evaluate    */
+    realURL: &mut [c_char],     /* O URL of real FITS file           */
+    startURL: &mut [c_char],    /* O URL of starting FITS file       */
+    realAccess: &mut [c_char],  /* O true access method of FITS file */
+    startAccess: &mut [c_char], /* O "official" access of FITS file  */
+    iostate: &mut c_int,        /* O can this file be modified?      */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let i: usize;
+    let mut tmpIOstate: c_int = 0;
+
+    let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpStr1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpStr2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpStr3: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpStr4: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        /*
+        retrieve the member HDU's file name as opened by ffopen()
+        and parse it into its constitutent pieces; get the currently
+        active driver token too
+         */
+
+        tmpStr1[0] = 0;
+        tmpStr2[0] = 0;
+        tmpStr3[0] = 0;
+        tmpStr4[0] = 0;
+
+        // ffflnm_safe still takes a raw `*mut c_char` output buffer.
+        *status = fits_file_name(fptr, tmpStr1.as_mut_ptr(), status);
+
+        *status = fits_parse_input_url(
+            &tmpStr1,
+            None,
+            Some(&mut infile),
+            Some(&mut outfile),
+            None,
+            Some(&mut tmpStr2),
+            Some(&mut tmpStr3),
+            Some(&mut tmpStr4),
+            status,
+        );
+
+        if tmpStr2[0] != 0 || tmpStr3[0] != 0 || tmpStr4[0] != 0 {
+            tmpIOstate = -1;
+        }
+
+        *status = fits_url_type(fptr, &mut tmpStr3, status);
+
+        strcpy_safe(&mut tmpStr4, &tmpStr3);
+
+        // ffrtnm_safe still takes a raw `*mut c_char` output buffer.
+        *status = fits_parse_rootname(&tmpStr1, tmpStr2.as_mut_ptr(), status);
+        strcpy_safe(&mut tmpStr1, &tmpStr2);
+
+        /*
+        for grouping convention purposes (only) determine the URL of the
+        actual FITS file being used for the given fptr, its true access
+        type (file://, mem://, shmem://, root://) and its iostate (0 ==>
+        read only, 1 ==> readwrite)
+          */
+
+        /*
+        The first set of access types are "simple" in that they do not
+        use any redirection to temporary memory or outfiles
+          */
+
+        /* standard disk file driver is in use */
+
+        if fits_strcasecmp(&tmpStr3, cs!(c"file://")) == 0 {
+            tmpIOstate = 1;
+
+            if strlen_safe(&outfile) != 0 {
+                strcpy_safe(&mut tmpStr1, &outfile);
+            } else {
+                tmpStr2[0] = 0;
+            }
+
+            /*
+            make sure no FILE:// specifier is given in the tmpStr1
+            or tmpStr2 strings; the convention calls for local files
+            to have no access specification
+            */
+
+            if let Some(p) = strstr_safe(&tmpStr1, cs!(c"://")) {
+                strcpy_safe(&mut infile, &tmpStr1[p + 3..]);
+                strcpy_safe(&mut tmpStr1, &infile);
+            }
+
+            if let Some(p) = strstr_safe(&tmpStr2, cs!(c"://")) {
+                strcpy_safe(&mut infile, &tmpStr2[p + 3..]);
+                strcpy_safe(&mut tmpStr2, &infile);
+            }
+        }
+        /* file stored in conventional memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"mem://")) == 0 {
+            if tmpIOstate < 0 {
+                /* file is a temp mem file only */
+                ffpmsg_str("cannot make URL from temp MEM:// file (fits_get_url)");
+                *status = URL_PARSE_ERROR;
+            } else {
+                /* file is a "perminate" mem file for this process */
+                tmpIOstate = 1;
+                tmpStr2[0] = 0;
+            }
+        }
+        /* file stored in conventional memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"memkeep://")) == 0 {
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            tmpStr4[0] = 0;
+            tmpStr2[0] = 0;
+            tmpIOstate = 1;
+        }
+        /* file residing in shared memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"shmem://")) == 0 {
+            tmpStr4[0] = 0;
+            tmpStr2[0] = 0;
+            tmpIOstate = 1;
+        }
+        /* file accessed via the ROOT network protocol */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"root://")) == 0 {
+            tmpStr4[0] = 0;
+            tmpStr2[0] = 0;
+            tmpIOstate = 1;
+        }
+        /*
+        the next set of access types redirect the contents of the original
+        file to an special outfile because the original could not be
+        directly modified (i.e., resides on the network, was compressed).
+        In these cases the URL string takes on the value of the OUTFILE,
+        the access type becomes file://, and the iostate is set to 1 (can
+        read/write to the file).
+          */
+          /* compressed file uncompressed and written to disk */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"compressfile://")) == 0 {
+            strcpy_safe(&mut tmpStr1, &outfile);
+            strcpy_safe(&mut tmpStr2, &infile);
+            strcpy_safe(&mut tmpStr3, cs!(c"file://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"file://"));
+            tmpIOstate = 1;
+        }
+        /* HTTP accessed file written locally to disk */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"httpfile://")) == 0 {
+            strcpy_safe(&mut tmpStr1, &outfile);
+            strcpy_safe(&mut tmpStr3, cs!(c"file://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"http://"));
+            tmpIOstate = 1;
+        }
+        /* FTP accessd file written locally to disk */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"ftpfile://")) == 0 {
+            strcpy_safe(&mut tmpStr1, &outfile);
+            strcpy_safe(&mut tmpStr3, cs!(c"file://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"ftp://"));
+            tmpIOstate = 1;
+        }
+        /* file from STDIN written to disk */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"stdinfile://")) == 0 {
+            strcpy_safe(&mut tmpStr1, &outfile);
+            strcpy_safe(&mut tmpStr3, cs!(c"file://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"stdin://"));
+            tmpIOstate = 1;
+        }
+        /*
+        the following access types use memory resident files as temporary
+        storage; they cannot be modified or be made group members for
+        grouping conventions purposes, but their original files can be.
+        Thus, their tmpStr3s are reset to mem://, their iostate
+        values are set to 0 (for no-modification), and their URL string
+        values remain set to their original values
+          */
+          /* compressed disk file uncompressed into memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"compress://")) == 0 {
+            tmpStr1[0] = 0;
+            strcpy_safe(&mut tmpStr2, &infile);
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"file://"));
+            tmpIOstate = 0;
+        }
+        /* HTTP accessed file transferred into memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"http://")) == 0 {
+            tmpStr1[0] = 0;
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"http://"));
+            tmpIOstate = 0;
+        }
+        /* HTTP accessed compressed file transferred into memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"httpcompress://")) == 0 {
+            tmpStr1[0] = 0;
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"http://"));
+            tmpIOstate = 0;
+        }
+        /* FTP accessed file transferred into memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"ftp://")) == 0 {
+            tmpStr1[0] = 0;
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"ftp://"));
+            tmpIOstate = 0;
+        }
+        /* FTP accessed compressed file transferred into memory */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"ftpcompress://")) == 0 {
+            tmpStr1[0] = 0;
+            strcpy_safe(&mut tmpStr3, cs!(c"mem://"));
+            strcpy_safe(&mut tmpStr4, cs!(c"ftp://"));
+            tmpIOstate = 0;
+        }
+        /*
+        The last set of access types cannot be used to make a meaningful URL
+        strings from; thus an error is generated
+          */
+        else if fits_strcasecmp(&tmpStr3, cs!(c"stdin://")) == 0 {
+            *status = URL_PARSE_ERROR;
+            ffpmsg_str("cannot make valid URL from stdin:// (fits_get_url)");
+            tmpStr1[0] = 0;
+            tmpStr2[0] = 0;
+        } else if fits_strcasecmp(&tmpStr3, cs!(c"stdout://")) == 0 {
+            *status = URL_PARSE_ERROR;
+            ffpmsg_str("cannot make valid URL from stdout:// (fits_get_url)");
+            tmpStr1[0] = 0;
+            tmpStr2[0] = 0;
+        } else if fits_strcasecmp(&tmpStr3, cs!(c"irafmem://")) == 0 {
+            *status = URL_PARSE_ERROR;
+            ffpmsg_str("cannot make valid URL from irafmem:// (fits_get_url)");
+            tmpStr1[0] = 0;
+            tmpStr2[0] = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        /*
+        assign values to the calling parameters if they are non-NULL
+         */
+        // (In the safe interface the output buffers are always present.)
+
+        if strlen_safe(&tmpStr1) == 0 {
+            realURL[0] = 0;
+        } else {
+            // C: i is the length of the "scheme://" prefix copied verbatim (0 if none).
+            i = match strstr_safe(&tmpStr1, cs!(c"://")) {
+                Some(p) => {
+                    let ii = p + 3;
+                    strncpy_safe(realURL, &tmpStr1, ii);
+                    ii
+                }
+                None => 0,
+            };
+
+            *status = fits_path2url(&tmpStr1[i..], FLEN_FILENAME - i, &mut realURL[i..], status);
+        }
+
+        if strlen_safe(&tmpStr2) == 0 {
+            startURL[0] = 0;
+        } else {
+            let j = match strstr_safe(&tmpStr2, cs!(c"://")) {
+                Some(p) => {
+                    let jj = p + 3;
+                    strncpy_safe(startURL, &tmpStr2, jj);
+                    jj
+                }
+                None => 0,
+            };
+
+            *status = fits_path2url(&tmpStr2[j..], FLEN_FILENAME - j, &mut startURL[j..], status);
+        }
+
+        strcpy_safe(realAccess, &tmpStr3);
+        strcpy_safe(startAccess, &tmpStr4);
+        *iostate = tmpIOstate;
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*--------------------------------------------------------------------------
@@ -3262,5 +3652,48 @@ mod tests {
         let relbuf = to_buf("file.fits");
         fits_relurl2url(&refbuf, &relbuf, &mut abs_url, &mut status);
         assert_eq!(status, URL_PARSE_ERROR);
+    }
+
+    #[test]
+    fn test_fits_url2path() {
+        // fits_url2path decodes any %XX escapes and then converts the Unix-style URL
+        // into a platform-dependent path. The expected output therefore depends on the
+        // build target (Windows: disk:\path ; macOS: disk:path: ; Unix: unchanged).
+        let mut status = 0;
+
+        let cases: &[(&str, &str)] = if cfg!(target_os = "windows") {
+            &[
+                ("/data/file.fits", "data:\\file.fits"),
+                ("a%20b", "a b"),
+                ("%2Ftmp%2Ffile.fits", "tmp:\\file.fits"),
+                ("relative/path.fits", "relative\\path.fits"),
+            ]
+        } else if cfg!(target_os = "macos") {
+            &[
+                ("/data/file.fits", "data:file.fits"),
+                ("a%20b", "a b"),
+                ("%2Ftmp%2Ffile.fits", "tmp:file.fits"),
+                ("relative/path.fits", "relative:path.fits"),
+            ]
+        } else {
+            &[
+                ("/data/file.fits", "/data/file.fits"),
+                ("a%20b", "a b"),
+                ("%2Ftmp%2Ffile.fits", "/tmp/file.fits"),
+                ("relative/path.fits", "relative/path.fits"),
+            ]
+        };
+
+        for &(input, expected) in cases {
+            let in_buf = to_buf(input);
+            let mut out_buf = [0 as c_char; FLEN_FILENAME];
+            status = 0;
+
+            let r = fits_url2path(&in_buf, &mut out_buf, &mut status);
+
+            assert_eq!(r, 0, "input={input:?}");
+            assert_eq!(status, 0, "input={input:?}");
+            assert_eq!(from_buf(&out_buf), expected, "input={input:?}");
+        }
     }
 }
