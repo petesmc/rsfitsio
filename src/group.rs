@@ -2719,8 +2719,7 @@ pub(crate) fn fits_get_url(
 
         strcpy_safe(&mut tmpStr4, &tmpStr3);
 
-        // ffrtnm_safe still takes a raw `*mut c_char` output buffer.
-        *status = fits_parse_rootname(&tmpStr1, tmpStr2.as_mut_ptr(), status);
+        *status = fits_parse_rootname(&tmpStr1, &mut tmpStr2, status);
         strcpy_safe(&mut tmpStr1, &tmpStr2);
 
         /*
