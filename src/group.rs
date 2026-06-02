@@ -29,7 +29,8 @@ use crate::{
     fitsio::*,
     int_snprintf, raw_to_slice,
     wrappers::{
-        strcat_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe, strstr_safe,
+        strcat_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe,
+        strrchr_safe, strstr_safe,
     },
 };
 
@@ -1619,7 +1620,7 @@ pub fn ffgtop_safe(
                 HDU file URL
                  */
 
-                *status = fits_relurl2url(url[idx], keyvalue.as_mut_ptr(), location, status);
+                *status = fits_relurl2url(&url[idx], &keyvalue, &mut location, status);
 
                 /* if an error occured then contniue */
 
@@ -2733,12 +2734,165 @@ pub(crate) fn fits_url2relurl(
 /// Note that the relative URL string relURL must conform to the Unix-like
 /// URL syntax; host dependent partial URL strings are not allowed.
 pub fn fits_relurl2url(
-    _cwd: [c_char; FLEN_FILENAME], /* I reference URL string             */
-    _filename: *mut c_char,        /* I relative URL string to process   */
-    _abs_url: [c_char; FLEN_FILENAME], /* O absolute URL string              */
-    _status: &mut c_int,
+    refURL: &[c_char],     /* I reference URL string             */
+    relURL: &[c_char],     /* I relative URL string to process   */
+    absURL: &mut [c_char], /* O absolute URL string              */
+    status: &mut c_int,
 ) -> c_int {
-    todo!()
+    let mut i: usize;
+
+    let mut tmpStr: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        /*
+        make a copy of the reference URL string refURL for parsing purposes
+          */
+
+        if strlen_safe(refURL) > FLEN_FILENAME - 1 {
+            absURL[0] = 0;
+            ffpmsg_str("ref URL is too long (fits_relurl2url)");
+            *status = URL_PARSE_ERROR;
+            break;
+        }
+        strcpy_safe(&mut tmpStr, refURL);
+
+        /*
+        if the reference file has an access method of mem:// or shmem://
+        then we cannot use it as the basis of an absolute URL construction
+        for a partial URL
+          */
+
+        if fits_strncasecmp(&tmpStr, cs!(c"MEM:"), 4) == 0
+            || fits_strncasecmp(&tmpStr, cs!(c"SHMEM:"), 6) == 0
+        {
+            ffpmsg_str("ref URL has access mem:// or shmem:// (fits_relurl2url)");
+            ffpmsg_str("   cannot construct full URL from a partial URL and ");
+            ffpmsg_str("   MEM/SHMEM base URL");
+            *status = URL_PARSE_ERROR;
+            break;
+        }
+
+        if relURL[0] != bb(b'/') {
+            /*
+            just append the relative URL string to the reference URL
+            string (minus the reference URL file name) to form the
+            absolute URL string
+              */
+
+            // C: tmpStr1 = strrchr(tmpStr,'/'); if(tmpStr1) tmpStr1[1]=0; else tmpStr[0]=0;
+            match strrchr_safe(&tmpStr, bb(b'/')) {
+                Some(k) => tmpStr[k + 1] = 0,
+                None => tmpStr[0] = 0,
+            }
+
+            if strlen_safe(&tmpStr) + strlen_safe(relURL) > FLEN_FILENAME - 1 {
+                absURL[0] = 0;
+                ffpmsg_str("rel + ref URL is too long (fits_relurl2url)");
+                *status = URL_PARSE_ERROR;
+                break;
+            }
+            strcat_safe(&mut tmpStr, relURL);
+        } else {
+            /*
+            have to parse the refURL string for the first occurnace of the
+            same number of '/' characters as contained in the beginning of
+            location that is not followed by a greater number of consective
+            '/' charaters (yes, that is a confusing statement); this is the
+            location in the refURL string where the relURL string is to
+            be appended to form the new absolute URL string
+              */
+
+            /*
+            first, build up a slash pattern string that has one more
+            slash in it than the starting slash pattern of the
+            relURL string
+              */
+
+            strcpy_safe(absURL, cs!(c"/"));
+
+            i = 0;
+            while relURL[i] == bb(b'/') {
+                if strlen_safe(absURL) + 1 > FLEN_FILENAME - 1 {
+                    absURL[0] = 0;
+                    ffpmsg_str("abs URL is too long (fits_relurl2url)");
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                strcat_safe(absURL, cs!(c"/"));
+                i += 1;
+            }
+
+            /*
+            loop over the refURL string until the slash pattern stored
+            in absURL is no longer found
+              */
+
+            // C: for(tmpStr1 = tmpStr, i = strlen(absURL);
+            //         (tmpStr2 = strstr(tmpStr1,absURL)) != NULL; tmpStr1 = tmpStr2 + i);
+            let mut tmpStr1: usize = 0;
+            i = strlen_safe(absURL);
+            loop {
+                let start = tmpStr1.min(tmpStr.len());
+                match strstr_safe(&tmpStr[start..], absURL) {
+                    Some(rel) => {
+                        let tmpStr2 = start + rel;
+                        tmpStr1 = tmpStr2 + i;
+                    }
+                    None => break,
+                }
+            }
+
+            /* reduce the slash pattern string by one slash */
+
+            absURL[i - 1] = 0;
+
+            /*
+            search for the slash pattern in the remaining portion
+            of the refURL string
+             */
+
+            let start = tmpStr1.min(tmpStr.len());
+            match strstr_safe(&tmpStr[start..], absURL) {
+                /* set a string terminator at the slash pattern match */
+                Some(rel) => tmpStr[start + rel] = 0,
+                None => {
+                    /* just strip off the file name from the refURL  */
+                    match strrchr_safe(&tmpStr[start..], bb(b'/')) {
+                        Some(rel) => tmpStr[start + rel] = 0,
+                        None => tmpStr[0] = 0,
+                    }
+                }
+            }
+
+            /*
+            conatenate the relURL string to the refURL string to form
+            the absURL
+              */
+
+            if strlen_safe(&tmpStr) + strlen_safe(relURL) > FLEN_FILENAME - 1 {
+                absURL[0] = 0;
+                ffpmsg_str("rel + ref URL is too long (fits_relurl2url)");
+                *status = URL_PARSE_ERROR;
+                break;
+            }
+            strcat_safe(&mut tmpStr, relURL);
+        }
+
+        /*
+        normalize the absURL by removing any ".." or "." specifiers
+        in the string
+          */
+
+        *status = fits_clean_url(&tmpStr, absURL, status);
+
+        break;
+    } // while(0)
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2852,11 +3006,65 @@ pub(crate) fn fits_encode_url(
 /// This function was adopted from code in the libwww.a library available
 /// via the W3 consortium <URL: http://www.w3.org>
 pub(crate) fn fits_unencode_url(
-    _inpath: &[c_char],      /* I input URL with encoding            */
-    _outpath: &mut [c_char], /* O unencoded URL                      */
-    _status: &mut c_int,
+    inpath: &[c_char],      /* I input URL with encoding            */
+    outpath: &mut [c_char], /* O unencoded URL                      */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    if *status != 0 {
+        return *status;
+    }
+
+    // Numeric value of a hex digit (0-15); mirrors the C ternary chain. Computed in
+    // u8 so the `*16` / `+` reconstruction below cannot overflow a signed c_char.
+    let hexval = |c: c_char| -> u8 {
+        if (bb(b'0')..=bb(b'9')).contains(&c) {
+            (c - bb(b'0')) as u8
+        } else if (bb(b'A')..=bb(b'F')).contains(&c) {
+            (c - bb(b'A') + 10) as u8
+        } else {
+            (c - bb(b'a') + 10) as u8
+        }
+    };
+
+    let mut p = 0; /* index into inpath  (C: char *p) */
+    let mut q = 0; /* index into outpath (C: char *q) */
+
+    /*
+       loop over all characters in the inpath looking for the '%' escape
+       character; if found the process the escape sequence
+    */
+
+    while inpath[p] != 0 {
+        /*
+           if the character is '%' then unencode the sequence, else
+           just copy the character from inpath to outpath
+        */
+
+        if inpath[p] == HEX_ESCAPE as c_char {
+            p += 1;
+            let mut c = inpath[p]; /* c = *(++p) */
+            if c != 0 {
+                outpath[q] = (hexval(c) << 4) as c_char; /* *q = hexval(c) * 16 */
+
+                p += 1;
+                c = inpath[p]; /* c = *(++p) */
+                if c != 0 {
+                    outpath[q] = (outpath[q] as u8 + hexval(c)) as c_char; /* *q += hexval(c) */
+                    p += 1;
+                    q += 1;
+                }
+            }
+        } else {
+            outpath[q] = inpath[p]; /* *q++ = *p++ */
+            q += 1;
+            p += 1;
+        }
+    }
+
+    /* terminate the outpath */
+    outpath[q] = 0;
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -2965,5 +3173,94 @@ mod tests {
             assert_eq!(output, expected);
             assert_eq!(status, expected_status);
         }
+    }
+
+    /// Copy a `&str` into a NUL-terminated `[c_char; FLEN_FILENAME]` buffer.
+    fn to_buf(s: &str) -> [c_char; FLEN_FILENAME] {
+        let mut buf = [0 as c_char; FLEN_FILENAME];
+        for (i, &b) in s.as_bytes().iter().enumerate() {
+            buf[i] = b as c_char;
+        }
+        buf
+    }
+
+    /// Read a NUL-terminated `[c_char]` buffer back into a `&str`.
+    fn from_buf(buf: &[c_char]) -> &str {
+        CStr::from_bytes_until_nul(cast_slice(buf))
+            .unwrap()
+            .to_str()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_fits_unencode_url() {
+        let mut status = 0;
+
+        let cases = [
+            ("abc", "abc"),       // nothing to decode
+            ("%20", " "),         // space
+            ("a%2Fb", "a/b"),     // '/' in the middle
+            ("%41%42%43", "ABC"), // consecutive escapes
+            ("100%25", "100%"),   // literal percent
+            ("%2f", "/"),         // lower-case hex digits
+            ("hello%20world", "hello world"),
+            ("abc%", "abc"), // trailing '%' with no digits
+            ("%2", ""),      // trailing '%' with one digit -> dropped
+            ("", ""),        // empty input
+        ];
+
+        for (input, expected) in cases {
+            let in_buf = to_buf(input);
+            let mut out_buf = [0 as c_char; FLEN_FILENAME];
+
+            let r = fits_unencode_url(&in_buf, &mut out_buf, &mut status);
+
+            assert_eq!(r, 0, "input={input:?}");
+            assert_eq!(status, 0, "input={input:?}");
+            assert_eq!(from_buf(&out_buf), expected, "input={input:?}");
+        }
+    }
+
+    #[test]
+    fn test_fits_relurl2url() {
+        let mut status = 0;
+        let mut abs_url = [0 as c_char; FLEN_FILENAME];
+
+        // (refURL, relURL, expected absURL). Note the final result is passed through
+        // fits_clean_url(), which normalizes "."/".." and collapses repeated slashes.
+        let cases = [
+            // a plain relative name replaces the reference file name
+            ("/data/file1.fits", "file2.fits", "/data/file2.fits"),
+            ("dir/sub/old.fits", "new.fits", "dir/sub/new.fits"),
+            // ".." in the relative URL is normalized away by fits_clean_url
+            ("/a/b/c.fits", "../d.fits", "/a/d.fits"),
+            // a relative URL beginning with '/' is resolved against the path root
+            ("/a/b/c.fits", "/x.fits", "/x.fits"),
+        ];
+
+        for (refurl, relurl, expected) in cases {
+            let refbuf = to_buf(refurl);
+            let relbuf = to_buf(relurl);
+            abs_url.fill(0);
+            status = 0;
+
+            let r = fits_relurl2url(&refbuf, &relbuf, &mut abs_url, &mut status);
+
+            assert_eq!(r, 0, "ref={refurl:?} rel={relurl:?}");
+            assert_eq!(status, 0, "ref={refurl:?} rel={relurl:?}");
+            assert_eq!(
+                from_buf(&abs_url),
+                expected,
+                "ref={refurl:?} rel={relurl:?}"
+            );
+        }
+
+        // a mem:// reference URL cannot be used to build an absolute URL
+        status = 0;
+        abs_url.fill(0);
+        let refbuf = to_buf("mem://block");
+        let relbuf = to_buf("file.fits");
+        fits_relurl2url(&refbuf, &relbuf, &mut abs_url, &mut status);
+        assert_eq!(status, URL_PARSE_ERROR);
     }
 }
