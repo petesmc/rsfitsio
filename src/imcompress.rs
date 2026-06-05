@@ -42,7 +42,7 @@ use crate::getcold::{
     fffi1r8, fffi2r8, fffi4r8, fffr4r8, fffr8r8, fffr8r8_inplace, ffgcvd_safe, ffgsvd_safe,
 };
 use crate::getcole::{fffi1r4, fffi2r4, fffi4r4, fffr4r4, fffr4r4_inplace, fffr8r4, ffgsve_safe};
-use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffr4i2, fffr8i2, ffgsvi_safe};
+use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffi8i2, fffr4i2, fffr8i2, ffgsvi_safe};
 use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffr4i4, fffr8i4};
 use crate::getcolk::{fffi1int, fffi2int, fffi4int, fffi8int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe};
 use crate::getcolsb::{fffi1s1, fffi2s1, fffi4s1};
@@ -8536,12 +8536,13 @@ fn imcomp_decompress_tile(
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
-                fffr4i2(
+                fffi4i2(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull,
                     nulval.get_value_as_f64() as c_short,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -8549,12 +8550,13 @@ fn imcomp_decompress_tile(
                     status,
                 );
             } else {
-                fffr8i2(
+                fffi8i2(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    LONGLONG::from(tnull),
                     nulval.get_value_as_f64() as c_short,
                     bnullarray,
                     anynul.as_deref_mut(),
