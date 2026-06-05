@@ -43,14 +43,14 @@ use crate::getcold::{
 };
 use crate::getcole::{fffi1r4, fffi2r4, fffi4r4, fffr4r4, fffr4r4_inplace, fffr8r4, ffgsve_safe};
 use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffi8i2, fffr4i2, fffr8i2, ffgsvi_safe};
-use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffr4i4, fffr8i4};
+use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffi8i4, fffr4i4, fffr8i4};
 use crate::getcolk::{
     fffi1int, fffi2int, fffi4int, fffi8int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe,
 };
 use crate::getcolsb::{fffi1s1, fffi2s1, fffi4s1};
-use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffr4u2, fffr8u2};
-use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffr4u4, fffr8u4};
-use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffr4uint, fffr8uint};
+use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffi8u2, fffr4u2, fffr8u2};
+use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffi8u4, fffr4u4, fffr8u4};
+use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffi8uint, fffr4uint, fffr8uint};
 use crate::putcolb::ffpclb_safe;
 use crate::putcold::ffpcld_safe;
 use crate::putcoli::ffpcli_safe;
@@ -8674,7 +8674,6 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_int>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
@@ -8686,6 +8685,34 @@ fn imcomp_decompress_tile(
                     nullcheck,
                     tnull,
                     nulval.get_value_as_f64() as c_int,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TSHORT) {
+                fffi2int(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as c_short,
+                    nulval.get_value_as_f64() as _,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TBYTE) {
+                fffi1int(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as u8,
+                    nulval.get_value_as_f64() as _,
                     bnullarray,
                     anynul.as_deref_mut(),
                     cast_slice_mut(buffer),
@@ -8771,29 +8798,58 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_long>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
-                fffr4i4(
+                fffi4i4(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull,
                     nulval.get_value_as_f64() as c_long,
                     bnullarray,
                     anynul.as_deref_mut(),
                     cast_slice_mut(buffer),
                     status,
                 );
-            } else {
-                fffr8i4(
+            } else if (tiledatatype == TSHORT) {
+                fffi2i4(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull as c_short,
+                    nulval.get_value_as_f64() as _,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TBYTE) {
+                fffi1i4(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as u8,
+                    nulval.get_value_as_f64() as _,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else {
+                fffi8i4(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as LONGLONG,
                     nulval.get_value_as_f64() as c_long,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9264,16 +9320,44 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_short>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
-                fffr4u2(
+                fffi4u2(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull,
+                    nulval.get_value_as_f64() as c_ushort,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TSHORT) {
+                fffi2u2(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as c_short,
+                    nulval.get_value_as_f64() as c_ushort,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TBYTE) {
+                fffi1u2(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as u8,
                     nulval.get_value_as_f64() as c_ushort,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9281,12 +9365,13 @@ fn imcomp_decompress_tile(
                     status,
                 );
             } else {
-                fffr8u2(
+                fffi8u2(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull as LONGLONG,
                     nulval.get_value_as_f64() as c_ushort,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9359,16 +9444,44 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_int>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
-                fffr4uint(
+                fffi4uint(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull,
+                    nulval.get_value_as_f64() as c_uint,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TSHORT) {
+                fffi2uint(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as c_short,
+                    nulval.get_value_as_f64() as c_uint,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TBYTE) {
+                fffi1uint(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as u8,
                     nulval.get_value_as_f64() as c_uint,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9376,12 +9489,13 @@ fn imcomp_decompress_tile(
                     status,
                 );
             } else {
-                fffr8uint(
+                fffi8uint(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull as LONGLONG,
                     nulval.get_value_as_f64() as c_uint,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9454,16 +9568,44 @@ fn imcomp_decompress_tile(
         pixlen = mem::size_of::<c_long>();
 
         if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
             /* Just have to copy the values to the output array */
 
             if tiledatatype == TINT {
-                fffr4u4(
+                fffi4u4(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull,
+                    nulval.get_value_as_f64() as c_ulong,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TSHORT) {
+                fffi2u4(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as c_short,
+                    nulval.get_value_as_f64() as c_ulong,
+                    bnullarray,
+                    anynul.as_deref_mut(),
+                    cast_slice_mut(buffer),
+                    status,
+                );
+            } else if (tiledatatype == TBYTE) {
+                fffi1u4(
+                    cast_slice_mut(idata),
+                    c_long::from(tilelen),
+                    bscale,
+                    bzero,
+                    nullcheck,
+                    tnull as u8,
                     nulval.get_value_as_f64() as c_ulong,
                     bnullarray,
                     anynul.as_deref_mut(),
@@ -9471,12 +9613,13 @@ fn imcomp_decompress_tile(
                     status,
                 );
             } else {
-                fffr8u4(
+                fffi8u4(
                     cast_slice_mut(idata),
                     c_long::from(tilelen),
                     bscale,
                     bzero,
                     nullcheck,
+                    tnull as LONGLONG,
                     nulval.get_value_as_f64() as c_ulong,
                     bnullarray,
                     anynul.as_deref_mut(),
