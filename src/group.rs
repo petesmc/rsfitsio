@@ -38,14 +38,32 @@ pub const HEX_ESCAPE: u8 = b'%';
 
 pub const MAX_HDU_TRACKER: usize = 1000;
 
+// The C uses `char *filename[MAXHDU]` etc., where each entry is either NULL or a
+// malloc'd buffer. The safe equivalent is a fixed MAX_HDU_TRACKER-sized array whose
+// entries are `Option<Box<[c_char; FLEN_FILENAME]>>` (None == the C NULL, Some == an
+// owned, heap-allocated buffer). The array itself is just MAX_HDU_TRACKER pointers, so
+// the struct stays small, and the per-entry buffers replace the manual malloc/free.
 pub(crate) struct HDUtracker {
     nHDU: c_int,
 
-    filename: [c_char; MAX_HDU_TRACKER],
+    filename: [Option<Box<[c_char; FLEN_FILENAME]>>; MAX_HDU_TRACKER],
     position: [c_int; MAX_HDU_TRACKER],
 
-    newFilename: [c_char; MAX_HDU_TRACKER],
+    newFilename: [Option<Box<[c_char; FLEN_FILENAME]>>; MAX_HDU_TRACKER],
     newPosition: [c_int; MAX_HDU_TRACKER],
+}
+
+impl Default for HDUtracker {
+    fn default() -> Self {
+        HDUtracker {
+            nHDU: 0,
+            // `Option<Box<_>>` is not Copy, so build the all-None arrays with from_fn.
+            filename: std::array::from_fn(|_| None),
+            position: [0; MAX_HDU_TRACKER],
+            newFilename: std::array::from_fn(|_| None),
+            newPosition: [0; MAX_HDU_TRACKER],
+        }
+    }
 }
 
 /*---------------------------------------------------------------------------*/
@@ -776,13 +794,7 @@ pub fn ffgtrm_safe(
     let mut i: c_long;
     let mut nmembers: c_long = 0;
 
-    let mut HDU = HDUtracker {
-        nHDU: 0,
-        filename: [0; MAX_HDU_TRACKER],
-        position: [0; MAX_HDU_TRACKER],
-        newFilename: [0; MAX_HDU_TRACKER],
-        newPosition: [0; MAX_HDU_TRACKER],
-    };
+    let mut HDU = HDUtracker::default();
 
     if *status != 0 {
         return *status;
@@ -907,13 +919,7 @@ pub fn ffgtcp_safe(
                             and their members (if  groups)                  */
     status: &mut c_int, /* return status code                          */
 ) -> c_int {
-    let mut HDU = HDUtracker {
-        nHDU: 0,
-        filename: [0; MAX_HDU_TRACKER],
-        position: [0; MAX_HDU_TRACKER],
-        newFilename: [0; MAX_HDU_TRACKER],
-        newPosition: [0; MAX_HDU_TRACKER],
-    };
+    let mut HDU = HDUtracker::default();
 
     if *status != 0 {
         return *status;
@@ -2233,12 +2239,95 @@ pub(crate) fn ffgtcpr(
 /// resides in the HDUtracker then the new HDU postion and file name are
 /// returned in  newPosition and newFileName (if != NULL)
 pub(crate) fn fftsad(
-    _mfptr: &mut fitsfile,               /* pointer to an member HDU             */
-    _HDU: &mut HDUtracker,               /* pointer to an HDU tracker struct     */
-    _newPosition: Option<&mut c_int>, /* new HDU position of the member HDU; None if not requested   */
-    _newFileName: Option<&mut [c_char]>, /* file containing member HDU; None if not requested           */
+    mfptr: &mut fitsfile,               /* pointer to an member HDU             */
+    HDU: &mut HDUtracker,               /* pointer to an HDU tracker struct     */
+    newPosition: Option<&mut c_int>, /* new HDU position of the member HDU; None if not requested   */
+    newFileName: Option<&mut [c_char]>, /* file containing member HDU; None if not requested           */
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let mut hdunum: c_int = 0;
+    let mut status: c_int = 0;
+
+    let mut filename1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut filename2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    loop {
+        /* retrieve the HDU's position within the FITS file */
+
+        fits_get_hdu_num(mfptr, &mut hdunum);
+
+        /* retrieve the HDU's file name */
+
+        // ffflnm_safe still takes a raw `*mut c_char` output buffer.
+        status = fits_file_name(mfptr, filename1.as_mut_ptr(), &mut status);
+
+        /* parse the file name and construct the "standard" URL for it */
+
+        status = fits_parse_rootname(&filename1, &mut filename2, &mut status);
+
+        /*
+        examine all the existing HDUs in the HDUtracker an see if this HDU
+        has already been registered
+         */
+
+        i = 0;
+        while i < HDU.nHDU
+            && !(HDU.position[i as usize] == hdunum
+                && strcmp_safe(HDU.filename[i as usize].as_deref().unwrap(), &filename2) == 0)
+        {
+            i += 1;
+        }
+
+        if i != HDU.nHDU {
+            status = HDU_ALREADY_TRACKED;
+            if let Some(newPosition) = newPosition {
+                *newPosition = HDU.newPosition[i as usize];
+            }
+            if let Some(newFileName) = newFileName {
+                strcpy_safe(newFileName, HDU.newFilename[i as usize].as_deref().unwrap());
+            }
+            break;
+        }
+
+        if HDU.nHDU == MAX_HDU_TRACKER as c_int {
+            status = TOO_MANY_HDUS_TRACKED;
+            break;
+        }
+
+        // The C malloc()s filename[i] and newFilename[i] here, returning
+        // MEMORY_ALLOCATION if either allocation fails. try_reserve_exact lets us catch
+        // the failure; each Vec is then turned into the boxed buffer stored in the slot.
+        let mut fbuf: Vec<c_char> = Vec::new();
+        if fbuf.try_reserve_exact(FLEN_FILENAME).is_err() {
+            status = MEMORY_ALLOCATION;
+            break;
+        }
+        fbuf.resize(FLEN_FILENAME, 0);
+
+        let mut nbuf: Vec<c_char> = Vec::new();
+        if nbuf.try_reserve_exact(FLEN_FILENAME).is_err() {
+            status = MEMORY_ALLOCATION;
+            // fbuf is dropped here, mirroring the C free(HDU->filename[i])
+            break;
+        }
+        nbuf.resize(FLEN_FILENAME, 0);
+
+        HDU.position[i as usize] = hdunum;
+        HDU.newPosition[i as usize] = hdunum;
+
+        strcpy_safe(&mut fbuf, &filename2);
+        strcpy_safe(&mut nbuf, &filename2);
+
+        HDU.filename[i as usize] = Some(fbuf.into_boxed_slice().try_into().expect("Size mismatch"));
+        HDU.newFilename[i as usize] =
+            Some(nbuf.into_boxed_slice().try_into().expect("Size mismatch"));
+
+        HDU.nHDU += 1;
+
+        break;
+    } // while(0)
+
+    status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2248,12 +2337,62 @@ pub(crate) fn fftsad(
 /// non-NULL the newFileName value is used to update the HDU->newFilename[]
 /// value for mfptr.
 pub(crate) fn fftsud(
-    _mfptr: &mut fitsfile,       /* pointer to an member HDU             */
-    _HDU: &mut HDUtracker,       /* pointer to an HDU tracker struct     */
-    _newPosition: c_int,         /* new HDU position of the member HDU   */
-    _newFileName: &mut [c_char], /* file containing member HDU           */
+    mfptr: &mut fitsfile,           /* pointer to an member HDU             */
+    HDU: &mut HDUtracker,           /* pointer to an HDU tracker struct     */
+    newPosition: c_int,             /* new HDU position of the member HDU; 0 to leave unchanged */
+    newFileName: Option<&[c_char]>, /* file containing member HDU; None to leave unchanged   */
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let mut hdunum: c_int = 0;
+    let mut status: c_int = 0;
+
+    let mut filename1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut filename2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    /* retrieve the HDU's position within the FITS file */
+
+    fits_get_hdu_num(mfptr, &mut hdunum);
+
+    /* retrieve the HDU's file name */
+
+    // ffflnm_safe still takes a raw `*mut c_char` output buffer.
+    status = fits_file_name(mfptr, filename1.as_mut_ptr(), &mut status);
+
+    /* parse the file name and construct the "standard" URL for it */
+
+    status = fits_parse_rootname(&filename1, &mut filename2, &mut status);
+
+    /*
+     examine all the existing HDUs in the HDUtracker an see if this HDU
+     has already been registered
+    */
+
+    i = 0;
+    while i < HDU.nHDU
+        && !(HDU.position[i as usize] == hdunum
+            && strcmp_safe(HDU.filename[i as usize].as_deref().unwrap(), &filename2) == 0)
+    {
+        i += 1;
+    }
+
+    /* if previously registered then change newPosition and newFileName */
+
+    if i != HDU.nHDU {
+        if newPosition != 0 {
+            HDU.newPosition[i as usize] = newPosition;
+        }
+        if let Some(newFileName) = newFileName {
+            // the slot is already Some for a tracked HDU; copy into its buffer
+            strcpy_safe(
+                HDU.newFilename[i as usize].as_deref_mut().unwrap(),
+                newFileName,
+            );
+        }
+    } else {
+        status = MEMBER_NOT_FOUND;
+    }
+
+    status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -3694,5 +3833,54 @@ mod tests {
             assert_eq!(status, 0, "input={input:?}");
             assert_eq!(from_buf(&out_buf), expected, "input={input:?}");
         }
+    }
+
+    #[test]
+    fn test_fftsad_and_fftsud() {
+        use crate::cfileio::{ffclos_safe, ffinit_safe};
+
+        let mut status = 0;
+
+        // create an in-memory FITS file (with an empty primary HDU at position 1)
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut fptr, cs!(c"mem://"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        let mfptr = fptr.as_deref_mut().unwrap();
+
+        let mut hdu = HDUtracker::default();
+
+        // first registration: succeeds and records one HDU at position 1
+        let r = fftsad(mfptr, &mut hdu, None, None);
+        assert_eq!(r, 0);
+        assert_eq!(hdu.nHDU, 1);
+        assert_eq!(hdu.position[0], 1);
+        assert_eq!(hdu.newPosition[0], 1);
+
+        // registering the same HDU again reports HDU_ALREADY_TRACKED and does not
+        // add a second entry; the tracked newPosition is returned
+        let mut new_position = 0;
+        let mut new_filename = [0 as c_char; FLEN_FILENAME];
+        let r = fftsad(
+            mfptr,
+            &mut hdu,
+            Some(&mut new_position),
+            Some(&mut new_filename),
+        );
+        assert_eq!(r, HDU_ALREADY_TRACKED);
+        assert_eq!(hdu.nHDU, 1);
+        assert_eq!(new_position, 1);
+
+        // fftsud updates the new position of the tracked HDU
+        let r = fftsud(mfptr, &mut hdu, 5, None);
+        assert_eq!(r, 0);
+        assert_eq!(hdu.newPosition[0], 5);
+
+        // fftsud on an HDUtracker that doesn't contain this HDU -> MEMBER_NOT_FOUND
+        let mut empty = HDUtracker::default();
+        let r = fftsud(mfptr, &mut empty, 5, None);
+        assert_eq!(r, MEMBER_NOT_FOUND);
+
+        let f = fptr.take().unwrap();
+        ffclos_safe(f, &mut status);
     }
 }
