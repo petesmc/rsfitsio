@@ -6940,7 +6940,7 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
         /* NO_DITHER should be treated as the default if it is not present. */
         tstatus = 0;
         if fits_read_key_str(infptr, cs!(c"ZQUANTIZ"), &mut value, None, &mut tstatus) > 0 {
-            (infptr.Fptr).quantize_method = 0;
+            (infptr.Fptr).quantize_method = NO_DITHER;
             (infptr.Fptr).quantize_level = 0.0;
 
             /* Note that we need to set quantize_level to something other than */
