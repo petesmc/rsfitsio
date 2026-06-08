@@ -8533,67 +8533,7 @@ fn imcomp_decompress_tile(
     if datatype == TSHORT {
         pixlen = mem::size_of::<c_short>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_uchar,
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    LONGLONG::from(tnull),
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8669,71 +8609,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8i2(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_short,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TINT {
         pixlen = mem::size_of::<c_int>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_int,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as _,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as u8,
-                    nulval.get_value_as_f64() as _,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    LONGLONG::from(tnull),
-                    nulval.get_value_as_f64() as c_int,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8793,71 +8687,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8int(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_int,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TLONG {
         pixlen = mem::size_of::<c_long>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_long,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as _,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as u8,
-                    nulval.get_value_as_f64() as _,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as LONGLONG,
-                    nulval.get_value_as_f64() as c_long,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8911,6 +8759,20 @@ fn imcomp_decompress_tile(
                 bzero,
                 nullcheck,
                 tnull as c_uchar,
+                nulval.get_value_as_f64() as c_long,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
+        } else {
+            fffi8i4(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
                 nulval.get_value_as_f64() as c_long,
                 bnullarray,
                 anynul.as_deref_mut(),
@@ -9319,67 +9181,7 @@ fn imcomp_decompress_tile(
     } else if datatype == TUSHORT {
         pixlen = mem::size_of::<c_short>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as u8,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as LONGLONG,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9439,71 +9241,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8u2(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_ushort,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TUINT {
         pixlen = mem::size_of::<c_int>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as u8,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as LONGLONG,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9563,71 +9319,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8uint(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_uint,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TULONG {
         pixlen = mem::size_of::<c_long>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffi4u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TSHORT) {
-                fffi2u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as c_short,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else if (tiledatatype == TBYTE) {
-                fffi1u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as u8,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffi8u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    tnull as LONGLONG,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9681,6 +9391,20 @@ fn imcomp_decompress_tile(
                 bzero,
                 nullcheck,
                 tnull as c_uchar,
+                nulval.get_value_as_f64() as c_ulong,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
+        } else {
+            fffi8u4(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
                 nulval.get_value_as_f64() as c_ulong,
                 bnullarray,
                 anynul.as_deref_mut(),
