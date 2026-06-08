@@ -3213,7 +3213,7 @@ unsafe fn imcomp_compress_tile(
             ffgdesll_safe(
                 outfptr,
                 (outfptr.Fptr).cn_compressed,
-                row,
+                row.into(),
                 Some(&mut _test_nelemll),
                 Some(&mut _test_offset),
                 status,
@@ -3222,7 +3222,7 @@ unsafe fn imcomp_compress_tile(
                 ffpclb_safe(
                     outfptr,
                     (outfptr.Fptr).cn_compressed,
-                    row,
+                    row.into(),
                     1,
                     0,
                     &[],
