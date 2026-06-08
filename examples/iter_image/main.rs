@@ -14,8 +14,8 @@ use rsfitsio::putcol::{
 
 /*
   This program illustrates how to use the CFITSIO iterator function.
-  It reads and modifies the input 'iter_image.fit' image file by setting
-  all the pixel values to zero (DESTROYING THE ORIGINAL IMAGE!!!)
+  It reads and modifies the input 'iter_image.fit' image file by dividing
+  all the pixel values by a factor of 100 (DESTROYING THE ORIGINAL IMAGE!!!)
 */
 pub fn main() -> ExitCode {
     let mut fptr: Option<Box<fitsfile>> = None;
@@ -25,7 +25,7 @@ pub fn main() -> ExitCode {
     let offset: c_long = 0; /* process all the rows */
 
     let mut status: c_int = 0;
-    let filename = c"iter_image.fit"; /* name of rate FITS file */
+    let filename = c"iter_image.fit"; /* name of image FITS file */
 
     /* open file */
     if unsafe { fits_open_file(&mut fptr, filename.as_ptr(), READWRITE, &mut status) } != 0 {
@@ -41,7 +41,7 @@ pub fn main() -> ExitCode {
         }
     }
 
-    /* apply the rate function to each row of the table */
+    /* apply the div_image function to each row of the image */
     println!("Calling iterator function...{status}");
 
     unsafe {
@@ -50,7 +50,7 @@ pub fn main() -> ExitCode {
             cols.as_mut_ptr(),
             offset,
             rows_per_loop,
-            zero_image,
+            div_image,
             ptr::null_mut(),
             &mut status,
         );
@@ -70,9 +70,9 @@ pub fn main() -> ExitCode {
     ExitCode::from(status as u8)
 }
 /*--------------------------------------------------------------------------*/
-/// Sample iterator function that zeros out image pixels.
+/// Sample iterator function that divides image pixels by 100.
 /// This demonstrates how to process FITS image data using the iterator.
-extern "C" fn zero_image(
+extern "C" fn div_image(
     _totalrows: c_long,
     _offset: c_long,
     firstrow: c_long,
@@ -105,7 +105,7 @@ extern "C" fn zero_image(
         /*  Loop from 1 to nrows, not 0 to nrows - 1.  */
 
         for ii in 1..=nrows {
-            *COUNTS.offset(ii as isize) = 1;
+            *COUNTS.offset(ii as isize) /= 100;
         }
 
         println!("firstrows, nrows = {firstrow} {nrows}");

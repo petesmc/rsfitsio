@@ -14,8 +14,9 @@ use rsfitsio::putcol::{
 
 /*
   This program illustrates how to use the CFITSIO iterator function.
-  It reads and modifies the input 'vari.fits' file by processing
-  variable-length compressed data arrays.
+  It reads the input 'vari.fits' file, moves to the binary
+  table in the "COMPRESSED_IMAGE" extension, and prints the
+  float-values in the column COMPRESSED_DATA.
 */
 pub fn main() -> ExitCode {
     let mut fptr: Option<Box<fitsfile>> = None;
@@ -94,8 +95,7 @@ pub fn main() -> ExitCode {
 }
 
 /*--------------------------------------------------------------------------*/
-/// Sample iterator function that demonstrates processing variable-length
-/// compressed data arrays using the CFITSIO iterator.
+/// Sample iterator function that prints the values (assumed to beof type float).
 extern "C" fn flux_rate(
     _totalrows: c_long,
     _offset: c_long,
@@ -106,7 +106,7 @@ extern "C" fn flux_rate(
     _user_strct: *mut std::os::raw::c_void,
 ) -> c_int {
     // Static variables to preserve values between calls - using unsafe static
-    static mut COUNTS: *mut c_uchar = ptr::null_mut();
+    static mut COUNTS: *mut f32 = ptr::null_mut();
 
     unsafe {
         /*--------------------------------------------------------*/
@@ -119,7 +119,7 @@ extern "C" fn flux_rate(
             );
 
             /* assign the input pointers to the appropriate arrays */
-            COUNTS = fits_iter_get_array(cols.offset(0)) as *mut c_uchar;
+            COUNTS = fits_iter_get_array(cols.offset(0)) as *mut f32;
         }
 
         /*--------------------------------------------*/
@@ -129,12 +129,12 @@ extern "C" fn flux_rate(
         /*  NOTE: 1st element of array is the null pixel value!  */
         /*  Loop from 1 to nrows, not 0 to nrows - 1.  */
 
-        for _ii in 1..=nrows {
+        for ii in 1..=nrows {
             let repeat = fits_iter_get_repeat(cols.offset(0));
             let first_element = if !COUNTS.is_null() {
-                *COUNTS.offset(1)
+                *COUNTS.add(ii as usize)
             } else {
-                0
+                0.0
             };
             println!("repeat = {repeat}, {first_element}");
         }
