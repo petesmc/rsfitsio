@@ -5752,7 +5752,7 @@ pub fn ffifile2_safe(
 
             /* Check for overflow; add extra 4 characters if we have pre-existing expression */
             if strlen_safe(rowfilterx_slice)
-                + (p2 - p1 + (if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
+                + (p2 - p1 - 1) + ((if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
                 > FLEN_FILENAME - 1
             {
                 *status = URL_PARSE_ERROR;
