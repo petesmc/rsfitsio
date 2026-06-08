@@ -1839,7 +1839,6 @@ pub(crate) fn imcomp_init_table(
                     Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
-
             } else if (outfptr.Fptr).request_quantize_method == NO_DITHER {
                 ffpkys_safe(
                     outfptr,
@@ -6938,20 +6937,29 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
     } else {
         /* get the floating point to integer quantization type, if present. */
         /* FITS files produced before 2009 will not have this keyword */
+        /* NO_DITHER should be treated as the default if it is not present. */
         tstatus = 0;
         if fits_read_key_str(infptr, cs!(c"ZQUANTIZ"), &mut value, None, &mut tstatus) > 0 {
             (infptr.Fptr).quantize_method = 0;
             (infptr.Fptr).quantize_level = 0.0;
+
+            /* Note that we need to set quantize_level to something other than */
+            /* NO_QUANTIZE, since that would cause quantize_method to be ignored, */
+            /* and it might already be set from a different HDU. */
         } else if FSTRCMP(&value, cs!(c"NONE")) == 0 {
             (infptr.Fptr).quantize_level = NO_QUANTIZE;
         } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_1")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_1;
+            (infptr.Fptr).quantize_level = 0.0;
         } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_2")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_2;
+            (infptr.Fptr).quantize_level = 0.0;
         } else if FSTRCMP(&value, cs!(c"NO_DITHER")) == 0 {
             (infptr.Fptr).quantize_method = NO_DITHER;
+            (infptr.Fptr).quantize_level = 0.0;
         } else {
             (infptr.Fptr).quantize_method = 0;
+            (infptr.Fptr).quantize_level = 0.0;
         }
     }
 
