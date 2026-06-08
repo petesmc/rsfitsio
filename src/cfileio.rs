@@ -6247,7 +6247,7 @@ pub fn ffexts_safe(
             }
             Some(mut ptr2) => {
                 ptr2 += ptr1;
-                if ptr2 - ptr1 > FLEN_FILENAME - 1 {
+                if ptr2 - ptr1 > FLEN_VALUE - 1 {
                     *status = URL_PARSE_ERROR;
                     return *status;
                 }
