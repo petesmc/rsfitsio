@@ -3622,7 +3622,7 @@ pub fn ffinit_safe(
     let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
     let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut tmplfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-    let mut compspec: [c_char; 80] = [0; 80];
+    let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut handle: c_int = 0;
     let mut create_disk_file: c_int = 0;
 
