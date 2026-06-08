@@ -15,7 +15,7 @@ use rsfitsio::putcol::{
 /*
   This program illustrates how to use the CFITSIO iterator function.
   It reads and modifies the input 'iter_image.fit' image file by dividing
-  all the pixel values by a factor of 100 (DESTROYING THE ORIGINAL IMAGE!!!)
+  all the pixel values by a factor of 10 (DESTROYING THE ORIGINAL IMAGE!!!)
 */
 pub fn main() -> ExitCode {
     let mut fptr: Option<Box<fitsfile>> = None;
@@ -70,7 +70,7 @@ pub fn main() -> ExitCode {
     ExitCode::from(status as u8)
 }
 /*--------------------------------------------------------------------------*/
-/// Sample iterator function that divides image pixels by 100.
+/// Sample iterator function that divides image pixels by 10.
 /// This demonstrates how to process FITS image data using the iterator.
 extern "C" fn div_image(
     _totalrows: c_long,
@@ -105,7 +105,7 @@ extern "C" fn div_image(
         /*  Loop from 1 to nrows, not 0 to nrows - 1.  */
 
         for ii in 1..=nrows {
-            *COUNTS.offset(ii as isize) /= 100;
+            *COUNTS.offset(ii as isize) /= 10;
         }
 
         println!("firstrows, nrows = {firstrow} {nrows}");
