@@ -3213,6 +3213,31 @@ unsafe fn imcomp_compress_tile(
                 status,
             );
 
+            /* we must zero out existing existing compressed data if it exists. */
+            /* otherwise on read this data is read ahead of the gzipped */
+            /* data and will cause a bug. */
+            let mut _test_nelemll: LONGLONG = 0;
+            let mut _test_offset: LONGLONG = 0;
+            ffgdesll_safe(
+                outfptr,
+                (outfptr.Fptr).cn_compressed,
+                row,
+                Some(&mut _test_nelemll),
+                Some(&mut _test_offset),
+                status,
+            );
+            if (_test_nelemll != 0) {
+                ffpclb_safe(
+                    outfptr,
+                    (outfptr.Fptr).cn_compressed,
+                    row,
+                    1,
+                    0,
+                    &[],
+                    status,
+                );
+            }
+
             /* finished with this buffer */
         }
 
