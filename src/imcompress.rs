@@ -6958,8 +6958,12 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             (infptr.Fptr).quantize_method = NO_DITHER;
             (infptr.Fptr).quantize_level = 0.0;
         } else {
-            (infptr.Fptr).quantize_method = 0;
-            (infptr.Fptr).quantize_level = 0.0;
+            /* This is an invalid ZQUANTIZ key or an old CFITSIO */
+            /* encountering some future standard key. */
+            ffpmsg_str("Unknown quantization type:");
+            ffpmsg_slice(&value);
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
         }
     }
 
