@@ -220,8 +220,12 @@ pub(crate) fn file_openfile(
                 }
             } else {
                 /* copy user name */
+
                 let mut ci = 1;
-                while filename[ci] != 0 && (filename[ci] != bb(b'/')) {
+                while filename[ci] != 0
+                    && (filename[ci] != bb(b'/'))
+                    && ii < core::mem::size_of_val(&user)
+                {
                     user[ii] = filename[ci];
                     ci += 1;
                     ii += 1;
@@ -229,15 +233,27 @@ pub(crate) fn file_openfile(
 
                 user[ii] = 0;
 
+                if (filename[ci] != 0
+                    && filename[ci] != bb(b'/')
+                    && ii >= core::mem::size_of_val(&user) - 1)
+                {
+                    return FILE_NOT_OPENED; /* username too long to expand safely */
+                }
+
                 /* get structure that includes name of user's home directory */
                 let pwd = Passwd::from_name(
                     CStr::from_bytes_with_nul(cast_slice(&user))
                         .unwrap()
                         .to_str()
                         .unwrap(),
-                )
-                .unwrap()
-                .unwrap();
+                );
+
+                if (pwd.is_err() || pwd.as_ref().unwrap().is_none()) {
+                    return (FILE_NOT_OPENED); /* unknown user or missing home dir */
+                }
+
+                let pwd = pwd.unwrap().unwrap();
+
                 let pw_dir_cstr = CString::new(pwd.dir).unwrap();
                 let pw_dir = cast_slice(pw_dir_cstr.to_bytes_with_nul());
 
