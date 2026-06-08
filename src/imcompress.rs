@@ -1840,13 +1840,6 @@ pub(crate) fn imcomp_init_table(
                     status,
                 );
 
-                if strcmp_safe(&zcmptype, cs!(c"RICE_1")) == 0 {
-                    /* when using this new dithering method, change the compression type */
-                    /* to an alias, so that old versions of funpack will not be able to */
-                    /* created a corrupted uncompressed image. */
-                    /* ******* can remove this cludge after about June 2015, after most old versions of fpack are gone */
-                    strcpy_safe(&mut zcmptype, cs!(c"RICE_ONE"));
-                }
             } else if (outfptr.Fptr).request_quantize_method == NO_DITHER {
                 ffpkys_safe(
                     outfptr,
