@@ -286,6 +286,13 @@ pub(crate) fn ffbinse(
                 }
 
                 let slen = strcspn_safe(ptr, cs!(c" ,)"));
+                if (slen >= FLEN_VALUE) {
+                    ffpmsg_str("column name too long in binning specification");
+                    ffpmsg_slice(binspec);
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+
                 strncat_safe(&mut colname[ii], ptr, slen); /* copy 1st column name */
 
                 ptr = &ptr[slen..];
