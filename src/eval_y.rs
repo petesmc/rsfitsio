@@ -9767,11 +9767,13 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
 
-        if( vector1 !=0 && validate_double_vector(lParse, that1_idx)==0 ) {return;}
+        if (vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0) {
+            return;
+        }
 
-   if( vector2!=0 && validate_double_vector(lParse, that2_idx)==0 ) {
-      return;
-   }
+        if (vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0) {
+            return;
+        }
 
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
