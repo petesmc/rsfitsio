@@ -480,39 +480,39 @@ pub(crate) fn fits_parser_yylex(
                                     let mut chunk_len: usize = 0;
                                     match c_int::from(tmpstring[len_0 as usize]) {
                                         48 => {
-                                            chunk = OCT_0.as_bytes();
+                                            chunk = cast_slice(OCT_0.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         49 => {
-                                            chunk = OCT_1.as_bytes();
+                                            chunk = cast_slice(OCT_1.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         50 => {
-                                            chunk = OCT_2.as_bytes();
+                                            chunk = cast_slice(OCT_2.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         51 => {
-                                            chunk = OCT_3.as_bytes();
+                                            chunk = cast_slice(OCT_3.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         52 => {
-                                            chunk = OCT_4.as_bytes();
+                                            chunk = cast_slice(OCT_4.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         53 => {
-                                            chunk = OCT_5.as_bytes();
+                                            chunk = cast_slice(OCT_5.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         54 => {
-                                            chunk = OCT_6.as_bytes();
+                                            chunk = cast_slice(OCT_6.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         55 => {
-                                            chunk = OCT_7.as_bytes();
+                                            chunk = cast_slice(OCT_7.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         120 | 88 => {
-                                            chunk = OCT_X.as_bytes();
+                                            chunk = cast_slice(OCT_X.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         _ => {}
@@ -599,71 +599,71 @@ pub(crate) fn fits_parser_yylex(
                                     let mut chunk_len: usize = 0;
                                     match c_int::from(tmpstring_0[len_1 as usize]) {
                                         48 => {
-                                            chunk = HEX_0.as_bytes();
+                                            chunk = cast_slice(HEX_0.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         49 => {
-                                            chunk = HEX_1.as_bytes();
+                                            chunk = cast_slice(HEX_1.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         50 => {
-                                            chunk = HEX_2.as_bytes();
+                                            chunk = cast_slice(HEX_2.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         51 => {
-                                            chunk = HEX_3.as_bytes();
+                                            chunk = cast_slice(HEX_3.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         52 => {
-                                            chunk = HEX_4.as_bytes();
+                                            chunk = cast_slice(HEX_4.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         53 => {
-                                            chunk = HEX_5.as_bytes();
+                                            chunk = cast_slice(HEX_5.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         54 => {
-                                            chunk = HEX_6.as_bytes();
+                                            chunk = cast_slice(HEX_6.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         55 => {
-                                            chunk = HEX_7.as_bytes();
+                                            chunk = cast_slice(HEX_7.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         56 => {
-                                            chunk = HEX_8.as_bytes();
+                                            chunk = cast_slice(HEX_8.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         57 => {
-                                            chunk = HEX_9.as_bytes();
+                                            chunk = cast_slice(HEX_9.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         97 | 65 => {
-                                            chunk = HEX_A.as_bytes();
+                                            chunk = cast_slice(HEX_A.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         98 | 66 => {
-                                            chunk = HEX_B.as_bytes();
+                                            chunk = cast_slice(HEX_B.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         99 | 67 => {
-                                            chunk = HEX_C.as_bytes();
+                                            chunk = cast_slice(HEX_C.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         100 | 68 => {
-                                            chunk = HEX_D.as_bytes();
+                                            chunk = cast_slice(HEX_D.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         101 | 69 => {
-                                            chunk = HEX_E.as_bytes();
+                                            chunk = cast_slice(HEX_E.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         102 | 70 => {
-                                            chunk = HEX_F.as_bytes();
+                                            chunk = cast_slice(HEX_F.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         120 | 88 => {
-                                            chunk = HEX_X.as_bytes();
+                                            chunk = cast_slice(HEX_X.as_bytes());
                                             chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         _ => {}
