@@ -73,7 +73,7 @@ use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe};
-use crate::fitsio::{LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTAX_ERR, fitsfile};
+use crate::fitsio::{LONG_MAX, LONG_MIN, LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTAX_ERR, fitsfile};
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkyd_safe, ffgkyj_safe, ffgkys_safe};
 use crate::region::{MY_PI, SAORegion, WCSdata, fits_in_region, fits_read_rgnfile};
@@ -9488,14 +9488,30 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 37 => {
                     if val2 != 0 {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                        if (val1 == LONG_MIN && val2 == -1) {
+                            *(lParse.Nodes[this_node_idx])
+                                .value
+                                .data
+                                .lngptr
+                                .offset(elem as isize) = 0;
+                        } else {
+                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                        }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 47 => {
                     if val2 != 0 {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                        if (val1 == LONG_MIN && val2 == -1) {
+                            *(lParse.Nodes[this_node_idx])
+                                .value
+                                .data
+                                .lngptr
+                                .offset(elem as isize) = LONG_MAX;
+                        } else {
+                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                        }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
