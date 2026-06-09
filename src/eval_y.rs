@@ -13521,6 +13521,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -13532,6 +13533,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                     || (lParse.Nodes[this_node_idx]).ntype
@@ -13628,6 +13630,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     cs!(c"Null encountered as vector index"),
                                 );
                                 free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                                 break;
                             } else {
                                 dimVals[i as usize] =
@@ -13705,6 +13708,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                         free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                     }
                     row += 1;
                 }
@@ -13716,6 +13720,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
                         free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         break;
                     } else {
                         dimVals[0] =
@@ -13727,6 +13732,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                             free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BITSTR as c_int
                             || (lParse.Nodes[this_node_idx]).ntype
