@@ -2471,7 +2471,7 @@ pub fn ffiter_safe(
         return *status;
     }
 
-    if n_cols < 0 || n_cols > 999 {
+    if n_cols <= 0 || n_cols > 999 {
         ffpmsg_str("Illegal number of columms (ffiter)");
         *status = BAD_COL_NUM; /* negative number of columns */
         return *status;
@@ -2482,6 +2482,19 @@ pub fn ffiter_safe(
     /* and column numbers and datatypes are legal.                */
     /* Also fill in other parameters in the column structure.     */
     /*------------------------------------------------------------*/
+
+    /* Assumptions throughout regarding the existence of cols[jj].fptr:
+     1) cols[0].fptr must not be NULL
+     2) Only TemporaryCols can have NULL fptr.
+     3) IMAGE_HDU must not have a TemporaryCol.
+    Check the first 2 here. */
+    for jj in 0..n_cols as usize {
+        if ((jj == 0 || cols[jj].iotype != TEMPORARY_COL) && cols[jj].fptr.is_null()) {
+            ffpmsg_str("Iterator column is missing FITS file pointer (ffiter)");
+            *status = NULL_INPUT_PTR;
+            return *status;
+        }
+    }
 
     unsafe {
         ffghdt_safe(cols[0].fptr.as_mut().unwrap(), &mut hdutype, status); /* type of first HDU */
@@ -2585,15 +2598,6 @@ pub fn ffiter_safe(
                 cols[jj].colnum = 0;
                 strcpy_safe(&mut cols[jj].colname, cs!(c"IMAGE")); /* dummy name for images */
 
-                tstatus = 0;
-                ffgkys_safe(
-                    cols[jj].fptr.as_mut().unwrap(),
-                    cs!(c"BUNIT"),
-                    &mut cols[jj].tunit[..],
-                    None,
-                    &mut tstatus,
-                );
-
                 if cols[jj].iotype == TEMPORARY_COL {
                     int_snprintf!(
                         message,
@@ -2603,9 +2607,18 @@ pub fn ffiter_safe(
                     *status = BAD_DATATYPE;
                     return *status;
                 }
-            } else
-            /* operating on FITS tables */
-            {
+
+                tstatus = 0;
+                ffgkys_safe(
+                    cols[jj].fptr.as_mut().unwrap(),
+                    cs!(c"BUNIT"),
+                    &mut cols[jj].tunit[..],
+                    None,
+                    &mut tstatus,
+                );
+            } else {
+                /* operating on FITS tables */
+
                 if jtype == IMAGE_HDU {
                     int_snprintf!(
                         message,
@@ -3063,6 +3076,14 @@ pub fn ffiter_safe(
                         || typecode.abs() == TINT
                         || typecode.abs() == TLONGLONG
                     {
+                        if (cols[jj].fptr.is_null()) {
+                            ffpmsg_str(
+                                "Iterator column for table is missing FITS file pointer (ffiter)",
+                            );
+                            *status = NULL_INPUT_PTR;
+                            return *status;
+                        }
+
                         tstatus = 0;
                         if hdutype == ASCII_TBL
                         /* TNULLn value is a string */
