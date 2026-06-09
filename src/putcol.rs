@@ -2471,7 +2471,7 @@ pub fn ffiter_safe(
         return *status;
     }
 
-    if n_cols <= 0 || n_cols > 999 {
+    if n_cols < 0 || n_cols > 999 {
         ffpmsg_str("Illegal number of columms (ffiter)");
         *status = BAD_COL_NUM; /* negative number of columns */
         return *status;
