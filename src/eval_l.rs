@@ -22,6 +22,34 @@ use crate::{
     wrappers::{strcat, strcpy, strlen, strncat, strncpy, toupper},
 };
 
+const OCT_0: &str = "000";
+const OCT_1: &str = "001";
+const OCT_2: &str = "010";
+const OCT_3: &str = "011";
+const OCT_4: &str = "100";
+const OCT_5: &str = "101";
+const OCT_6: &str = "110";
+const OCT_7: &str = "111";
+const OCT_X: &str = "xxx";
+
+const HEX_0: &str = "0000";
+const HEX_1: &str = "0001";
+const HEX_2: &str = "0010";
+const HEX_3: &str = "0011";
+const HEX_4: &str = "0100";
+const HEX_5: &str = "0101";
+const HEX_6: &str = "0110";
+const HEX_7: &str = "0111";
+const HEX_8: &str = "1000";
+const HEX_9: &str = "1001";
+const HEX_A: &str = "1010";
+const HEX_B: &str = "1011";
+const HEX_C: &str = "1100";
+const HEX_D: &str = "1101";
+const HEX_E: &str = "1110";
+const HEX_F: &str = "1111";
+const HEX_X: &str = "xxxx";
+
 pub type __uint8_t = c_uchar;
 pub type __int16_t = c_short;
 pub type __off_t = c_long;
@@ -413,7 +441,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_0 = strlen(yyscanner.yytext_r) as c_int;
                                 if len_0 >= 256 as c_int {
                                     let mut errMsg: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = 431 as c_int;
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg,
                                         cs!(c"Bit string exceeds maximum length: '"),
@@ -442,43 +470,88 @@ pub(crate) fn fits_parser_yylex(
                                 tmpstring[len_0 as usize] = 0;
                                 bitstring[0] = 0;
                                 len_0 = 0;
+
+                                let mut bitlen: usize = 0;
+                                let mut bitcap: usize = core::mem::size_of_val(&bitstring) - 1;
+                                let mut overflow: i32 = 0;
+
                                 while c_int::from(tmpstring[len_0 as usize]) != 0 {
+                                    let mut chunk: &[c_char] = &[];
+                                    let mut chunk_len: usize = 0;
                                     match c_int::from(tmpstring[len_0 as usize]) {
                                         48 => {
-                                            strcat(bitstring.as_mut_ptr(), c"000".as_ptr());
+                                            chunk = OCT_0.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         49 => {
-                                            strcat(bitstring.as_mut_ptr(), c"001".as_ptr());
+                                            chunk = OCT_1.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         50 => {
-                                            strcat(bitstring.as_mut_ptr(), c"010".as_ptr());
+                                            chunk = OCT_2.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         51 => {
-                                            strcat(bitstring.as_mut_ptr(), c"011".as_ptr());
+                                            chunk = OCT_3.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         52 => {
-                                            strcat(bitstring.as_mut_ptr(), c"100".as_ptr());
+                                            chunk = OCT_4.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         53 => {
-                                            strcat(bitstring.as_mut_ptr(), c"101".as_ptr());
+                                            chunk = OCT_5.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         54 => {
-                                            strcat(bitstring.as_mut_ptr(), c"110".as_ptr());
+                                            chunk = OCT_6.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         55 => {
-                                            strcat(bitstring.as_mut_ptr(), c"111".as_ptr());
+                                            chunk = OCT_7.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         120 | 88 => {
-                                            strcat(bitstring.as_mut_ptr(), c"xxx".as_ptr());
+                                            chunk = OCT_X.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         _ => {}
                                     }
+
+                                    if (!chunk.is_empty()) {
+                                        if (bitlen + chunk_len > bitcap) {
+                                            let mut errMsg: [c_char; 100] = [0; 100];
+                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            strcpy_safe(
+                                                &mut errMsg,
+                                                cs!(c"Bit string exceeds maximum length: '"),
+                                            );
+                                            strncat(
+                                                errMsg.as_mut_ptr(),
+                                                &*(yyscanner.yytext_r).offset(0),
+                                                20,
+                                            );
+                                            strcat_safe(&mut errMsg, cs!(c"...'"));
+                                            ffpmsg_slice(&mut errMsg);
+                                            overflow = 1;
+                                            break;
+                                        }
+                                        bitstring[bitlen..(bitlen + chunk_len)]
+                                            .copy_from_slice(chunk);
+                                        bitlen += chunk_len;
+                                        bitstring[bitlen] = 0;
+                                    }
+
                                     len_0 += 1;
                                 }
-                                strcpy(
-                                    ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                    bitstring.as_mut_ptr(),
-                                );
+                                if (overflow != 0) {
+                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                } else {
+                                    strcpy(
+                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        bitstring.as_mut_ptr(),
+                                    );
+                                }
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             4 => {
@@ -517,62 +590,118 @@ pub(crate) fn fits_parser_yylex(
                                 tmpstring_0[len_1 as usize] = 0;
                                 bitstring_0[0] = 0;
                                 len_1 = 0;
+
+                                let mut bitlen: usize = 0;
+                                let mut bitcap: usize = core::mem::size_of_val(&bitstring_0) - 1;
+                                let mut overflow: i32 = 0;
                                 while c_int::from(tmpstring_0[len_1 as usize]) != 0 {
+                                    let mut chunk: &[c_char] = &[];
+                                    let mut chunk_len: usize = 0;
                                     match c_int::from(tmpstring_0[len_1 as usize]) {
                                         48 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0000"));
+                                            chunk = HEX_0.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         49 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0001"));
+                                            chunk = HEX_1.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         50 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0010"));
+                                            chunk = HEX_2.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         51 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0011"));
+                                            chunk = HEX_3.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         52 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0100"));
+                                            chunk = HEX_4.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         53 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0101"));
+                                            chunk = HEX_5.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         54 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0110"));
+                                            chunk = HEX_6.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         55 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"0111"));
+                                            chunk = HEX_7.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         56 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1000"));
+                                            chunk = HEX_8.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         57 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1001"));
+                                            chunk = HEX_9.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         97 | 65 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1010"));
+                                            chunk = HEX_A.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         98 | 66 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1011"));
+                                            chunk = HEX_B.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         99 | 67 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1100"));
+                                            chunk = HEX_C.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         100 | 68 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1101"));
+                                            chunk = HEX_D.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         101 | 69 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1110"));
+                                            chunk = HEX_E.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         102 | 70 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"1111"));
+                                            chunk = HEX_F.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         120 | 88 => {
-                                            strcat_safe(&mut bitstring_0, cs!(c"xxxx"));
+                                            chunk = HEX_X.as_bytes();
+                                            chunk_len = core::mem::size_of_val(chunk);
                                         }
                                         _ => {}
                                     }
+
+                                    if (!chunk.is_empty()) {
+                                        if (bitlen + chunk_len > bitcap) {
+                                            let mut errMsg: [c_char; 100] = [0; 100];
+                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            strcpy_safe(
+                                                &mut errMsg,
+                                                cs!(c"Hex string exceeds maximum length: '"),
+                                            );
+                                            strncat(
+                                                errMsg.as_mut_ptr(),
+                                                &*(yyscanner.yytext_r).offset(0),
+                                                20,
+                                            );
+                                            strcat_safe(&mut errMsg, cs!(c"...'"));
+                                            ffpmsg_slice(&mut errMsg);
+                                            overflow = 1;
+                                            break;
+                                        }
+                                        bitstring_0[bitlen..(bitlen + chunk_len)]
+                                            .copy_from_slice(chunk);
+                                        bitlen += chunk_len;
+                                        bitstring_0[bitlen] = 0;
+                                    }
+
                                     len_1 += 1;
+                                }
+                                if (overflow != 0) {
+                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                } else {
+                                    strcpy(
+                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        bitstring_0.as_mut_ptr(),
+                                    );
                                 }
                                 strcpy_safe(&mut ((*yyscanner.yylval_r).astr), &bitstring_0);
                                 return fits_parser_yytokentype::BITSTR as c_int;

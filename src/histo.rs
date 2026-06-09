@@ -3074,6 +3074,7 @@ pub(crate) fn fits_calc_binningde(
                 let errmsg_len = strlen_safe(&errmsg);
                 strncat_safe(&mut errmsg, ce[ii].unwrap(), FLEN_ERRMSG - errmsg_len - 1);
                 ffpmsg_slice(&errmsg);
+                ffcprs(&mut lParse);
                 return *status;
             }
             if nelem < 0 {
