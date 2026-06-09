@@ -1,5 +1,6 @@
 use core::slice;
 use std::ffi::CStr;
+use std::ptr::addr_of;
 use std::rc::Rc;
 use std::{cmp, ptr};
 
@@ -227,6 +228,8 @@ pub const CIRCLE_RGN: shapeType = 2;
 pub const LINE_RGN: shapeType = 1;
 pub const POINT_RGN: shapeType = 0;
 pub type yytype_uint8 = c_uchar;
+
+const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -9713,6 +9716,26 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
         }
     }
 }
+
+fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
+    let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
+    let undef = unsafe { (lParse.Nodes[node_idx]).value.undef };
+
+    if (data.is_null()
+        || (data.addr()) < PARSER_VECTOR_MIN_ADDR
+        || undef.is_null()
+        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR)
+    {
+        fits_parser_yyerror(lParse, cs!(c"parser column data unavailable"));
+        if (lParse.status == 0) {
+            lParse.status = PARSE_SYNTAX_ERR;
+        }
+        return 0;
+    }
+
+    return 1;
+}
+
 fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
@@ -9743,6 +9766,12 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         } else {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
+
+        if( vector1 !=0 && validate_double_vector(lParse, that1_idx)==0 ) {return;}
+
+   if( vector2!=0 && validate_double_vector(lParse, that2_idx)==0 ) {
+      return;
+   }
 
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
