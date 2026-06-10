@@ -1852,11 +1852,132 @@ pub unsafe extern "C" fn ffgmng(
 /// keywords are checked to make sure they are continuous (ie no gaps) and
 /// are re-enumerated to eliminate gaps if gaps are found to be present.
 pub fn ffgmng_safe(
-    _mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
-    _ngroups: &mut c_long, /* total number of groups linked to HDU       */
-    _status: &mut c_int,   /* return status code                         */
+    mfptr: &mut fitsfile, /* FITS file pointer to member HDU            */
+    ngroups: &mut c_long, /* total number of groups linked to HDU       */
+    status: &mut c_int,   /* return status code                         */
 ) -> c_int {
-    todo!();
+    let mut offset: c_int;
+    let mut index: c_int;
+    let mut newIndex: c_int;
+    let mut i: c_int;
+
+    let mut grpid: c_long = 0;
+
+    let inclist: [&[c_char]; 1] = [cs!(c"GRPID#")];
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut newKeyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    *ngroups = 0;
+
+    /* reset the member HDU keyword counter to the beginning */
+
+    *status = fits_read_record(mfptr, 0, Some(&mut card), status);
+
+    /*
+      search for the number of GRPIDn keywords in the member HDU header
+      and count them with the ngroups variable
+    */
+
+    while *status == 0 {
+        /* read the next GRPIDn keyword in the series */
+
+        *status = fits_find_nextkey(mfptr, &inclist, 1, &[], 0, &mut card, status);
+
+        if *status != 0 {
+            continue;
+        }
+
+        *ngroups += 1;
+    }
+
+    if *status == KEY_NO_EXIST {
+        *status = 0;
+    }
+
+    /*
+       read each GRPIDn/GRPLCn keyword and adjust their index values so that
+       there are no gaps in the index count
+    */
+
+    index = 1;
+    offset = 0;
+    i = 1;
+    while i as c_long <= *ngroups && *status == 0 {
+        int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", index);
+
+        /* try to read the next GRPIDn keyword in the series */
+
+        *status = fits_read_key_lng(mfptr, &keyword, &mut grpid, Some(&mut comment), status);
+
+        /* if not found then increment the offset counter and continue */
+
+        if *status == KEY_NO_EXIST {
+            *status = 0;
+            offset += 1;
+        } else {
+            /*
+               increment the number_keys_found counter and see if the index
+               of the keyword needs to be updated
+            */
+
+            i += 1;
+
+            if offset > 0 {
+                /* compute the new index for the GRPIDn/GRPLCn keywords */
+                newIndex = index - offset;
+
+                /* update the GRPIDn keyword index */
+
+                int_snprintf!(&mut newKeyword, FLEN_KEYWORD, "GRPID{}", newIndex);
+                fits_modify_name(mfptr, &keyword, &newKeyword, status);
+
+                /* If present, update the GRPLCn keyword index */
+
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", index);
+                int_snprintf!(&mut newKeyword, FLEN_KEYWORD, "GRPLC{}", newIndex);
+                /* SPR 1738 */
+                // ffgkls_safe still outputs a raw, heap-allocated C string.
+                let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+                *status = fits_read_key_longstr(
+                    mfptr,
+                    &keyword,
+                    &mut tkeyvalue,
+                    Some(&mut comment),
+                    status,
+                );
+                if 0 == *status {
+                    fits_delete_key(mfptr, &keyword, status);
+                    // SAFETY: tkeyvalue is the heap C string allocated by ffgkls_safe and
+                    // tracked in ALLOCATIONS; use it then release it via that table.
+                    unsafe {
+                        let val =
+                            cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
+                        fits_insert_key_longstr(mfptr, &newKeyword, val, Some(&comment), status);
+                        fits_write_key_longwarn(mfptr, status);
+                        if let Some((l, c)) =
+                            ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
+                        {
+                            let _ = Vec::from_raw_parts(tkeyvalue, l, c);
+                        }
+                    }
+                }
+
+                if *status == KEY_NO_EXIST {
+                    *status = 0;
+                }
+            }
+        }
+
+        index += 1;
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1906,12 +2027,638 @@ pub unsafe extern "C" fn ffgmop(
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
 pub fn ffgmop_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
-    _member: c_long,       /* member ID (row num) within grouping table    */
-    _mfptr: &mut Option<Box<fitsfile>>, /* FITS file pointer to member HDU              */
-    _status: &mut c_int,   /* return status code                           */
+    gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
+    member: c_long,       /* member ID (row num) within grouping table    */
+    mfptr: &mut Option<Box<fitsfile>>, /* FITS file pointer to member HDU              */
+    status: &mut c_int,   /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut xtensionCol: c_int = 0;
+    let mut extnameCol: c_int = 0;
+    let mut extverCol: c_int = 0;
+    let mut positionCol: c_int = 0;
+    let mut locationCol: c_int = 0;
+    let mut uriCol: c_int = 0;
+    let mut grptype: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut dummy: c_int = 0;
+
+    let mut hdupos: c_long = 0;
+    let mut extver: c_long = 0;
+
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut uri: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut grpLocation1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut grpLocation2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation3: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let nstr: [c_char; 1] = [0]; /* char nstr[] = {'\0'}; the null-value string */
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /*
+        retrieve the Grouping Convention reserved column positions within
+        the grouping table
+         */
+
+        *status = ffgtgc(
+            gfptr,
+            &mut xtensionCol,
+            &mut extnameCol,
+            &mut extverCol,
+            &mut positionCol,
+            &mut locationCol,
+            &mut uriCol,
+            &mut grptype,
+            status,
+        );
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /* verify the column formats */
+
+        *status = ffvcfm(
+            gfptr,
+            xtensionCol,
+            extnameCol,
+            extverCol,
+            positionCol,
+            locationCol,
+            uriCol,
+            status,
+        );
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        extract the member information from grouping table
+         */
+        // C uses `char *tmpPtr[1]` pointing at the destination buffer; here each
+        // fits_read_col_str gets a one-element &mut[&mut[c_char]] over that buffer.
+
+        if xtensionCol != 0 {
+            *status = fits_read_col_str(
+                gfptr,
+                xtensionCol,
+                member as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut xtension[..]],
+                Some(&mut dummy),
+                status,
+            );
+
+            /* convert the xtension string to a hdutype code */
+
+            if fits_strcasecmp(&xtension, cs!(c"PRIMARY")) == 0 {
+                hdutype = IMAGE_HDU;
+            } else if fits_strcasecmp(&xtension, cs!(c"IMAGE")) == 0 {
+                hdutype = IMAGE_HDU;
+            } else if fits_strcasecmp(&xtension, cs!(c"TABLE")) == 0 {
+                hdutype = ASCII_TBL;
+            } else if fits_strcasecmp(&xtension, cs!(c"BINTABLE")) == 0 {
+                hdutype = BINARY_TBL;
+            } else {
+                hdutype = ANY_HDU;
+            }
+        }
+
+        if extnameCol != 0 {
+            *status = fits_read_col_str(
+                gfptr,
+                extnameCol,
+                member as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut extname[..]],
+                Some(&mut dummy),
+                status,
+            );
+        }
+
+        if extverCol != 0 {
+            *status = fits_read_col_lng(
+                gfptr,
+                extverCol,
+                member as LONGLONG,
+                1,
+                1,
+                0,
+                std::slice::from_mut(&mut extver),
+                Some(&mut dummy),
+                status,
+            );
+        }
+
+        if positionCol != 0 {
+            *status = fits_read_col_lng(
+                gfptr,
+                positionCol,
+                member as LONGLONG,
+                1,
+                1,
+                0,
+                std::slice::from_mut(&mut hdupos),
+                Some(&mut dummy),
+                status,
+            );
+        }
+
+        if locationCol != 0 {
+            *status = fits_read_col_str(
+                gfptr,
+                locationCol,
+                member as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut mbrLocation1[..]],
+                Some(&mut dummy),
+                status,
+            );
+        }
+
+        if uriCol != 0 {
+            *status = fits_read_col_str(
+                gfptr,
+                uriCol,
+                member as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut uri[..]],
+                Some(&mut dummy),
+                status,
+            );
+        }
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        decide what FITS file the member HDU resides in and open the file
+        using the fitsfile* pointer mfptr; note that this logic is rather
+        complicated and is based primiarly upon if a URL specifier is given
+        for the member file in the grouping table
+         */
+
+        match grptype as u64 {
+            GT_ID_POS | GT_ID_REF | GT_ID_ALL => {
+                /*
+                no location information is given so we must assume that the
+                member HDU resides in the same FITS file as the grouping table
+                  */
+
+                // SAFETY: ffreopen_safer still outputs a raw *mut fitsfile.
+                let mut raw: *mut fitsfile = std::ptr::null_mut();
+                *status = fits_reopen_file(gfptr, &mut raw, status);
+                *mfptr = if raw.is_null() {
+                    None
+                } else {
+                    Some(unsafe { Box::from_raw(raw) })
+                };
+            }
+
+            GT_ID_REF_URI | GT_ID_POS_URI | GT_ID_ALL_URI => {
+                /*
+                The member location column exists. Determine if the member
+                resides in the same file as the grouping table or in a
+                separate file; open the member file in either case
+                  */
+
+                if strlen_safe(&mbrLocation1) == 0 {
+                    /*
+                    since no location information was given we must assume
+                    that the member is in the same FITS file as the grouping
+                    table
+                     */
+                    // SAFETY: ffreopen_safer still outputs a raw *mut fitsfile.
+                    let mut raw: *mut fitsfile = std::ptr::null_mut();
+                    *status = fits_reopen_file(gfptr, &mut raw, status);
+                    *mfptr = if raw.is_null() {
+                        None
+                    } else {
+                        Some(unsafe { Box::from_raw(raw) })
+                    };
+                } else {
+                    'inner: loop {
+                        /*
+                        make sure the location specifiation is "URL"; we cannot
+                        decode any other URI types at this time
+                          */
+
+                        if fits_strcasecmp(&uri, cs!(c"URL")) != 0 {
+                            *status = FILE_NOT_OPENED;
+                            let uri_str = CStr::from_bytes_until_nul(cast_slice(&uri))
+                                .unwrap()
+                                .to_str()
+                                .unwrap();
+                            int_snprintf!(
+                                &mut card,
+                                FLEN_CARD,
+                                "Cannot open member HDU file with URI type {} (ffgmop)",
+                                uri_str
+                            );
+                            ffpmsg_slice(&card);
+                            break 'inner;
+                        }
+
+                        /*
+                        The location string for the member is not NULL, so it
+                        does not necessially reside in the same FITS file as the
+                        grouping table.
+
+                        Three cases are attempted for opening the member's file
+                        in the following order:
+
+                        1. The URL given for the member's file is absolute (i.e.,
+                        access method supplied); try to open the member
+
+                        2. The URL given for the member's file is not absolute but
+                        is an absolute file path; try to open the member as a file
+                        after the file path is converted to a host-dependent form
+
+                        3. The URL given for the member's file is not absolute
+                        and is given as a relative path to the location of the
+                        grouping table's file. Create an absolute URL using the
+                        grouping table's file URL and try to open the member.
+
+                        If all three cases fail then an error is returned. In each
+                        case the file is first opened in read/write mode and failing
+                        that readonly mode.
+
+                        The following loop is only used as a mechanism to break
+                        out when the proper file opening method is found
+                          */
+
+                        /*
+                        CASE 1:
+
+                        See if the member URL is absolute (i.e., includes a
+                        access directive) and if so open the file
+                         */
+
+                        if fits_is_url_absolute(&mbrLocation1) != 0 {
+                            /*
+                            the URL must specify an access method, which
+                            implies that its an absolute reference
+
+                            regardless of the access method, pass the whole
+                            URL to the open function for processing
+                              */
+
+                            ffpmsg_str("member URL is absolute, try open R/W (ffgmop)");
+
+                            *status = fits_open_file(mfptr, &mbrLocation1, READWRITE, status);
+
+                            if *status == 0 {
+                                break 'inner;
+                            }
+
+                            *status = 0;
+
+                            /* now try to open file using full URL specs in readonly mode */
+
+                            ffpmsg_str("OK, now try to open read-only (ffgmop)");
+
+                            *status = fits_open_file(mfptr, &mbrLocation1, READONLY, status);
+
+                            /* break from loop regardless of status */
+
+                            break 'inner;
+                        }
+
+                        /*
+                        CASE 2:
+
+                        If we got this far then the member URL location
+                        has no access type ==> FILE:// Try to open the member
+                        file using the URL as is, i.e., assume that it is given
+                        as absolute, if it starts with a '/' character
+                         */
+
+                        ffpmsg_str("Member URL is of type FILE (ffgmop)");
+
+                        if mbrLocation1[0] == bb(b'/') {
+                            ffpmsg_str("Member URL specifies abs file path (ffgmop)");
+
+                            /* convert the URL path to a host dependent path */
+
+                            *status = fits_url2path(&mbrLocation1, &mut mbrLocation2, status);
+
+                            ffpmsg_str("Try to open member URL in R/W mode (ffgmop)");
+
+                            *status = fits_open_file(mfptr, &mbrLocation2, READWRITE, status);
+
+                            if *status == 0 {
+                                break 'inner;
+                            }
+
+                            *status = 0;
+
+                            /*
+                            now try to open file using the URL as an absolute
+                            path in readonly mode
+                              */
+
+                            ffpmsg_str("OK, now try to open read-only (ffgmop)");
+
+                            *status = fits_open_file(mfptr, &mbrLocation2, READONLY, status);
+
+                            /* break from the loop regardless of the status */
+
+                            break 'inner;
+                        }
+
+                        /*
+                        CASE 3:
+
+                        If we got this far then the URL does not specify an
+                        absoulte file path or URL with access method. Since
+                        the path to the group table's file is (obviously) valid
+                        for the CWD, create a full location string for the
+                        member HDU using the grouping table URL as a basis
+
+                        The only problem is that the grouping table file might
+                        have two URLs, the original one used to open it and
+                        the one that points to the real file being accessed
+                        (i.e., a file accessed via HTTP but transferred to a
+                        local disk file). Have to attempt to build a URL to
+                        the member HDU file using both of these URLs if
+                        defined.
+                         */
+
+                        ffpmsg_str("Try to open member file as relative URL (ffgmop)");
+
+                        /* get the URL information for the grouping table file */
+                        // (the access/iostate outputs are unused here -- C passed NULL)
+                        let mut access1: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+                        let mut access2: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+                        let mut iostate: c_int = 0;
+                        *status = fits_get_url(
+                            gfptr,
+                            &mut grpLocation1,
+                            &mut grpLocation2,
+                            &mut access1,
+                            &mut access2,
+                            &mut iostate,
+                            status,
+                        );
+
+                        /*
+                        if the "real" grouping table file URL is defined then
+                        build a full url for the member HDU file using it
+                        and try to open the member HDU file
+                         */
+
+                        if grpLocation1[0] != 0 {
+                            /* make sure the group location is absolute */
+                            if fits_is_url_absolute(&grpLocation1) == 0
+                                && grpLocation1[0] != bb(b'/')
+                            {
+                                fits_get_cwd(&mut cwd, status);
+                                strcat_safe(&mut cwd, cs!(c"/"));
+                                if strlen_safe(&cwd) + strlen_safe(&grpLocation1) + 1
+                                    > FLEN_FILENAME - 1
+                                {
+                                    ffpmsg_str("cwd and group location1 is too long (ffgmop)");
+                                    *status = URL_PARSE_ERROR;
+                                    break 'inner;
+                                }
+                                strcat_safe(&mut cwd, &grpLocation1);
+                                strcpy_safe(&mut grpLocation1, &cwd);
+                            }
+
+                            /* create a full URL for the member HDU file */
+                            *status = fits_relurl2url(
+                                &grpLocation1,
+                                &mbrLocation1,
+                                &mut mbrLocation2,
+                                status,
+                            );
+
+                            if *status != 0 {
+                                break 'inner;
+                            }
+
+                            /*
+                            if the URL does not have an access method given then
+                            translate it into a host dependent file path
+                              */
+                            if fits_is_url_absolute(&mbrLocation2) == 0 {
+                                *status = fits_url2path(&mbrLocation2, &mut mbrLocation3, status);
+                                strcpy_safe(&mut mbrLocation2, &mbrLocation3);
+                            }
+
+                            /* try to open the member file READWRITE */
+                            *status = fits_open_file(mfptr, &mbrLocation2, READWRITE, status);
+                            if *status == 0 {
+                                break 'inner;
+                            }
+                            *status = 0;
+
+                            /* now try to open in readonly mode */
+                            ffpmsg_str("now try to open file as READONLY (ffgmop)");
+                            *status = fits_open_file(mfptr, &mbrLocation2, READONLY, status);
+                            if *status == 0 {
+                                break 'inner;
+                            }
+                            *status = 0;
+                        }
+
+                        /*
+                           if we got this far then either the "real" grouping table
+                           file URL was not defined or all attempts to open the
+                           resulting member HDU file URL failed.
+
+                           if the "original" grouping table file URL is defined then
+                           build a full url for the member HDU file using it
+                           and try to open the member HDU file
+                        */
+
+                        if grpLocation2[0] != 0 {
+                            /* make sure the group location is absolute */
+                            if fits_is_url_absolute(&grpLocation2) == 0
+                                && grpLocation2[0] != bb(b'/')
+                            {
+                                fits_get_cwd(&mut cwd, status);
+                                if strlen_safe(&cwd) + strlen_safe(&grpLocation2) + 1
+                                    > FLEN_FILENAME - 1
+                                {
+                                    ffpmsg_str("cwd and group location2 is too long (ffgmop)");
+                                    *status = URL_PARSE_ERROR;
+                                    break 'inner;
+                                }
+                                strcat_safe(&mut cwd, cs!(c"/"));
+                                strcat_safe(&mut cwd, &grpLocation2);
+                                strcpy_safe(&mut grpLocation2, &cwd);
+                            }
+
+                            /* create an absolute URL for the member HDU file */
+                            *status = fits_relurl2url(
+                                &grpLocation2,
+                                &mbrLocation1,
+                                &mut mbrLocation2,
+                                status,
+                            );
+                            if *status != 0 {
+                                break 'inner;
+                            }
+
+                            /*
+                            if the URL does not have an access method given then
+                            translate it into a host dependent file path
+                              */
+                            if fits_is_url_absolute(&mbrLocation2) == 0 {
+                                *status = fits_url2path(&mbrLocation2, &mut mbrLocation3, status);
+                                strcpy_safe(&mut mbrLocation2, &mbrLocation3);
+                            }
+
+                            /* try to open the member file READWRITE */
+                            *status = fits_open_file(mfptr, &mbrLocation2, READWRITE, status);
+                            if *status == 0 {
+                                break 'inner;
+                            }
+                            *status = 0;
+
+                            /* now try to open in readonly mode */
+                            ffpmsg_str("now try to open file as READONLY (ffgmop)");
+                            *status = fits_open_file(mfptr, &mbrLocation2, READONLY, status);
+                            if *status == 0 {
+                                break 'inner;
+                            }
+                            *status = 0;
+                        }
+
+                        /*
+                        if we got this far then the member HDU file could not
+                        be opened using any method. Log the error.
+                         */
+
+                        ffpmsg_str("Cannot open member HDU FITS file (ffgmop)");
+                        *status = MEMBER_NOT_FOUND;
+
+                        break 'inner;
+                    } // while(0)
+                }
+            }
+
+            _ => { /* no default action */ }
+        }
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        attempt to locate the member HDU within its FITS file as determined
+        and opened above
+         */
+
+        match grptype as u64 {
+            GT_ID_POS | GT_ID_POS_URI => {
+                /*
+                  try to find the member hdu in the the FITS file pointed to
+                  by mfptr based upon its HDU posistion value. Note that is
+                  impossible to verify if the HDU is actually the correct HDU due
+                  to a lack of information.
+                */
+                *status = fits_movabs_hdu(
+                    mfptr.as_deref_mut().expect(NULL_MSG),
+                    hdupos as c_int,
+                    Some(&mut hdutype),
+                    status,
+                );
+            }
+
+            GT_ID_REF | GT_ID_REF_URI => {
+                /*
+                      try to find the member hdu in the FITS file pointed to
+                by mfptr based upon its XTENSION, EXTNAME and EXTVER keyword
+                values
+                       */
+                *status = fits_movnam_hdu(
+                    mfptr.as_deref_mut().expect(NULL_MSG),
+                    hdutype,
+                    &extname,
+                    extver as c_int,
+                    status,
+                );
+
+                if *status == BAD_HDU_NUM {
+                    *status = MEMBER_NOT_FOUND;
+                    ffpmsg_str("Cannot find specified member HDU (ffgmop)");
+                }
+
+                /*
+                   if the above function returned without error then the
+                   mfptr is pointed to the member HDU
+                */
+            }
+
+            GT_ID_ALL | GT_ID_ALL_URI => {
+                /*
+                if the member entry has reference information then use it
+                (ID by reference is safer than ID by position) else use the
+                position information
+                  */
+
+                if strlen_safe(&xtension) > 0 && strlen_safe(&extname) > 0 && extver > 0 {
+                    /* valid reference info exists so use it */
+
+                    /* try to find the member hdu in the grouping table's file */
+
+                    *status = fits_movnam_hdu(
+                        mfptr.as_deref_mut().expect(NULL_MSG),
+                        hdutype,
+                        &extname,
+                        extver as c_int,
+                        status,
+                    );
+
+                    if *status == BAD_HDU_NUM {
+                        *status = MEMBER_NOT_FOUND;
+                        ffpmsg_str("Cannot find specified member HDU (ffgmop)");
+                    }
+                } else {
+                    *status = fits_movabs_hdu(
+                        mfptr.as_deref_mut().expect(NULL_MSG),
+                        hdupos as c_int,
+                        Some(&mut hdutype),
+                        status,
+                    );
+                    if *status == END_OF_FILE {
+                        *status = MEMBER_NOT_FOUND;
+                    }
+                }
+            }
+
+            _ => { /* no default action */ }
+        }
+
+        break 'outer;
+    } // while(0)
+
+    if *status != 0 && mfptr.is_some() {
+        if let Some(f) = mfptr.take() {
+            fits_close_file(f, status);
+        }
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -3879,6 +4626,29 @@ mod tests {
         let mut empty = HDUtracker::default();
         let r = fftsud(mfptr, &mut empty, 5, None);
         assert_eq!(r, MEMBER_NOT_FOUND);
+
+        let f = fptr.take().unwrap();
+        ffclos_safe(f, &mut status);
+    }
+
+    #[test]
+    fn test_ffgmng_safe() {
+        use crate::cfileio::{ffclos_safe, ffinit_safe};
+
+        let mut status = 0;
+
+        // a fresh in-memory file's HDU has no GRPIDn keywords, so it belongs to no groups
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut fptr, cs!(c"mem://"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        let mfptr = fptr.as_deref_mut().unwrap();
+
+        let mut ngroups: c_long = 42; // deliberately non-zero to check it gets reset
+        let r = ffgmng_safe(mfptr, &mut ngroups, &mut status);
+
+        assert_eq!(r, 0);
+        assert_eq!(status, 0);
+        assert_eq!(ngroups, 0);
 
         let f = fptr.take().unwrap();
         ffclos_safe(f, &mut status);
