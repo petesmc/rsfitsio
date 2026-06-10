@@ -2870,26 +2870,188 @@ pub(crate) fn ffvcfm(
 /// and TTFORM[] arrays must contain enough pre-allocated strings to hold
 /// the returned information.
 pub(crate) fn ffgtdc(
-    _grouptype: c_int,            /* code specifying the type of
-                                  grouping table information:
-                                  GT_ID_ALL_URI  0 ==> defualt (all columns)
-                                  GT_ID_REF      1 ==> ID by reference
-                                  GT_ID_POS      2 ==> ID by position
-                                  GT_ID_ALL      3 ==> ID by ref. and position
-                                  GT_ID_REF_URI 11 ==> (1) + URI info
-                                  GT_ID_POS_URI 12 ==> (2) + URI info       */
-    _xtensioncol: c_int, /* does MEMBER_XTENSION already exist?         */
-    _extnamecol: c_int,  /* does MEMBER_NAME aleady exist?              */
-    _extvercol: c_int,   /* does MEMBER_VERSION already exist?          */
-    _positioncol: c_int, /* does MEMBER_POSITION already exist?         */
-    _locationcol: c_int, /* does MEMBER_LOCATION already exist?         */
-    _uricol: c_int,      /* does MEMBER_URI_TYPE aleardy exist?         */
-    _ttype: &mut [&mut [c_char]], /* array of grouping table column TTYPE names to define (if *col var false)               */
-    _tform: &mut [&mut [c_char]], /* array of grouping table column TFORM values to define (if*col variable false)           */
-    _ncols: &mut c_int,           /* number of TTYPE and TFORM values returned   */
-    _status: &mut c_int,          /* return status code                          */
+    grouptype: c_int,            /* code specifying the type of
+                                 grouping table information:
+                                 GT_ID_ALL_URI  0 ==> defualt (all columns)
+                                 GT_ID_REF      1 ==> ID by reference
+                                 GT_ID_POS      2 ==> ID by position
+                                 GT_ID_ALL      3 ==> ID by ref. and position
+                                 GT_ID_REF_URI 11 ==> (1) + URI info
+                                 GT_ID_POS_URI 12 ==> (2) + URI info       */
+    xtensioncol: c_int,          /* does MEMBER_XTENSION already exist?         */
+    extnamecol: c_int,           /* does MEMBER_NAME aleady exist?              */
+    extvercol: c_int,            /* does MEMBER_VERSION already exist?          */
+    positioncol: c_int,          /* does MEMBER_POSITION already exist?         */
+    locationcol: c_int,          /* does MEMBER_LOCATION already exist?         */
+    uricol: c_int,               /* does MEMBER_URI_TYPE aleardy exist?         */
+    ttype: &mut [&mut [c_char]], /* array of grouping table column TTYPE names to define (if *col var false)               */
+    tform: &mut [&mut [c_char]], /* array of grouping table column TFORM values to define (if*col variable false)           */
+    ncols: &mut c_int,           /* number of TTYPE and TFORM values returned   */
+    status: &mut c_int,          /* return status code                          */
 ) -> c_int {
-    todo!();
+    let mut i: usize = 0;
+
+    let xtension = cs!(c"MEMBER_XTENSION");
+    let xtenTform = cs!(c"8A");
+
+    let name = cs!(c"MEMBER_NAME");
+    let nameTform = cs!(c"32A");
+
+    let version = cs!(c"MEMBER_VERSION");
+    let verTform = cs!(c"1J");
+
+    let position = cs!(c"MEMBER_POSITION");
+    let posTform = cs!(c"1J");
+
+    let URI = cs!(c"MEMBER_URI_TYPE");
+    let URITform = cs!(c"3A");
+
+    let location = cs!(c"MEMBER_LOCATION");
+    /* SPR 01720, move from 160A to 256A */
+    let locTform = cs!(c"256A");
+
+    if *status != 0 {
+        return *status;
+    }
+
+    match grouptype as u64 {
+        GT_ID_ALL_URI => {
+            if xtensioncol == 0 {
+                strcpy_safe(ttype[i], xtension);
+                strcpy_safe(tform[i], xtenTform);
+                i += 1;
+            }
+            if extnamecol == 0 {
+                strcpy_safe(ttype[i], name);
+                strcpy_safe(tform[i], nameTform);
+                i += 1;
+            }
+            if extvercol == 0 {
+                strcpy_safe(ttype[i], version);
+                strcpy_safe(tform[i], verTform);
+                i += 1;
+            }
+            if positioncol == 0 {
+                strcpy_safe(ttype[i], position);
+                strcpy_safe(tform[i], posTform);
+                i += 1;
+            }
+            if locationcol == 0 {
+                strcpy_safe(ttype[i], location);
+                strcpy_safe(tform[i], locTform);
+                i += 1;
+            }
+            if uricol == 0 {
+                strcpy_safe(ttype[i], URI);
+                strcpy_safe(tform[i], URITform);
+                i += 1;
+            }
+        }
+
+        GT_ID_REF => {
+            if xtensioncol == 0 {
+                strcpy_safe(ttype[i], xtension);
+                strcpy_safe(tform[i], xtenTform);
+                i += 1;
+            }
+            if extnamecol == 0 {
+                strcpy_safe(ttype[i], name);
+                strcpy_safe(tform[i], nameTform);
+                i += 1;
+            }
+            if extvercol == 0 {
+                strcpy_safe(ttype[i], version);
+                strcpy_safe(tform[i], verTform);
+                i += 1;
+            }
+        }
+
+        GT_ID_POS => {
+            if positioncol == 0 {
+                strcpy_safe(ttype[i], position);
+                strcpy_safe(tform[i], posTform);
+                i += 1;
+            }
+        }
+
+        GT_ID_ALL => {
+            if xtensioncol == 0 {
+                strcpy_safe(ttype[i], xtension);
+                strcpy_safe(tform[i], xtenTform);
+                i += 1;
+            }
+            if extnamecol == 0 {
+                strcpy_safe(ttype[i], name);
+                strcpy_safe(tform[i], nameTform);
+                i += 1;
+            }
+            if extvercol == 0 {
+                strcpy_safe(ttype[i], version);
+                strcpy_safe(tform[i], verTform);
+                i += 1;
+            }
+            if positioncol == 0 {
+                strcpy_safe(ttype[i], position);
+                strcpy_safe(tform[i], posTform);
+                i += 1;
+            }
+        }
+
+        GT_ID_REF_URI => {
+            if xtensioncol == 0 {
+                strcpy_safe(ttype[i], xtension);
+                strcpy_safe(tform[i], xtenTform);
+                i += 1;
+            }
+            if extnamecol == 0 {
+                strcpy_safe(ttype[i], name);
+                strcpy_safe(tform[i], nameTform);
+                i += 1;
+            }
+            if extvercol == 0 {
+                strcpy_safe(ttype[i], version);
+                strcpy_safe(tform[i], verTform);
+                i += 1;
+            }
+            if locationcol == 0 {
+                strcpy_safe(ttype[i], location);
+                strcpy_safe(tform[i], locTform);
+                i += 1;
+            }
+            if uricol == 0 {
+                strcpy_safe(ttype[i], URI);
+                strcpy_safe(tform[i], URITform);
+                i += 1;
+            }
+        }
+
+        GT_ID_POS_URI => {
+            if positioncol == 0 {
+                strcpy_safe(ttype[i], position);
+                strcpy_safe(tform[i], posTform);
+                i += 1;
+            }
+            if locationcol == 0 {
+                strcpy_safe(ttype[i], location);
+                strcpy_safe(tform[i], locTform);
+                i += 1;
+            }
+            if uricol == 0 {
+                strcpy_safe(ttype[i], URI);
+                strcpy_safe(tform[i], URITform);
+                i += 1;
+            }
+        }
+
+        _ => {
+            *status = BAD_OPTION;
+            ffpmsg_str("Invalid value specified for the grouptype parameter (ffgtdc)");
+        }
+    }
+
+    *ncols = i as c_int;
+
+    *status
 }
 
 /*****************************************************************************/
@@ -2899,12 +3061,265 @@ pub(crate) fn ffgtdc(
 /// specifies if the GRPIDn/GRPLCn keywords are to be removed from the
 /// member HDUs header after the unlinking.
 pub(crate) fn ffgmul(
-    _mfptr: &mut fitsfile, /* pointer to the grouping table member HDU    */
-    _rmopt: c_int,         /* 0 ==> leave GRPIDn/GRPLCn keywords,
-                           1 ==> remove GRPIDn/GRPLCn keywords         */
-    _status: &mut c_int, /* return status code                          */
+    mfptr: &mut fitsfile, /* pointer to the grouping table member HDU    */
+    rmopt: c_int,         /* 0 ==> leave GRPIDn/GRPLCn keywords,
+                          1 ==> remove GRPIDn/GRPLCn keywords         */
+    status: &mut c_int, /* return status code                          */
 ) -> c_int {
-    todo!();
+    let mut memberPosition: c_int = 0;
+    let mut iomode: c_int = 0;
+
+    let mut ngroups: c_long = 0;
+    let mut memberExtver: c_long = 0;
+    let mut memberID: c_long;
+
+    let mut mbrLocation1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut memberHDUtype: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut memberExtname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let mut gfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /*
+        determine location parameters of the member HDU; note that
+        default values are supplied if the expected keywords are not
+        found
+         */
+
+        *status = fits_read_key_str(
+            mfptr,
+            cs!(c"XTENSION"),
+            &mut memberHDUtype,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            strcpy_safe(&mut memberHDUtype, cs!(c"PRIMARY"));
+            *status = 0;
+        }
+        prepare_keyvalue(&memberHDUtype);
+
+        *status = fits_read_key_lng(
+            mfptr,
+            cs!(c"EXTVER"),
+            &mut memberExtver,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            memberExtver = 1;
+            *status = 0;
+        }
+
+        *status = fits_read_key_str(
+            mfptr,
+            cs!(c"EXTNAME"),
+            &mut memberExtname,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            memberExtname[0] = 0;
+            *status = 0;
+        }
+        prepare_keyvalue(&memberExtname);
+
+        fits_get_hdu_num(mfptr, &mut memberPosition);
+
+        // (the access/iostate outputs are unused here -- C passed NULL)
+        let mut realAccess: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut startAccess: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+        let mut dummyIostate: c_int = 0;
+        *status = fits_get_url(
+            mfptr,
+            &mut mbrLocation1,
+            &mut mbrLocation2,
+            &mut realAccess,
+            &mut startAccess,
+            &mut dummyIostate,
+            status,
+        );
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        open each grouping table linked to this HDU and remove the member
+        from the grouping tables
+         */
+
+        *status = fits_get_num_groups(mfptr, &mut ngroups, status);
+
+        /* loop over each group linked to the member HDU */
+
+        let mut index: c_long = 1;
+        while index <= ngroups && *status == 0 {
+            // C: for(index = 1; index <= ngroups && *status == 0; ++index)
+            // the body's `continue`s map to Rust `continue`; the trailing ++index
+            // is reproduced at the bottom and the status guard re-tested at the top.
+
+            /* open the (index)th group linked to the member HDU */
+
+            *status = fits_open_group(mfptr, index as c_int, &mut gfptr, status);
+
+            /* if the group could not be opened then just skip it */
+
+            if *status != 0 {
+                *status = 0;
+                int_snprintf!(
+                    &mut card,
+                    FLEN_CARD,
+                    "Cannot open the {}th group table (ffgmul)",
+                    index as c_int
+                );
+                ffpmsg_slice(&card);
+                index += 1;
+                continue;
+            }
+
+            /*
+            make sure the grouping table can be modified before proceeding
+              */
+
+            fits_file_mode(gfptr.as_deref_mut().expect(NULL_MSG), &mut iomode, status);
+
+            if iomode != READWRITE {
+                int_snprintf!(
+                    &mut card,
+                    FLEN_CARD,
+                    "The {}th group cannot be modified (ffgtam)",
+                    index as c_int
+                );
+                ffpmsg_slice(&card);
+                index += 1;
+                continue;
+            }
+
+            /*
+            try to find the member's row within the grouping table; first
+            try using the member HDU file's "real" URL string then try
+            using its originally opened URL string if either string exist
+              */
+
+            memberID = 0;
+
+            if strlen_safe(&mbrLocation1) != 0 {
+                *status = ffgmf(
+                    gfptr.as_deref_mut().expect(NULL_MSG),
+                    &memberHDUtype,
+                    &memberExtname,
+                    memberExtver as c_int,
+                    memberPosition,
+                    &mut mbrLocation1,
+                    Some(&mut memberID),
+                    status,
+                );
+            }
+
+            if *status == MEMBER_NOT_FOUND && strlen_safe(&mbrLocation2) != 0 {
+                *status = 0;
+                *status = ffgmf(
+                    gfptr.as_deref_mut().expect(NULL_MSG),
+                    &memberHDUtype,
+                    &memberExtname,
+                    memberExtver as c_int,
+                    memberPosition,
+                    &mut mbrLocation2,
+                    Some(&mut memberID),
+                    status,
+                );
+            }
+
+            /* if the member was found then delete it from the grouping table */
+
+            if *status == 0 {
+                *status = fits_delete_rows(
+                    gfptr.as_deref_mut().expect(NULL_MSG),
+                    memberID as LONGLONG,
+                    1,
+                    status,
+                );
+            }
+
+            /*
+            continue the loop over all member groups even if an error
+            was generated
+             */
+
+            if *status == MEMBER_NOT_FOUND {
+                ffpmsg_str("cannot locate member's entry in group table (ffgmul)");
+            }
+            *status = 0;
+
+            /*
+            close the file pointed to by gfptr if it is non NULL to
+            prepare for the next loop iterration
+             */
+
+            if let Some(f) = gfptr.take() {
+                fits_close_file(f, status);
+            }
+
+            index += 1;
+        }
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        if rmopt is non-zero then find and delete the GRPIDn/GRPLCn
+        keywords from the member HDU header
+         */
+
+        if rmopt != 0 {
+            fits_file_mode(mfptr, &mut iomode, status);
+
+            if iomode == READONLY {
+                ffpmsg_str("Cannot modify member HDU, opened READONLY (ffgmul)");
+                break 'outer;
+            }
+
+            /* delete all the GRPIDn/GRPLCn keywords */
+
+            let mut index: c_long = 1;
+            while index <= ngroups && *status == 0 {
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", index as c_int);
+                fits_delete_key(mfptr, &keyword, status);
+
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", index as c_int);
+                fits_delete_key(mfptr, &keyword, status);
+
+                if *status == KEY_NO_EXIST {
+                    *status = 0;
+                }
+
+                index += 1;
+            }
+        }
+
+        break 'outer;
+    } // while(0)
+
+    /* make sure the gfptr has been closed */
+
+    if let Some(f) = gfptr.take() {
+        fits_close_file(f, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
