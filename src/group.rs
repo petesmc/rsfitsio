@@ -1142,7 +1142,7 @@ pub fn ffgtcm_safe(
                 *status = 0;
                 continue;
             }
-            prepare_keyvalue(&keyvalue);
+            prepare_keyvalue(&mut keyvalue);
 
             if *status != 0 {
                 continue;
@@ -1513,7 +1513,7 @@ pub fn ffgtop_safe(
                 break 'inner;
             }
 
-            prepare_keyvalue(&keyvalue);
+            prepare_keyvalue(&mut keyvalue);
 
             /*
             if the GRPLCn keyword value specifies an absolute URL then
@@ -1809,7 +1809,7 @@ pub fn ffgtnm_safe(
     if *status == KEY_NO_EXIST {
         *status = NOT_GROUP_TABLE;
     } else {
-        prepare_keyvalue(&keyvalue);
+        prepare_keyvalue(&mut keyvalue);
 
         if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) != 0 {
             *status = NOT_GROUP_TABLE;
@@ -3106,7 +3106,7 @@ pub(crate) fn ffgmul(
             strcpy_safe(&mut memberHDUtype, cs!(c"PRIMARY"));
             *status = 0;
         }
-        prepare_keyvalue(&memberHDUtype);
+        prepare_keyvalue(&mut memberHDUtype);
 
         *status = fits_read_key_lng(
             mfptr,
@@ -3133,7 +3133,7 @@ pub(crate) fn ffgmul(
             memberExtname[0] = 0;
             *status = 0;
         }
-        prepare_keyvalue(&memberExtname);
+        prepare_keyvalue(&mut memberExtname);
 
         fits_get_hdu_num(mfptr, &mut memberPosition);
 
@@ -3931,9 +3931,54 @@ pub(crate) fn fftsud(
 ///
 /// this is necessary so that a standard comparision of keyword values may
 /// be made
-pub(crate) fn prepare_keyvalue(_keyvalue: &[c_char]) /* string containing keyword value     */
+pub(crate) fn prepare_keyvalue(keyvalue: &mut [c_char]) /* string containing keyword value     */
 {
-    todo!();
+    /*
+      strip off all single quote characters "'" and blank spaces from a keyword
+      value retrieved via fits_read_key*() routines
+
+      this is necessary so that a standard comparision of keyword values may
+      be made
+    */
+
+    let mut i: c_int;
+    let mut length: c_int;
+
+    /*
+      strip off any leading or trailing single quotes (`) and (') from
+      the keyword value
+    */
+
+    length = strlen_safe(keyvalue) as c_int - 1;
+
+    if keyvalue[0] == bb(b'\'') && keyvalue[length as usize] == bb(b'\'') {
+        i = 0;
+        while i < length - 1 {
+            keyvalue[i as usize] = keyvalue[(i + 1) as usize];
+            i += 1;
+        }
+        keyvalue[(length - 1) as usize] = 0;
+    }
+
+    /*
+      strip off any trailing blanks from the keyword value; note that if the
+      keyvalue consists of nothing but blanks then no blanks are stripped
+    */
+
+    length = strlen_safe(keyvalue) as c_int - 1;
+
+    i = 0;
+    while i < length && keyvalue[i as usize] == bb(b' ') {
+        i += 1;
+    }
+
+    if i != length {
+        i = length;
+        while i >= 0 && keyvalue[i as usize] == bb(b' ') {
+            keyvalue[i as usize] = 0;
+            i -= 1;
+        }
+    }
 }
 
 /*---------------------------------------------------------------------------
@@ -5248,6 +5293,30 @@ mod tests {
             .unwrap()
             .to_str()
             .unwrap()
+    }
+
+    #[test]
+    fn test_prepare_keyvalue() {
+        // (input, expected) pairs, derived by hand-tracing the C:
+        //  - leading+trailing single quotes are stripped only if BOTH are present
+        //  - trailing blanks are stripped, UNLESS the value is entirely blanks
+        //  - leading blanks are never stripped
+        let cases = [
+            ("'GROUPING'", "GROUPING"), // surrounding quotes removed
+            ("'GROUP '", "GROUP"),      // quotes removed, then trailing blank stripped
+            ("VALUE   ", "VALUE"),      // trailing blanks stripped (no quotes)
+            ("ABC", "ABC"),             // nothing to strip
+            ("'ABC", "'ABC"),           // unmatched leading quote: left untouched
+            ("''", ""),                 // empty quoted string collapses to empty
+            ("   ", "   "),             // all-blank value is preserved
+            ("  AB  ", "  AB"),         // leading blanks kept, trailing stripped
+        ];
+
+        for (input, expected) in cases {
+            let mut buf = to_buf(input);
+            prepare_keyvalue(&mut buf);
+            assert_eq!(from_buf(&buf), expected, "prepare_keyvalue({input:?})");
+        }
     }
 
     #[test]
