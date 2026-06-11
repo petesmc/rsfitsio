@@ -29,8 +29,8 @@ use crate::{
     fitsio::*,
     int_snprintf, raw_to_slice,
     wrappers::{
-        strcat_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe,
-        strrchr_safe, strstr_safe,
+        strcat_safe, strchr_safe, strcmp_safe, strcpy_safe, strlen_safe, strncmp_safe,
+        strncpy_safe, strrchr_safe, strstr_safe,
     },
 };
 
@@ -4815,12 +4815,121 @@ pub(crate) fn fits_clean_url(
 /// with an access method of ftp:// cannot be expressed a a relative URL to
 /// a local disk file.
 pub(crate) fn fits_url2relurl(
-    _refURL: &[c_char],     /* I reference URL string             */
-    _absURL: &[c_char],     /* I absoulute URL string to process  */
-    _relURL: &mut [c_char], /* O resulting relative URL string    */
-    _status: &mut c_int,
+    refURL: &[c_char],     /* I reference URL string             */
+    absURL: &[c_char],     /* I absoulute URL string to process  */
+    relURL: &mut [c_char], /* O resulting relative URL string    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let mut j: c_int;
+    let mut refcount: c_int;
+    let mut abscount: c_int;
+    let refsize: c_int;
+    let abssize: c_int;
+    let mut done: c_int;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /* initialize the relative URL string */
+    relURL[0] = 0;
+
+    loop {
+        /*
+        refURL and absURL must be absolute to process
+        */
+
+        if !(fits_is_url_absolute(refURL) != 0 || refURL[0] == bb(b'/'))
+            || !(fits_is_url_absolute(absURL) != 0 || absURL[0] == bb(b'/'))
+        {
+            *status = URL_PARSE_ERROR;
+            ffpmsg_str("Cannot make rel. URL from non abs. URLs (fits_url2relurl)");
+            break;
+        }
+
+        /* determine the size of the refURL and absURL strings */
+
+        refsize = strlen_safe(refURL) as c_int;
+        abssize = strlen_safe(absURL) as c_int;
+
+        /* process the two URL strings and build the relative URL between them */
+
+        done = 0;
+        refcount = 0;
+        abscount = 0;
+        while done == 0 && refcount < refsize && abscount < abssize {
+            while abscount < abssize && absURL[abscount as usize] == bb(b'/') {
+                abscount += 1;
+            }
+            while refcount < refsize && refURL[refcount as usize] == bb(b'/') {
+                refcount += 1;
+            }
+
+            /* find the next path segment in absURL */
+            i = abscount;
+            while absURL[i as usize] != bb(b'/') && i < abssize {
+                i += 1;
+            }
+
+            /* find the next path segment in refURL */
+            j = refcount;
+            while refURL[j as usize] != bb(b'/') && j < refsize {
+                j += 1;
+            }
+
+            /* do the two path segments match? */
+            if i == j
+                && strncmp_safe(
+                    &absURL[abscount as usize..],
+                    &refURL[refcount as usize..],
+                    (i - refcount) as usize,
+                ) == 0
+            {
+                /* they match, so ignore them and continue */
+                abscount = i;
+                refcount = j;
+                /* the C for-loop increment (++refcount, ++abscount) runs on `continue` */
+                refcount += 1;
+                abscount += 1;
+                continue;
+            }
+
+            /* We found a difference in the paths in refURL and absURL.
+               For every path segment remaining in the refURL string, append
+               a "../" path segment to the relataive URL relURL.
+            */
+
+            j = refcount;
+            while j < refsize {
+                if refURL[j as usize] == bb(b'/') {
+                    if strlen_safe(relURL) + 3 > FLEN_FILENAME - 1 {
+                        *status = URL_PARSE_ERROR;
+                        ffpmsg_str("relURL too long (fits_url2relurl)");
+                        return *status;
+                    }
+                    strcat_safe(relURL, cs!(c"../"));
+                }
+                j += 1;
+            }
+
+            /* copy all remaining characters of absURL to the output relURL */
+
+            if strlen_safe(relURL) + strlen_safe(&absURL[abscount as usize..]) > FLEN_FILENAME - 1 {
+                *status = URL_PARSE_ERROR;
+                ffpmsg_str("relURL too long (fits_url2relurl)");
+                return *status;
+            }
+            strcat_safe(relURL, &absURL[abscount as usize..]);
+
+            /* we are done building the relative URL */
+            done = 1;
+        }
+
+        break;
+    } //while(0)
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5317,6 +5426,44 @@ mod tests {
             prepare_keyvalue(&mut buf);
             assert_eq!(from_buf(&buf), expected, "prepare_keyvalue({input:?})");
         }
+    }
+
+    #[test]
+    fn test_fits_url2relurl() {
+        // (refURL, absURL, expected relURL) triples, derived by hand-tracing the C.
+        // The result is the path from refURL's location to absURL: shared leading
+        // path segments are dropped, one "../" is emitted per remaining segment of
+        // refURL, then the unmatched tail of absURL is appended.
+        let cases = [
+            ("/a/b/c.fits", "/a/b/d.fits", "d.fits"), // same dir -> bare filename
+            ("/a/b/c.fits", "/a/x/d.fits", "../x/d.fits"), // up one, into sibling dir
+            ("/a/b.fits", "/a/c/d.fits", "c/d.fits"), // target is in a deeper dir
+            ("/a/b/c/file.fits", "/a/x.fits", "../../x.fits"), // up two dirs
+            ("/a/file.fits", "/a/file.fits", ""),     // identical URLs -> empty
+        ];
+
+        for (refurl, absurl, expected) in cases {
+            let mut status = 0;
+            let refbuf = to_buf(refurl);
+            let absbuf = to_buf(absurl);
+            let mut relbuf = [0 as c_char; FLEN_FILENAME];
+            fits_url2relurl(&refbuf, &absbuf, &mut relbuf, &mut status);
+            assert_eq!(status, 0, "status for ({refurl:?}, {absurl:?})");
+            assert_eq!(
+                from_buf(&relbuf),
+                expected,
+                "relURL for ({refurl:?}, {absurl:?})"
+            );
+        }
+
+        // Non-absolute URLs cannot be processed -> URL_PARSE_ERROR, relURL emptied.
+        let mut status = 0;
+        let refbuf = to_buf("a/b"); // not absolute (no access method, no leading '/')
+        let absbuf = to_buf("/c/d");
+        let mut relbuf = [0 as c_char; FLEN_FILENAME];
+        fits_url2relurl(&refbuf, &absbuf, &mut relbuf, &mut status);
+        assert_eq!(status, URL_PARSE_ERROR);
+        assert_eq!(from_buf(&relbuf), "");
     }
 
     #[test]
