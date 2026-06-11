@@ -3222,8 +3222,8 @@ pub(crate) fn ffgmul(
                     &memberExtname,
                     memberExtver as c_int,
                     memberPosition,
-                    &mut mbrLocation1,
-                    Some(&mut memberID),
+                    Some(&mbrLocation1),
+                    &mut memberID,
                     status,
                 );
             }
@@ -3236,8 +3236,8 @@ pub(crate) fn ffgmul(
                     &memberExtname,
                     memberExtver as c_int,
                     memberPosition,
-                    &mut mbrLocation2,
-                    Some(&mut memberID),
+                    Some(&mbrLocation2),
+                    &mut memberID,
                     status,
                 );
             }
@@ -3335,16 +3335,384 @@ pub(crate) fn ffgmul(
 /// is because the position information can become invalid much more
 /// easily then the reference information for a group member.
 pub(crate) fn ffgmf(
-    _gfptr: &mut fitsfile,    /* pointer to grouping table HDU to search       */
-    _xtension: &[c_char],     /* XTENSION value for member HDU                */
-    _extname: &[c_char],      /* EXTNAME value for member HDU                 */
-    _extver: c_int,           /* EXTVER value for member HDU                  */
-    _position: c_int,         /* HDU position value for member HDU            */
-    _location: &mut [c_char], /* FITS file location value for member HDU      */
-    _member: Option<&mut c_long>, /* member HDU ID within group table (if found)  */
-    _status: &mut c_int,      /* return status code                           */
+    gfptr: &mut fitsfile,        /* pointer to grouping table HDU to search       */
+    xtension: &[c_char],         /* XTENSION value for member HDU                */
+    extname: &[c_char],          /* EXTNAME value for member HDU                 */
+    extver: c_int,               /* EXTVER value for member HDU                  */
+    position: c_int,             /* HDU position value for member HDU            */
+    location: Option<&[c_char]>, /* FITS file location value for member HDU      */
+    member: &mut c_long,         /* member HDU ID within group table (if found)  */
+    status: &mut c_int,          /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut xtensionCol: c_int = 0;
+    let mut extnameCol: c_int = 0;
+    let mut extverCol: c_int = 0;
+    let mut positionCol: c_int = 0;
+    let mut locationCol: c_int = 0;
+    let mut uriCol: c_int = 0;
+    let mut mposition: c_int = 0;
+    let mut grptype: c_int = 0;
+    let mut dummy: c_int = 0;
+    let mut i: c_long;
+
+    let mut nmembers: c_long = 0;
+    let mut mextver: c_long = 0;
+
+    let mut charBuff1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpLocation: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut mbrLocation3: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut grpLocation1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut grpLocation2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    let nstr: [c_char; 1] = [0]; /* char nstr[] = {'\0'}; the null-value string */
+
+    // C used `char *tmpPtr[2]` pointing at charBuff1/charBuff2; only tmpPtr[0]
+    // (charBuff1) is ever read since each read is for a single element (nelem=1).
+
+    // (the access/iostate outputs of fits_get_url are unused here -- C passed NULL)
+    let mut access1: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut access2: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut iostate: c_int = 0;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    *member = 0;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /*
+      if the passed LOCATION value is not an absolute URL then turn it
+      into an absolute path
+    */
+
+    if location.is_none() {
+        tmpLocation[0] = 0;
+    } else if location.unwrap()[0] == 0 {
+        tmpLocation[0] = 0;
+    } else if fits_is_url_absolute(location.unwrap()) == 0 {
+        fits_path2url(location.unwrap(), FLEN_FILENAME, &mut tmpLocation, status);
+
+        if tmpLocation[0] != bb(b'/') {
+            fits_get_cwd(&mut cwd, status);
+            if strlen_safe(&cwd) + strlen_safe(&tmpLocation) + 1 > FLEN_FILENAME - 1 {
+                ffpmsg_str("cwd and location are too long (ffgmf)");
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+            strcat_safe(&mut cwd, cs!(c"/"));
+            strcat_safe(&mut cwd, &tmpLocation);
+            fits_clean_url(&cwd, &mut tmpLocation, status);
+        }
+    } else {
+        strcpy_safe(&mut tmpLocation, location.unwrap());
+    }
+
+    /*
+       retrieve the Grouping Convention reserved column positions within
+       the grouping table
+    */
+
+    *status = ffgtgc(
+        gfptr,
+        &mut xtensionCol,
+        &mut extnameCol,
+        &mut extverCol,
+        &mut positionCol,
+        &mut locationCol,
+        &mut uriCol,
+        &mut grptype,
+        status,
+    );
+
+    /* retrieve the number of group members */
+
+    *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+    /*
+       loop over all grouping table rows until the member HDU is found
+    */
+
+    // The loop counter is bumped at the top so the C `continue` statements (which
+    // fall through to the for-loop's ++i) map to a plain Rust `continue`.
+    i = 0;
+    while i < nmembers && *member == 0 && *status == 0 {
+        i += 1;
+
+        if xtensionCol != 0 {
+            fits_read_col_str(
+                gfptr,
+                xtensionCol,
+                i as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut charBuff1[..]],
+                Some(&mut dummy),
+                status,
+            );
+            if fits_strcasecmp(&charBuff1, xtension) != 0 {
+                continue;
+            }
+        }
+
+        if extnameCol != 0 {
+            fits_read_col_str(
+                gfptr,
+                extnameCol,
+                i as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut charBuff1[..]],
+                Some(&mut dummy),
+                status,
+            );
+            if fits_strcasecmp(&charBuff1, extname) != 0 {
+                continue;
+            }
+        }
+
+        if extverCol != 0 {
+            fits_read_col_lng(
+                gfptr,
+                extverCol,
+                i as LONGLONG,
+                1,
+                1,
+                0,
+                std::slice::from_mut(&mut mextver),
+                Some(&mut dummy),
+                status,
+            );
+            if extver as c_long != mextver {
+                continue;
+            }
+        }
+
+        /* note we only use postionCol if we have to */
+
+        if positionCol != 0 && (grptype as u64 == GT_ID_POS || grptype as u64 == GT_ID_POS_URI) {
+            fits_read_col_int(
+                gfptr,
+                positionCol,
+                i as LONGLONG,
+                1,
+                1,
+                0,
+                std::slice::from_mut(&mut mposition),
+                Some(&mut dummy),
+                status,
+            );
+            if position != mposition {
+                continue;
+            }
+        }
+
+        /*
+          if no location string was passed to the function then assume that
+          the calling application does not wish to use it as a comparision
+          critera ==> if we got this far then we have a match
+        */
+
+        if location.is_none() {
+            ffpmsg_str("NULL Location string given ==> ignore location (ffgmf)");
+            *member = i;
+            continue;
+        }
+
+        /*
+          if the grouping table MEMBER_LOCATION column exists then read the
+          location URL for the member, else set the location string to
+          a zero-length string for subsequent comparisions
+        */
+
+        if locationCol != 0 {
+            fits_read_col_str(
+                gfptr,
+                locationCol,
+                i as LONGLONG,
+                1,
+                1,
+                Some(&nstr),
+                &mut [&mut charBuff1[..]],
+                Some(&mut dummy),
+                status,
+            );
+            strcpy_safe(&mut mbrLocation1, &charBuff1);
+            mbrLocation2[0] = 0;
+        } else {
+            mbrLocation1[0] = 0;
+        }
+
+        /*
+          if the member location string from the grouping table is zero
+          length (either implicitly or explicitly) then assume that the
+          member HDU is in the same file as the grouping table HDU; retrieve
+          the possible URL values of the grouping table HDU file
+        */
+
+        if mbrLocation1[0] == 0 {
+            /* retrieve the possible URLs of the grouping table file */
+            *status = fits_get_url(
+                gfptr,
+                &mut mbrLocation1,
+                &mut mbrLocation2,
+                &mut access1,
+                &mut access2,
+                &mut iostate,
+                status,
+            );
+
+            /* if non-NULL, make sure the first URL is absolute or a full path */
+            if mbrLocation1[0] != 0
+                && fits_is_url_absolute(&mbrLocation1) == 0
+                && mbrLocation1[0] != bb(b'/')
+            {
+                fits_get_cwd(&mut cwd, status);
+                if strlen_safe(&cwd) + strlen_safe(&mbrLocation1) + 1 > FLEN_FILENAME - 1 {
+                    ffpmsg_str("cwd and member locations are too long (ffgmf)");
+                    *status = URL_PARSE_ERROR;
+                    continue;
+                }
+                strcat_safe(&mut cwd, cs!(c"/"));
+                strcat_safe(&mut cwd, &mbrLocation1);
+                fits_clean_url(&cwd, &mut mbrLocation1, status);
+            }
+
+            /* if non-NULL, make sure the first URL is absolute or a full path */
+            if mbrLocation2[0] != 0
+                && fits_is_url_absolute(&mbrLocation2) == 0
+                && mbrLocation2[0] != bb(b'/')
+            {
+                fits_get_cwd(&mut cwd, status);
+                if strlen_safe(&cwd) + strlen_safe(&mbrLocation2) + 1 > FLEN_FILENAME - 1 {
+                    ffpmsg_str("cwd and member locations are too long (ffgmf)");
+                    *status = URL_PARSE_ERROR;
+                    continue;
+                }
+                strcat_safe(&mut cwd, cs!(c"/"));
+                strcat_safe(&mut cwd, &mbrLocation2);
+                fits_clean_url(&cwd, &mut mbrLocation2, status);
+            }
+        }
+        /*
+          if the member location was specified, then make sure that it is
+          either an absolute URL or specifies a full path
+        */
+        else if fits_is_url_absolute(&mbrLocation1) == 0 && mbrLocation1[0] != bb(b'/') {
+            strcpy_safe(&mut mbrLocation2, &mbrLocation1);
+
+            /* get the possible URLs for the grouping table file */
+            *status = fits_get_url(
+                gfptr,
+                &mut grpLocation1,
+                &mut grpLocation2,
+                &mut access1,
+                &mut access2,
+                &mut iostate,
+                status,
+            );
+
+            if grpLocation1[0] != 0 {
+                /* make sure the first grouping table URL is absolute */
+                if fits_is_url_absolute(&grpLocation1) == 0 && grpLocation1[0] != bb(b'/') {
+                    fits_get_cwd(&mut cwd, status);
+                    if strlen_safe(&cwd) + strlen_safe(&grpLocation1) + 1 > FLEN_FILENAME - 1 {
+                        ffpmsg_str("cwd and group locations are too long (ffgmf)");
+                        *status = URL_PARSE_ERROR;
+                        continue;
+                    }
+                    strcat_safe(&mut cwd, cs!(c"/"));
+                    strcat_safe(&mut cwd, &grpLocation1);
+                    fits_clean_url(&cwd, &mut grpLocation1, status);
+                }
+
+                /* create an absoute URL for the member */
+
+                fits_relurl2url(&grpLocation1, &mbrLocation1, &mut mbrLocation3, status);
+
+                /*
+                   if URL construction succeeded then copy it to the
+                   first location string; else set the location string to
+                   empty
+                */
+
+                if *status == 0 {
+                    strcpy_safe(&mut mbrLocation1, &mbrLocation3);
+                } else if *status == URL_PARSE_ERROR {
+                    *status = 0;
+                    mbrLocation1[0] = 0;
+                }
+            } else {
+                mbrLocation1[0] = 0;
+            }
+
+            if grpLocation2[0] != 0 {
+                /* make sure the second grouping table URL is absolute */
+                if fits_is_url_absolute(&grpLocation2) == 0 && grpLocation2[0] != bb(b'/') {
+                    fits_get_cwd(&mut cwd, status);
+                    if strlen_safe(&cwd) + strlen_safe(&grpLocation2) + 1 > FLEN_FILENAME - 1 {
+                        ffpmsg_str("cwd and group locations are too long (ffgmf)");
+                        *status = URL_PARSE_ERROR;
+                        continue;
+                    }
+                    strcat_safe(&mut cwd, cs!(c"/"));
+                    strcat_safe(&mut cwd, &grpLocation2);
+                    fits_clean_url(&cwd, &mut grpLocation2, status);
+                }
+
+                /* create an absolute URL for the member */
+
+                fits_relurl2url(&grpLocation2, &mbrLocation2, &mut mbrLocation3, status);
+
+                /*
+                   if URL construction succeeded then copy it to the
+                   second location string; else set the location string to
+                   empty
+                */
+
+                if *status == 0 {
+                    strcpy_safe(&mut mbrLocation2, &mbrLocation3);
+                } else if *status == URL_PARSE_ERROR {
+                    *status = 0;
+                    mbrLocation2[0] = 0;
+                }
+            } else {
+                mbrLocation2[0] = 0;
+            }
+        }
+
+        /*
+         compare the passed member HDU file location string with the
+         (possibly two) member location strings to see if there is a match
+        */
+
+        if strcmp_safe(&mbrLocation1, &tmpLocation) != 0
+            && strcmp_safe(&mbrLocation2, &tmpLocation) != 0
+        {
+            continue;
+        }
+
+        /* if we made it this far then a match to the member HDU was found */
+
+        *member = i;
+    }
+
+    /* if a match was not found then set the return status code */
+
+    if *member == 0 && *status == 0 {
+        *status = MEMBER_NOT_FOUND;
+        ffpmsg_str("Cannot find specified member HDU (ffgmf)");
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------
