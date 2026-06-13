@@ -284,7 +284,7 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
     let mut rootlen2 = 0;
     let mut slen = 0;
     let mut cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-    let absURL: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut absURL: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut rootstring: [c_char; 256] = [0; 256];
     let mut rootstring2: [c_char; 256] = [0; 256];
     let mut username: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
@@ -358,7 +358,7 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
                     rootlen2 = strlen_safe(&userroot2);
 
                     /* convert the input filename to absolute path relative to the CWD */
-                    fits_relurl2url(cwd, filename.as_mut_ptr(), absURL, &mut status);
+                    fits_relurl2url(&cwd, &filename[..], &mut absURL, &mut status);
 
                     /*
                     printf("username = %s\n", username);

@@ -242,15 +242,19 @@ pub unsafe extern "C" fn ffflnm(
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
+        let filename = std::slice::from_raw_parts_mut(filename, FLEN_FILENAME);
 
         ffflnm_safe(&mut *fptr, filename, &mut *status)
     }
 }
 
-pub fn ffflnm_safe(fptr: &mut fitsfile, filename: *mut c_char, status: &mut c_int) -> c_int {
+pub fn ffflnm_safe(fptr: &mut fitsfile, filename: &mut [c_char], status: &mut c_int) -> c_int {
+    // SAFETY: Fptr.filename is this file's heap-allocated, NUL-terminated C string.
     unsafe {
-        let filename = filename.as_mut().expect(NULL_MSG);
-        strcpy(filename, fptr.Fptr.filename);
+        strcpy_safe(
+            filename,
+            cast_slice(CStr::from_ptr(fptr.Fptr.filename).to_bytes_with_nul()),
+        );
     }
     *status
 }

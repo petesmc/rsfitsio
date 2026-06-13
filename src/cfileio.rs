@@ -5839,14 +5839,223 @@ pub unsafe extern "C" fn ffrtnm(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(url);
 
+        let rootname = std::slice::from_raw_parts_mut(rootname, FLEN_FILENAME);
+
         ffrtnm_safe(url, rootname, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// parse the input URL, returning the root name (filetype://basename).
-pub fn ffrtnm_safe(_url: &[c_char], _rootname: *mut c_char, _status: &mut c_int) -> c_int {
-    todo!();
+pub fn ffrtnm_safe(url: &[c_char], rootname: &mut [c_char], status: &mut c_int) -> c_int {
+    let mut ii: isize;
+    let jj: isize;
+    let slen: isize;
+    let infilelen: isize;
+
+    let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+    let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    let mut ptr1 = url; /* C: ptr1 = url */
+    rootname[0] = 0;
+    urltype[0] = 0;
+    infile[0] = 0;
+
+    /*  get urltype (e.g., file://, ftp://, http://, etc.)  */
+    if ptr1[0] == bb(b'-')
+    /* "-" means read file from stdin */
+    {
+        strcat_safe(&mut urltype, cs!(c"-"));
+        ptr1 = &ptr1[1..];
+    } else if strncmp_safe(ptr1, cs!(c"stdin"), 5) == 0 || strncmp_safe(ptr1, cs!(c"STDIN"), 5) == 0
+    {
+        strcat_safe(&mut urltype, cs!(c"-"));
+        ptr1 = &ptr1[5..];
+    } else {
+        let ptr2 = strstr_safe(ptr1, cs!(c"://"));
+        let ptr3 = strstr_safe(ptr1, cs!(c"("));
+
+        /* the urltype follows a '(' character, so it must apply */
+        /* to the output file, and is not the urltype of the input file */
+        let ptr2 = match (ptr2, ptr3) {
+            (Some(p2), Some(p3)) if p3 < p2 => None, /* so reset pointer to zero */
+            _ => ptr2,
+        };
+
+        if let Some(p2) = ptr2 {
+            /* copy the explicit urltype string */
+
+            if p2 + 3 > MAX_PREFIX_LEN - 1 {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+            strncat_safe(&mut urltype, ptr1, p2 + 3); /* C: strncat(urltype, ptr1, ptr2-ptr1+3) */
+            ptr1 = &ptr1[(p2 + 3)..]; /* C: ptr1 = ptr2 + 3 */
+        } else if strncmp_safe(ptr1, cs!(c"ftp:"), 4) == 0 {
+            /* the 2 //'s are optional */
+            strcat_safe(&mut urltype, cs!(c"ftp://"));
+            ptr1 = &ptr1[4..];
+        } else if strncmp_safe(ptr1, cs!(c"gsiftp:"), 7) == 0 {
+            /* the 2 //'s are optional */
+            strcat_safe(&mut urltype, cs!(c"gsiftp://"));
+            ptr1 = &ptr1[7..];
+        } else if strncmp_safe(ptr1, cs!(c"http:"), 5) == 0 {
+            /* the 2 //'s are optional */
+            strcat_safe(&mut urltype, cs!(c"http://"));
+            ptr1 = &ptr1[5..];
+        } else if strncmp_safe(ptr1, cs!(c"mem:"), 4) == 0 {
+            /* the 2 //'s are optional */
+            strcat_safe(&mut urltype, cs!(c"mem://"));
+            ptr1 = &ptr1[4..];
+        } else if strncmp_safe(ptr1, cs!(c"shmem:"), 6) == 0 {
+            /* the 2 //'s are optional */
+            strcat_safe(&mut urltype, cs!(c"shmem://"));
+            ptr1 = &ptr1[6..];
+        } else if strncmp_safe(ptr1, cs!(c"file:"), 5) == 0 {
+            /* the 2 //'s are optional */
+            ptr1 = &ptr1[5..];
+        }
+
+        /* else assume file driver    */
+    }
+
+    /*  get the input file name  */
+    let mut ptr2 = strchr_safe(ptr1, bb(b'(')); /* search for opening parenthesis ( */
+    let ptr3 = strchr_safe(ptr1, bb(b'[')); /* search for opening bracket [ */
+    if let Some(p2_start) = ptr2 {
+        /* C: ptr4 = strchr(ptr2, ')') — indices below are absolute offsets into ptr1 */
+        let mut ptr4 = strchr_safe(&ptr1[p2_start..], bb(b')')).map(|o| p2_start + o);
+        while ptr4.is_some() && ptr2.is_some() {
+            let mut p4 = ptr4.unwrap();
+            loop {
+                p4 += 1;
+                if ptr1[p4] != bb(b' ') {
+                    break;
+                }
+            }
+            if ptr1[p4] == 0 || ptr1[p4] == bb(b'[') {
+                break;
+            }
+            let p2 = ptr2.unwrap();
+            ptr2 = strchr_safe(&ptr1[(p2 + 1)..], bb(b'(')).map(|o| p2 + 1 + o);
+            ptr4 = strchr_safe(&ptr1[p4..], bb(b')')).map(|o| p4 + o);
+        }
+    }
+
+    if ptr2 == ptr3
+    /* simple case: no [ or ( in the file name */
+    {
+        if strlen_safe(ptr1) > FLEN_FILENAME - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+
+        strcat_safe(&mut infile, ptr1);
+    } else if ptr3.is_none()
+    /* no bracket, so () enclose output file name */
+    {
+        let p2 = ptr2.unwrap();
+        if p2 > FLEN_FILENAME - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+
+        strncat_safe(&mut infile, ptr1, p2); /* C: strncat(infile, ptr1, ptr2-ptr1) */
+
+        /* C: ptr2++; ptr1 = strchr(ptr2, ')'); search for closing ) */
+        if strchr_safe(&ptr1[(p2 + 1)..], bb(b')')).is_none() {
+            *status = URL_PARSE_ERROR; /* error, no closing ) */
+            return *status;
+        }
+    } else if ptr2.is_some() && ptr2 < ptr3
+    /* () enclose output name before bracket */
+    {
+        let p2 = ptr2.unwrap();
+        if p2 > FLEN_FILENAME - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+
+        strncat_safe(&mut infile, ptr1, p2);
+
+        if strchr_safe(&ptr1[(p2 + 1)..], bb(b')')).is_none() {
+            *status = URL_PARSE_ERROR; /* error, no closing ) */
+            return *status;
+        }
+    } else
+    /*   bracket comes first, so there is no output name */
+    {
+        let p3 = ptr3.unwrap();
+        if p3 > FLEN_FILENAME - 1 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+
+        strncat_safe(&mut infile, ptr1, p3); /* C: strncat(infile, ptr1, ptr3-ptr1) */
+    }
+
+    /* strip off any trailing blanks in the names */
+    slen = strlen_safe(&infile) as isize;
+    ii = slen - 1;
+    while ii > 0 {
+        if infile[ii as usize] == bb(b' ') {
+            infile[ii as usize] = 0;
+        } else {
+            break;
+        }
+        ii -= 1;
+    }
+
+    /* --------------------------------------------- */
+    /* check if the 'filename+n' convention has been */
+    /* used to specifiy which HDU number to open     */
+    /* --------------------------------------------- */
+
+    jj = strlen_safe(&infile) as isize;
+
+    ii = jj - 1;
+    while ii >= 0 {
+        if infile[ii as usize] == bb(b'+') {
+            /* search backwards for '+' sign */
+            break;
+        }
+        ii -= 1;
+    }
+
+    if ii > 0 && (jj - ii) < 5
+    /* limit extension numbers to 4 digits */
+    {
+        infilelen = ii;
+        ii += 1;
+
+        while ii < jj {
+            if !isdigit_safe(infile[ii as usize]) {
+                /* are all the chars digits? */
+                break;
+            }
+            ii += 1;
+        }
+
+        if ii == jj {
+            /* yes, the '+n' convention was used.  */
+
+            infile[infilelen as usize] = 0; /* delete the extension number */
+        }
+    }
+
+    if strlen_safe(&urltype) + strlen_safe(&infile) > FLEN_FILENAME - 1 {
+        *status = URL_PARSE_ERROR;
+        return *status;
+    }
+
+    strcat_safe(rootname, &urltype); /* construct the root name */
+    strcat_safe(rootname, &infile);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -8444,5 +8653,46 @@ mod tests {
         assert_eq!(urltype, "gsiftp://");
         assert_eq!(infilex, "gridftp.server.edu/data/test.fits");
         assert_eq!(outfile, "");
+    }
+
+    #[test]
+    fn test_ffrtnm_safe() {
+        // (input url, expected rootname = filetype://basename)
+        let cases = [
+            ("myfile.fits", "myfile.fits"), // plain file: no access prefix
+            ("ftp://host/file.fits", "ftp://host/file.fits"),
+            ("http://x.com/f.fits", "http://x.com/f.fits"),
+            ("file://myfile.fits", "file://myfile.fits"),
+            ("file:myfile.fits", "myfile.fits"), // "file:" prefix => implicit/empty type
+            ("mem://blah", "mem://blah"),
+            ("ftp:host/f.fits", "ftp://host/f.fits"), // the // is optional
+            ("myfile.fits[1]", "myfile.fits"),        // strip the [extension] spec
+            ("myfile.fits+2", "myfile.fits"),         // strip the +n HDU number
+            ("-", "-"),                               // stdin
+            ("stdin", "-"),
+        ];
+
+        for (url, expected) in cases {
+            let url = str_to_c_array(url);
+            let mut rootname = create_buffer(FLEN_FILENAME);
+            let mut status: c_int = 0;
+
+            let r = ffrtnm_safe(&url, &mut rootname, &mut status);
+
+            assert_eq!(r, 0, "url={url:?}");
+            assert_eq!(status, 0, "url={url:?}");
+            assert_eq!(
+                unsafe { c_array_to_string(rootname.as_ptr()) },
+                expected,
+                "url={url:?}"
+            );
+        }
+
+        // a urltype prefix longer than MAX_PREFIX_LEN is a parse error
+        let url = str_to_c_array("verylongschemename://file.fits");
+        let mut rootname = create_buffer(FLEN_FILENAME);
+        let mut status: c_int = 0;
+        ffrtnm_safe(&url, &mut rootname, &mut status);
+        assert_eq!(status, URL_PARSE_ERROR);
     }
 }

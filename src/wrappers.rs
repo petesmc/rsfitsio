@@ -240,6 +240,14 @@ pub fn strchr_safe(cs: &[c_char], c: c_char) -> Option<usize> {
     cs.iter().position(|&x| x == c)
 }
 
+/// Index of the last occurrence of `c` in the NUL-terminated string `cs`, or
+/// `None` if not found. Mirrors C `strrchr`: the search stops at the terminating
+/// NUL so trailing buffer padding is ignored.
+pub fn strrchr_safe(cs: &[c_char], c: c_char) -> Option<usize> {
+    let len = strlen_safe(cs);
+    cs[..len].iter().rposition(|&x| x == c)
+}
+
 unsafe fn inner_strstr(
     mut haystack: *const c_char,
     needle: *const c_char,
