@@ -7756,23 +7756,6 @@ mod tests {
         }
     }
 
-    /// Copy a `&str` into a NUL-terminated `[c_char; FLEN_FILENAME]` buffer.
-    fn to_buf(s: &str) -> [c_char; FLEN_FILENAME] {
-        let mut buf = [0 as c_char; FLEN_FILENAME];
-        for (i, &b) in s.as_bytes().iter().enumerate() {
-            buf[i] = b as c_char;
-        }
-        buf
-    }
-
-    /// Read a NUL-terminated `[c_char]` buffer back into a `&str`.
-    fn from_buf(buf: &[c_char]) -> &str {
-        CStr::from_bytes_until_nul(cast_slice(buf))
-            .unwrap()
-            .to_str()
-            .unwrap()
-    }
-
     #[test]
     fn test_prepare_keyvalue() {
         // (input, expected) pairs, derived by hand-tracing the C:
@@ -8020,5 +8003,457 @@ mod tests {
 
         let f = fptr.take().unwrap();
         ffclos_safe(f, &mut status);
+    }
+
+    // ---------------------------------------------------------------------
+    // Port of the integration tests in CFITSIO's test_group.c. Functions that
+    // only create/operate/close a single handle use an in-memory file
+    // (`mem://`); tests that re-open the file by name (extended `[GROUPING]`
+    // syntax) use a real temp file via `with_temp_file`.
+    // ---------------------------------------------------------------------
+
+    use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
+    use crate::helpers::testhelpers::{
+        from_buf, new_mem_file, path_with_ext, read_str_key, to_buf, with_temp_file,
+    };
+
+    #[test]
+    fn test_ffgtcr_basic() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* Create a grouping table at end of file */
+        fits_create_group(f, cs!(c"TestGroup"), GT_ID_ALL_URI as c_int, &mut status);
+        assert_eq!(status, 0, "ffgtcr failed");
+
+        /* Should now be at the grouping table HDU */
+        let mut hdutype = 0;
+        fits_get_hdu_type(f, &mut hdutype, &mut status);
+        assert_eq!(hdutype, BINARY_TBL);
+        assert_eq!(read_str_key(f, cs!(c"EXTNAME"), &mut status), "GROUPING");
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtcr_with_name() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        fits_create_group(f, cs!(c"MyGroup"), GT_ID_REF as c_int, &mut status);
+        assert_eq!(status, 0, "ffgtcr failed");
+        assert_eq!(read_str_key(f, cs!(c"GRPNAME"), &mut status), "MyGroup");
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtis_insert() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* Insert grouping table after primary HDU */
+        fits_insert_group(f, cs!(c"InsertedGroup"), GT_ID_POS as c_int, &mut status);
+        assert_eq!(status, 0, "ffgtis failed");
+
+        let mut hdunum = 0;
+        fits_get_hdu_num(f, &mut hdunum);
+        assert_eq!(hdunum, 2);
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtis_all_types() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* GT_ID_ALL_URI - all columns including URI */
+        fits_insert_group(f, cs!(c"AllURI"), GT_ID_ALL_URI as c_int, &mut status);
+        let mut ncols = 0;
+        fits_get_num_cols(f, &mut ncols, &mut status);
+        assert!(ncols >= 5, "expected >=5 cols, got {ncols}");
+
+        /* Go back to primary and insert another type */
+        fits_movabs_hdu(f, 1, None, &mut status);
+        fits_insert_group(f, cs!(c"RefOnly"), GT_ID_REF as c_int, &mut status);
+
+        fits_movabs_hdu(f, 1, None, &mut status);
+        fits_insert_group(f, cs!(c"PosOnly"), GT_ID_POS as c_int, &mut status);
+
+        fits_movabs_hdu(f, 1, None, &mut status);
+        fits_insert_group(f, cs!(c"AllCols"), GT_ID_ALL as c_int, &mut status);
+
+        fits_movabs_hdu(f, 1, None, &mut status);
+        fits_insert_group(f, cs!(c"RefURI"), GT_ID_REF_URI as c_int, &mut status);
+
+        fits_movabs_hdu(f, 1, None, &mut status);
+        fits_insert_group(f, cs!(c"PosURI"), GT_ID_POS_URI as c_int, &mut status);
+
+        assert_eq!(status, 0, "ffgtis all-types failed");
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtnm_empty_group() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        fits_create_group(f, cs!(c"EmptyGroup"), GT_ID_ALL_URI as c_int, &mut status);
+        let mut nmembers: c_long = -1;
+        fits_get_num_members(f, &mut nmembers, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(nmembers, 0);
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtch_change_type() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* Create with minimal columns */
+        fits_insert_group(f, cs!(c"ChangeType"), GT_ID_REF as c_int, &mut status);
+        let mut ncols_before = 0;
+        fits_get_num_cols(f, &mut ncols_before, &mut status);
+
+        /* Change to include position info */
+        fits_change_group(f, GT_ID_ALL as c_int, &mut status);
+        let mut ncols_after = 0;
+        fits_get_num_cols(f, &mut ncols_after, &mut status);
+        assert_eq!(status, 0, "ffgtch failed");
+        assert!(
+            ncols_after > ncols_before,
+            "expected more cols after change: before={ncols_before} after={ncols_after}"
+        );
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtvf_valid_group() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        fits_create_group(f, cs!(c"ValidGroup"), GT_ID_ALL_URI as c_int, &mut status);
+        let mut firstfailed: c_long = -1;
+        fits_verify_group(f, &mut firstfailed, &mut status);
+        assert_eq!(status, 0, "ffgtvf failed");
+        /* Empty group should verify OK, firstfailed = 0 means all OK */
+        assert_eq!(firstfailed, 0);
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgmng_no_groups() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* Create an image extension */
+        let naxes: [c_long; 2] = [10, 10];
+        fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
+        /* Move to the image extension */
+        fits_movabs_hdu(f, 2, None, &mut status);
+        /* Check how many groups this HDU belongs to */
+        let mut ngroups: c_long = -1;
+        fits_get_num_groups(f, &mut ngroups, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(ngroups, 0);
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtcp_copy() {
+        let mut status = 0;
+
+        /* Create first file with grouping table */
+        let mut fptr1 = new_mem_file(&mut status);
+        fits_create_group(
+            fptr1.as_deref_mut().unwrap(),
+            cs!(c"OrigGroup"),
+            GT_ID_ALL_URI as c_int,
+            &mut status,
+        );
+
+        /* Create second file */
+        let mut fptr2 = new_mem_file(&mut status);
+
+        /* Move f1 to grouping table first, then copy it to f2 */
+        fits_movabs_hdu(fptr1.as_deref_mut().unwrap(), 2, None, &mut status);
+        fits_copy_group(
+            fptr1.as_deref_mut().unwrap(),
+            fptr2.as_deref_mut().unwrap(),
+            0,
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffgtcp failed");
+
+        /* Verify copy exists in f2 */
+        let f2 = fptr2.as_deref_mut().unwrap();
+        fits_movabs_hdu(f2, 2, None, &mut status);
+        let mut hdutype = 0;
+        fits_get_hdu_type(f2, &mut hdutype, &mut status);
+        assert_eq!(hdutype, BINARY_TBL);
+        assert_eq!(read_str_key(f2, cs!(c"EXTNAME"), &mut status), "GROUPING");
+
+        ffclos_safe(fptr1.take().unwrap(), &mut status);
+        ffclos_safe(fptr2.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtrm_remove() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        fits_create_group(f, cs!(c"ToRemove"), GT_ID_ALL_URI as c_int, &mut status);
+
+        /* Get HDU count before removal */
+        let mut numhdus = 0;
+        fits_get_num_hdus(f, &mut numhdus, &mut status);
+        assert_eq!(numhdus, 2);
+
+        /* Remove the grouping table (OPT_RM_GPT = 0 removes just table) */
+        fits_remove_group(f, OPT_RM_GPT as c_int, &mut status);
+        assert_eq!(status, 0, "ffgtrm failed");
+
+        /* Check HDU count decreased */
+        fits_get_num_hdus(f, &mut numhdus, &mut status);
+        assert_eq!(numhdus, 1);
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtcm_compact() {
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        fits_create_group(f, cs!(c"CompactMe"), GT_ID_ALL_URI as c_int, &mut status);
+        /* Compact with OPT_CMT_MBR (1) - remove invalid member entries */
+        fits_compact_group(f, OPT_CMT_MBR as c_int, &mut status);
+        assert_eq!(status, 0, "ffgtcm failed");
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtcr_null_status() {
+        /* This tests passing pre-existing error status */
+        let mut status = 0;
+        let mut fptr = new_mem_file(&mut status);
+        let f = fptr.as_deref_mut().unwrap();
+
+        /* Pass a bad status to see if it returns immediately */
+        status = 1;
+        fits_create_group(f, cs!(c"BadStatus"), GT_ID_ALL_URI as c_int, &mut status);
+        assert_eq!(status, 1); /* Should return with same error */
+        status = 0;
+
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffgtam_add_member() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            let f = fptr.as_deref_mut().unwrap();
+            fits_write_imghdr(f, BYTE_IMG, 0, &[], &mut status);
+
+            /* Create an image extension to be a member */
+            let naxes: [c_long; 2] = [10, 10];
+            fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
+
+            /* Create a grouping table */
+            fits_create_group(f, cs!(c"TestGroup"), GT_ID_ALL_URI as c_int, &mut status);
+
+            /* Position the main handle at the member HDU */
+            fits_movabs_hdu(f, 2, None, &mut status);
+            assert_eq!(status, 0, "setup failed");
+
+            /* Open the grouping table as a second handle and add the member */
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            let gname = path_with_ext(filename, "[GROUPING]");
+            ffopen_safe(&mut gfptr, &gname, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffopen [GROUPING] failed");
+
+            let g = gfptr.as_deref_mut().unwrap();
+            fits_add_group_member(g, Some(f), 0, &mut status);
+            assert_eq!(status, 0, "ffgtam failed");
+
+            let mut nmembers: c_long = -1;
+            fits_get_num_members(g, &mut nmembers, &mut status);
+            assert_eq!(nmembers, 1);
+
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtmg_merge() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            let f = fptr.as_deref_mut().unwrap();
+            fits_write_imghdr(f, BYTE_IMG, 0, &[], &mut status);
+
+            /* Create two grouping tables */
+            fits_create_group(f, cs!(c"Group1"), GT_ID_ALL_URI as c_int, &mut status);
+            fits_movabs_hdu(f, 1, None, &mut status);
+            fits_create_group(f, cs!(c"Group2"), GT_ID_ALL_URI as c_int, &mut status);
+
+            let mut numhdus = 0;
+            fits_get_num_hdus(f, &mut numhdus, &mut status);
+            assert_eq!(numhdus, 3);
+
+            /* Move to second grouping table */
+            fits_movabs_hdu(f, 3, None, &mut status);
+
+            /* Open first grouping table as a second handle and merge into it */
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            let gname = path_with_ext(filename, "[GROUPING,1]");
+            ffopen_safe(&mut gfptr, &gname, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffopen [GROUPING,1] failed");
+
+            /* Merge second into first (OPT_MRG_COPY = 0) */
+            fits_merge_groups(
+                gfptr.as_deref_mut().unwrap(),
+                f,
+                OPT_MRG_COPY as c_int,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgtmg failed");
+
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_group_workflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [5, 5];
+
+            /* Create file with primary + 2 image extensions */
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            {
+                let f = fptr.as_deref_mut().unwrap();
+                fits_write_imghdr(f, BYTE_IMG, 0, &[], &mut status);
+                fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
+                fits_write_key_str(f, cs!(c"EXTNAME"), cs!(c"IMAGE1"), Some(cs!(c"First image")), &mut status);
+                fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
+                fits_write_key_str(f, cs!(c"EXTNAME"), cs!(c"IMAGE2"), Some(cs!(c"Second image")), &mut status);
+
+                /* Create grouping table */
+                fits_create_group(f, cs!(c"ImageGroup"), GT_ID_ALL_URI as c_int, &mut status);
+
+                /* Verify we're at the grouping table */
+                assert_eq!(read_str_key(f, cs!(c"EXTNAME"), &mut status), "GROUPING");
+                assert_eq!(status, 0, "setup failed");
+            }
+
+            /* Close and reopen the grouping table */
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            let gname = path_with_ext(filename, "[GROUPING]");
+            ffopen_safe(&mut gfptr, &gname, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffopen [GROUPING] failed");
+
+            /* Get number of members (should be 0) */
+            let mut nmembers: c_long = -1;
+            fits_get_num_members(gfptr.as_deref_mut().unwrap(), &mut nmembers, &mut status);
+            assert_eq!(nmembers, 0);
+
+            /* Add first image as member */
+            {
+                let mut mf: Option<Box<fitsfile>> = None;
+                let mname = path_with_ext(filename, "[IMAGE1]");
+                ffopen_safe(&mut mf, &mname, READWRITE, &mut status);
+                assert_eq!(status, 0, "ffopen [IMAGE1] failed");
+                fits_add_group_member(
+                    gfptr.as_deref_mut().unwrap(),
+                    Some(mf.as_deref_mut().unwrap()),
+                    0,
+                    &mut status,
+                );
+                ffclos_safe(mf.take().unwrap(), &mut status);
+            }
+
+            /* Verify member count */
+            fits_get_num_members(gfptr.as_deref_mut().unwrap(), &mut nmembers, &mut status);
+            assert_eq!(nmembers, 1);
+
+            /* Add second image as member */
+            {
+                let mut mf: Option<Box<fitsfile>> = None;
+                let mname = path_with_ext(filename, "[IMAGE2]");
+                ffopen_safe(&mut mf, &mname, READWRITE, &mut status);
+                assert_eq!(status, 0, "ffopen [IMAGE2] failed");
+                fits_add_group_member(
+                    gfptr.as_deref_mut().unwrap(),
+                    Some(mf.as_deref_mut().unwrap()),
+                    0,
+                    &mut status,
+                );
+                ffclos_safe(mf.take().unwrap(), &mut status);
+            }
+
+            /* Verify member count */
+            fits_get_num_members(gfptr.as_deref_mut().unwrap(), &mut nmembers, &mut status);
+            assert_eq!(nmembers, 2);
+
+            /* Verify the group */
+            let mut firstfailed: c_long = -1;
+            fits_verify_group(gfptr.as_deref_mut().unwrap(), &mut firstfailed, &mut status);
+            assert_eq!(firstfailed, 0);
+
+            /* Open member 1 and check its EXTNAME */
+            {
+                let mut mf: Option<Box<fitsfile>> = None;
+                fits_open_member(gfptr.as_deref_mut().unwrap(), 1, &mut mf, &mut status);
+                assert_eq!(status, 0, "ffgmop member 1 failed");
+                assert_eq!(read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status), "IMAGE1");
+                ffclos_safe(mf.take().unwrap(), &mut status);
+            }
+
+            /* Open member 2 and check its EXTNAME */
+            {
+                let mut mf: Option<Box<fitsfile>> = None;
+                fits_open_member(gfptr.as_deref_mut().unwrap(), 2, &mut mf, &mut status);
+                assert_eq!(status, 0, "ffgmop member 2 failed");
+                assert_eq!(read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status), "IMAGE2");
+                ffclos_safe(mf.take().unwrap(), &mut status);
+            }
+
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+        });
     }
 }
