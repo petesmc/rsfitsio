@@ -3548,19 +3548,236 @@ pub unsafe extern "C" fn ffgmcp(
 /// combination of XTENSION, EXTNAME and EXVTER is unique within its new
 /// FITS file.
 pub fn ffgmcp_safe(
-    _gfptr: &mut fitsfile, /* FITS file pointer to group                   */
-    _mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
-    _member: c_long,       /* member ID (row num) within grouping table    */
-    _cpopt: c_int,         /* code specifying copy options:
+    gfptr: &mut fitsfile, /* FITS file pointer to group                   */
+    mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
+    member: c_long,       /* member ID (row num) within grouping table    */
+    cpopt: c_int,         /* code specifying copy options:
                            OPT_MCP_ADD  (0) ==> add copied member to the
                                                grouping table
                            OPT_MCP_NADD (1) ==> do not add member copy to
                                                the grouping table
                            OPT_MCP_REPL (2) ==> replace current member
                                                entry with member copy  */
-    _status: &mut c_int, /* return status code                           */
+    status: &mut c_int, /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut numkeys: c_int = 0;
+    let mut keypos: c_int = 0;
+    let mut hdunum: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut i: c_int;
+
+    let incList: [&[c_char]; 2] = [cs!(c"GRPID#"), cs!(c"GRPLC#")];
+    let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    /* C declares keyname/value as FLEN_CARD; the safe fits_read_keyn wants
+    FLEN_KEYWORD/FLEN_VALUE buffers, which are large enough for what it writes */
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    let mut tmpfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /* open the member HDU to be copied */
+
+        *status = fits_open_member(gfptr, member, &mut tmpfptr, status);
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        if the member is a grouping table then copy it with a call to
+        fits_copy_group() using the "copy only the grouping table" option
+
+        if it is not a grouping table then copy the hdu with fits_copy_hdu()
+        remove all GRPIDn and GRPLCn keywords, and update the EXTVER keyword
+        value
+        */
+
+        /* get the member HDU's EXTNAME value */
+
+        *status = fits_read_key_str(
+            tmpfptr.as_deref_mut().unwrap(),
+            cs!(c"EXTNAME"),
+            &mut extname,
+            Some(&mut comment),
+            status,
+        );
+
+        /* if no EXTNAME value was found then set the extname to a null string */
+
+        if *status == KEY_NO_EXIST {
+            extname[0] = 0;
+            *status = 0;
+        } else if *status != 0 {
+            break 'outer;
+        }
+
+        prepare_keyvalue(&mut extname);
+
+        /* if a grouping table then copy with fits_copy_group() */
+
+        if fits_strcasecmp(&extname, cs!(c"GROUPING")) == 0 {
+            *status = fits_copy_group(
+                tmpfptr.as_deref_mut().unwrap(),
+                mfptr,
+                OPT_GCP_GPT as c_int,
+                status,
+            );
+        } else {
+            /* copy the non-grouping table HDU the conventional way */
+
+            *status = fits_copy_hdu(tmpfptr.as_deref_mut().unwrap(), mfptr, 0, status);
+
+            fits_read_record(mfptr, 0, Some(&mut card), status);
+
+            /* delete all the GRPIDn and GRPLCn keywords in the copied HDU */
+
+            while *status == 0 {
+                *status = fits_find_nextkey(mfptr, &incList, 2, &[], 0, &mut card, status);
+                *status = fits_get_hdrpos(mfptr, Some(&mut numkeys), Some(&mut keypos), status);
+                /* SPR 1738 */
+                *status = fits_read_keyn(
+                    mfptr,
+                    keypos - 1,
+                    &mut keyname,
+                    &mut value,
+                    Some(&mut comment),
+                    status,
+                );
+                *status = fits_read_record(mfptr, keypos - 1, Some(&mut card), status);
+                *status = fits_delete_key(mfptr, &keyname, status);
+            }
+
+            if *status == KEY_NO_EXIST {
+                *status = 0;
+            }
+            if *status != 0 {
+                break 'outer;
+            }
+        }
+
+        /*
+        if the member HDU does not have an EXTNAME keyword then add one
+        with a default value
+        */
+
+        if strlen_safe(&extname) == 0 {
+            if fits_get_hdu_num(tmpfptr.as_deref_mut().unwrap(), &mut hdunum) == 1 {
+                strcpy_safe(&mut extname, cs!(c"PRIMARY"));
+                *status = fits_write_key_str(
+                    mfptr,
+                    cs!(c"EXTNAME"),
+                    &extname,
+                    Some(cs!(c"HDU was Formerly a Primary Array")),
+                    status,
+                );
+            } else {
+                strcpy_safe(&mut extname, cs!(c"DEFAULT"));
+                *status = fits_write_key_str(
+                    mfptr,
+                    cs!(c"EXTNAME"),
+                    &extname,
+                    Some(cs!(c"default EXTNAME set by CFITSIO")),
+                    status,
+                );
+            }
+        }
+
+        /*
+        update the member HDU's EXTVER value (add it if not present)
+        */
+
+        fits_get_hdu_num(mfptr, &mut hdunum);
+        fits_get_hdu_type(mfptr, &mut hdutype, status);
+
+        /* set the EXTVER value to 0 for now */
+
+        *status = fits_modify_key_lng(mfptr, cs!(c"EXTVER"), 0, None, status);
+
+        /* if the EXTVER keyword was not found then add it */
+
+        if *status == KEY_NO_EXIST {
+            *status = 0;
+            *status = fits_read_key_str(mfptr, cs!(c"EXTNAME"), &mut extname, Some(&mut comment), status);
+            *status = fits_insert_key_lng(
+                mfptr,
+                cs!(c"EXTVER"),
+                0,
+                Some(cs!(c"Extension version ID")),
+                status,
+            );
+        }
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /* find the first available EXTVER value for the copied HDU */
+
+        i = 1;
+        while fits_movnam_hdu(mfptr, hdutype, &extname, i, status) == 0 {
+            i += 1;
+        }
+
+        *status = 0;
+
+        fits_movabs_hdu(mfptr, hdunum, Some(&mut hdutype), status);
+
+        /* reset the copied member HDUs EXTVER value */
+
+        *status = fits_modify_key_lng(mfptr, cs!(c"EXTVER"), i as LONGLONG, None, status);
+
+        /*
+        perform member copy operations that are dependent upon the cpopt
+        parameter value
+        */
+
+        match cpopt as u64 {
+            OPT_MCP_ADD => {
+                /*
+                add the copied member to the grouping table, leaving the
+                entry for the original member in place
+                */
+
+                *status = fits_add_group_member(gfptr, Some(&mut *mfptr), 0, status);
+            }
+
+            OPT_MCP_NADD => {
+                /*
+                nothing to do for this copy option
+                */
+            }
+
+            OPT_MCP_REPL => {
+                /*
+                remove the original member from the grouping table and add the
+                copied member in its place
+                */
+
+                *status = fits_remove_member(gfptr, member, OPT_RM_ENTRY as c_int, status);
+                *status = fits_add_group_member(gfptr, Some(&mut *mfptr), 0, status);
+            }
+
+            _ => {
+                *status = BAD_OPTION;
+                ffpmsg_str("Invalid value specified for the cmopt parameter (ffgmcp)");
+            }
+        }
+
+        break 'outer;
+    } //while(0)
+
+    if let Some(f) = tmpfptr.take() {
+        fits_close_file(f, status);
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
