@@ -1751,12 +1751,853 @@ pub unsafe extern "C" fn ffgtam(
 /// Note that if the member HDU to be added to the grouping table is already
 /// a member of the group then it will not be added a sceond time.
 pub fn ffgtam_safe(
-    _gfptr: &mut fitsfile,         /* FITS file pointer to grouping table HDU     */
-    _mfptr: Option<&mut fitsfile>, /* FITS file pointer to member HDU; None if the member is in the same file as the grouping table */
-    _hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
-    _status: &mut c_int, /* return status code                          */
+    gfptr: &mut fitsfile, /* FITS file pointer to grouping table HDU     */
+    mut mfptr: Option<&mut fitsfile>, /* FITS file pointer to member HDU; None if the member is in the same file as the grouping table */
+    hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
+    status: &mut c_int, /* return status code                          */
 ) -> c_int {
-    todo!();
+    /* SPR 3463: consolidates the repeated "are the member and grouping-table
+    files the same?" test. In this port each fitsfile owns a distinct
+    Box<FITSfile>, so the Fptr pointers are never equal even for the same
+    physical file; the rootname comparison is the effective test (matches the
+    C's combined `(tmpfptr->Fptr != gfptr->Fptr) && strncmp(rootnames)`). */
+    fn files_differ(tmpfptr: &fitsfile, gfptr: &fitsfile, status: &mut c_int) -> bool {
+        let mut tmprootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+        let mut grootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+        // SAFETY: Fptr.filename is each file's heap-allocated NUL-terminated C string.
+        unsafe {
+            let tfn =
+                cast_slice::<u8, c_char>(CStr::from_ptr(tmpfptr.Fptr.filename).to_bytes_with_nul());
+            fits_parse_rootname(tfn, &mut tmprootname, status);
+            let gfn =
+                cast_slice::<u8, c_char>(CStr::from_ptr(gfptr.Fptr.filename).to_bytes_with_nul());
+            fits_parse_rootname(gfn, &mut grootname, status);
+        }
+
+        let same_fptr = std::ptr::eq(tmpfptr.Fptr.as_ref(), gfptr.Fptr.as_ref());
+        !same_fptr && strncmp_safe(&tmprootname, &grootname, FLEN_FILENAME) != 0
+    }
+
+    let mut xtensionCol: c_int = 0;
+    let mut extnameCol: c_int = 0;
+    let mut extverCol: c_int = 0;
+    let mut positionCol: c_int = 0;
+    let mut locationCol: c_int = 0;
+    let mut uriCol: c_int = 0;
+    let mut memberPosition: c_int = 0;
+    let mut grptype: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut useLocation: c_int = 0;
+    let mut nkeys: c_int = 6;
+    let mut found: c_int;
+    let mut i: c_int;
+
+    let mut memberIOstate: c_int = 0;
+    let mut groupIOstate: c_int = 0;
+    let mut iomode: c_int = 0;
+
+    let mut memberExtver: c_long = 0;
+    let mut groupExtver: c_long = 0;
+    let mut memberID: c_long = 0;
+    let mut nmembers: c_long = 0;
+    let mut ngroups: c_long = 0;
+    let mut grpid: c_long = 0;
+
+    let mut memberAccess1: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut memberAccess2: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut memberFileName: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut memberLocation: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut grplc: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut memberHDUtype: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut memberExtname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let memberURI = cs!(c"URL");
+
+    let mut groupAccess1: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut groupAccess2: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut groupFileName: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut groupLocation: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    let keys: [&[c_char]; 6] = [
+        cs!(c"GRPNAME"),
+        cs!(c"EXTVER"),
+        cs!(c"EXTNAME"),
+        cs!(c"TFIELDS"),
+        cs!(c"GCOUNT"),
+        cs!(c"EXTEND"),
+    ];
+
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* the C reuses `card` for the (discarded) comment output of the read_key
+    calls; the safe wrappers want a FLEN_COMMENT buffer, so use a separate one */
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let charNull: [c_uchar; 1] = [b'\0'];
+
+    /* the member HDU pointer used internally: either the caller's mfptr or, when
+    only an HDU position was supplied, a re-opened copy of the grouping table */
+    let mfptr_is_null = mfptr.is_none();
+    let mut reopened: Option<Box<fitsfile>> = None;
+
+    let mut parentStatus: c_int = 0;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /*
+        make sure the grouping table can be modified before proceeding
+        */
+
+        fits_file_mode(gfptr, &mut iomode, status);
+
+        if iomode != READWRITE {
+            ffpmsg_str("cannot modify grouping table (ffgtam)");
+            *status = BAD_GROUP_ATTACH;
+            break 'outer;
+        }
+
+        /*
+        if the calling function supplied the HDU position of the member
+        HDU instead of fitsfile pointer then get a fitsfile pointer
+        */
+
+        if mfptr_is_null {
+            let mut raw: *mut fitsfile = std::ptr::null_mut();
+            *status = fits_reopen_file(gfptr, &mut raw, status);
+            // SAFETY: ffreopen_safer outputs an owned, heap-allocated fitsfile.
+            reopened = if raw.is_null() {
+                None
+            } else {
+                Some(unsafe { Box::from_raw(raw) })
+            };
+            if let Some(t) = reopened.as_deref_mut() {
+                *status = fits_movabs_hdu(t, hdupos, Some(&mut hdutype), status);
+            }
+
+            if *status != 0 {
+                break 'outer;
+            }
+        }
+
+        /* tmpfptr aliases the member HDU file (reopened copy or caller's mfptr) */
+        let tmpfptr: &mut fitsfile = if mfptr_is_null {
+            reopened.as_deref_mut().unwrap()
+        } else {
+            mfptr.as_deref_mut().unwrap()
+        };
+
+        /*
+        determine all the information about the member HDU that will
+        be needed later; note that we establish the default values for
+        all information values that are not explicitly found
+        */
+
+        *status = fits_read_key_str(
+            tmpfptr,
+            cs!(c"XTENSION"),
+            &mut memberHDUtype,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            strcpy_safe(&mut memberHDUtype, cs!(c"PRIMARY"));
+            *status = 0;
+        }
+        prepare_keyvalue(&mut memberHDUtype);
+
+        *status = fits_read_key_lng(
+            tmpfptr,
+            cs!(c"EXTVER"),
+            &mut memberExtver,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            memberExtver = 1;
+            *status = 0;
+        }
+
+        *status = fits_read_key_str(
+            tmpfptr,
+            cs!(c"EXTNAME"),
+            &mut memberExtname,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            memberExtname[0] = 0;
+            *status = 0;
+        }
+        prepare_keyvalue(&mut memberExtname);
+
+        fits_get_hdu_num(tmpfptr, &mut memberPosition);
+
+        /*
+        Determine if the member HDU's FITS file location needs to be
+        taken into account when building its grouping table reference
+
+        If the member location needs to be used (==> grouping table and member
+        HDU reside in different files) then create an appropriate URL for
+        the member HDU's file and grouping table's file. Note that the logic
+        for this is rather complicated
+        */
+
+        /* SPR 3463, don't do this
+        if(tmpfptr->Fptr == gfptr->Fptr)
+        {  */
+        /*
+        member HDU and grouping table reside in the same file, no need
+        to use the location information */
+
+        /* printf ("same file\n");
+
+        useLocation     = 0;
+        memberIOstate   = 1;
+        *memberFileName = 0;
+        }
+        else
+        { */
+        /*
+        the member HDU and grouping table FITS file location information
+        must be used.
+
+        First determine the correct driver and file name for the group
+        table and member HDU files. If either are disk files then
+        construct an absolute file path for them. Finally, if both are
+        disk files construct relative file paths from the group(member)
+        file to the member(group) file.
+
+        */
+
+        /* set the USELOCATION flag to true */
+
+        useLocation = 1;
+
+        /*
+        get the location, access type and iostate (RO, RW) of the
+        member HDU file
+        */
+
+        *status = fits_get_url(
+            tmpfptr,
+            &mut memberFileName,
+            &mut memberLocation,
+            &mut memberAccess1,
+            &mut memberAccess2,
+            &mut memberIOstate,
+            status,
+        );
+
+        /*
+        if the memberFileName string is empty then use the values of
+        the memberLocation string. This corresponds to a file where
+        the "real" file is a temporary memory file, and we must assume
+        the the application really wants the original file to be the
+        group member
+        */
+
+        if strlen_safe(&memberFileName) == 0 {
+            strcpy_safe(&mut memberFileName, &memberLocation);
+            strcpy_safe(&mut memberAccess1, &memberAccess2);
+        }
+
+        /*
+        get the location, access type and iostate (RO, RW) of the
+        grouping table file
+        */
+
+        *status = fits_get_url(
+            gfptr,
+            &mut groupFileName,
+            &mut groupLocation,
+            &mut groupAccess1,
+            &mut groupAccess2,
+            &mut groupIOstate,
+            status,
+        );
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        the grouping table file must be writable to continue
+        */
+
+        if groupIOstate == 0 {
+            ffpmsg_str("cannot modify grouping table (ffgtam)");
+            *status = BAD_GROUP_ATTACH;
+            break 'outer;
+        }
+
+        /*
+        determine how to construct the resulting URLs for the member and
+        group files
+        */
+
+        if fits_strcasecmp(&groupAccess1, cs!(c"file://")) != 0
+            && fits_strcasecmp(&memberAccess1, cs!(c"file://")) != 0
+        {
+            cwd[0] = 0;
+            /*
+            nothing to do in this case; both the member and group files
+            must be of an access type that already gives valid URLs;
+            i.e., URLs that we can pass directly to the file drivers
+            */
+        } else {
+            /*
+            retrieve the Current Working Directory as a Unix-like
+            URL standard string
+            */
+
+            *status = fits_get_cwd(&mut cwd, status);
+
+            /*
+            create full file path for the member HDU FITS file URL
+            if it is of access type file://
+            */
+
+            if fits_strcasecmp(&memberAccess1, cs!(c"file://")) == 0 {
+                if memberFileName[0] == bb(b'/') {
+                    strcpy_safe(&mut memberLocation, &memberFileName);
+                } else {
+                    strcpy_safe(&mut memberLocation, &cwd);
+                    if strlen_safe(&memberLocation) + strlen_safe(&memberFileName) + 1
+                        > FLEN_FILENAME - 1
+                    {
+                        ffpmsg_str("member path and filename is too long (ffgtam)");
+                        *status = URL_PARSE_ERROR;
+                        break 'outer;
+                    }
+                    strcat_safe(&mut memberLocation, cs!(c"/"));
+                    strcat_safe(&mut memberLocation, &memberFileName);
+                }
+
+                *status = fits_clean_url(&memberLocation, &mut memberFileName, status);
+            }
+
+            /*
+            create full file path for the grouping table HDU FITS file URL
+            if it is of access type file://
+            */
+
+            if fits_strcasecmp(&groupAccess1, cs!(c"file://")) == 0 {
+                if groupFileName[0] == bb(b'/') {
+                    strcpy_safe(&mut groupLocation, &groupFileName);
+                } else {
+                    strcpy_safe(&mut groupLocation, &cwd);
+                    if strlen_safe(&groupLocation) + strlen_safe(&groupFileName) + 1
+                        > FLEN_FILENAME - 1
+                    {
+                        ffpmsg_str("group path and filename is too long (ffgtam)");
+                        *status = URL_PARSE_ERROR;
+                        break 'outer;
+                    }
+
+                    strcat_safe(&mut groupLocation, cs!(c"/"));
+                    strcat_safe(&mut groupLocation, &groupFileName);
+                }
+
+                *status = fits_clean_url(&groupLocation, &mut groupFileName, status);
+            }
+
+            /*
+            if both the member and group files are disk files then
+            create a relative path (relative URL) strings with
+            respect to the grouping table's file and the grouping table's
+            file with respect to the member HDU's file
+            */
+
+            if fits_strcasecmp(&groupAccess1, cs!(c"file://")) == 0
+                && fits_strcasecmp(&memberAccess1, cs!(c"file://")) == 0
+            {
+                fits_url2relurl(&memberFileName, &groupFileName, &mut groupLocation, status);
+                fits_url2relurl(&groupFileName, &memberFileName, &mut memberLocation, status);
+
+                /*
+                copy the resulting partial URL strings to the
+                memberFileName and groupFileName variables for latter
+                use in the function
+                */
+
+                strcpy_safe(&mut memberFileName, &memberLocation);
+                strcpy_safe(&mut groupFileName, &groupLocation);
+            }
+        }
+        /* beo done */
+        /* }  */
+
+        /* retrieve the grouping table's EXTVER value */
+
+        *status = fits_read_key_lng(
+            gfptr,
+            cs!(c"EXTVER"),
+            &mut groupExtver,
+            Some(&mut comment),
+            status,
+        );
+
+        /*
+        if useLocation is true then make the group EXTVER value negative
+        for the subsequent GRPIDn/GRPLCn matching
+        */
+        /* SPR 3463 change test;  WDP added test for same filename */
+        /* Now, if either the Fptr values are the same, or the root filenames
+        are the same, then assume these refer to the same file.
+        */
+        if files_differ(tmpfptr, gfptr, status) {
+            groupExtver = -1 * groupExtver;
+        }
+
+        /* retrieve the number of group members */
+
+        *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+        'inner: loop {
+            /*
+            make sure the member HDU is not already an entry in the
+            grouping table before adding it
+            */
+
+            *status = ffgmf(
+                gfptr,
+                &memberHDUtype,
+                &memberExtname,
+                memberExtver as c_int,
+                memberPosition,
+                Some(&memberFileName),
+                &mut memberID,
+                status,
+            );
+
+            if *status == MEMBER_NOT_FOUND {
+                *status = 0;
+            } else if *status == 0 {
+                parentStatus = HDU_ALREADY_MEMBER;
+                ffpmsg_str("Specified HDU is already a member of the Grouping table (ffgtam)");
+                break 'inner;
+            } else {
+                break 'inner;
+            }
+
+            /*
+            if the member HDU is not already recorded in the grouping table
+            then add it
+            */
+
+            /* add a new row to the grouping table */
+
+            *status = fits_insert_rows(gfptr, nmembers as LONGLONG, 1, status);
+            nmembers += 1;
+
+            /* retrieve the grouping table column IDs and structure type */
+
+            *status = ffgtgc(
+                gfptr,
+                &mut xtensionCol,
+                &mut extnameCol,
+                &mut extverCol,
+                &mut positionCol,
+                &mut locationCol,
+                &mut uriCol,
+                &mut grptype,
+                status,
+            );
+
+            /* fill in the member HDU data in the new grouping table row */
+
+            if xtensionCol != 0 {
+                fits_write_col_str(
+                    gfptr,
+                    xtensionCol,
+                    nmembers as LONGLONG,
+                    1,
+                    1,
+                    &[&memberHDUtype[..]],
+                    status,
+                );
+            }
+
+            if extnameCol != 0 {
+                if strlen_safe(&memberExtname) != 0 {
+                    fits_write_col_str(
+                        gfptr,
+                        extnameCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &[&memberExtname[..]],
+                        status,
+                    );
+                } else {
+                    /* WILL THIS WORK FOR VAR LENTH CHAR COLS??????*/
+                    fits_write_col_byt(
+                        gfptr,
+                        extnameCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &charNull,
+                        status,
+                    );
+                }
+            }
+
+            if extverCol != 0 {
+                fits_write_col_lng(
+                    gfptr,
+                    extverCol,
+                    nmembers as LONGLONG,
+                    1,
+                    1,
+                    &[memberExtver],
+                    status,
+                );
+            }
+
+            if positionCol != 0 {
+                fits_write_col_int(
+                    gfptr,
+                    positionCol,
+                    nmembers as LONGLONG,
+                    1,
+                    1,
+                    &[memberPosition],
+                    status,
+                );
+            }
+
+            if locationCol != 0 {
+                /* Change the test for SPR 3463 */
+                /* Now, if either the Fptr values are the same, or the root filenames
+                are the same, then assume these refer to the same file.
+                */
+                if files_differ(tmpfptr, gfptr, status) {
+                    fits_write_col_str(
+                        gfptr,
+                        locationCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &[&memberFileName[..]],
+                        status,
+                    );
+                } else {
+                    /* WILL THIS WORK FOR VAR LENTH CHAR COLS??????*/
+                    fits_write_col_byt(
+                        gfptr,
+                        locationCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &charNull,
+                        status,
+                    );
+                }
+            }
+
+            if uriCol != 0 {
+                /* Change the test for SPR 3463 */
+                /* Now, if either the Fptr values are the same, or the root filenames
+                are the same, then assume these refer to the same file.
+                */
+                if files_differ(tmpfptr, gfptr, status) {
+                    fits_write_col_str(
+                        gfptr,
+                        uriCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &[memberURI],
+                        status,
+                    );
+                } else {
+                    /* WILL THIS WORK FOR VAR LENTH CHAR COLS??????*/
+                    fits_write_col_byt(
+                        gfptr,
+                        uriCol,
+                        nmembers as LONGLONG,
+                        1,
+                        1,
+                        &charNull,
+                        status,
+                    );
+                }
+            }
+
+            break 'inner;
+        } //while(0)
+
+        if 0 != *status {
+            break 'outer;
+        }
+        /*
+        add GRPIDn/GRPLCn keywords to the member HDU header to link
+        it to the grouing table if the they do not already exist and
+        the member file is RW
+        */
+
+        fits_file_mode(tmpfptr, &mut iomode, status);
+
+        if memberIOstate == 0 || iomode != READWRITE {
+            ffpmsg_str("cannot add GRPID/LC keywords to member HDU: (ffgtam)");
+            ffpmsg_slice(&memberFileName);
+            break 'outer;
+        }
+
+        *status = fits_get_num_groups(tmpfptr, &mut ngroups, status);
+
+        /*
+        look for the GRPID/LC keywords in the member HDU; if the keywords
+        for the back-link to the grouping table already exist then no
+        need to add them again
+        */
+
+        i = 1;
+        found = 0;
+        while i <= ngroups as c_int && found == 0 && *status == 0 {
+            /* body wrapped in a loop so the C `continue` (which advances to the
+            for-loop's `++i`) becomes a `break` */
+            'forbody: loop {
+                int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", ngroups as c_int);
+                *status =
+                    fits_read_key_lng(tmpfptr, &keyword, &mut grpid, Some(&mut comment), status);
+
+                if grpid == groupExtver {
+                    if grpid < 0 {
+                        /* have to make sure the GRPLCn keyword matches too */
+
+                        int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", ngroups as c_int);
+                        /* SPR 1738 */
+                        /* fits_read_key_longstr (ffgkls_safe) outputs a raw heap C
+                        string tracked in ALLOCATIONS. The C reads from `mfptr`
+                        here; when supplied by pointer that is the same as
+                        tmpfptr, and the hdupos path does not reach this
+                        negative-GRPID branch (it implies a different file). */
+                        let mut tgrplc: *mut c_char = std::ptr::null_mut();
+                        *status = fits_read_key_longstr(
+                            tmpfptr,
+                            &keyword,
+                            &mut tgrplc,
+                            Some(&mut comment),
+                            status,
+                        );
+                        if 0 == *status {
+                            // SAFETY: tgrplc is the heap C string from ffgkls_safe,
+                            // tracked in ALLOCATIONS; copy it out then release it.
+                            unsafe {
+                                let val = cast_slice::<u8, c_char>(
+                                    CStr::from_ptr(tgrplc).to_bytes_with_nul(),
+                                );
+                                strcpy_safe(&mut grplc, val);
+                                if let Some((l, c)) =
+                                    ALLOCATIONS.lock().unwrap().remove(&(tgrplc as usize))
+                                {
+                                    let _ = Vec::from_raw_parts(tgrplc, l, c);
+                                }
+                            }
+                        }
+
+                        /*
+                        always compare files using absolute paths
+                        the presence of a non-empty cwd indicates
+                        that the file names may require conversion
+                        to absolute paths
+                        */
+
+                        if 0 < strlen_safe(&cwd) {
+                            /* temp buffer for use in assembling abs. path(s) */
+                            let mut tmp: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+                            /* make grplc absolute if necessary */
+                            if fits_is_url_absolute(&grplc) == 0 {
+                                fits_path2url(&grplc, FLEN_FILENAME, &mut groupLocation, status);
+
+                                if groupLocation[0] != bb(b'/') {
+                                    strcpy_safe(&mut tmp, &cwd);
+                                    if strlen_safe(&tmp) + strlen_safe(&groupLocation) + 1
+                                        > FLEN_FILENAME - 1
+                                    {
+                                        ffpmsg_str("path and group location is too long (ffgtam)");
+                                        *status = URL_PARSE_ERROR;
+                                        break 'forbody;
+                                    }
+                                    strcat_safe(&mut tmp, cs!(c"/"));
+                                    strcat_safe(&mut tmp, &groupLocation);
+                                    fits_clean_url(&tmp, &mut grplc, status);
+                                }
+                            }
+
+                            /* make groupFileName absolute if necessary */
+                            if fits_is_url_absolute(&groupFileName) == 0 {
+                                fits_path2url(
+                                    &groupFileName,
+                                    FLEN_FILENAME,
+                                    &mut groupLocation,
+                                    status,
+                                );
+
+                                if groupLocation[0] != bb(b'/') {
+                                    strcpy_safe(&mut tmp, &cwd);
+                                    if strlen_safe(&tmp) + strlen_safe(&groupLocation) + 1
+                                        > FLEN_FILENAME - 1
+                                    {
+                                        ffpmsg_str("path and group location is too long (ffgtam)");
+                                        *status = URL_PARSE_ERROR;
+                                        break 'forbody;
+                                    }
+                                    strcat_safe(&mut tmp, cs!(c"/"));
+                                    strcat_safe(&mut tmp, &groupLocation);
+                                    /*
+                                    note: use groupLocation (which is not used
+                                    below this block), to store the absolute
+                                    file name instead of using groupFileName.
+                                    The latter may be needed unaltered if the
+                                    GRPLC is written below
+                                    */
+
+                                    fits_clean_url(&tmp, &mut groupLocation, status);
+                                }
+                            }
+                        }
+                        /*
+                        see if the grplc value and the group file name match
+                        */
+
+                        if strcmp_safe(&grplc, &groupLocation) == 0 {
+                            found = 1;
+                        }
+                    } else {
+                        /* the match is found with GRPIDn alone */
+                        found = 1;
+                    }
+                }
+
+                break 'forbody;
+            }
+
+            i += 1;
+        }
+
+        /*
+        if FOUND is true then no need to continue
+        */
+
+        if found != 0 {
+            ffpmsg_str("HDU already has GRPID/LC keywords for group table (ffgtam)");
+            break 'outer;
+        }
+
+        /*
+        add the GRPID/LC keywords to the member header for this grouping
+        table
+
+        If NGROUPS == 0 then we must position the header pointer to the
+        record where we want to insert the GRPID/LC keywords (the pointer
+        is already correctly positioned if the above search loop activiated)
+        */
+
+        if ngroups == 0 {
+            /*
+            no GRPIDn/GRPLCn keywords currently exist in header so try
+            to position the header pointer to a desirable position
+            */
+
+            i = 0;
+            *status = KEY_NO_EXIST;
+            while i < nkeys && *status == KEY_NO_EXIST {
+                *status = 0;
+                *status = fits_read_card(tmpfptr, keys[i as usize], &mut card, status);
+                i += 1;
+            }
+
+            /* all else fails: move write pointer to end of header */
+
+            if *status == KEY_NO_EXIST {
+                *status = 0;
+                fits_get_hdrspace(tmpfptr, Some(&mut nkeys), Some(&mut i), status);
+                fits_read_record(tmpfptr, nkeys, Some(&mut card), status);
+            }
+
+            /* any other error status then abort */
+
+            if *status != 0 {
+                break 'outer;
+            }
+        }
+
+        /*
+        now that the header pointer is positioned for the GRPID/LC
+        keyword insertion increment the number of group links counter for
+        the member HDU
+        */
+
+        ngroups += 1;
+
+        /*
+        if the member HDU and grouping table reside in the same FITS file
+        then there is no need to add a GRPLCn keyword
+        */
+        /* SPR 3463 change test */
+        /* Now, if either the Fptr values are the same, or the root filenames
+        are the same, then assume these refer to the same file.
+        */
+        if !files_differ(tmpfptr, gfptr, status) {
+            /* add the GRPIDn keyword only */
+
+            int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", ngroups as c_int);
+            fits_insert_key_lng(
+                tmpfptr,
+                &keyword,
+                groupExtver as LONGLONG,
+                Some(cs!(c"EXTVER of Group containing this HDU")),
+                status,
+            );
+        } else {
+            /* add the GRPIDn and GRPLCn keywords */
+
+            int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", ngroups as c_int);
+            fits_insert_key_lng(
+                tmpfptr,
+                &keyword,
+                groupExtver as LONGLONG,
+                Some(cs!(c"EXTVER of Group containing this HDU")),
+                status,
+            );
+
+            int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", ngroups as c_int);
+            /* SPR 1738 */
+            fits_insert_key_longstr(
+                tmpfptr,
+                &keyword,
+                &groupFileName,
+                Some(cs!(c"URL of file containing Group")),
+                status,
+            );
+            fits_write_key_longwarn(tmpfptr, status);
+        }
+
+        break 'outer;
+    } //while(0)
+
+    /* close the tmpfptr pointer if it was opened in this function */
+
+    if mfptr_is_null {
+        if let Some(f) = reopened.take() {
+            *status = fits_close_file(f, status);
+        }
+    }
+
+    *status = if 0 == *status { parentStatus } else { *status };
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
