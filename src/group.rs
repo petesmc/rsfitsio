@@ -3552,12 +3552,12 @@ pub fn ffgmcp_safe(
     mfptr: &mut fitsfile, /* FITS file pointer to new member FITS file                                    */
     member: c_long,       /* member ID (row num) within grouping table    */
     cpopt: c_int,         /* code specifying copy options:
-                           OPT_MCP_ADD  (0) ==> add copied member to the
-                                               grouping table
-                           OPT_MCP_NADD (1) ==> do not add member copy to
-                                               the grouping table
-                           OPT_MCP_REPL (2) ==> replace current member
-                                               entry with member copy  */
+                          OPT_MCP_ADD  (0) ==> add copied member to the
+                                              grouping table
+                          OPT_MCP_NADD (1) ==> do not add member copy to
+                                              the grouping table
+                          OPT_MCP_REPL (2) ==> replace current member
+                                              entry with member copy  */
     status: &mut c_int, /* return status code                           */
 ) -> c_int {
     let mut numkeys: c_int = 0;
@@ -3704,7 +3704,13 @@ pub fn ffgmcp_safe(
 
         if *status == KEY_NO_EXIST {
             *status = 0;
-            *status = fits_read_key_str(mfptr, cs!(c"EXTNAME"), &mut extname, Some(&mut comment), status);
+            *status = fits_read_key_str(
+                mfptr,
+                cs!(c"EXTNAME"),
+                &mut extname,
+                Some(&mut comment),
+                status,
+            );
             *status = fits_insert_key_lng(
                 mfptr,
                 cs!(c"EXTVER"),
@@ -3818,15 +3824,49 @@ pub unsafe extern "C" fn ffgmtf(
 /// source group after the transfer to the destination group. The member to be
 /// transfered is identified by its row number within the source grouping table.
 pub fn ffgmtf_safe(
-    _infptr: &mut fitsfile,  /* FITS file pointer to source grouping table */
-    _outfptr: &mut fitsfile, /* FITS file pointer to target grouping table */
-    _member: c_long,         /* member ID within source grouping table     */
-    _tfopt: c_int,           /* code specifying transfer opts:
-                             OPT_MCP_ADD (0) ==> copy member to dest.
-                             OPT_MCP_MOV (3) ==> move member to dest.   */
-    _status: &mut c_int, /* return status code                         */
+    infptr: &mut fitsfile,  /* FITS file pointer to source grouping table */
+    outfptr: &mut fitsfile, /* FITS file pointer to target grouping table */
+    member: c_long,         /* member ID within source grouping table     */
+    tfopt: c_int,           /* code specifying transfer opts:
+                            OPT_MCP_ADD (0) ==> copy member to dest.
+                            OPT_MCP_MOV (3) ==> move member to dest.   */
+    status: &mut c_int, /* return status code                         */
 ) -> c_int {
-    todo!();
+    let mut mfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    if tfopt != OPT_MCP_MOV as c_int && tfopt != OPT_MCP_ADD as c_int {
+        *status = BAD_OPTION;
+        ffpmsg_str("Invalid value specified for the tfopt parameter (ffgmtf)");
+    } else {
+        /* open the member of infptr to be transfered */
+
+        *status = fits_open_member(infptr, member, &mut mfptr, status);
+
+        /* add the member to the outfptr grouping table */
+
+        *status = fits_add_group_member(outfptr, mfptr.as_deref_mut(), 0, status);
+
+        /* close the member HDU */
+
+        if let Some(f) = mfptr.take() {
+            *status = fits_close_file(f, status);
+        }
+
+        /*
+        if the tfopt is "move member" then remove it from the infptr
+        grouping table
+        */
+
+        if tfopt == OPT_MCP_MOV as c_int {
+            *status = fits_remove_member(infptr, member, OPT_RM_ENTRY as c_int, status);
+        }
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -5725,16 +5765,370 @@ pub(crate) fn ffgtrmr(
 /// itself whenever a member HDU of the current grouping table is itself a
 /// grouping table (i.e., EXTNAME = 'GROUPING').
 pub(crate) fn ffgtcpr(
-    _infptr: &mut fitsfile,  /* input FITS file pointer                 */
-    _outfptr: &mut fitsfile, /* output FITS file pointer                */
-    _cpopt: c_int,           /* code specifying copy options:
-                             OPT_GCP_GPT (0) ==> cp only grouping table
-                             OPT_GCP_ALL (2) ==> recusrively copy
-                             members and their members (if groups)   */
-    _HDU: &mut HDUtracker, /* list of already copied HDUs             */
-    _status: &mut c_int,   /* return status code                      */
+    infptr: &mut fitsfile,  /* input FITS file pointer                 */
+    outfptr: &mut fitsfile, /* output FITS file pointer                */
+    cpopt: c_int,           /* code specifying copy options:
+                            OPT_GCP_GPT (0) ==> cp only grouping table
+                            OPT_GCP_ALL (2) ==> recusrively copy
+                            members and their members (if groups)   */
+    HDU: &mut HDUtracker, /* list of already copied HDUs             */
+    status: &mut c_int,   /* return status code                      */
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let nexclude: c_int = 8;
+    let mut hdutype: c_int = 0;
+    let mut groupHDUnum: c_int = 0;
+    let mut numkeys: c_int = 0;
+    let mut keypos: c_int = 0;
+    let mut startSearch: c_int = 0;
+    let mut newPosition: c_int = 0;
+
+    let mut nmembers: c_long = 0;
+    let mut tfields: c_long = 0;
+    let mut newTfields: c_long = 0;
+
+    let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* C declares comment as FLEN_CARD; the safe read_key/longstr helpers want a
+    FLEN_COMMENT buffer. It is also reused for the (discarded) comment output of
+    the fits_read_key_* calls (C passed `card` there). */
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let includeList: [&[c_char]; 1] = [cs!(c"*")];
+    let excludeList: [&[c_char]; 8] = [
+        cs!(c"EXTNAME"),
+        cs!(c"EXTVER"),
+        cs!(c"GRPNAME"),
+        cs!(c"GRPID#"),
+        cs!(c"GRPLC#"),
+        cs!(c"THEAP"),
+        cs!(c"TDIM#"),
+        cs!(c"T????#"),
+    ];
+
+    let mut mfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    'outer: loop {
+        /*
+        create a new grouping table in the FITS file pointed to by outptr
+        */
+
+        *status = fits_get_num_members(infptr, &mut nmembers, status);
+
+        *status = fits_read_key_str(
+            infptr,
+            cs!(c"GRPNAME"),
+            &mut keyvalue,
+            Some(&mut comment),
+            status,
+        );
+
+        if *status == KEY_NO_EXIST {
+            keyvalue[0] = 0;
+            *status = 0;
+        }
+        prepare_keyvalue(&mut keyvalue);
+
+        *status = fits_create_group(outfptr, &keyvalue, GT_ID_ALL_URI as c_int, status);
+
+        /* save the new grouping table's HDU position for future use */
+
+        fits_get_hdu_num(outfptr, &mut groupHDUnum);
+
+        /* update the HDUtracker struct with the grouping table's new position */
+
+        *status = fftsud(infptr, HDU, groupHDUnum, None);
+
+        /*
+        Now populate the copied grouping table depending upon the
+        copy option parameter value
+        */
+
+        match cpopt as u64 {
+            /*
+            for the "copy grouping table only" option we only have to
+            add the members of the original grouping table to the new
+            grouping table
+            */
+            OPT_GCP_GPT => {
+                i = 1;
+                while (i as c_long) <= nmembers && *status == 0 {
+                    *status = fits_open_member(infptr, i as c_long, &mut mfptr, status);
+                    *status = fits_add_group_member(outfptr, mfptr.as_deref_mut(), 0, status);
+
+                    if let Some(f) = mfptr.take() {
+                        fits_close_file(f, status);
+                    }
+                    i += 1;
+                }
+            }
+
+            OPT_GCP_ALL => {
+                /*
+                for the "copy the entire group" option
+                */
+
+                /* loop over all the grouping table members */
+
+                i = 1;
+                while (i as c_long) <= nmembers && *status == 0 {
+                    /* body wrapped in a loop so the C `continue` (advancing the
+                    for-loop's `++i`) becomes a `break` */
+                    'body: loop {
+                        /* open the ith member */
+
+                        *status = fits_open_member(infptr, i as c_long, &mut mfptr, status);
+
+                        if *status != 0 {
+                            break 'body;
+                        }
+
+                        /* add it to the HDUtracker struct */
+
+                        *status = fftsad(
+                            mfptr.as_deref_mut().unwrap(),
+                            HDU,
+                            Some(&mut newPosition),
+                            None,
+                        );
+
+                        /* if already copied then just add the member to the group */
+
+                        if *status == HDU_ALREADY_TRACKED {
+                            *status = 0;
+                            *status = fits_add_group_member(outfptr, None, newPosition, status);
+                            if let Some(f) = mfptr.take() {
+                                fits_close_file(f, status);
+                            }
+                            break 'body;
+                        } else if *status != 0 {
+                            break 'body;
+                        }
+
+                        /* see if the member is a grouping table */
+
+                        *status = fits_read_key_str(
+                            mfptr.as_deref_mut().unwrap(),
+                            cs!(c"EXTNAME"),
+                            &mut keyvalue,
+                            Some(&mut comment),
+                            status,
+                        );
+
+                        if *status == KEY_NO_EXIST {
+                            keyvalue[0] = 0;
+                            *status = 0;
+                        }
+                        prepare_keyvalue(&mut keyvalue);
+
+                        /*
+                        if the member is a grouping table then copy it and all of
+                        its members using ffgtcpr(), else copy it using
+                        fits_copy_member(); the outptr will point to the newly
+                        copied member upon return from both functions
+                        */
+
+                        if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) == 0 {
+                            *status = ffgtcpr(
+                                mfptr.as_deref_mut().unwrap(),
+                                outfptr,
+                                OPT_GCP_ALL as c_int,
+                                HDU,
+                                status,
+                            );
+                        } else {
+                            *status = fits_copy_member(
+                                infptr,
+                                outfptr,
+                                i as c_long,
+                                OPT_MCP_NADD as c_int,
+                                status,
+                            );
+                        }
+
+                        /* retrieve the position of the newly copied member */
+
+                        fits_get_hdu_num(outfptr, &mut newPosition);
+
+                        /* update the HDUtracker struct with member's new position */
+
+                        if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) != 0 {
+                            *status = fftsud(mfptr.as_deref_mut().unwrap(), HDU, newPosition, None);
+                        }
+
+                        /* move the outfptr back to the copied grouping table HDU */
+
+                        *status = fits_movabs_hdu(outfptr, groupHDUnum, Some(&mut hdutype), status);
+
+                        /* add the copied member HDU to the copied grouping table */
+
+                        *status = fits_add_group_member(outfptr, None, newPosition, status);
+
+                        /* close the mfptr pointer */
+
+                        if let Some(f) = mfptr.take() {
+                            fits_close_file(f, status);
+                        }
+
+                        break 'body;
+                    }
+
+                    i += 1;
+                }
+            }
+
+            _ => {
+                *status = BAD_OPTION;
+                ffpmsg_str("Invalid value specified for cmopt parameter (ffgtcpr)");
+            }
+        }
+
+        if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        reposition the outfptr to the grouping table so that the grouping
+        table is the CHDU upon return to the calling function
+        */
+
+        fits_movabs_hdu(outfptr, groupHDUnum, Some(&mut hdutype), status);
+
+        /*
+        copy all auxiliary keyword records from the original grouping table
+        to the new grouping table; they are copied in their original order
+        and inserted just before the TTYPE1 keyword record
+        */
+
+        *status = fits_read_card(outfptr, cs!(c"TTYPE1"), &mut card, status);
+        *status = fits_get_hdrpos(outfptr, Some(&mut numkeys), Some(&mut keypos), status);
+        keypos -= 1;
+
+        startSearch = 8;
+
+        while *status == 0 {
+            fits_read_record(infptr, startSearch, Some(&mut card), status);
+
+            *status = fits_find_nextkey(
+                infptr,
+                &includeList,
+                1,
+                &excludeList,
+                nexclude,
+                &mut card,
+                status,
+            );
+
+            *status = fits_get_hdrpos(infptr, Some(&mut numkeys), Some(&mut startSearch), status);
+
+            startSearch -= 1;
+            /* SPR 1738 */
+            if strncmp_safe(&card, cs!(c"GRPLC"), 5) != 0 {
+                /* Not going to be a long string so we're ok */
+                *status = fits_insert_record(outfptr, keypos, &card, status);
+            } else {
+                /* We could have a long string */
+                *status = fits_read_record(infptr, startSearch, Some(&mut card), status);
+                card[9] = b'\0' as c_char;
+                let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+                *status = fits_read_key_longstr(
+                    infptr,
+                    &card,
+                    &mut tkeyvalue,
+                    Some(&mut comment),
+                    status,
+                );
+                if 0 == *status {
+                    // SAFETY: tkeyvalue is the heap C string from ffgkls_safe,
+                    // tracked in ALLOCATIONS; copy it out, use it, then release it.
+                    unsafe {
+                        let val =
+                            cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
+                        fits_insert_key_longstr(outfptr, &card, val, Some(&comment), status);
+                        fits_write_key_longwarn(outfptr, status);
+                        if let Some((l, c)) =
+                            ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
+                        {
+                            let _ = Vec::from_raw_parts(tkeyvalue, l, c);
+                        }
+                    }
+                }
+            }
+
+            keypos += 1;
+        }
+
+        if *status == KEY_NO_EXIST {
+            *status = 0;
+        } else if *status != 0 {
+            break 'outer;
+        }
+
+        /*
+        search all the columns of the original grouping table and copy
+        those to the new grouping table that were not part of the grouping
+        convention. Note that is legal to have additional columns in a
+        grouping table. Also note that the order of the columns may
+        not be the same in the original and copied grouping table.
+        */
+
+        /* retrieve the number of columns in the original and new group tables */
+
+        *status = fits_read_key_lng(
+            infptr,
+            cs!(c"TFIELDS"),
+            &mut tfields,
+            Some(&mut comment),
+            status,
+        );
+        *status = fits_read_key_lng(
+            outfptr,
+            cs!(c"TFIELDS"),
+            &mut newTfields,
+            Some(&mut comment),
+            status,
+        );
+
+        i = 1;
+        while (i as c_long) <= tfields {
+            int_snprintf!(&mut keyword, FLEN_KEYWORD, "TTYPE{}", i);
+            *status =
+                fits_read_key_str(infptr, &keyword, &mut keyvalue, Some(&mut comment), status);
+
+            if *status == KEY_NO_EXIST {
+                *status = 0;
+                keyvalue[0] = 0;
+            }
+            prepare_keyvalue(&mut keyvalue);
+
+            if fits_strcasecmp(&keyvalue, cs!(c"MEMBER_XTENSION")) != 0
+                && fits_strcasecmp(&keyvalue, cs!(c"MEMBER_NAME")) != 0
+                && fits_strcasecmp(&keyvalue, cs!(c"MEMBER_VERSION")) != 0
+                && fits_strcasecmp(&keyvalue, cs!(c"MEMBER_POSITION")) != 0
+                && fits_strcasecmp(&keyvalue, cs!(c"MEMBER_LOCATION")) != 0
+                && fits_strcasecmp(&keyvalue, cs!(c"MEMBER_URI_TYPE")) != 0
+            {
+                /* SPR 3956, add at the end of the table */
+                *status = fits_copy_col(infptr, outfptr, i, (newTfields + 1) as c_int, 1, status);
+                newTfields += 1;
+            }
+
+            i += 1;
+        }
+
+        break 'outer;
+    } //while(0)
+
+    if let Some(f) = mfptr.take() {
+        fits_close_file(f, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------
