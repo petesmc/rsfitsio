@@ -3355,7 +3355,13 @@ pub(crate) fn ffgtgc(
         a grouping table
         */
 
-        *status = fits_read_key_str(gfptr, cs!(c"EXTNAME"), &mut keyvalue, Some(&mut comment), status);
+        *status = fits_read_key_str(
+            gfptr,
+            cs!(c"EXTNAME"),
+            &mut keyvalue,
+            Some(&mut comment),
+            status,
+        );
 
         if *status == KEY_NO_EXIST {
             *status = NOT_GROUP_TABLE;
@@ -3378,7 +3384,13 @@ pub(crate) fn ffgtgc(
           and determine their column index ID
         */
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_XTENSION"), xtensionCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_XTENSION"),
+            xtensionCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3389,7 +3401,13 @@ pub(crate) fn ffgtgc(
             break;
         }
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_NAME"), extnameCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_NAME"),
+            extnameCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3400,7 +3418,13 @@ pub(crate) fn ffgtgc(
             break;
         }
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_VERSION"), extverCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_VERSION"),
+            extverCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3411,7 +3435,13 @@ pub(crate) fn ffgtgc(
             break;
         }
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_POSITION"), positionCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_POSITION"),
+            positionCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3422,7 +3452,13 @@ pub(crate) fn ffgtgc(
             break;
         }
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_LOCATION"), locationCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_LOCATION"),
+            locationCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3433,7 +3469,13 @@ pub(crate) fn ffgtgc(
             break;
         }
 
-        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_URI_TYPE"), uriCol, status);
+        *status = fits_get_colnum(
+            gfptr,
+            CASESEN as c_int,
+            cs!(c"MEMBER_URI_TYPE"),
+            uriCol,
+            status,
+        );
 
         if *status == COL_NOT_FOUND {
             *status = 0;
@@ -3449,12 +3491,19 @@ pub(crate) fn ffgtgc(
            grouping table and record it in the grptype parameter
         */
 
-        if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0 && *positionCol != 0
-            && *locationCol != 0 && *uriCol != 0
+        if *xtensionCol != 0
+            && *extnameCol != 0
+            && *extverCol != 0
+            && *positionCol != 0
+            && *locationCol != 0
+            && *uriCol != 0
         {
             *grptype = GT_ID_ALL_URI as c_int;
-        } else if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0
-            && *locationCol != 0 && *uriCol != 0
+        } else if *xtensionCol != 0
+            && *extnameCol != 0
+            && *extverCol != 0
+            && *locationCol != 0
+            && *uriCol != 0
         {
             *grptype = GT_ID_REF_URI as c_int;
         } else if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0 && *positionCol != 0 {
@@ -3490,16 +3539,131 @@ pub(crate) fn ffgtgc(
 /// format the get functions expect.  Particularly want to check widths of
 /// string columns.
 pub(crate) fn ffvcfm(
-    _gfptr: &mut fitsfile,
-    _xtensionCol: c_int,
-    _extnameCol: c_int,
-    _extverCol: c_int,
-    _positionCol: c_int,
-    _locationCol: c_int,
-    _uriCol: c_int,
-    _status: &mut c_int,
+    gfptr: &mut fitsfile,
+    xtensionCol: c_int,
+    extnameCol: c_int,
+    extverCol: c_int,
+    positionCol: c_int,
+    locationCol: c_int,
+    uriCol: c_int,
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let mut typecode: c_int = 0;
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        if xtensionCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                xtensionCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TSTRING || repeat != width || repeat > 8 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping xtension col. (ffvcfm)");
+                break;
+            }
+        }
+        if extnameCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                extnameCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TSTRING || repeat != width || repeat > 32 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping name col. (ffvcfm)");
+                break;
+            }
+        }
+        if extverCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                extverCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TINT32BIT || repeat > 1 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping version col. (ffvcfm)");
+                break;
+            }
+        }
+        if positionCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                positionCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TINT32BIT || repeat > 1 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping position col. (ffvcfm)");
+                break;
+            }
+        }
+        if locationCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                locationCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TSTRING || repeat != width || repeat > 256 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping location col. (ffvcfm)");
+                break;
+            }
+        }
+        if uriCol != 0 {
+            fits_get_coltype(
+                gfptr,
+                uriCol,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                status,
+            );
+            if *status != 0 || typecode != TSTRING || repeat != width || repeat > 3 {
+                if *status == 0 {
+                    *status = NOT_GROUP_TABLE;
+                }
+                ffpmsg_str("Wrong format for Grouping URI col. (ffvcfm)");
+                break;
+            }
+        }
+
+        break;
+    } //while(0)
+
+    *status
 }
 
 /*****************************************************************************/
@@ -4367,11 +4531,127 @@ pub(crate) fn ffgmf(
 /// is not processed twice, thus avoiding an infinite loop (e.g., a grouping
 /// table contains itself as a member).
 pub(crate) fn ffgtrmr(
-    _gfptr: &mut fitsfile, /* FITS file pointer to group               */
-    _HDU: &mut HDUtracker, /* list of processed HDUs                   */
-    _status: &mut c_int,   /* return status code                       */
+    gfptr: &mut fitsfile, /* FITS file pointer to group               */
+    HDU: &mut HDUtracker, /* list of processed HDUs                   */
+    status: &mut c_int,   /* return status code                       */
 ) -> c_int {
-    todo!();
+    let mut i: c_int;
+    let mut hdutype: c_int = 0;
+
+    let mut nmembers: c_long = 0;
+
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    let mut mfptr: Option<Box<fitsfile>> = None;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    /* get the number of members contained by this grouping table */
+
+    *status = fits_get_num_members(gfptr, &mut nmembers, status);
+
+    /* loop over all group members and delete them */
+
+    i = nmembers as c_int;
+    while i > 0 && *status == 0 {
+        /* the body is wrapped in a loop so the C `continue` (which advances to
+        the for-loop's `--i`) becomes `break`, after which `i` is decremented */
+        loop {
+            /* open the member HDU */
+
+            *status = fits_open_member(gfptr, i as c_long, &mut mfptr, status);
+
+            /* if the member cannot be opened then just skip it and continue */
+
+            if *status == MEMBER_NOT_FOUND {
+                *status = 0;
+                break;
+            }
+
+            /* Any other error is a reason to abort */
+
+            if *status != 0 {
+                break;
+            }
+
+            /* add the member HDU to the HDUtracker struct */
+
+            *status = fftsad(mfptr.as_deref_mut().unwrap(), HDU, None, None);
+
+            /* status == HDU_ALREADY_TRACKED ==> HDU has already been processed */
+
+            if *status == HDU_ALREADY_TRACKED {
+                *status = 0;
+                if let Some(f) = mfptr.take() {
+                    fits_close_file(f, status);
+                }
+                break;
+            } else if *status != 0 {
+                break;
+            }
+
+            /* determine if the member HDU is itself a grouping table */
+
+            *status = fits_read_key_str(
+                mfptr.as_deref_mut().unwrap(),
+                cs!(c"EXTNAME"),
+                &mut keyvalue,
+                Some(&mut comment),
+                status,
+            );
+
+            /* if no EXTNAME is found then the HDU cannot be a grouping table */
+
+            if *status == KEY_NO_EXIST {
+                *status = 0;
+                keyvalue[0] = 0;
+            }
+            prepare_keyvalue(&mut keyvalue);
+
+            /* Any other error is a reason to abort */
+
+            if *status != 0 {
+                break;
+            }
+
+            /*
+            if the EXTNAME == GROUPING then the member is a grouping table
+            and we must call ffgtrmr() to process its members
+            */
+
+            if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) == 0 {
+                *status = ffgtrmr(mfptr.as_deref_mut().unwrap(), HDU, status);
+            }
+
+            /*
+            unlink all the grouping tables that contain this HDU as a member
+            and then delete the HDU (if not a PHDU)
+            */
+
+            if fits_get_hdu_num(mfptr.as_deref_mut().unwrap(), &mut hdutype) == 1 {
+                *status = ffgmul(mfptr.as_deref_mut().unwrap(), 1, status);
+            } else {
+                *status = ffgmul(mfptr.as_deref_mut().unwrap(), 0, status);
+                *status =
+                    fits_delete_hdu(mfptr.as_deref_mut().unwrap(), Some(&mut hdutype), status);
+            }
+
+            /* close the fitsfile pointer */
+
+            if let Some(f) = mfptr.take() {
+                fits_close_file(f, status);
+            }
+
+            break;
+        } //while(0) body
+
+        i -= 1;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
