@@ -3325,24 +3325,164 @@ pub fn ffgmrm_safe(
 /// an index of 0 is returned. the grptype parameter returns the structure
 /// of the grouping table ==> what columns are defined.
 pub(crate) fn ffgtgc(
-    _gfptr: &mut fitsfile,    /* pointer to the grouping table                */
-    _xtensionCol: &mut c_int, /* column ID of the MEMBER_XTENSION column      */
-    _extnameCol: &mut c_int,  /* column ID of the MEMBER_NAME column          */
-    _extverCol: &mut c_int,   /* column ID of the MEMBER_VERSION column       */
-    _positionCol: &mut c_int, /* column ID of the MEMBER_POSITION column      */
-    _locationCol: &mut c_int, /* column ID of the MEMBER_LOCATION column      */
-    _uriCol: &mut c_int,      /* column ID of the MEMBER_URI_TYPE column      */
-    _grptype: &mut c_int,     /* group structure type code specifying the
-                              grouping table columns that are defined:
-                              GT_ID_ALL_URI  (0) ==> all columns defined
-                              GT_ID_REF      (1) ==> reference cols only
-                              GT_ID_POS      (2) ==> position col only
-                              GT_ID_ALL      (3) ==> ref & pos cols
-                              GT_ID_REF_URI (11) ==> ref & loc cols
-                              GT_ID_POS_URI (12) ==> pos & loc cols        */
-    _status: &mut c_int, /* return status code                           */
+    gfptr: &mut fitsfile,    /* pointer to the grouping table                */
+    xtensionCol: &mut c_int, /* column ID of the MEMBER_XTENSION column      */
+    extnameCol: &mut c_int,  /* column ID of the MEMBER_NAME column          */
+    extverCol: &mut c_int,   /* column ID of the MEMBER_VERSION column       */
+    positionCol: &mut c_int, /* column ID of the MEMBER_POSITION column      */
+    locationCol: &mut c_int, /* column ID of the MEMBER_LOCATION column      */
+    uriCol: &mut c_int,      /* column ID of the MEMBER_URI_TYPE column      */
+    grptype: &mut c_int,     /* group structure type code specifying the
+                             grouping table columns that are defined:
+                             GT_ID_ALL_URI  (0) ==> all columns defined
+                             GT_ID_REF      (1) ==> reference cols only
+                             GT_ID_POS      (2) ==> position col only
+                             GT_ID_ALL      (3) ==> ref & pos cols
+                             GT_ID_REF_URI (11) ==> ref & loc cols
+                             GT_ID_POS_URI (12) ==> pos & loc cols        */
+    status: &mut c_int, /* return status code                           */
 ) -> c_int {
-    todo!();
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+
+    if *status != 0 {
+        return *status;
+    }
+
+    loop {
+        /*
+        if the HDU does not have an extname of "GROUPING" then it is not
+        a grouping table
+        */
+
+        *status = fits_read_key_str(gfptr, cs!(c"EXTNAME"), &mut keyvalue, Some(&mut comment), status);
+
+        if *status == KEY_NO_EXIST {
+            *status = NOT_GROUP_TABLE;
+            ffpmsg_str("Specified HDU is not a Grouping Table (ffgtgc)");
+        }
+        if *status != 0 {
+            break;
+        }
+
+        prepare_keyvalue(&mut keyvalue);
+
+        if fits_strcasecmp(&keyvalue, cs!(c"GROUPING")) != 0 {
+            *status = NOT_GROUP_TABLE;
+            break;
+        }
+
+        /*
+          search for the MEMBER_XTENSION, MEMBER_NAME, MEMBER_VERSION,
+          MEMBER_POSITION, MEMBER_LOCATION and MEMBER_URI_TYPE columns
+          and determine their column index ID
+        */
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_XTENSION"), xtensionCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *xtensionCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_NAME"), extnameCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *extnameCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_VERSION"), extverCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *extverCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_POSITION"), positionCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *positionCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_LOCATION"), locationCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *locationCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        *status = fits_get_colnum(gfptr, CASESEN as c_int, cs!(c"MEMBER_URI_TYPE"), uriCol, status);
+
+        if *status == COL_NOT_FOUND {
+            *status = 0;
+            *uriCol = 0;
+        }
+
+        if *status != 0 {
+            break;
+        }
+
+        /*
+           determine the type of grouping table structure used by this
+           grouping table and record it in the grptype parameter
+        */
+
+        if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0 && *positionCol != 0
+            && *locationCol != 0 && *uriCol != 0
+        {
+            *grptype = GT_ID_ALL_URI as c_int;
+        } else if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0
+            && *locationCol != 0 && *uriCol != 0
+        {
+            *grptype = GT_ID_REF_URI as c_int;
+        } else if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0 && *positionCol != 0 {
+            *grptype = GT_ID_ALL as c_int;
+        } else if *xtensionCol != 0 && *extnameCol != 0 && *extverCol != 0 {
+            *grptype = GT_ID_REF as c_int;
+        } else if *positionCol != 0 && *locationCol != 0 && *uriCol != 0 {
+            *grptype = GT_ID_POS_URI as c_int;
+        } else if *positionCol != 0 {
+            *grptype = GT_ID_POS as c_int;
+        } else {
+            *status = NOT_GROUP_TABLE;
+        }
+
+        break;
+    } //while(0)
+
+    /*
+      if the table contained more than one column with a reserved name then
+      this cannot be considered a vailid grouping table
+    */
+
+    if *status == COL_NOT_UNIQUE {
+        *status = NOT_GROUP_TABLE;
+        ffpmsg_str("Specified HDU has multipule Group table cols defined (ffgtgc)");
+    }
+
+    *status
 }
 
 /*****************************************************************************/
