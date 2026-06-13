@@ -116,8 +116,8 @@ pub fn ffgtcr_safe(
     let mut hdutype: c_int = 0;
     let mut hdunum: c_int = 0;
 
-    if (*status != 0) {
-        return (*status);
+    if *status != 0 {
+        return *status;
     }
 
     *status = fits_get_num_hdus(fptr, &mut hdunum, status);
@@ -126,7 +126,7 @@ pub fn ffgtcr_safe(
     we actually haven't closed the first header yet, so don't do
     anything more */
 
-    if (0 != hdunum) {
+    if 0 != hdunum {
         *status = fits_movabs_hdu(fptr, hdunum, Some(&mut hdutype), status);
     }
 
@@ -138,13 +138,13 @@ pub fn ffgtcr_safe(
        next call will fail, but that's not big deal at this point.
     */
 
-    if (0 != *status) {
+    if 0 != *status {
         *status = 0;
     }
 
     *status = fits_insert_group(fptr, grpname, grouptype, status);
 
-    return (*status);
+    return *status;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -8367,9 +8367,21 @@ mod tests {
                 let f = fptr.as_deref_mut().unwrap();
                 fits_write_imghdr(f, BYTE_IMG, 0, &[], &mut status);
                 fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
-                fits_write_key_str(f, cs!(c"EXTNAME"), cs!(c"IMAGE1"), Some(cs!(c"First image")), &mut status);
+                fits_write_key_str(
+                    f,
+                    cs!(c"EXTNAME"),
+                    cs!(c"IMAGE1"),
+                    Some(cs!(c"First image")),
+                    &mut status,
+                );
                 fits_create_img(f, BYTE_IMG, 2, &naxes, &mut status);
-                fits_write_key_str(f, cs!(c"EXTNAME"), cs!(c"IMAGE2"), Some(cs!(c"Second image")), &mut status);
+                fits_write_key_str(
+                    f,
+                    cs!(c"EXTNAME"),
+                    cs!(c"IMAGE2"),
+                    Some(cs!(c"Second image")),
+                    &mut status,
+                );
 
                 /* Create grouping table */
                 fits_create_group(f, cs!(c"ImageGroup"), GT_ID_ALL_URI as c_int, &mut status);
@@ -8440,7 +8452,10 @@ mod tests {
                 let mut mf: Option<Box<fitsfile>> = None;
                 fits_open_member(gfptr.as_deref_mut().unwrap(), 1, &mut mf, &mut status);
                 assert_eq!(status, 0, "ffgmop member 1 failed");
-                assert_eq!(read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status), "IMAGE1");
+                assert_eq!(
+                    read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status),
+                    "IMAGE1"
+                );
                 ffclos_safe(mf.take().unwrap(), &mut status);
             }
 
@@ -8449,7 +8464,10 @@ mod tests {
                 let mut mf: Option<Box<fitsfile>> = None;
                 fits_open_member(gfptr.as_deref_mut().unwrap(), 2, &mut mf, &mut status);
                 assert_eq!(status, 0, "ffgmop member 2 failed");
-                assert_eq!(read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status), "IMAGE2");
+                assert_eq!(
+                    read_str_key(mf.as_deref_mut().unwrap(), cs!(c"EXTNAME"), &mut status),
+                    "IMAGE2"
+                );
                 ffclos_safe(mf.take().unwrap(), &mut status);
             }
 
