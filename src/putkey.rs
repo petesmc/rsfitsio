@@ -19,8 +19,9 @@ use crate::c_types::*;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::fitscore::{
-    ffbnfm_safe, ffcrhd_safe, ffgabc_safe, ffgthd_safe, ffiblk, ffkeyn_safe, ffmahd_safe,
-    ffmkky_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, fftkey_safe, ffupch_safe, fits_strncasecmp,
+    ffbnfm_safe, ffbnfmll_safe, ffcrhd_safe, ffgabc_safe, ffgthd_safe, ffiblk, ffkeyn_safe,
+    ffmahd_safe, ffmkky_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, fftkey_safe, ffupch_safe,
+    fits_strncasecmp,
 };
 use crate::getkey::ffgkys_safe;
 use crate::imcompress::imcomp_init_table;
@@ -321,13 +322,21 @@ pub unsafe extern "C" fn ffphpsll(
 /*--------------------------------------------------------------------------*/
 /// Write STANDARD set of required primary header keywords
 pub fn ffphpsll_safe(
-    _fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    _bitpix: c_int,       /* I - number of bits per data value pixel      */
-    _naxis: c_int,        /* I - number of axes in the data array         */
-    _naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    _status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile, /* I - FITS file pointer                        */
+    bitpix: c_int,       /* I - number of bits per data value pixel      */
+    naxis: c_int,        /* I - number of axes in the data array         */
+    naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
-    todo!()
+    let simple: c_int = 1; /* does file conform to FITS standard? 1/0  */
+    let pcount: LONGLONG = 0; /* number of group parameters (usually 0)   */
+    let gcount: LONGLONG = 1; /* number of random groups (usually 1 or 0) */
+    let extend: c_int = 1; /* may FITS file have extensions?           */
+
+    ffphprll_safe(
+        fptr, simple, bitpix, naxis, naxes, pcount, gcount, extend, status,
+    );
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1381,16 +1390,99 @@ pub unsafe extern "C" fn ffphext(
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into a conforming extension:
 pub fn ffphext_safe(
-    _fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    _xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
-    _bitpix: c_int,        /* I - value for the BIXPIX keyword            */
-    _naxis: c_int,         /* I - value for the NAXIS keyword             */
-    _naxes: &[c_long],     /* I - value for the NAXISn keywords           */
-    _pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
-    _gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
-    _status: &mut c_int,   /* IO - error status                           */
+    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
+    xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
+    bitpix: c_int,        /* I - value for the BIXPIX keyword            */
+    naxis: c_int,         /* I - value for the NAXIS keyword             */
+    naxes: &[c_long],     /* I - value for the NAXISn keywords           */
+    pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
+    gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
+    status: &mut c_int,   /* IO - error status                           */
 ) -> c_int {
-    todo!();
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut comm: [c_char; 81] = [0; 81];
+    let mut name: [c_char; 20] = [0; 20];
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+
+    if *status > 0 {
+        return *status;
+    } else {
+        let h = fptr.Fptr.get_headstart_as_slice();
+        if fptr.Fptr.headend != h[fptr.Fptr.curhdu as usize] {
+            *status = HEADER_NOT_EMPTY;
+            return *status;
+        }
+    }
+
+    if naxis < 0 || naxis > 999 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Illegal value for NAXIS keyword: {}",
+            naxis
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_NAXIS;
+        return *status;
+    }
+
+    xtension[0] = 0;
+    strncat_safe(&mut xtension, xtensionx, FLEN_VALUE - 1);
+
+    ffpkys_safe(
+        fptr,
+        cs!(c"XTENSION"),
+        &xtension,
+        Some(cs!(c"extension type")),
+        status,
+    );
+    ffpkyj_safe(
+        fptr,
+        cs!(c"BITPIX"),
+        bitpix as LONGLONG,
+        Some(cs!(c"number of bits per data pixel")),
+        status,
+    );
+    ffpkyj_safe(
+        fptr,
+        cs!(c"NAXIS"),
+        naxis as LONGLONG,
+        Some(cs!(c"number of data axes")),
+        status,
+    );
+
+    strcpy_safe(&mut comm, cs!(c"length of data axis "));
+    for ii in 0..(naxis as usize) {
+        if naxes[ii] < 0 {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "Illegal negative value for NAXIS{} keyword: {}",
+                ii + 1,
+                naxes[ii]
+            );
+            ffpmsg_slice(&message);
+            *status = BAD_NAXES;
+            return *status;
+        }
+
+        int_snprintf!(&mut comm[20..], 61, "{}", ii + 1);
+        ffkeyn_safe(cs!(c"NAXIS"), (ii + 1) as c_int, &mut name, status);
+        ffpkyj_safe(fptr, &name, naxes[ii] as LONGLONG, Some(&comm), status);
+    }
+
+    ffpkyj_safe(fptr, cs!(c"PCOUNT"), pcount, Some(cs!(c" ")), status);
+    ffpkyj_safe(fptr, cs!(c"GCOUNT"), gcount, Some(cs!(c" ")), status);
+
+    if *status > 0 {
+        ffpmsg_str("Failed to write extension header keywords (ffphext)");
+    }
+
+    *status
 }
 
 /*-------------------------------------------------------------------------*/
@@ -3957,13 +4049,111 @@ pub unsafe extern "C" fn ffptdmll(
 /*--------------------------------------------------------------------------*/
 /// Write the TDIMnnn keyword describing the dimensionality of a column
 pub fn ffptdmll_safe(
-    _fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    _colnum: c_int,       /* I - column number                            */
-    _naxis: c_int,        /* I - number of axes in the data array         */
-    _naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    _status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile, /* I - FITS file pointer                      */
+    colnum: c_int,       /* I - column number                            */
+    naxis: c_int,        /* I - number of axes in the data array         */
+    naxes: &[LONGLONG],  /* I - length of each data axis                 */
+    status: &mut c_int,  /* IO - error status                            */
 ) -> c_int {
-    todo!();
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut value: [c_char; 80] = [0; 80];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut totalpix: LONGLONG = 1;
+    let mut repeat: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if colnum < 1 || colnum > 999 {
+        ffpmsg_str("column number is out of range 1 - 999 (ffptdm)");
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    if naxis < 1 {
+        ffpmsg_str("naxis is less than 1 (ffptdm)");
+        *status = BAD_DIMEN;
+        return *status;
+    }
+
+    /* reset position to the correct HDU if necessary */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        /* rescan header */
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype != BINARY_TBL {
+        ffpmsg_str("Error: The TDIMn keyword is only allowed in BINTABLE extensions (ffptdm)");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    strcpy_safe(&mut tdimstr, cs!(c"(")); /* start constructing the TDIM value */
+
+    for ii in 0..(naxis as usize) {
+        if ii > 0 {
+            strcat_safe(&mut tdimstr, cs!(c",")); /* append the comma separator */
+        }
+
+        if naxes[ii] < 0 {
+            ffpmsg_str("one or more TDIM values are less than 0 (ffptdm)");
+            *status = BAD_TDIM;
+            return *status;
+        }
+
+        /* cast to double because the 64-bit int conversion character in */
+        /* sprintf is platform dependent ( %lld, %ld, %I64d )            */
+
+        int_snprintf!(&mut value, 80, "{}", naxes[ii]);
+
+        if strlen_safe(&tdimstr) + strlen_safe(&value) + 1 > FLEN_VALUE - 1 {
+            ffpmsg_str("TDIM string too long (ffptdmll)");
+            *status = BAD_TDIM;
+            return *status;
+        }
+        strcat_safe(&mut tdimstr, &value); /* append the axis size */
+
+        totalpix *= naxes[ii];
+    }
+
+    let colptr = fptr.Fptr.tableptr; /* point to first column structure */
+    let c = unsafe { slice::from_raw_parts_mut(colptr, fptr.Fptr.tfield as usize) };
+    let ci = (colnum - 1) as usize; /* point to the specified column number */
+
+    if c[ci].trepeat != totalpix {
+        /* There is an apparent inconsistency between TDIMn and TFORMn. */
+        /* The colptr->trepeat value may be out of date, so re-read     */
+        /* the TFORMn keyword to be sure.                               */
+
+        ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, status); /* construct TFORMn name  */
+        ffgkys_safe(fptr, &keyname, &mut value, None, status); /* read TFORMn keyword    */
+        ffbnfmll_safe(&value, None, Some(&mut repeat), None, status); /* parse the repeat count */
+
+        if *status > 0 || repeat != totalpix {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "column vector length, {}, does not equal TDIMn array size, {}",
+                c[ci].trepeat,
+                totalpix,
+            );
+            ffpmsg_slice(&message);
+            *status = BAD_TDIM;
+            return *status;
+        }
+    }
+
+    strcat_safe(&mut tdimstr, cs!(c")")); /* append the closing parenthesis */
+
+    strcpy_safe(&mut comm, cs!(c"size of the multidimensional array"));
+    ffkeyn_safe(cs!(c"TDIM"), colnum, &mut keyname, status); /* construct TDIMn name */
+    ffpkys_safe(fptr, &keyname, &tdimstr, Some(&comm), status); /* write the keyword */
+    *status
 }
 
 /*-----------------------------------------------------------------*/
@@ -4230,17 +4420,121 @@ pub unsafe extern "C" fn fftm2s(
 /*-----------------------------------------------------------------*/
 /// Construct a date and time character string
 pub fn fftm2s_safe(
-    _year: c_int,            /* I - year (0 - 9999)           */
-    _month: c_int,           /* I - month (1 - 12)            */
-    _day: c_int,             /* I - day (1 - 31)              */
-    _hour: c_int,            /* I - hour (0 - 23)             */
-    _minute: c_int,          /* I - minute (0 - 59)           */
-    _second: c_double,       /* I - second (0. - 60.9999999)  */
-    _decimals: c_int,        /* I - number of decimal points to write      */
-    _datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
-    _status: &mut c_int,     /* IO - error status             */
+    year: c_int,            /* I - year (0 - 9999)           */
+    month: c_int,           /* I - month (1 - 12)            */
+    day: c_int,             /* I - day (1 - 31)              */
+    hour: c_int,            /* I - hour (0 - 23)             */
+    minute: c_int,          /* I - minute (0 - 59)           */
+    second: c_double,       /* I - second (0. - 60.9999999)  */
+    decimals: c_int,        /* I - number of decimal points to write      */
+    datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
+    status: &mut c_int,     /* IO - error status             */
 ) -> c_int {
-    todo!();
+    let width: c_int;
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 {
+        /* inherit input status value if > 0 */
+        return *status;
+    }
+
+    datestr[0] = 0;
+
+    if year != 0 || month != 0 || day != 0 {
+        if ffverifydate_safe(year, month, day, status) > 0 {
+            ffpmsg_str("invalid date (fftm2s)");
+            return *status;
+        }
+    }
+
+    if hour < 0 || hour > 23 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "input hour value is out of range 0 - 23: {} (fftm2s)",
+            hour
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    } else if minute < 0 || minute > 59 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "input minute value is out of range 0 - 59: {} (fftm2s)",
+            minute
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    } else if second < 0. || second >= 61. {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "input second value is out of range 0 - 60.999: {} (fftm2s)",
+            second
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    } else if decimals > 25 {
+        int_snprintf!(
+            &mut errmsg,
+            FLEN_ERRMSG,
+            "input decimals value is out of range 0 - 25: {} (fftm2s)",
+            decimals
+        );
+        ffpmsg_slice(&errmsg);
+        *status = BAD_DATE;
+        return *status;
+    }
+
+    if decimals == 0 {
+        width = 2;
+    } else {
+        width = decimals + 3;
+    }
+
+    if decimals < 0 {
+        /* a negative decimals value means return only the date, not time */
+        int_snprintf!(
+            datestr,
+            datestr.len(),
+            "{:04}-{:02}-{:02}",
+            year,
+            month,
+            day
+        );
+    } else if year == 0 && month == 0 && day == 0 {
+        /* return only the time, not the date */
+        int_snprintf!(
+            datestr,
+            datestr.len(),
+            "{:02}:{:02}:{:0w$.p$}",
+            hour,
+            minute,
+            second,
+            w = width as usize,
+            p = decimals as usize
+        );
+    } else {
+        /* return both the time and date */
+        int_snprintf!(
+            datestr,
+            datestr.len(),
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:0w$.p$}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            w = width as usize,
+            p = decimals as usize
+        );
+    }
+
+    *status
 }
 
 /*-----------------------------------------------------------------*/
