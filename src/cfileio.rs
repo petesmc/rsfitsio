@@ -24,9 +24,10 @@ use libc::{ERANGE, strtod};
 use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
     file_checkfile, file_close, file_compress_open, file_create, file_flush, file_getoptions,
-    file_getversion, file_init, file_open, file_read, file_remove, file_seek, file_setoptions,
-    file_shutdown, file_size, file_truncate, file_write, stream_close, stream_create, stream_flush,
-    stream_open, stream_read, stream_seek, stream_size, stream_write,
+    file_getversion, file_init, file_is_compressed, file_open, file_openfile, file_read,
+    file_remove, file_seek, file_setoptions, file_shutdown, file_size, file_truncate, file_write,
+    stream_close, stream_create, stream_flush, stream_open, stream_read, stream_seek, stream_size,
+    stream_write,
 };
 use crate::drvrmem::{
     mem_close_comp_unsafe, mem_close_free_unsafe, mem_close_keep, mem_compress_open,
@@ -6264,15 +6265,60 @@ pub unsafe extern "C" fn ffexist(
 /// If the specified file can't be found, it then searches for a
 /// compressed version of the file.
 pub fn ffexist_safer(
-    _infile: &[c_char],  /* I - input filename or URL */
-    _exists: &mut c_int, /* O -  2 = a compressed version of file exists */
+    infile: &[c_char],  /* I - input filename or URL */
+    exists: &mut c_int, /* O -  2 = a compressed version of file exists */
     /*      1 = yes, disk file exists               */
     /*      0 = no, disk file could not be found    */
     /*     -1 = infile is not a disk file (could    */
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
-    _status: &mut c_int, /* I/O - error status */
+    status: &mut c_int, /* I/O - error status */
 ) -> c_int {
-    todo!();
+    let mut rootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* strip off any extname or filters from the name */
+    ffrtnm_safe(infile, &mut rootname, status);
+
+    /* the C walks `rootname` with a `char *ptr1`; we use an index instead */
+    let ptr1_pos = strstr_safe(&rootname, cs!(c"://"));
+
+    let ptr1_idx: usize;
+    if ptr1_pos.is_some() || rootname[0] == bb(b'-') {
+        if strncmp_safe(&rootname, cs!(c"file"), 4) == 0 {
+            ptr1_idx = ptr1_pos.unwrap() + 3; /* start of the disk file name (past "://") */
+        } else {
+            *exists = -1; /* this is not a disk file */
+            return *status;
+        }
+    } else {
+        ptr1_idx = 0; /* ptr1 = rootname */
+    }
+
+    /* file_is_compressed wants a full FLEN_FILENAME buffer, so copy the disk
+    file name (the C's `ptr1` substring) into its own array */
+    let mut diskname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    strcpy_safe(&mut diskname, &rootname[ptr1_idx..]);
+
+    /* see if the disk file exists */
+    let mut diskfile: Option<File> = None;
+    if file_openfile(&diskname, 0, &mut diskfile) != 0 {
+        /* no, couldn't open file, so see if there is a compressed version */
+        if file_is_compressed(&mut diskname) != 0 {
+            *exists = 2; /* a compressed version of the file exists */
+        } else {
+            *exists = 0; /* neither file nor compressed version exist */
+        }
+    } else {
+        /* yes, file exists */
+        *exists = 1;
+        /* C did fclose(diskfile); dropping the Option<File> closes it */
+        drop(diskfile.take());
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
