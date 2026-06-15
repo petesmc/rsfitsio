@@ -44,7 +44,7 @@ use crate::drvrsmem::{
 };
 use crate::editcol::ffdcol_safe;
 use crate::edithdu::ffcopy_safe;
-use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe};
+use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, fits_pixel_filter_safer};
 use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
     ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
@@ -7444,13 +7444,150 @@ pub fn ffrprt_safe(stream: *mut FILE, status: c_int) {
 
 /*--------------------------------------------------------------------------*/
 pub fn pixel_filter_helper(
-    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new image */
-    _outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
-    _pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
-    _status: *mut c_int,
+    outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
+    pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!()
+    let mut hdunum: c_int = 0;
+    let mut singleHDU: c_int = 0;
+    let mut bitpix: c_int = 0;
+
+    /* the new output file, created below; it replaces *fptr on success */
+    let mut ofptr: Option<Box<fitsfile>> = None;
+
+    /* create new empty file for result */
+    if ffinit_safe(&mut ofptr, &outfile, status) > 0 {
+        ffpmsg_str("failed to create output file for pixel filter:");
+        ffpmsg_slice(&outfile);
+        return *status;
+    }
+
+    ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut hdunum); /* current HDU number in input file */
+
+    /* the C advanced a `char *expr`; we walk `pixfilter` with an index instead */
+    let mut expr_idx: usize = 3; /* skip 'pix' */
+    match pixfilter[expr_idx] as u8 {
+        b'b' | b'B' => bitpix = BYTE_IMG,
+        b'i' | b'I' => bitpix = SHORT_IMG,
+        b'j' | b'J' => bitpix = LONG_IMG,
+        b'r' | b'R' => bitpix = FLOAT_IMG,
+        b'd' | b'D' => bitpix = DOUBLE_IMG,
+        _ => {}
+    }
+    if bitpix != 0 {
+        expr_idx += 1; /* skip bitpix indicator */
+    }
+
+    if pixfilter[expr_idx] == bb(b'1') {
+        expr_idx += 1;
+        singleHDU = 1;
+    }
+
+    if fptr.as_deref().unwrap().Fptr.only_one != 0 {
+        singleHDU = 1;
+    }
+
+    if pixfilter[expr_idx] != bb(b' ') {
+        ffpmsg_str("pixel filtering expression not space separated:");
+        ffpmsg_slice(&pixfilter[expr_idx..]);
+    }
+    while pixfilter[expr_idx] == bb(b' ') {
+        expr_idx += 1;
+    }
+
+    /* copy all preceding extensions to the output file */
+    let mut ii: c_int = 1;
+    while singleHDU == 0 && ii < hdunum {
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status);
+        if ffcopy_safe(
+            fptr.as_deref_mut().unwrap(),
+            ofptr.as_deref_mut().unwrap(),
+            0,
+            status,
+        ) > 0
+        {
+            if let Some(f) = ofptr.take() {
+                ffclos_safe(f, status);
+            }
+            return *status;
+        }
+        ii += 1;
+    }
+
+    /* move back to the original HDU position */
+    ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+
+    /* Run the image filter. PixelFilter is the #[repr(C)] interface to
+    fits_pixel_filter, so its ifptr/ofptr/expression fields are raw pointers;
+    we take pointers into the owned boxes only for this call. The callee only
+    reads them (it never reassigns the pointers), so the boxes keep ownership.
+    A null `tag` makes fits_pixel_filter use its own default "X" (== the C's
+    DEFAULT_TAG). */
+    let pf_failed = {
+        let mut infptr_raw: *mut fitsfile = fptr.as_deref_mut().unwrap();
+        let mut filter = PixelFilter {
+            count: 1,
+            path: ptr::null_mut(),
+            tag: ptr::null_mut(),
+            ifptr: &mut infptr_raw,
+            expression: pixfilter[expr_idx..].as_ptr() as *mut c_char,
+            bitpix,
+            blank: 0,
+            ofptr: ofptr.as_deref_mut().unwrap(),
+            keyword: [0; FLEN_KEYWORD],
+            comment: [0; FLEN_COMMENT],
+        };
+        fits_pixel_filter_safer(&mut filter, status) != 0
+    };
+    if pf_failed {
+        ffpmsg_str("failed to execute image filter:");
+        ffpmsg_slice(&pixfilter[expr_idx..]);
+        if let Some(f) = ofptr.take() {
+            ffclos_safe(f, status);
+        }
+        return *status;
+    }
+
+    /* copy any remaining HDUs to the output file */
+    ii = hdunum + 1;
+    while singleHDU == 0 {
+        if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
+            break;
+        }
+
+        ffcopy_safe(
+            fptr.as_deref_mut().unwrap(),
+            ofptr.as_deref_mut().unwrap(),
+            0,
+            status,
+        );
+        ii += 1;
+    }
+
+    if *status == END_OF_FILE {
+        *status = 0; /* got the expected EOF error; reset = 0  */
+    } else if *status > 0 {
+        if let Some(f) = ofptr.take() {
+            ffclos_safe(f, status);
+        }
+        return *status;
+    }
+
+    /* close the original file and return ptr to the new image */
+    if let Some(f) = fptr.take() {
+        ffclos_safe(f, status);
+    }
+
+    *fptr = ofptr.take(); /* reset the pointer to the new image */
+
+    /* move back to the image subsection */
+    if ii - 1 != hdunum {
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+    }
+
+    *status
 }
 
 /*-------------------------------------------------------------------*/
