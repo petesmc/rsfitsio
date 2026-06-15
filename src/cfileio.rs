@@ -9,7 +9,7 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
-use std::{mem, ptr};
+use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
@@ -46,15 +46,18 @@ use crate::editcol::ffdcol_safe;
 use crate::edithdu::ffcopy_safe;
 use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, fits_pixel_filter_safer};
 use crate::fitscore::{
-    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
-    ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
-    ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safe, ffupch_safe, fits_strcasecmp,
-    fits_strncasecmp,
+    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe, ffghdn_safe,
+    ffghdt_safe, ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe,
+    ffmnhd_safe, ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
+    fits_strcasecmp, fits_strncasecmp, fits_translate_keywords_safer,
 };
-use crate::getkey::{ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffmaky_safe};
+use crate::getkey::{
+    ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
+};
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
 use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
+use crate::putkey::ffcrimll_safe;
 use crate::putkey::{ffphis_safe, ffprec_safe};
 use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
 use crate::wrappers::*;
@@ -3197,13 +3200,269 @@ pub unsafe extern "C" fn fits_copy_cell2image(
 ///
 /// This routine was written by Craig Markwardt, GSFC
 pub fn fits_copy_cell2image_safe(
-    _fptr: &mut fitsfile,   /* I - point to input table */
-    _newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
-    _colname: &[c_char],    /* I - column name / number containing the image*/
-    _rownum: c_long,        /* I - number of the row containing the image */
-    _status: &mut c_int,    /* IO - error status */
+    fptr: &mut fitsfile,   /* I - point to input table */
+    newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
+    colname: &[c_char],    /* I - column name / number containing the image*/
+    rownum: c_long,        /* I - number of the row containing the image */
+    status: &mut c_int,    /* IO - error status */
 ) -> c_int {
-    todo!()
+    let mut buffer: [u8; 30000] = [0; 30000];
+    let mut hdutype: c_int = 0;
+    let mut colnum: c_int = 0;
+    let mut typecode: c_int = 0;
+    let bitpix: c_int;
+    let mut naxis: c_int = 0;
+    let mut maxelem: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
+    let mut nbytes: LONGLONG;
+    let mut firstbyte: LONGLONG;
+    let mut ntodo: LONGLONG;
+    let mut repeat: LONGLONG = 0;
+    let mut startpos: LONGLONG = 0;
+    let mut elemnum: LONGLONG = 0;
+    let mut rowlen: LONGLONG = 0;
+    let mut tnull: LONGLONG = 0;
+    let mut twidth: c_long = 0;
+    let mut incre: c_long = 0;
+    let mut scale: f64 = 0.0;
+    let mut zero: f64 = 0.0;
+    let mut tform: [c_char; 20] = [0; 20];
+    let mut templt: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* the canonical column name; the C overwrites its `colname` argument in
+    place via ffgcnn, but ours is a `&[c_char]` input, so use a local buffer */
+    let mut colname_buf: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    /* Table-to-image keyword translation table  */
+    /*                        INPUT      OUTPUT  */
+    /*                       01234567   01234567 */
+    let patterns: [[&CStr; 2]; 70] = [
+        [c"TSCALn", c"BSCALE"], /* Standard FITS keywords */
+        [c"TZEROn", c"BZERO"],
+        [c"TUNITn", c"BUNIT"],
+        [c"TNULLn", c"BLANK"],
+        [c"TDMINn", c"DATAMIN"],
+        [c"TDMAXn", c"DATAMAX"],
+        [c"iCTYPn", c"CTYPEi"], /* Coordinate labels */
+        [c"iCTYna", c"CTYPEia"],
+        [c"iCUNIn", c"CUNITi"], /* Coordinate units */
+        [c"iCUNna", c"CUNITia"],
+        [c"iCRVLn", c"CRVALi"], /* WCS keywords */
+        [c"iCRVna", c"CRVALia"],
+        [c"iCDLTn", c"CDELTi"],
+        [c"iCDEna", c"CDELTia"],
+        [c"iCRPXn", c"CRPIXi"],
+        [c"iCRPna", c"CRPIXia"],
+        [c"ijPCna", c"PCi_ja"],
+        [c"ijCDna", c"CDi_ja"],
+        [c"iVn_ma", c"PVi_ma"],
+        [c"iSn_ma", c"PSi_ma"],
+        [c"iCRDna", c"CRDERia"],
+        [c"iCSYna", c"CSYERia"],
+        [c"iCROTn", c"CROTAi"],
+        [c"WCAXna", c"WCSAXESa"],
+        [c"WCSNna", c"WCSNAMEa"],
+        [c"LONPna", c"LONPOLEa"],
+        [c"LATPna", c"LATPOLEa"],
+        [c"EQUIna", c"EQUINOXa"],
+        [c"MJDOBn", c"MJD-OBS"],
+        [c"MJDAn", c"MJD-AVG"],
+        [c"RADEna", c"RADESYSa"],
+        [c"iCNAna", c"CNAMEia"],
+        [c"DAVGn", c"DATE-AVG"],
+        /* Delete table keywords related to other columns */
+        [c"T????#a", c"-"],
+        [c"TC??#a", c"-"],
+        [c"TWCS#a", c"-"],
+        [c"TDIM#", c"-"],
+        [c"iCTYPm", c"-"],
+        [c"iCUNIm", c"-"],
+        [c"iCRVLm", c"-"],
+        [c"iCDLTm", c"-"],
+        [c"iCRPXm", c"-"],
+        [c"iCTYma", c"-"],
+        [c"iCUNma", c"-"],
+        [c"iCRVma", c"-"],
+        [c"iCDEma", c"-"],
+        [c"iCRPma", c"-"],
+        [c"ijPCma", c"-"],
+        [c"ijCDma", c"-"],
+        [c"iVm_ma", c"-"],
+        [c"iSm_ma", c"-"],
+        [c"iCRDma", c"-"],
+        [c"iCSYma", c"-"],
+        [c"iCROTm", c"-"],
+        [c"WCAXma", c"-"],
+        [c"WCSNma", c"-"],
+        [c"LONPma", c"-"],
+        [c"LATPma", c"-"],
+        [c"EQUIma", c"-"],
+        [c"MJDOBm", c"-"],
+        [c"MJDAm", c"-"],
+        [c"RADEma", c"-"],
+        [c"iCNAma", c"-"],
+        [c"DAVGm", c"-"],
+        [c"EXTNAME", c"-"], /* Remove structural keywords*/
+        [c"EXTVER", c"-"],
+        [c"EXTLEVEL", c"-"],
+        [c"CHECKSUM", c"-"],
+        [c"DATASUM", c"-"],
+        [c"*", c"+"], /* copy all other keywords */
+    ];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* get column number */
+    if ffgcno_safe(fptr, CASEINSEN as c_int, colname, &mut colnum, status) > 0 {
+        ffpmsg_str("column containing image in table cell does not exist:");
+        ffpmsg_slice(colname);
+        return *status;
+    }
+
+    /*---------------------------------------------------*/
+    /*  Check input and get parameters about the column: */
+    /*---------------------------------------------------*/
+    if ffgcprll(
+        fptr,
+        colnum,
+        rownum as LONGLONG,
+        1,
+        1,
+        0,
+        &mut scale,
+        &mut zero,
+        &mut tform,
+        &mut twidth,
+        &mut typecode,
+        &mut maxelem,
+        &mut startpos,
+        &mut elemnum,
+        &mut incre,
+        &mut repeat,
+        &mut rowlen,
+        &mut hdutype,
+        &mut tnull,
+        cast_slice_mut(&mut buffer),
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    /* get the actual column name, in case a column number was given */
+    ffkeyn_safe(cs!(c""), colnum, &mut templt, &mut tstatus);
+    ffgcnn_safe(
+        fptr,
+        CASEINSEN as c_int,
+        &templt,
+        &mut colname_buf,
+        &mut colnum,
+        &mut tstatus,
+    );
+
+    if hdutype != BINARY_TBL {
+        ffpmsg_str("This extension is not a binary table.");
+        ffpmsg_str(" Cannot open the image in a binary table cell.");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    if typecode < 0 {
+        /* variable length array */
+        typecode *= -1;
+
+        /* variable length arrays are 1-dimensional by default */
+        naxis = 1;
+        naxes[0] = repeat;
+    } else {
+        /* get the dimensions of the image */
+        ffgtdmll_safer(fptr, colnum, 9, &mut naxis, &mut naxes, status);
+    }
+
+    if *status > 0 {
+        ffpmsg_str("Error getting the dimensions of the image");
+        return *status;
+    }
+
+    /* determine BITPIX value for the image */
+    if typecode == TBYTE {
+        bitpix = BYTE_IMG;
+        nbytes = repeat;
+    } else if typecode == TSHORT {
+        bitpix = SHORT_IMG;
+        nbytes = repeat * 2;
+    } else if typecode == TLONG {
+        bitpix = LONG_IMG;
+        nbytes = repeat * 4;
+    } else if typecode == TFLOAT {
+        bitpix = FLOAT_IMG;
+        nbytes = repeat * 4;
+    } else if typecode == TDOUBLE {
+        bitpix = DOUBLE_IMG;
+        nbytes = repeat * 8;
+    } else if typecode == TLONGLONG {
+        bitpix = LONGLONG_IMG;
+        nbytes = repeat * 8;
+    } else if typecode == TLOGICAL {
+        bitpix = BYTE_IMG;
+        nbytes = repeat;
+    } else {
+        ffpmsg_str("Error: the following image column has invalid datatype:");
+        ffpmsg_slice(&colname_buf);
+        ffpmsg_slice(&tform);
+        ffpmsg_str("Cannot open an image in a single row of this column.");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    /* create new image in output file */
+    if ffcrimll_safe(newptr, bitpix, naxis, &naxes, status) > 0 {
+        ffpmsg_str("failed to write required primary array keywords in the output file");
+        return *status;
+    }
+
+    let npat: c_int = patterns.len() as c_int;
+
+    /* skip over the first 8 keywords, starting just after TFIELDS */
+    fits_translate_keywords_safer(fptr, newptr, 9, &patterns, npat, colnum, 0, 0, status);
+
+    /* The C builds a HISTORY card here, but the ffprec() that would write it is
+    disabled (left to the caller), so the card is never used; omitted. */
+
+    /* the use of ffread routine, below, requires that any 'dirty' */
+    /* buffers in memory be flushed back to the file first */
+
+    ffflsh_safe(fptr, false, status);
+
+    /* finally, copy the data, one buffer size at a time */
+    ffmbyt_safe(fptr, startpos, TRUE as c_int, status);
+    firstbyte = 1;
+
+    /* the upper limit on the number of bytes must match the declaration */
+    /* read up to the first 30000 bytes in the normal way with ffgbyt */
+
+    ntodo = cmp::min(30000, nbytes);
+    ffgbyt(fptr, ntodo, &mut buffer, status);
+    ffptbb_safe(newptr, 1, firstbyte, ntodo, &buffer, status);
+
+    nbytes -= ntodo;
+    firstbyte += ntodo;
+
+    /* read any additional bytes with low-level ffread routine, for speed */
+    while nbytes != 0 && *status <= 0 {
+        ntodo = cmp::min(30000, nbytes);
+        ffread(&fptr.Fptr, ntodo as c_long, &mut buffer, status);
+        ffptbb_safe(newptr, 1, firstbyte, ntodo, &buffer, status);
+        nbytes -= ntodo;
+        firstbyte += ntodo;
+    }
+
+    /* Re-scan the header so that CFITSIO knows about all the new keywords */
+    ffrdef_safe(newptr, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
