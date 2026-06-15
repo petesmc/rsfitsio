@@ -56,6 +56,10 @@ use crate::getkey::{
 };
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
+use crate::imcompress::{
+    fits_set_compression_type_safe, fits_set_hcomp_scale_safe, fits_set_hcomp_smooth_safe,
+    fits_set_quantize_level_safe, fits_set_quantize_method_safe, fits_set_tile_dim_safe,
+};
 use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
 use crate::putkey::ffcrimll_safe;
 use crate::putkey::{ffphis_safe, ffprec_safe};
@@ -3797,11 +3801,196 @@ pub(crate) fn ffselect_table(
 /// The compression parameters are saved in the fptr->Fptr structure for use
 /// when writing FITS images.
 pub(crate) fn ffparsecompspec(
-    _fptr: &mut fitsfile, /* I - FITS file pointer               */
-    _compspec: &[c_char], /* I - image compression specification */
-    _status: &mut c_int,  /* IO - error status                       */
+    fptr: &mut fitsfile, /* I - FITS file pointer               */
+    compspec: &[c_char], /* I - image compression specification */
+    status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
-    todo!()
+    /* the C walks `compspec` with a `char *ptr1`; we use an index instead */
+    let mut ptr1: usize;
+
+    /* initialize with default values */
+    let mut ii: usize;
+    let mut compresstype: c_int = RICE_1;
+    let mut smooth: c_int = 0;
+    let mut quantize_method: c_int = SUBTRACTIVE_DITHER_1;
+    let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut qlevel: f32 = -99.;
+    let mut scale: f32 = 0.;
+
+    ptr1 = 0;
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    if strncmp_safe(&compspec[ptr1..], cs!(c"compress"), 8) != 0
+        && strncmp_safe(&compspec[ptr1..], cs!(c"COMPRESS"), 8) != 0
+    {
+        /* apparently this string does not specify compression parameters */
+        *status = URL_PARSE_ERROR;
+        return *status;
+    }
+
+    ptr1 += 8;
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    /* ========================= */
+    /* look for compression type */
+    /* ========================= */
+
+    if compspec[ptr1] == bb(b'r') || compspec[ptr1] == bb(b'R') {
+        compresstype = RICE_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    } else if compspec[ptr1] == bb(b'g') || compspec[ptr1] == bb(b'G') {
+        compresstype = GZIP_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    }
+    /*
+        else if (*ptr1 == 'b' || *ptr1 == 'B')
+        {
+            compresstype = BZIP2_1;
+            while (*ptr1 != ' ' && *ptr1 != ';' && *ptr1 != '\0')
+               ptr1++;
+        }
+    */
+    else if compspec[ptr1] == bb(b'p') || compspec[ptr1] == bb(b'P') {
+        compresstype = PLIO_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    } else if compspec[ptr1] == bb(b'h') || compspec[ptr1] == bb(b'H') {
+        compresstype = HCOMPRESS_1;
+        ptr1 += 1;
+        if compspec[ptr1] == bb(b's') || compspec[ptr1] == bb(b'S') {
+            smooth = 1; /* apply smoothing when uncompressing HCOMPRESSed image */
+        }
+
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    }
+
+    /* ======================== */
+    /* look for tile dimensions */
+    /* ======================== */
+
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    ii = 0;
+    /* NOTE: the C loop bound was `ii < 9`, which would overflow the
+    MAX_COMPRESS_DIM-element tilesize array; bound it to the array size */
+    while isdigit_safe(compspec[ptr1]) && ii < MAX_COMPRESS_DIM {
+        tilesize[ii] = strtol_safe::<c_long>(&compspec[ptr1..]).map_or(0, |(v, _)| v); /* read the integer value */
+        ii += 1;
+
+        while isdigit_safe(compspec[ptr1]) {
+            /* skip over the integer */
+            ptr1 += 1;
+        }
+
+        if compspec[ptr1] == bb(b',') {
+            ptr1 += 1; /* skip over the comma */
+        }
+
+        while compspec[ptr1] == bb(b' ') {
+            /* ignore leading blanks */
+            ptr1 += 1;
+        }
+    }
+
+    /* ========================================================= */
+    /* look for semi-colon, followed by other optional parameters */
+    /* ========================================================= */
+
+    if compspec[ptr1] == bb(b';') {
+        ptr1 += 1;
+        while compspec[ptr1] == bb(b' ') {
+            /* ignore leading blanks */
+            ptr1 += 1;
+        }
+
+        while compspec[ptr1] != 0 {
+            /* haven't reached end of string yet */
+
+            if compspec[ptr1] == bb(b's') || compspec[ptr1] == bb(b'S') {
+                /* this should be the HCOMPRESS "scale" parameter; default = 1 */
+
+                ptr1 += 1;
+                while compspec[ptr1] == bb(b' ') {
+                    /* ignore leading blanks */
+                    ptr1 += 1;
+                }
+
+                let mut loc: usize = 0;
+                scale = strtod_safe(&compspec[ptr1..], &mut loc) as f32;
+                ptr1 += loc;
+
+                while compspec[ptr1] == bb(b' ') || compspec[ptr1] == bb(b',') {
+                    /* skip over blanks or comma */
+                    ptr1 += 1;
+                }
+            } else if compspec[ptr1] == bb(b'q') || compspec[ptr1] == bb(b'Q') {
+                /* this should be the floating point quantization parameter */
+
+                ptr1 += 1;
+                if compspec[ptr1] == bb(b'z') || compspec[ptr1] == bb(b'Z') {
+                    /* use the subtractive_dither_2 option */
+                    quantize_method = SUBTRACTIVE_DITHER_2;
+                    ptr1 += 1;
+                } else if compspec[ptr1] == bb(b'0') {
+                    /* do not dither */
+                    quantize_method = NO_DITHER;
+                    ptr1 += 1;
+                }
+
+                while compspec[ptr1] == bb(b' ') {
+                    /* ignore leading blanks */
+                    ptr1 += 1;
+                }
+
+                let mut loc: usize = 0;
+                qlevel = strtod_safe(&compspec[ptr1..], &mut loc) as f32;
+                ptr1 += loc;
+
+                while compspec[ptr1] == bb(b' ') || compspec[ptr1] == bb(b',') {
+                    /* skip over blanks or comma */
+                    ptr1 += 1;
+                }
+            } else {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+        }
+    }
+
+    /* ================================= */
+    /* finished parsing; save the values */
+    /* ================================= */
+
+    fits_set_compression_type_safe(fptr, compresstype, status);
+    fits_set_tile_dim_safe(fptr, MAX_COMPRESS_DIM as c_int, &tilesize, status);
+
+    if compresstype == HCOMPRESS_1 {
+        fits_set_hcomp_scale_safe(fptr, scale, status);
+        fits_set_hcomp_smooth_safe(fptr, smooth, status);
+    }
+
+    if qlevel != -99. {
+        fits_set_quantize_level_safe(fptr, qlevel, status);
+        fits_set_quantize_method_safe(fptr, quantize_method, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
