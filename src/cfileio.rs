@@ -7068,11 +7068,128 @@ pub unsafe extern "C" fn ffextn(
 ///     existing FTOOLS software.  CFITSIO would open the primary array by default
 ///     (extension_num = 1) in this case.
 pub fn ffextn_safer(
-    _url: &[c_char],            /* I - input filename/URL  */
-    _extension_num: &mut c_int, /* O - returned extension number */
-    _status: &mut c_int,
+    url: &[c_char],            /* I - input filename/URL  */
+    extension_num: &mut c_int, /* O - returned extension number */
+    status: &mut c_int,
 ) -> c_int {
-    todo!("Implementation of ffextn_safer needed");
+    let mut fptr: Option<Box<fitsfile>> = None;
+    let mut urltype: [c_char; 20] = [0; 20];
+    let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut rowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut binspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut colspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extnum: c_int = 0;
+    let mut extvers: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut tstatus: c_int = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /*  parse the input URL into its basic components  */
+    ffiurl_safe(
+        url,
+        Some(&mut urltype),
+        Some(&mut infile),
+        Some(&mut outfile),
+        Some(&mut extspec),
+        Some(&mut rowfilter),
+        Some(&mut binspec),
+        Some(&mut colspec),
+        status,
+    );
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if binspec[0] != 0
+    /* is there a binning specification? */
+    {
+        *extension_num = 1; /* a temporary primary array image is created */
+        return *status;
+    }
+
+    if extspec[0] != 0
+    /* is an extension specified? */
+    {
+        ffexts_safe(
+            &extspec,
+            &mut extnum,
+            &mut extname,
+            &mut extvers,
+            &mut hdutype,
+            &mut imagecolname,
+            &mut rowexpress,
+            status,
+        );
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if imagecolname[0] != 0
+        /* is an image within a table cell being opened? */
+        {
+            *extension_num = 1; /* a temporary primary array image is created */
+            return *status;
+        }
+
+        if extname[0] != 0 {
+            /* have to open the file to search for the extension name (curses!) */
+
+            if strcmp_safe(&urltype, cs!(c"stdin://")) == 0 {
+                /* opening stdin would destroying it! */
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* First, strip off any filtering specification */
+            infile[0] = 0;
+            strncat_safe(&mut infile, url, FLEN_FILENAME - 1);
+
+            /* locate the closing bracket */
+            match strchr_safe(&infile, bb(b']')) {
+                None => {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                Some(cptr) => {
+                    infile[cptr + 1] = 0; /* terminate URL after the extension spec */
+                }
+            }
+
+            if ffopen_safe(&mut fptr, &infile, READONLY, status) > 0
+            /* open the file */
+            {
+                if let Some(f) = fptr.take() {
+                    ffclos_safe(f, &mut tstatus);
+                }
+                return *status;
+            }
+
+            ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut extnum); /* where am I in the file? */
+            *extension_num = extnum;
+            if let Some(f) = fptr.take() {
+                ffclos_safe(f, status);
+            }
+
+            *status
+        } else {
+            *extension_num = extnum + 1; /* return the specified number (+ 1) */
+            *status
+        }
+    } else {
+        *extension_num = -99; /* no specific extension was specified */
+        /* defaults to primary array */
+        *status
+    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9325,5 +9442,84 @@ mod tests {
         let mut status: c_int = 0;
         ffrtnm_safe(&url, &mut rootname, &mut status);
         assert_eq!(status, URL_PARSE_ERROR);
+    }
+
+    #[test]
+    fn test_ffextn_no_extension() {
+        // A plain filename with no extension specifier returns the sentinel -99
+        // (CFITSIO would default to the primary array).
+        let url = str_to_c_array("myfile.fits");
+        let mut extnum: c_int = 0;
+        let mut status: c_int = 0;
+        ffextn_safer(&url, &mut extnum, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(extnum, -99);
+    }
+
+    #[test]
+    fn test_ffextn_extension_number() {
+        // An explicit extension number [n] returns n + 1 (the 1-based HDU number).
+        for (spec, expected) in [("myfile.fits[0]", 1), ("myfile.fits[3]", 4)] {
+            let url = str_to_c_array(spec);
+            let mut extnum: c_int = 0;
+            let mut status: c_int = 0;
+            ffextn_safer(&url, &mut extnum, &mut status);
+            assert_eq!(status, 0, "spec={spec}");
+            assert_eq!(extnum, expected, "spec={spec}");
+        }
+    }
+
+    #[test]
+    fn test_ffextn_binning_returns_one() {
+        // A binning specification always yields extension 1, since CFITSIO would
+        // create a temporary primary array image on the fly.
+        let url = str_to_c_array("myfile.fits[3][bin X,Y]");
+        let mut extnum: c_int = 0;
+        let mut status: c_int = 0;
+        ffextn_safer(&url, &mut extnum, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(extnum, 1);
+    }
+
+    #[test]
+    fn test_ffextn_extname_search() {
+        // Specifying an extension by name forces the file open to search for it;
+        // the returned number is the 1-based HDU position of that extension.
+        use crate::helpers::testhelpers::with_temp_file;
+        use crate::putkey::{ffcrim_safe, ffphps_safe, ffpkys_safe};
+
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+
+            /* create a file with a primary array + a named image extension */
+            let mut fptr: Option<Box<fitsfile>> = None;
+            let name = str_to_c_array(filename);
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            {
+                let f = fptr.as_deref_mut().unwrap();
+                ffphps_safe(f, BYTE_IMG, 0, &[], &mut status);
+                let naxes: [c_long; 2] = [10, 10];
+                ffcrim_safe(f, BYTE_IMG, 2, &naxes, &mut status);
+                ffpkys_safe(f, cs!(c"EXTNAME"), cs!(c"EVENTS"), None, &mut status);
+                assert_eq!(status, 0, "setup failed");
+            }
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffclos failed");
+
+            /* build "<path>[EVENTS]" */
+            let mut url = str_to_c_array(filename);
+            url.pop(); // drop the NUL terminator
+            for b in "[EVENTS]".bytes() {
+                url.push(b as c_char);
+            }
+            url.push(0);
+
+            let mut extnum: c_int = 0;
+            let mut status2: c_int = 0;
+            ffextn_safer(&url, &mut extnum, &mut status2);
+            assert_eq!(status2, 0, "ffextn failed");
+            assert_eq!(extnum, 2); // EVENTS is the 2nd HDU
+        });
     }
 }
