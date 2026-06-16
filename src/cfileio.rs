@@ -240,7 +240,7 @@ pub fn ffomem_safer(
 
     /* call driver routine to open the memory file */
     let lock = FFLOCK(); /* lock this while searching for vacant handle */
-    *status = mem_openmem(buffptr, buffsize, deltasize, mem_realloc, &mut handle);
+    *status = mem_openmem(buffptr, buffsize, deltasize, Some(mem_realloc), &mut handle);
     FFUNLOCK(lock);
 
     if *status > 0 {
@@ -4296,14 +4296,125 @@ pub unsafe extern "C" fn ffimem(
 /*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file in memory
 pub fn ffimem_safer(
-    _fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    _buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    _buffsize: &mut usize,             /* I - size of buffer, in bytes            */
-    _deltasize: usize,                 /* I - increment for future realloc's      */
-    _mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
-    _status: &mut c_int, /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
+    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
+    buffsize: &mut usize,             /* I - size of buffer, in bytes            */
+    deltasize: usize,                 /* I - increment for future realloc's      */
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
+    status: &mut c_int, /* IO - error status                       */
 ) -> c_int {
-    todo!()
+    let mut driver: c_int = 0;
+    let mut handle: c_int = 0;
+    let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* initialize null file pointer */
+    let f_tmp = fptr.take();
+    if let Some(f) = f_tmp {
+        // WARNING (mirrors ffomem): the C leaves a dangling pointer after it
+        // overwrites *fptr, so if we were handed an existing Some() it is
+        // probably invalid; leak it rather than risk a double free.
+        let _ = Box::into_raw(f);
+    }
+
+    if *NEED_TO_INITIALIZE.lock().unwrap() {
+        /* this is called only once */
+        *status = fits_init_cfitsio_safer();
+    }
+
+    if *status > 0 {
+        return *status;
+    }
+
+    strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
+
+    *status = urltype2driver(&urltype, &mut driver);
+
+    if *status > 0 {
+        ffpmsg_str("could not find driver for pre-existing memory file: (ffimem)");
+        return *status;
+    }
+
+    /* call driver routine to "open" the memory file */
+    let lock = FFLOCK(); /* lock this while searching for vacant handle */
+    *status = mem_openmem(
+        buffptr as *const *const c_void,
+        buffsize,
+        deltasize,
+        mem_realloc,
+        &mut handle,
+    );
+    FFUNLOCK(lock);
+
+    if *status > 0 {
+        ffpmsg_str("failed to open pre-existing memory file: (ffimem)");
+        return *status;
+    }
+
+    /* allocate the fitsfile / FITSfile structures along with the filename,
+    headstart, and iobuffer arrays (the C's calloc/malloc block) */
+    let d = DRIVER_TABLE.get().unwrap();
+    let Fptr = FITSfile::new(
+        &d[driver as usize],
+        handle,
+        cs!(c"memfile"),
+        cs!(c"ffimem"),
+        status,
+    );
+    if Fptr.is_err() {
+        /* FITSfile::new already reported the specific allocation failure */
+        return *status;
+    }
+
+    let mut Fptr = Fptr.unwrap();
+
+    /* initialize the ageindex array (relative age of the I/O buffers) */
+    /* and initialize the bufrecnum array as being empty */
+    for ii in 0..(NIOBUF as usize) {
+        Fptr.ageindex[ii] = ii as c_int;
+        Fptr.bufrecnum[ii] = -1;
+    }
+
+    /* store the parameters describing the file */
+    Fptr.MAXHDU = 1000; /* initial size of headstart */
+    Fptr.filehandle = handle; /* file handle */
+    Fptr.driver = driver; /* driver number */
+    unsafe {
+        strcpy(Fptr.filename, cs!(c"memfile").as_ptr()); /* dummy filename */
+    }
+    Fptr.filesize = *buffsize as LONGLONG; /* physical file size */
+    Fptr.logfilesize = *buffsize as LONGLONG; /* logical file size */
+    Fptr.writemode = 1; /* read-write mode    */
+    Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data */
+    Fptr.curbuf = -1; /* undefined current IO buffer */
+    Fptr.open_count = 1; /* structure is currently used once */
+    Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
+    Fptr.noextsyntax = 0; /* extended syntax can be used in filename */
+
+    let f_fitsfile = box_try_new(fitsfile {
+        HDUposition: 0,
+        Fptr,
+    });
+
+    if f_fitsfile.is_err() {
+        let d = DRIVER_TABLE.get().unwrap();
+        ((d[driver as usize]).close)(handle); /* close the file */
+        ffpmsg_str("failed to allocate structure for memory file: (ffimem)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+
+    let mut f_fitsfile = f_fitsfile.unwrap();
+
+    ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
+    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+
+    *fptr = Some(f_fitsfile);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9521,5 +9632,66 @@ mod tests {
             assert_eq!(status2, 0, "ffextn failed");
             assert_eq!(extnum, 2); // EVENTS is the 2nd HDU
         });
+    }
+
+    #[test]
+    fn test_ffimem_create_write_read() {
+        use crate::getkey::ffgkyj_safe;
+        use crate::putkey::{ffphps_safe, ffpkyj_safe};
+
+        // ffimem (fits_create_memfile) creates a new FITS file backed by a
+        // caller-supplied memory buffer. Mirrors the mem_rawfile_open usage:
+        // create the memfile, write to it, then read it back. The buffer is
+        // generously sized so no reallocation is needed (realloc = None).
+        let mut buffer: Vec<u8> = vec![0u8; 10 * 2880];
+        let mut status: c_int = 0;
+        let mut buffsize: usize = buffer.len();
+        /* buffptr is a void** (the address of the memory pointer) so the driver
+        can update it on realloc; realloc is disabled here (None) */
+        let mut buf_addr: *mut c_void = buffer.as_mut_ptr().cast();
+
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffimem_safer(
+            &mut fptr,
+            &mut buf_addr,
+            &mut buffsize,
+            2880,
+            None,
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffimem failed");
+        assert!(fptr.is_some());
+
+        {
+            let f = fptr.as_deref_mut().unwrap();
+
+            // the writable mem-file structure was set up by ffimem
+            assert_eq!(f.Fptr.writemode, 1);
+            assert_eq!(f.Fptr.validcode, VALIDSTRUC);
+            assert_eq!(f.Fptr.filesize, buffsize as LONGLONG);
+
+            // write a primary array header + a user keyword into the memory file
+            ffphps_safe(f, BYTE_IMG, 0, &[], &mut status); // SIMPLE/BITPIX=8/NAXIS=0
+            ffpkyj_safe(f, cs!(c"ANSWER"), 42, Some(cs!(c"meaning")), &mut status);
+            assert_eq!(status, 0, "writing header failed");
+
+            // read the keywords back from the in-memory file
+            let mut bitpix: c_long = 0;
+            ffgkyj_safe(f, cs!(c"BITPIX"), &mut bitpix, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(bitpix, 8);
+
+            let mut answer: c_long = 0;
+            ffgkyj_safe(f, cs!(c"ANSWER"), &mut answer, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(answer, 42);
+        }
+
+        // memkeep driver leaves our buffer alone; the Vec frees normally on drop
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        // keep the backing buffer alive until after the file is closed
+        drop(buffer);
     }
 }
