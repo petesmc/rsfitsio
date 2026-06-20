@@ -16,7 +16,9 @@ use crate::fitscore::ffgcno_safe;
 use crate::fitscore::ffgdes_safe;
 use crate::fitscore::ffghdt_safe;
 use crate::fitscore::ffgidm_safe;
+use crate::fitscore::ffgnrwll_safe;
 use crate::fitscore::ffgtcl_safe;
+use crate::fitscore::ffgtclll_safe;
 use crate::fitscore::ffkeyn_safe;
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::ffpmsg_str;
@@ -1916,17 +1918,164 @@ pub unsafe extern "C" fn ffpcln(
 /// the defined null value, unless nulval[i]=0,
 /// in which case no checking for undefined values will be performed.
 pub fn ffpcln_safe(
-    _fptr: &mut fitsfile,      /* I - FITS file pointer                       */
-    _ncols: c_int,             /* I - number of columns to write              */
-    _datatype: &[c_int],       /* I - datatypes of the values                 */
-    _colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
-    _firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
-    _nrows: LONGLONG,          /* I - number of rows to write             */
-    _array: &[*const c_void],  /* I - array of pointers to values to write    */
-    _nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
-    _status: &mut c_int,       /* IO - error status                           */
+    fptr: &mut fitsfile,      /* I - FITS file pointer                       */
+    ncols: c_int,             /* I - number of columns to write              */
+    datatype: &[c_int],       /* I - datatypes of the values                 */
+    colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
+    firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
+    nrows: LONGLONG,          /* I - number of rows to write             */
+    array: &[*const c_void],  /* I - array of pointers to values to write    */
+    nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
+    status: &mut c_int,       /* IO - error status                           */
 ) -> c_int {
-    todo!();
+    let mut ntotrows: LONGLONG = 0;
+    let mut nrowbuf: c_long = 0;
+    let mut sizes: [usize; 255] = [0; 255];
+
+    sizes[TBYTE as usize] = size_of::<c_char>();
+    sizes[TSBYTE as usize] = size_of::<c_char>();
+    sizes[TLOGICAL as usize] = size_of::<c_char>();
+    sizes[TUSHORT as usize] = size_of::<c_short>();
+    sizes[TSHORT as usize] = size_of::<c_short>();
+    sizes[TINT as usize] = size_of::<c_int>();
+    sizes[TUINT as usize] = size_of::<c_int>();
+    sizes[TLONG as usize] = size_of::<c_long>();
+    sizes[TULONG as usize] = size_of::<c_long>();
+    sizes[TLONGLONG as usize] = size_of::<LONGLONG>();
+    sizes[TULONGLONG as usize] = size_of::<LONGLONG>();
+    sizes[TFLOAT as usize] = size_of::<f32>();
+    sizes[TDOUBLE as usize] = size_of::<f64>();
+    sizes[TDBLCOMPLEX as usize] = 2 * size_of::<f64>();
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if ncols <= 0 {
+        *status = 0;
+        return *status;
+    }
+
+    /* C used malloc(sizeof(LONGLONG)*ncols); a Vec owns the storage and frees it
+    on return, so the explicit MEMORY_ALLOCATION failure path and free() calls
+    are dropped. */
+    let mut repeats: Vec<LONGLONG> = vec![0; ncols as usize];
+
+    ffgnrwll_safe(fptr, &mut ntotrows, status);
+    ffgrsz_safe(fptr, &mut nrowbuf, status);
+
+    /* Retrieve column repeats */
+    let mut icol: c_int = 0;
+    while icol < ncols && icol < 1000 {
+        let mut typecode: c_int = 0;
+        let mut repeat: LONGLONG = 0;
+        let mut width: LONGLONG = 0;
+        ffgtclll_safe(
+            fptr,
+            colnum[icol as usize],
+            Some(&mut typecode),
+            Some(&mut repeat),
+            Some(&mut width),
+            status,
+        );
+        repeats[icol as usize] = repeat;
+
+        let dt = datatype[icol as usize];
+        if dt == TBIT || dt == TSTRING || sizes.get(dt as usize).copied().unwrap_or(0) == 0 {
+            ffpmsg_str("Cannot write to TBIT or TSTRING datatypes (ffpcln)");
+            *status = BAD_DATATYPE;
+        }
+        if typecode < 0 {
+            ffpmsg_str("Cannot write to variable-length data (ffpcln)");
+            *status = BAD_DIMEN;
+        }
+
+        if *status != 0 {
+            break;
+        }
+        icol += 1;
+    }
+    if *status != 0 {
+        return *status;
+    }
+
+    /* Optimize for 1 column */
+    if ncols == 1 {
+        let dt = datatype[0];
+        let elsize = sizes.get(dt as usize).copied().unwrap_or(0);
+        let nelem = nrows * repeats[0];
+        // SAFETY: array[0] points to a buffer of at least nelem*elsize bytes
+        // supplied by the caller; ffpcn_safe expects exactly that many bytes.
+        let array0: &[u8] =
+            unsafe { slice::from_raw_parts(array[0] as *const u8, nelem as usize * elsize) };
+        let nulval0 = NullValue::from_raw_ptr(dt, nulval[0]);
+        ffpcn_safe(
+            fptr, dt, colnum[0], firstrow, 1, nelem, array0, nulval0, status,
+        );
+        return *status;
+    }
+
+    /* Scan through file, in chunks of nrowbuf */
+    let mut currow = firstrow;
+    let mut ndone: LONGLONG = 0;
+    while ndone < nrows {
+        let mut nwrite = nrows - ndone;
+        if nwrite > nrowbuf as LONGLONG {
+            nwrite = nrowbuf as LONGLONG;
+        }
+
+        let mut icol: c_int = 0;
+        while icol < ncols {
+            let ic = icol as usize;
+            let dt = datatype[ic];
+            let elsize = sizes.get(dt as usize).copied().unwrap_or(0);
+            let nelem1: LONGLONG = nwrite * repeats[ic];
+            let byteoff = (repeats[ic] * ndone) as usize * elsize;
+            // SAFETY: array[ic] points to a caller-supplied buffer; the offset
+            // and length mirror the C pointer arithmetic and stay within it.
+            let array1: &[u8] = unsafe {
+                slice::from_raw_parts(
+                    (array[ic] as *const u8).add(byteoff),
+                    nelem1 as usize * elsize,
+                )
+            };
+            let nulval1 = NullValue::from_raw_ptr(dt, nulval[ic]);
+
+            ffpcn_safe(
+                fptr,
+                dt,
+                colnum[ic],
+                ndone + 1,
+                1,
+                nelem1,
+                array1,
+                nulval1,
+                status,
+            );
+            if *status != 0 {
+                let mut errmsg: [c_char; 100] = [0; 100];
+                int_snprintf!(
+                    &mut errmsg,
+                    100,
+                    "Failed to write column {} data rows {}-{} (ffpcln)",
+                    colnum[ic],
+                    currow,
+                    currow + nwrite - 1
+                );
+                ffpmsg_slice(&errmsg);
+                break;
+            }
+            icol += 1;
+        }
+
+        if *status != 0 {
+            break;
+        }
+        currow += nwrite;
+        ndone += nwrite;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

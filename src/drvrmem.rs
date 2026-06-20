@@ -207,7 +207,7 @@ pub(crate) fn mem_openmem(
     buffptr: *const *const c_void, /* I - address of memory pointer          */
     buffsize: &mut usize,          /* I - size of buffer, in bytes           */
     deltasize: usize,              /* I - increment for future realloc's     */
-    memrealloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function  */
+    memrealloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function (may be NULL)  */
     handle: &mut c_int,
 ) -> c_int {
     *handle = -1;
@@ -235,7 +235,7 @@ pub(crate) fn mem_openmem(
     m[ii].deltasize = deltasize; /* suggested realloc increment */
     m[ii].fitsfilesize = *buffsize as LONGLONG; /* size of FITS file (upper limit) */
     m[ii].currentpos = 0; /* at beginning of the file */
-    m[ii].mem_realloc = Some(memrealloc); /* memory realloc function */
+    m[ii].mem_realloc = memrealloc; /* memory realloc function (may be NULL) */
     0
 }
 

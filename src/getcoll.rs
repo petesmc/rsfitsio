@@ -13,9 +13,11 @@ use crate::c_types::{c_char, c_int, c_long, c_uchar, c_uint, c_ushort};
 use bytemuck::cast_slice_mut;
 
 use crate::NullCheckType;
-use crate::fitscore::{ffgcprll, ffgdes_safe, ffmahd_safe, ffpmsg_slice, ffrdef_safe};
+use crate::fitscore::{ffgcprll, ffgdes_safe, ffmahd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe};
 use crate::fitsio::*;
 use crate::fitsio2::*;
+use crate::getcolui::ffgcvui_safe;
+use crate::getcoluk::ffgcvuk_safe;
 use crate::{buffers::*, int_snprintf};
 
 /*--------------------------------------------------------------------------*/
@@ -620,16 +622,159 @@ pub unsafe extern "C" fn ffgcxui(
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxui_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    _colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    _firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    _nrows: LONGLONG,         /* I - no. of rows to read                     */
-    _input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    _input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    _array: &mut [c_ushort],  /* O - array of integer values            */
-    _status: &mut c_int,      /* IO - error status                           */
+    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: &mut [c_ushort],  /* O - array of integer values            */
+    status: &mut c_int,      /* IO - error status                           */
 ) -> c_int {
-    todo!()
+    let mut colbyte: [c_ushort; 5] = [0; 5];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 || nrows == 0 {
+        return *status;
+    }
+
+    /*  check input parameters */
+    if firstrow < 1 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Starting row number is less than 1: {} (ffgcxui)",
+            firstrow
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ROW_NUM;
+        return *status;
+    } else if input_first_bit < 1 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Starting bit number is less than 1: {} (ffgcxui)",
+            input_first_bit
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ELEM_NUM;
+        return *status;
+    } else if input_nbits > 16 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Number of bits to read is > 16: {} (ffgcxui)",
+            input_nbits
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ELEM_NUM;
+        return *status;
+    }
+
+    /* position to the correct HDU */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+
+    /* rescan header if data structure is undefined */
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype != BINARY_TBL {
+        ffpmsg_str("This is not a binary table extension (ffgcxui)");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    if colnum > fptr.Fptr.tfield {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Specified column number is out of range: {} (ffgcxui)",
+            colnum
+        );
+        ffpmsg_slice(&message);
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "  There are {} columns in this table.",
+            fptr.Fptr.tfield
+        );
+        ffpmsg_slice(&message);
+
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_slice(); /* point to first column */
+    let ci = (colnum - 1) as usize; /* offset to correct column structure */
+    let tcol = c[ci];
+
+    if tcol.tdatatype.abs() > TBYTE {
+        ffpmsg_str("Can only read bits from X or B type columns. (ffgcxui)");
+        *status = NOT_LOGICAL_COL; /* not correct datatype column */
+        return *status;
+    }
+
+    let firstbyte: c_int = ((input_first_bit - 1) / 8 + 1) as c_int;
+    let lastbyte: c_int = ((input_first_bit + input_nbits as c_long - 2) / 8 + 1) as c_int;
+    let nbytes: c_int = lastbyte - firstbyte + 1;
+
+    if tcol.tdatatype == TBIT
+        && input_first_bit + input_nbits as c_long - 1 > tcol.trepeat as c_long
+    {
+        ffpmsg_str("Too many bits. Tried to read past width of column (ffgcxui)");
+        *status = BAD_ELEM_NUM;
+        return *status;
+    } else if tcol.tdatatype == TBYTE && lastbyte as c_long > tcol.trepeat as c_long {
+        ffpmsg_str("Too many bits. Tried to read past width of column (ffgcxui)");
+        *status = BAD_ELEM_NUM;
+        return *status;
+    }
+
+    for ii in 0..nrows {
+        /* read the relevant bytes from the row */
+        if ffgcvui_safe(
+            fptr,
+            colnum,
+            firstrow + ii,
+            firstbyte as LONGLONG,
+            nbytes as LONGLONG,
+            0,
+            &mut colbyte,
+            None,
+            status,
+        ) > 0
+        {
+            ffpmsg_str("Error reading bytes from column (ffgcxui)");
+            return *status;
+        }
+
+        let mut firstbit: c_int = ((input_first_bit - 1) % 8) as c_int; /* modulus operator */
+        let mut nbits: c_int = input_nbits;
+
+        array[ii as usize] = 0;
+
+        /* select and shift the bits from each byte into the output word */
+        while nbits != 0 {
+            let bytenum: c_int = firstbit / 8;
+
+            let startbit: c_int = firstbit % 8;
+            let numbits: c_int = cmp::min(nbits, 8 - startbit);
+            let endbit: c_int = startbit + numbits - 1;
+
+            let rshift: c_int = 7 - endbit;
+            let lshift: c_int = nbits - numbits;
+
+            array[ii as usize] =
+                ((colbyte[bytenum as usize] >> rshift) << lshift) | array[ii as usize];
+
+            nbits -= numbits;
+            firstbit += numbits;
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -673,14 +818,157 @@ pub unsafe extern "C" fn ffgcxuk(
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
 pub fn ffgcxuk_safe(
-    _fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    _colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    _firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    _nrows: LONGLONG,         /* I - no. of rows to read                     */
-    _input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    _input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    _array: &mut [c_uint],    /* O - array of integer values            */
-    _status: &mut c_int,      /* IO - error status                           */
+    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
+    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
+    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
+    nrows: LONGLONG,         /* I - no. of rows to read                     */
+    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
+    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
+    array: &mut [c_uint],    /* O - array of integer values            */
+    status: &mut c_int,      /* IO - error status                           */
 ) -> c_int {
-    todo!()
+    let mut colbyte: [c_uint; 5] = [0; 5];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+
+    if *status > 0 || nrows == 0 {
+        return *status;
+    }
+
+    /*  check input parameters */
+    if firstrow < 1 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Starting row number is less than 1: {} (ffgcxuk)",
+            firstrow
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ROW_NUM;
+        return *status;
+    } else if input_first_bit < 1 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Starting bit number is less than 1: {} (ffgcxuk)",
+            input_first_bit
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ELEM_NUM;
+        return *status;
+    } else if input_nbits > 32 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Number of bits to read is > 32: {} (ffgcxuk)",
+            input_nbits
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_ELEM_NUM;
+        return *status;
+    }
+
+    /* position to the correct HDU */
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+
+    /* rescan header if data structure is undefined */
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG && ffrdef_safe(fptr, status) > 0 {
+        return *status;
+    }
+
+    if fptr.Fptr.hdutype != BINARY_TBL {
+        ffpmsg_str("This is not a binary table extension (ffgcxuk)");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    if colnum > fptr.Fptr.tfield {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "Specified column number is out of range: {} (ffgcxuk)",
+            colnum
+        );
+        ffpmsg_slice(&message);
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "  There are {} columns in this table.",
+            fptr.Fptr.tfield
+        );
+        ffpmsg_slice(&message);
+
+        *status = BAD_COL_NUM;
+        return *status;
+    }
+
+    let c = fptr.Fptr.get_tableptr_as_slice(); /* point to first column */
+    let ci = (colnum - 1) as usize; /* offset to correct column structure */
+    let tcol = c[ci];
+
+    if tcol.tdatatype.abs() > TBYTE {
+        ffpmsg_str("Can only read bits from X or B type columns. (ffgcxuk)");
+        *status = NOT_LOGICAL_COL; /* not correct datatype column */
+        return *status;
+    }
+
+    let firstbyte: c_int = ((input_first_bit - 1) / 8 + 1) as c_int;
+    let lastbyte: c_int = ((input_first_bit + input_nbits as c_long - 2) / 8 + 1) as c_int;
+    let nbytes: c_int = lastbyte - firstbyte + 1;
+
+    if tcol.tdatatype == TBIT
+        && input_first_bit + input_nbits as c_long - 1 > tcol.trepeat as c_long
+    {
+        ffpmsg_str("Too many bits. Tried to read past width of column (ffgcxuk)");
+        *status = BAD_ELEM_NUM;
+        return *status;
+    } else if tcol.tdatatype == TBYTE && lastbyte as c_long > tcol.trepeat as c_long {
+        ffpmsg_str("Too many bits. Tried to read past width of column (ffgcxuk)");
+        *status = BAD_ELEM_NUM;
+        return *status;
+    }
+
+    for ii in 0..nrows {
+        /* read the relevant bytes from the row */
+        if ffgcvuk_safe(
+            fptr,
+            colnum,
+            firstrow + ii,
+            firstbyte as LONGLONG,
+            nbytes as LONGLONG,
+            0,
+            &mut colbyte,
+            None,
+            status,
+        ) > 0
+        {
+            ffpmsg_str("Error reading bytes from column (ffgcxuk)");
+            return *status;
+        }
+
+        let mut firstbit: c_int = ((input_first_bit - 1) % 8) as c_int; /* modulus operator */
+        let mut nbits: c_int = input_nbits;
+
+        array[ii as usize] = 0;
+
+        /* select and shift the bits from each byte into the output word */
+        while nbits != 0 {
+            let bytenum: c_int = firstbit / 8;
+
+            let startbit: c_int = firstbit % 8;
+            let numbits: c_int = cmp::min(nbits, 8 - startbit);
+            let endbit: c_int = startbit + numbits - 1;
+
+            let rshift: c_int = 7 - endbit;
+            let lshift: c_int = nbits - numbits;
+
+            array[ii as usize] =
+                ((colbyte[bytenum as usize] >> rshift) << lshift) | array[ii as usize];
+
+            nbits -= numbits;
+            firstbit += numbits;
+        }
+    }
+
+    *status
 }

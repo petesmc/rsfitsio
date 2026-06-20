@@ -9,7 +9,7 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
-use std::{mem, ptr};
+use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
@@ -24,9 +24,10 @@ use libc::{ERANGE, strtod};
 use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
     file_checkfile, file_close, file_compress_open, file_create, file_flush, file_getoptions,
-    file_getversion, file_init, file_open, file_read, file_remove, file_seek, file_setoptions,
-    file_shutdown, file_size, file_truncate, file_write, stream_close, stream_create, stream_flush,
-    stream_open, stream_read, stream_seek, stream_size, stream_write,
+    file_getversion, file_init, file_is_compressed, file_open, file_openfile, file_read,
+    file_remove, file_seek, file_setoptions, file_shutdown, file_size, file_truncate, file_write,
+    stream_close, stream_create, stream_flush, stream_open, stream_read, stream_seek, stream_size,
+    stream_write,
 };
 use crate::drvrmem::{
     mem_close_comp_unsafe, mem_close_free_unsafe, mem_close_keep, mem_compress_open,
@@ -44,17 +45,24 @@ use crate::drvrsmem::{
 };
 use crate::editcol::ffdcol_safe;
 use crate::edithdu::ffcopy_safe;
-use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe};
+use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, fits_pixel_filter_safer};
 use crate::fitscore::{
-    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcno_safe, ffgerr_safe, ffghdn_safe, ffghdt_safe,
-    ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
-    ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrhdu_safe, ffupch_safe, fits_strcasecmp,
-    fits_strncasecmp,
+    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe, ffghdn_safe,
+    ffghdt_safe, ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe,
+    ffmnhd_safe, ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
+    fits_strcasecmp, fits_strncasecmp, fits_translate_keywords_safer,
 };
-use crate::getkey::{ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffmaky_safe};
+use crate::getkey::{
+    ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
+};
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
+use crate::imcompress::{
+    fits_set_compression_type_safe, fits_set_hcomp_scale_safe, fits_set_hcomp_smooth_safe,
+    fits_set_quantize_level_safe, fits_set_quantize_method_safe, fits_set_tile_dim_safe,
+};
 use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
+use crate::putkey::ffcrimll_safe;
 use crate::putkey::{ffphis_safe, ffprec_safe};
 use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
 use crate::wrappers::*;
@@ -232,7 +240,7 @@ pub fn ffomem_safer(
 
     /* call driver routine to open the memory file */
     let lock = FFLOCK(); /* lock this while searching for vacant handle */
-    *status = mem_openmem(buffptr, buffsize, deltasize, mem_realloc, &mut handle);
+    *status = mem_openmem(buffptr, buffsize, deltasize, Some(mem_realloc), &mut handle);
     FFUNLOCK(lock);
 
     if *status > 0 {
@@ -3197,13 +3205,269 @@ pub unsafe extern "C" fn fits_copy_cell2image(
 ///
 /// This routine was written by Craig Markwardt, GSFC
 pub fn fits_copy_cell2image_safe(
-    _fptr: &mut fitsfile,   /* I - point to input table */
-    _newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
-    _colname: &[c_char],    /* I - column name / number containing the image*/
-    _rownum: c_long,        /* I - number of the row containing the image */
-    _status: &mut c_int,    /* IO - error status */
+    fptr: &mut fitsfile,   /* I - point to input table */
+    newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
+    colname: &[c_char],    /* I - column name / number containing the image*/
+    rownum: c_long,        /* I - number of the row containing the image */
+    status: &mut c_int,    /* IO - error status */
 ) -> c_int {
-    todo!()
+    let mut buffer: [u8; 30000] = [0; 30000];
+    let mut hdutype: c_int = 0;
+    let mut colnum: c_int = 0;
+    let mut typecode: c_int = 0;
+    let bitpix: c_int;
+    let mut naxis: c_int = 0;
+    let mut maxelem: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
+    let mut nbytes: LONGLONG;
+    let mut firstbyte: LONGLONG;
+    let mut ntodo: LONGLONG;
+    let mut repeat: LONGLONG = 0;
+    let mut startpos: LONGLONG = 0;
+    let mut elemnum: LONGLONG = 0;
+    let mut rowlen: LONGLONG = 0;
+    let mut tnull: LONGLONG = 0;
+    let mut twidth: c_long = 0;
+    let mut incre: c_long = 0;
+    let mut scale: f64 = 0.0;
+    let mut zero: f64 = 0.0;
+    let mut tform: [c_char; 20] = [0; 20];
+    let mut templt: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* the canonical column name; the C overwrites its `colname` argument in
+    place via ffgcnn, but ours is a `&[c_char]` input, so use a local buffer */
+    let mut colname_buf: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+
+    /* Table-to-image keyword translation table  */
+    /*                        INPUT      OUTPUT  */
+    /*                       01234567   01234567 */
+    let patterns: [[&CStr; 2]; 70] = [
+        [c"TSCALn", c"BSCALE"], /* Standard FITS keywords */
+        [c"TZEROn", c"BZERO"],
+        [c"TUNITn", c"BUNIT"],
+        [c"TNULLn", c"BLANK"],
+        [c"TDMINn", c"DATAMIN"],
+        [c"TDMAXn", c"DATAMAX"],
+        [c"iCTYPn", c"CTYPEi"], /* Coordinate labels */
+        [c"iCTYna", c"CTYPEia"],
+        [c"iCUNIn", c"CUNITi"], /* Coordinate units */
+        [c"iCUNna", c"CUNITia"],
+        [c"iCRVLn", c"CRVALi"], /* WCS keywords */
+        [c"iCRVna", c"CRVALia"],
+        [c"iCDLTn", c"CDELTi"],
+        [c"iCDEna", c"CDELTia"],
+        [c"iCRPXn", c"CRPIXi"],
+        [c"iCRPna", c"CRPIXia"],
+        [c"ijPCna", c"PCi_ja"],
+        [c"ijCDna", c"CDi_ja"],
+        [c"iVn_ma", c"PVi_ma"],
+        [c"iSn_ma", c"PSi_ma"],
+        [c"iCRDna", c"CRDERia"],
+        [c"iCSYna", c"CSYERia"],
+        [c"iCROTn", c"CROTAi"],
+        [c"WCAXna", c"WCSAXESa"],
+        [c"WCSNna", c"WCSNAMEa"],
+        [c"LONPna", c"LONPOLEa"],
+        [c"LATPna", c"LATPOLEa"],
+        [c"EQUIna", c"EQUINOXa"],
+        [c"MJDOBn", c"MJD-OBS"],
+        [c"MJDAn", c"MJD-AVG"],
+        [c"RADEna", c"RADESYSa"],
+        [c"iCNAna", c"CNAMEia"],
+        [c"DAVGn", c"DATE-AVG"],
+        /* Delete table keywords related to other columns */
+        [c"T????#a", c"-"],
+        [c"TC??#a", c"-"],
+        [c"TWCS#a", c"-"],
+        [c"TDIM#", c"-"],
+        [c"iCTYPm", c"-"],
+        [c"iCUNIm", c"-"],
+        [c"iCRVLm", c"-"],
+        [c"iCDLTm", c"-"],
+        [c"iCRPXm", c"-"],
+        [c"iCTYma", c"-"],
+        [c"iCUNma", c"-"],
+        [c"iCRVma", c"-"],
+        [c"iCDEma", c"-"],
+        [c"iCRPma", c"-"],
+        [c"ijPCma", c"-"],
+        [c"ijCDma", c"-"],
+        [c"iVm_ma", c"-"],
+        [c"iSm_ma", c"-"],
+        [c"iCRDma", c"-"],
+        [c"iCSYma", c"-"],
+        [c"iCROTm", c"-"],
+        [c"WCAXma", c"-"],
+        [c"WCSNma", c"-"],
+        [c"LONPma", c"-"],
+        [c"LATPma", c"-"],
+        [c"EQUIma", c"-"],
+        [c"MJDOBm", c"-"],
+        [c"MJDAm", c"-"],
+        [c"RADEma", c"-"],
+        [c"iCNAma", c"-"],
+        [c"DAVGm", c"-"],
+        [c"EXTNAME", c"-"], /* Remove structural keywords*/
+        [c"EXTVER", c"-"],
+        [c"EXTLEVEL", c"-"],
+        [c"CHECKSUM", c"-"],
+        [c"DATASUM", c"-"],
+        [c"*", c"+"], /* copy all other keywords */
+    ];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* get column number */
+    if ffgcno_safe(fptr, CASEINSEN as c_int, colname, &mut colnum, status) > 0 {
+        ffpmsg_str("column containing image in table cell does not exist:");
+        ffpmsg_slice(colname);
+        return *status;
+    }
+
+    /*---------------------------------------------------*/
+    /*  Check input and get parameters about the column: */
+    /*---------------------------------------------------*/
+    if ffgcprll(
+        fptr,
+        colnum,
+        rownum as LONGLONG,
+        1,
+        1,
+        0,
+        &mut scale,
+        &mut zero,
+        &mut tform,
+        &mut twidth,
+        &mut typecode,
+        &mut maxelem,
+        &mut startpos,
+        &mut elemnum,
+        &mut incre,
+        &mut repeat,
+        &mut rowlen,
+        &mut hdutype,
+        &mut tnull,
+        cast_slice_mut(&mut buffer),
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    /* get the actual column name, in case a column number was given */
+    ffkeyn_safe(cs!(c""), colnum, &mut templt, &mut tstatus);
+    ffgcnn_safe(
+        fptr,
+        CASEINSEN as c_int,
+        &templt,
+        &mut colname_buf,
+        &mut colnum,
+        &mut tstatus,
+    );
+
+    if hdutype != BINARY_TBL {
+        ffpmsg_str("This extension is not a binary table.");
+        ffpmsg_str(" Cannot open the image in a binary table cell.");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    if typecode < 0 {
+        /* variable length array */
+        typecode *= -1;
+
+        /* variable length arrays are 1-dimensional by default */
+        naxis = 1;
+        naxes[0] = repeat;
+    } else {
+        /* get the dimensions of the image */
+        ffgtdmll_safer(fptr, colnum, 9, &mut naxis, &mut naxes, status);
+    }
+
+    if *status > 0 {
+        ffpmsg_str("Error getting the dimensions of the image");
+        return *status;
+    }
+
+    /* determine BITPIX value for the image */
+    if typecode == TBYTE {
+        bitpix = BYTE_IMG;
+        nbytes = repeat;
+    } else if typecode == TSHORT {
+        bitpix = SHORT_IMG;
+        nbytes = repeat * 2;
+    } else if typecode == TLONG {
+        bitpix = LONG_IMG;
+        nbytes = repeat * 4;
+    } else if typecode == TFLOAT {
+        bitpix = FLOAT_IMG;
+        nbytes = repeat * 4;
+    } else if typecode == TDOUBLE {
+        bitpix = DOUBLE_IMG;
+        nbytes = repeat * 8;
+    } else if typecode == TLONGLONG {
+        bitpix = LONGLONG_IMG;
+        nbytes = repeat * 8;
+    } else if typecode == TLOGICAL {
+        bitpix = BYTE_IMG;
+        nbytes = repeat;
+    } else {
+        ffpmsg_str("Error: the following image column has invalid datatype:");
+        ffpmsg_slice(&colname_buf);
+        ffpmsg_slice(&tform);
+        ffpmsg_str("Cannot open an image in a single row of this column.");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    /* create new image in output file */
+    if ffcrimll_safe(newptr, bitpix, naxis, &naxes, status) > 0 {
+        ffpmsg_str("failed to write required primary array keywords in the output file");
+        return *status;
+    }
+
+    let npat: c_int = patterns.len() as c_int;
+
+    /* skip over the first 8 keywords, starting just after TFIELDS */
+    fits_translate_keywords_safer(fptr, newptr, 9, &patterns, npat, colnum, 0, 0, status);
+
+    /* The C builds a HISTORY card here, but the ffprec() that would write it is
+    disabled (left to the caller), so the card is never used; omitted. */
+
+    /* the use of ffread routine, below, requires that any 'dirty' */
+    /* buffers in memory be flushed back to the file first */
+
+    ffflsh_safe(fptr, false, status);
+
+    /* finally, copy the data, one buffer size at a time */
+    ffmbyt_safe(fptr, startpos, TRUE as c_int, status);
+    firstbyte = 1;
+
+    /* the upper limit on the number of bytes must match the declaration */
+    /* read up to the first 30000 bytes in the normal way with ffgbyt */
+
+    ntodo = cmp::min(30000, nbytes);
+    ffgbyt(fptr, ntodo, &mut buffer, status);
+    ffptbb_safe(newptr, 1, firstbyte, ntodo, &buffer, status);
+
+    nbytes -= ntodo;
+    firstbyte += ntodo;
+
+    /* read any additional bytes with low-level ffread routine, for speed */
+    while nbytes != 0 && *status <= 0 {
+        ntodo = cmp::min(30000, nbytes);
+        ffread(&fptr.Fptr, ntodo as c_long, &mut buffer, status);
+        ffptbb_safe(newptr, 1, firstbyte, ntodo, &buffer, status);
+        nbytes -= ntodo;
+        firstbyte += ntodo;
+    }
+
+    /* Re-scan the header so that CFITSIO knows about all the new keywords */
+    ffrdef_safe(newptr, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3538,11 +3802,196 @@ pub(crate) fn ffselect_table(
 /// The compression parameters are saved in the fptr->Fptr structure for use
 /// when writing FITS images.
 pub(crate) fn ffparsecompspec(
-    _fptr: &mut fitsfile, /* I - FITS file pointer               */
-    _compspec: &[c_char], /* I - image compression specification */
-    _status: &mut c_int,  /* IO - error status                       */
+    fptr: &mut fitsfile, /* I - FITS file pointer               */
+    compspec: &[c_char], /* I - image compression specification */
+    status: &mut c_int,  /* IO - error status                       */
 ) -> c_int {
-    todo!()
+    /* the C walks `compspec` with a `char *ptr1`; we use an index instead */
+    let mut ptr1: usize;
+
+    /* initialize with default values */
+    let mut ii: usize;
+    let mut compresstype: c_int = RICE_1;
+    let mut smooth: c_int = 0;
+    let mut quantize_method: c_int = SUBTRACTIVE_DITHER_1;
+    let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut qlevel: f32 = -99.;
+    let mut scale: f32 = 0.;
+
+    ptr1 = 0;
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    if strncmp_safe(&compspec[ptr1..], cs!(c"compress"), 8) != 0
+        && strncmp_safe(&compspec[ptr1..], cs!(c"COMPRESS"), 8) != 0
+    {
+        /* apparently this string does not specify compression parameters */
+        *status = URL_PARSE_ERROR;
+        return *status;
+    }
+
+    ptr1 += 8;
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    /* ========================= */
+    /* look for compression type */
+    /* ========================= */
+
+    if compspec[ptr1] == bb(b'r') || compspec[ptr1] == bb(b'R') {
+        compresstype = RICE_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    } else if compspec[ptr1] == bb(b'g') || compspec[ptr1] == bb(b'G') {
+        compresstype = GZIP_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    }
+    /*
+        else if (*ptr1 == 'b' || *ptr1 == 'B')
+        {
+            compresstype = BZIP2_1;
+            while (*ptr1 != ' ' && *ptr1 != ';' && *ptr1 != '\0')
+               ptr1++;
+        }
+    */
+    else if compspec[ptr1] == bb(b'p') || compspec[ptr1] == bb(b'P') {
+        compresstype = PLIO_1;
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    } else if compspec[ptr1] == bb(b'h') || compspec[ptr1] == bb(b'H') {
+        compresstype = HCOMPRESS_1;
+        ptr1 += 1;
+        if compspec[ptr1] == bb(b's') || compspec[ptr1] == bb(b'S') {
+            smooth = 1; /* apply smoothing when uncompressing HCOMPRESSed image */
+        }
+
+        while compspec[ptr1] != bb(b' ') && compspec[ptr1] != bb(b';') && compspec[ptr1] != 0 {
+            ptr1 += 1;
+        }
+    }
+
+    /* ======================== */
+    /* look for tile dimensions */
+    /* ======================== */
+
+    while compspec[ptr1] == bb(b' ') {
+        /* ignore leading blanks */
+        ptr1 += 1;
+    }
+
+    ii = 0;
+    /* NOTE: the C loop bound was `ii < 9`, which would overflow the
+    MAX_COMPRESS_DIM-element tilesize array; bound it to the array size */
+    while isdigit_safe(compspec[ptr1]) && ii < MAX_COMPRESS_DIM {
+        tilesize[ii] = strtol_safe::<c_long>(&compspec[ptr1..]).map_or(0, |(v, _)| v); /* read the integer value */
+        ii += 1;
+
+        while isdigit_safe(compspec[ptr1]) {
+            /* skip over the integer */
+            ptr1 += 1;
+        }
+
+        if compspec[ptr1] == bb(b',') {
+            ptr1 += 1; /* skip over the comma */
+        }
+
+        while compspec[ptr1] == bb(b' ') {
+            /* ignore leading blanks */
+            ptr1 += 1;
+        }
+    }
+
+    /* ========================================================= */
+    /* look for semi-colon, followed by other optional parameters */
+    /* ========================================================= */
+
+    if compspec[ptr1] == bb(b';') {
+        ptr1 += 1;
+        while compspec[ptr1] == bb(b' ') {
+            /* ignore leading blanks */
+            ptr1 += 1;
+        }
+
+        while compspec[ptr1] != 0 {
+            /* haven't reached end of string yet */
+
+            if compspec[ptr1] == bb(b's') || compspec[ptr1] == bb(b'S') {
+                /* this should be the HCOMPRESS "scale" parameter; default = 1 */
+
+                ptr1 += 1;
+                while compspec[ptr1] == bb(b' ') {
+                    /* ignore leading blanks */
+                    ptr1 += 1;
+                }
+
+                let mut loc: usize = 0;
+                scale = strtod_safe(&compspec[ptr1..], &mut loc) as f32;
+                ptr1 += loc;
+
+                while compspec[ptr1] == bb(b' ') || compspec[ptr1] == bb(b',') {
+                    /* skip over blanks or comma */
+                    ptr1 += 1;
+                }
+            } else if compspec[ptr1] == bb(b'q') || compspec[ptr1] == bb(b'Q') {
+                /* this should be the floating point quantization parameter */
+
+                ptr1 += 1;
+                if compspec[ptr1] == bb(b'z') || compspec[ptr1] == bb(b'Z') {
+                    /* use the subtractive_dither_2 option */
+                    quantize_method = SUBTRACTIVE_DITHER_2;
+                    ptr1 += 1;
+                } else if compspec[ptr1] == bb(b'0') {
+                    /* do not dither */
+                    quantize_method = NO_DITHER;
+                    ptr1 += 1;
+                }
+
+                while compspec[ptr1] == bb(b' ') {
+                    /* ignore leading blanks */
+                    ptr1 += 1;
+                }
+
+                let mut loc: usize = 0;
+                qlevel = strtod_safe(&compspec[ptr1..], &mut loc) as f32;
+                ptr1 += loc;
+
+                while compspec[ptr1] == bb(b' ') || compspec[ptr1] == bb(b',') {
+                    /* skip over blanks or comma */
+                    ptr1 += 1;
+                }
+            } else {
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+        }
+    }
+
+    /* ================================= */
+    /* finished parsing; save the values */
+    /* ================================= */
+
+    fits_set_compression_type_safe(fptr, compresstype, status);
+    fits_set_tile_dim_safe(fptr, MAX_COMPRESS_DIM as c_int, &tilesize, status);
+
+    if compresstype == HCOMPRESS_1 {
+        fits_set_hcomp_scale_safe(fptr, scale, status);
+        fits_set_hcomp_smooth_safe(fptr, smooth, status);
+    }
+
+    if qlevel != -99. {
+        fits_set_quantize_level_safe(fptr, qlevel, status);
+        fits_set_quantize_method_safe(fptr, quantize_method, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3847,14 +4296,125 @@ pub unsafe extern "C" fn ffimem(
 /*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file in memory
 pub fn ffimem_safer(
-    _fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    _buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    _buffsize: &mut usize,             /* I - size of buffer, in bytes            */
-    _deltasize: usize,                 /* I - increment for future realloc's      */
-    _mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
-    _status: &mut c_int, /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
+    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
+    buffsize: &mut usize,             /* I - size of buffer, in bytes            */
+    deltasize: usize,                 /* I - increment for future realloc's      */
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
+    status: &mut c_int, /* IO - error status                       */
 ) -> c_int {
-    todo!()
+    let mut driver: c_int = 0;
+    let mut handle: c_int = 0;
+    let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* initialize null file pointer */
+    let f_tmp = fptr.take();
+    if let Some(f) = f_tmp {
+        // WARNING (mirrors ffomem): the C leaves a dangling pointer after it
+        // overwrites *fptr, so if we were handed an existing Some() it is
+        // probably invalid; leak it rather than risk a double free.
+        let _ = Box::into_raw(f);
+    }
+
+    if *NEED_TO_INITIALIZE.lock().unwrap() {
+        /* this is called only once */
+        *status = fits_init_cfitsio_safer();
+    }
+
+    if *status > 0 {
+        return *status;
+    }
+
+    strcpy_safe(&mut urltype, cs!(c"memkeep://")); /* URL type for pre-existing memory file */
+
+    *status = urltype2driver(&urltype, &mut driver);
+
+    if *status > 0 {
+        ffpmsg_str("could not find driver for pre-existing memory file: (ffimem)");
+        return *status;
+    }
+
+    /* call driver routine to "open" the memory file */
+    let lock = FFLOCK(); /* lock this while searching for vacant handle */
+    *status = mem_openmem(
+        buffptr as *const *const c_void,
+        buffsize,
+        deltasize,
+        mem_realloc,
+        &mut handle,
+    );
+    FFUNLOCK(lock);
+
+    if *status > 0 {
+        ffpmsg_str("failed to open pre-existing memory file: (ffimem)");
+        return *status;
+    }
+
+    /* allocate the fitsfile / FITSfile structures along with the filename,
+    headstart, and iobuffer arrays (the C's calloc/malloc block) */
+    let d = DRIVER_TABLE.get().unwrap();
+    let Fptr = FITSfile::new(
+        &d[driver as usize],
+        handle,
+        cs!(c"memfile"),
+        cs!(c"ffimem"),
+        status,
+    );
+    if Fptr.is_err() {
+        /* FITSfile::new already reported the specific allocation failure */
+        return *status;
+    }
+
+    let mut Fptr = Fptr.unwrap();
+
+    /* initialize the ageindex array (relative age of the I/O buffers) */
+    /* and initialize the bufrecnum array as being empty */
+    for ii in 0..(NIOBUF as usize) {
+        Fptr.ageindex[ii] = ii as c_int;
+        Fptr.bufrecnum[ii] = -1;
+    }
+
+    /* store the parameters describing the file */
+    Fptr.MAXHDU = 1000; /* initial size of headstart */
+    Fptr.filehandle = handle; /* file handle */
+    Fptr.driver = driver; /* driver number */
+    unsafe {
+        strcpy(Fptr.filename, cs!(c"memfile").as_ptr()); /* dummy filename */
+    }
+    Fptr.filesize = *buffsize as LONGLONG; /* physical file size */
+    Fptr.logfilesize = *buffsize as LONGLONG; /* logical file size */
+    Fptr.writemode = 1; /* read-write mode    */
+    Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data */
+    Fptr.curbuf = -1; /* undefined current IO buffer */
+    Fptr.open_count = 1; /* structure is currently used once */
+    Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
+    Fptr.noextsyntax = 0; /* extended syntax can be used in filename */
+
+    let f_fitsfile = box_try_new(fitsfile {
+        HDUposition: 0,
+        Fptr,
+    });
+
+    if f_fitsfile.is_err() {
+        let d = DRIVER_TABLE.get().unwrap();
+        ((d[driver as usize]).close)(handle); /* close the file */
+        ffpmsg_str("failed to allocate structure for memory file: (ffimem)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+
+    let mut f_fitsfile = f_fitsfile.unwrap();
+
+    ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
+    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+
+    *fptr = Some(f_fitsfile);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5816,15 +6376,60 @@ pub unsafe extern "C" fn ffexist(
 /// If the specified file can't be found, it then searches for a
 /// compressed version of the file.
 pub fn ffexist_safer(
-    _infile: &[c_char],  /* I - input filename or URL */
-    _exists: &mut c_int, /* O -  2 = a compressed version of file exists */
+    infile: &[c_char],  /* I - input filename or URL */
+    exists: &mut c_int, /* O -  2 = a compressed version of file exists */
     /*      1 = yes, disk file exists               */
     /*      0 = no, disk file could not be found    */
     /*     -1 = infile is not a disk file (could    */
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
-    _status: &mut c_int, /* I/O - error status */
+    status: &mut c_int, /* I/O - error status */
 ) -> c_int {
-    todo!();
+    let mut rootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* strip off any extname or filters from the name */
+    ffrtnm_safe(infile, &mut rootname, status);
+
+    /* the C walks `rootname` with a `char *ptr1`; we use an index instead */
+    let ptr1_pos = strstr_safe(&rootname, cs!(c"://"));
+
+    let ptr1_idx: usize;
+    if ptr1_pos.is_some() || rootname[0] == bb(b'-') {
+        if strncmp_safe(&rootname, cs!(c"file"), 4) == 0 {
+            ptr1_idx = ptr1_pos.unwrap() + 3; /* start of the disk file name (past "://") */
+        } else {
+            *exists = -1; /* this is not a disk file */
+            return *status;
+        }
+    } else {
+        ptr1_idx = 0; /* ptr1 = rootname */
+    }
+
+    /* file_is_compressed wants a full FLEN_FILENAME buffer, so copy the disk
+    file name (the C's `ptr1` substring) into its own array */
+    let mut diskname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    strcpy_safe(&mut diskname, &rootname[ptr1_idx..]);
+
+    /* see if the disk file exists */
+    let mut diskfile: Option<File> = None;
+    if file_openfile(&diskname, 0, &mut diskfile) != 0 {
+        /* no, couldn't open file, so see if there is a compressed version */
+        if file_is_compressed(&mut diskname) != 0 {
+            *exists = 2; /* a compressed version of the file exists */
+        } else {
+            *exists = 0; /* neither file nor compressed version exist */
+        }
+    } else {
+        /* yes, file exists */
+        *exists = 1;
+        /* C did fclose(diskfile); dropping the Option<File> closes it */
+        drop(diskfile.take());
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -6574,11 +7179,128 @@ pub unsafe extern "C" fn ffextn(
 ///     existing FTOOLS software.  CFITSIO would open the primary array by default
 ///     (extension_num = 1) in this case.
 pub fn ffextn_safer(
-    _url: &[c_char],            /* I - input filename/URL  */
-    _extension_num: &mut c_int, /* O - returned extension number */
-    _status: &mut c_int,
+    url: &[c_char],            /* I - input filename/URL  */
+    extension_num: &mut c_int, /* O - returned extension number */
+    status: &mut c_int,
 ) -> c_int {
-    todo!("Implementation of ffextn_safer needed");
+    let mut fptr: Option<Box<fitsfile>> = None;
+    let mut urltype: [c_char; 20] = [0; 20];
+    let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut rowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut binspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut colspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extnum: c_int = 0;
+    let mut extvers: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let mut tstatus: c_int = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /*  parse the input URL into its basic components  */
+    ffiurl_safe(
+        url,
+        Some(&mut urltype),
+        Some(&mut infile),
+        Some(&mut outfile),
+        Some(&mut extspec),
+        Some(&mut rowfilter),
+        Some(&mut binspec),
+        Some(&mut colspec),
+        status,
+    );
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if binspec[0] != 0
+    /* is there a binning specification? */
+    {
+        *extension_num = 1; /* a temporary primary array image is created */
+        return *status;
+    }
+
+    if extspec[0] != 0
+    /* is an extension specified? */
+    {
+        ffexts_safe(
+            &extspec,
+            &mut extnum,
+            &mut extname,
+            &mut extvers,
+            &mut hdutype,
+            &mut imagecolname,
+            &mut rowexpress,
+            status,
+        );
+
+        if *status > 0 {
+            return *status;
+        }
+
+        if imagecolname[0] != 0
+        /* is an image within a table cell being opened? */
+        {
+            *extension_num = 1; /* a temporary primary array image is created */
+            return *status;
+        }
+
+        if extname[0] != 0 {
+            /* have to open the file to search for the extension name (curses!) */
+
+            if strcmp_safe(&urltype, cs!(c"stdin://")) == 0 {
+                /* opening stdin would destroying it! */
+                *status = URL_PARSE_ERROR;
+                return *status;
+            }
+
+            /* First, strip off any filtering specification */
+            infile[0] = 0;
+            strncat_safe(&mut infile, url, FLEN_FILENAME - 1);
+
+            /* locate the closing bracket */
+            match strchr_safe(&infile, bb(b']')) {
+                None => {
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+                Some(cptr) => {
+                    infile[cptr + 1] = 0; /* terminate URL after the extension spec */
+                }
+            }
+
+            if ffopen_safe(&mut fptr, &infile, READONLY, status) > 0
+            /* open the file */
+            {
+                if let Some(f) = fptr.take() {
+                    ffclos_safe(f, &mut tstatus);
+                }
+                return *status;
+            }
+
+            ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut extnum); /* where am I in the file? */
+            *extension_num = extnum;
+            if let Some(f) = fptr.take() {
+                ffclos_safe(f, status);
+            }
+
+            *status
+        } else {
+            *extension_num = extnum + 1; /* return the specified number (+ 1) */
+            *status
+        }
+    } else {
+        *extension_num = -99; /* no specific extension was specified */
+        /* defaults to primary array */
+        *status
+    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7444,13 +8166,150 @@ pub fn ffrprt_safe(stream: *mut FILE, status: c_int) {
 
 /*--------------------------------------------------------------------------*/
 pub fn pixel_filter_helper(
-    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new image */
-    _outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
-    _pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
-    _status: *mut c_int,
+    outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
+    pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!()
+    let mut hdunum: c_int = 0;
+    let mut singleHDU: c_int = 0;
+    let mut bitpix: c_int = 0;
+
+    /* the new output file, created below; it replaces *fptr on success */
+    let mut ofptr: Option<Box<fitsfile>> = None;
+
+    /* create new empty file for result */
+    if ffinit_safe(&mut ofptr, &outfile, status) > 0 {
+        ffpmsg_str("failed to create output file for pixel filter:");
+        ffpmsg_slice(&outfile);
+        return *status;
+    }
+
+    ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut hdunum); /* current HDU number in input file */
+
+    /* the C advanced a `char *expr`; we walk `pixfilter` with an index instead */
+    let mut expr_idx: usize = 3; /* skip 'pix' */
+    match pixfilter[expr_idx] as u8 {
+        b'b' | b'B' => bitpix = BYTE_IMG,
+        b'i' | b'I' => bitpix = SHORT_IMG,
+        b'j' | b'J' => bitpix = LONG_IMG,
+        b'r' | b'R' => bitpix = FLOAT_IMG,
+        b'd' | b'D' => bitpix = DOUBLE_IMG,
+        _ => {}
+    }
+    if bitpix != 0 {
+        expr_idx += 1; /* skip bitpix indicator */
+    }
+
+    if pixfilter[expr_idx] == bb(b'1') {
+        expr_idx += 1;
+        singleHDU = 1;
+    }
+
+    if fptr.as_deref().unwrap().Fptr.only_one != 0 {
+        singleHDU = 1;
+    }
+
+    if pixfilter[expr_idx] != bb(b' ') {
+        ffpmsg_str("pixel filtering expression not space separated:");
+        ffpmsg_slice(&pixfilter[expr_idx..]);
+    }
+    while pixfilter[expr_idx] == bb(b' ') {
+        expr_idx += 1;
+    }
+
+    /* copy all preceding extensions to the output file */
+    let mut ii: c_int = 1;
+    while singleHDU == 0 && ii < hdunum {
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status);
+        if ffcopy_safe(
+            fptr.as_deref_mut().unwrap(),
+            ofptr.as_deref_mut().unwrap(),
+            0,
+            status,
+        ) > 0
+        {
+            if let Some(f) = ofptr.take() {
+                ffclos_safe(f, status);
+            }
+            return *status;
+        }
+        ii += 1;
+    }
+
+    /* move back to the original HDU position */
+    ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+
+    /* Run the image filter. PixelFilter is the #[repr(C)] interface to
+    fits_pixel_filter, so its ifptr/ofptr/expression fields are raw pointers;
+    we take pointers into the owned boxes only for this call. The callee only
+    reads them (it never reassigns the pointers), so the boxes keep ownership.
+    A null `tag` makes fits_pixel_filter use its own default "X" (== the C's
+    DEFAULT_TAG). */
+    let pf_failed = {
+        let mut infptr_raw: *mut fitsfile = fptr.as_deref_mut().unwrap();
+        let mut filter = PixelFilter {
+            count: 1,
+            path: ptr::null_mut(),
+            tag: ptr::null_mut(),
+            ifptr: &mut infptr_raw,
+            expression: pixfilter[expr_idx..].as_ptr() as *mut c_char,
+            bitpix,
+            blank: 0,
+            ofptr: ofptr.as_deref_mut().unwrap(),
+            keyword: [0; FLEN_KEYWORD],
+            comment: [0; FLEN_COMMENT],
+        };
+        fits_pixel_filter_safer(&mut filter, status) != 0
+    };
+    if pf_failed {
+        ffpmsg_str("failed to execute image filter:");
+        ffpmsg_slice(&pixfilter[expr_idx..]);
+        if let Some(f) = ofptr.take() {
+            ffclos_safe(f, status);
+        }
+        return *status;
+    }
+
+    /* copy any remaining HDUs to the output file */
+    ii = hdunum + 1;
+    while singleHDU == 0 {
+        if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
+            break;
+        }
+
+        ffcopy_safe(
+            fptr.as_deref_mut().unwrap(),
+            ofptr.as_deref_mut().unwrap(),
+            0,
+            status,
+        );
+        ii += 1;
+    }
+
+    if *status == END_OF_FILE {
+        *status = 0; /* got the expected EOF error; reset = 0  */
+    } else if *status > 0 {
+        if let Some(f) = ofptr.take() {
+            ffclos_safe(f, status);
+        }
+        return *status;
+    }
+
+    /* close the original file and return ptr to the new image */
+    if let Some(f) = fptr.take() {
+        ffclos_safe(f, status);
+    }
+
+    *fptr = ofptr.take(); /* reset the pointer to the new image */
+
+    /* move back to the image subsection */
+    if ii - 1 != hdunum {
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+    }
+
+    *status
 }
 
 /*-------------------------------------------------------------------*/
@@ -8694,5 +9553,145 @@ mod tests {
         let mut status: c_int = 0;
         ffrtnm_safe(&url, &mut rootname, &mut status);
         assert_eq!(status, URL_PARSE_ERROR);
+    }
+
+    #[test]
+    fn test_ffextn_no_extension() {
+        // A plain filename with no extension specifier returns the sentinel -99
+        // (CFITSIO would default to the primary array).
+        let url = str_to_c_array("myfile.fits");
+        let mut extnum: c_int = 0;
+        let mut status: c_int = 0;
+        ffextn_safer(&url, &mut extnum, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(extnum, -99);
+    }
+
+    #[test]
+    fn test_ffextn_extension_number() {
+        // An explicit extension number [n] returns n + 1 (the 1-based HDU number).
+        for (spec, expected) in [("myfile.fits[0]", 1), ("myfile.fits[3]", 4)] {
+            let url = str_to_c_array(spec);
+            let mut extnum: c_int = 0;
+            let mut status: c_int = 0;
+            ffextn_safer(&url, &mut extnum, &mut status);
+            assert_eq!(status, 0, "spec={spec}");
+            assert_eq!(extnum, expected, "spec={spec}");
+        }
+    }
+
+    #[test]
+    fn test_ffextn_binning_returns_one() {
+        // A binning specification always yields extension 1, since CFITSIO would
+        // create a temporary primary array image on the fly.
+        let url = str_to_c_array("myfile.fits[3][bin X,Y]");
+        let mut extnum: c_int = 0;
+        let mut status: c_int = 0;
+        ffextn_safer(&url, &mut extnum, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(extnum, 1);
+    }
+
+    #[test]
+    fn test_ffextn_extname_search() {
+        // Specifying an extension by name forces the file open to search for it;
+        // the returned number is the 1-based HDU position of that extension.
+        use crate::helpers::testhelpers::with_temp_file;
+        use crate::putkey::{ffcrim_safe, ffphps_safe, ffpkys_safe};
+
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+
+            /* create a file with a primary array + a named image extension */
+            let mut fptr: Option<Box<fitsfile>> = None;
+            let name = str_to_c_array(filename);
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            {
+                let f = fptr.as_deref_mut().unwrap();
+                ffphps_safe(f, BYTE_IMG, 0, &[], &mut status);
+                let naxes: [c_long; 2] = [10, 10];
+                ffcrim_safe(f, BYTE_IMG, 2, &naxes, &mut status);
+                ffpkys_safe(f, cs!(c"EXTNAME"), cs!(c"EVENTS"), None, &mut status);
+                assert_eq!(status, 0, "setup failed");
+            }
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffclos failed");
+
+            /* build "<path>[EVENTS]" */
+            let mut url = str_to_c_array(filename);
+            url.pop(); // drop the NUL terminator
+            for b in "[EVENTS]".bytes() {
+                url.push(b as c_char);
+            }
+            url.push(0);
+
+            let mut extnum: c_int = 0;
+            let mut status2: c_int = 0;
+            ffextn_safer(&url, &mut extnum, &mut status2);
+            assert_eq!(status2, 0, "ffextn failed");
+            assert_eq!(extnum, 2); // EVENTS is the 2nd HDU
+        });
+    }
+
+    #[test]
+    fn test_ffimem_create_write_read() {
+        use crate::getkey::ffgkyj_safe;
+        use crate::putkey::{ffphps_safe, ffpkyj_safe};
+
+        // ffimem (fits_create_memfile) creates a new FITS file backed by a
+        // caller-supplied memory buffer. Mirrors the mem_rawfile_open usage:
+        // create the memfile, write to it, then read it back. The buffer is
+        // generously sized so no reallocation is needed (realloc = None).
+        let mut buffer: Vec<u8> = vec![0u8; 10 * 2880];
+        let mut status: c_int = 0;
+        let mut buffsize: usize = buffer.len();
+        /* buffptr is a void** (the address of the memory pointer) so the driver
+        can update it on realloc; realloc is disabled here (None) */
+        let mut buf_addr: *mut c_void = buffer.as_mut_ptr().cast();
+
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffimem_safer(
+            &mut fptr,
+            &mut buf_addr,
+            &mut buffsize,
+            2880,
+            None,
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffimem failed");
+        assert!(fptr.is_some());
+
+        {
+            let f = fptr.as_deref_mut().unwrap();
+
+            // the writable mem-file structure was set up by ffimem
+            assert_eq!(f.Fptr.writemode, 1);
+            assert_eq!(f.Fptr.validcode, VALIDSTRUC);
+            assert_eq!(f.Fptr.filesize, buffsize as LONGLONG);
+
+            // write a primary array header + a user keyword into the memory file
+            ffphps_safe(f, BYTE_IMG, 0, &[], &mut status); // SIMPLE/BITPIX=8/NAXIS=0
+            ffpkyj_safe(f, cs!(c"ANSWER"), 42, Some(cs!(c"meaning")), &mut status);
+            assert_eq!(status, 0, "writing header failed");
+
+            // read the keywords back from the in-memory file
+            let mut bitpix: c_long = 0;
+            ffgkyj_safe(f, cs!(c"BITPIX"), &mut bitpix, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(bitpix, 8);
+
+            let mut answer: c_long = 0;
+            ffgkyj_safe(f, cs!(c"ANSWER"), &mut answer, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(answer, 42);
+        }
+
+        // memkeep driver leaves our buffer alone; the Vec frees normally on drop
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        // keep the backing buffer alive until after the file is closed
+        drop(buffer);
     }
 }
