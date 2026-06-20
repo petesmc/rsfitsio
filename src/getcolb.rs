@@ -712,7 +712,6 @@ pub fn ffgsfb_safe(
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
-    let dir: [c_long; 9] = [0; 9];
     let mut nelem: c_long = 0;
     let mut nultyp = NullCheckType::None;
     let nulval: u8 = 0;
@@ -844,15 +843,17 @@ pub fn ffgsfb_safe(
                             for i3 in ((str[3])..=(stp[3])).step_by(incr[3] as usize) {
                                 for i2 in ((str[2])..=(stp[2])).step_by(incr[2] as usize) {
                                     for i1 in ((str[1])..=(stp[1])).step_by(incr[1] as usize) {
+                                        /* C ffgsfb uses (iN - 1), not a `dir`
+                                        direction array (unlike ffgsvb). */
                                         felem = (str[0] as LONGLONG)
-                                            + (i1 - dir[1]) as LONGLONG * dsize[1]
-                                            + (i2 - dir[2]) as LONGLONG * dsize[2]
-                                            + (i3 - dir[3]) as LONGLONG * dsize[3]
-                                            + (i4 - dir[4]) as LONGLONG * dsize[4]
-                                            + (i5 - dir[5]) as LONGLONG * dsize[5]
-                                            + (i6 - dir[6]) as LONGLONG * dsize[6]
-                                            + (i7 - dir[7]) as LONGLONG * dsize[7]
-                                            + (i8 - dir[8]) as LONGLONG * dsize[8];
+                                            + (i1 - 1) as LONGLONG * dsize[1]
+                                            + (i2 - 1) as LONGLONG * dsize[2]
+                                            + (i3 - 1) as LONGLONG * dsize[3]
+                                            + (i4 - 1) as LONGLONG * dsize[4]
+                                            + (i5 - 1) as LONGLONG * dsize[5]
+                                            + (i6 - 1) as LONGLONG * dsize[6]
+                                            + (i7 - 1) as LONGLONG * dsize[7]
+                                            + (i8 - 1) as LONGLONG * dsize[8];
 
                                         if ffgclb(
                                             fptr,

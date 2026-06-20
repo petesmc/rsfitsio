@@ -57,9 +57,11 @@ fn simplerng_getuniform_pr(u: &mut c_uint, v: &mut c_uint) -> f64 {
 /// Private routine to get unsigned integer
 /// Marsaglia multiply-with-carry algorithm (MWC)
 fn simplerng_getuint_pr(u: &mut c_uint, v: &mut c_uint) -> c_uint {
-    *v = 36969 * ((*v) & 65535) + ((*v) >> 16);
-    *u = 18000 * ((*u) & 65535) + ((*u) >> 16);
-    ((*v) << 16) + (*u)
+    /* C uses unsigned int arithmetic, which wraps on overflow; mirror that
+    with wrapping ops so the `(*v) << 16` shift below cannot panic in debug. */
+    *v = 36969u32.wrapping_mul((*v) & 65535).wrapping_add((*v) >> 16);
+    *u = 18000u32.wrapping_mul((*u) & 65535).wrapping_add((*u) >> 16);
+    (*v).wrapping_shl(16).wrapping_add(*u)
 }
 
 /// Get uniform deviate [0,1]

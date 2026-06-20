@@ -82,7 +82,9 @@ pub fn ffrsim_safe(
         return *status;
     }
 
-    let _to = cmp::min(naxis, 99) as usize;
+    // C loop: for (ii = 0; (ii < naxis) && (ii < 99); ii++)
+    // naxis may be negative (caller error), so clamp the upper bound at 0.
+    let _to = cmp::min(naxis, 99).max(0) as usize;
 
     for ii in 0.._to {
         tnaxes[ii] = naxes[ii] as LONGLONG;
@@ -1154,7 +1156,7 @@ pub fn ffrwrg_safe(
             // minval = strtol_safe(&rowlist[ni..], &mut ni, 10);
             let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
             minval = r;
-            ni = n;
+            ni += n;
         } else {
             *status = RANGE_PARSE_ERROR;
             ffpmsg_str("Syntax error in this row range list:");
@@ -1177,7 +1179,7 @@ pub fn ffrwrg_safe(
                 //maxval = strtol_safe(&rowlist[ni..], &mut ni, 10);
                 let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
                 maxval = r;
-                ni = n;
+                ni += n;
             } else if rowlist[ni] == bb(b',') || rowlist[ni] == 0 {
                 maxval = maxrows as c_long; /* implied max value */
             } else {
@@ -1349,7 +1351,9 @@ pub fn ffrwrgll_safe(
             /* read as a double, because the string to LONGLONG function */
             /* is platform dependent (strtoll, strtol, _atoI64)          */
 
-            dvalue = strtod_safe(&rowlist[ni..], &mut ni);
+            let mut nn = 0;
+            dvalue = strtod_safe(&rowlist[ni..], &mut nn);
+            ni += nn;
             minval = (dvalue + 0.1) as LONGLONG;
         } else {
             *status = RANGE_PARSE_ERROR;
@@ -1373,7 +1377,9 @@ pub fn ffrwrgll_safe(
                 /* read as a double, because the string to LONGLONG function */
                 /* is platform dependent (strtoll, strtol, _atoI64)          */
 
-                dvalue = strtod_safe(&rowlist[ni..], &mut ni);
+                let mut nn = 0;
+                dvalue = strtod_safe(&rowlist[ni..], &mut nn);
+                ni += nn;
                 maxval = (dvalue + 0.1) as LONGLONG;
             } else if rowlist[ni] == bb(b',') || rowlist[ni] == 0 {
                 maxval = maxrows; /* implied max value */
@@ -3410,8 +3416,10 @@ pub fn ffcpsr_safe(
         }
 
         ffirow_safe(outfptr, outnaxis2, n_good_rows, status);
-        let mut ii = firstrow;
+        /* C: for (ii = firstrow, i0 = 0; i0 < nrows; i0++, ii++) - ii advances
+        every iteration, including skipped rows */
         for i0 in 0..(nrows as usize) {
+            let ii = firstrow + i0 as LONGLONG;
             /* Ignore rows with row_status[] == 0 */
             if let Some(row_status) = row_status
                 && row_status[i0] == 0
@@ -3516,13 +3524,14 @@ pub fn ffcpsr_safe(
                 }
             }
             jj += 1;
-            ii += 1;
         }
     } else {
         /* copy the rows, 1 at a time */
         n_good_rows = 0;
-        let mut ii = firstrow;
+        /* C: for (ii = firstrow, i0 = 0; i0 < nrows; i0++, ii++) - ii advances
+        every iteration, including skipped rows */
         for i0 in 0..(nrows as usize) {
+            let ii = firstrow + i0 as LONGLONG;
             /* Ignore rows with row_status[] == 0 */
             if let Some(row_status) = row_status
                 && row_status[i0] == 0
@@ -3534,7 +3543,6 @@ pub fn ffcpsr_safe(
             ffptbb_safe(outfptr, jj, 1, innaxis1, &buffer, status);
             n_good_rows += 1;
             jj += 1;
-            ii += 1;
         }
     }
     outnaxis2 += n_good_rows;

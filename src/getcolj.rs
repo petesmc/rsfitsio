@@ -983,7 +983,7 @@ pub fn ffggpj_safe(
 
     ffgclj(
         fptr,
-        2,
+        1,
         row as LONGLONG,
         firstelem as LONGLONG,
         nelem as LONGLONG,
@@ -3524,7 +3524,7 @@ pub fn ffggpjj_safe(
 
     ffgcljj(
         fptr,
-        2,
+        1,
         row as LONGLONG,
         firstelem as LONGLONG,
         nelem as LONGLONG,

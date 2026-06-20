@@ -850,6 +850,7 @@ pub fn ffpclj_safe(
 
                 let formlen = strlen_safe(&cform);
 
+                let mut handled = false;
                 if hdutype == ASCII_TBL && formlen > 1 {
                     if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
                         ffi4fstr(
@@ -881,8 +882,12 @@ pub fn ffpclj_safe(
                                 status,
                             );
                         }
+
+                        handled = true;
                     }
-                } else {
+                }
+
+                if !handled {
                     /* can't write to string column, so fall thru to default: */
                     /*  error trap  */
                     int_snprintf!(
@@ -2236,6 +2241,7 @@ pub fn ffpcljj_safe(
 
                 let formlen = strlen_safe(&cform);
 
+                let mut handled = false;
                 if hdutype == ASCII_TBL && formlen > 1 {
                     if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
                         ffi8fstr(
@@ -2267,8 +2273,12 @@ pub fn ffpcljj_safe(
                                 status,
                             );
                         }
+
+                        handled = true;
                     }
-                } else {
+                }
+
+                if !handled {
                     /* can't write to string column, so fall thru to default: */
                     /*  error trap  */
                     int_snprintf!(

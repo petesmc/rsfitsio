@@ -535,14 +535,12 @@ pub fn ffsrow_safe(
             }
 
             if nbuff != 0 {
-                let buffer_part = &buffer[((rdlen * nbuff) as usize)..];
-
                 ffptbb_safe(
                     outfptr,
                     outloc as LONGLONG,
                     1,
                     (rdlen * nbuff) as LONGLONG,
-                    buffer_part,
+                    &buffer,
                     status,
                 );
                 outloc += nbuff;
@@ -923,6 +921,7 @@ pub fn ffcalc_rng_safe(
     let mut lParse: ParseData = ParseData::default();
 
     let mut parInfo = parInfo;
+    let mut parName = parName;
 
     if *status != 0 {
         return *status;
@@ -958,7 +957,7 @@ pub fn ffcalc_rng_safe(
     ffpmrk_safe(); /* prevent lack of column name from sullying the stack */
     ffgcno_safe(outfptr, CASEINSEN as c_int, parName, &mut colNo, status);
     ffcmsg_safe();
-    if *status == 0 {
+    if *status != 0 {
         /*  Output column doesn't exist.  Test for keyword. */
 
         /* Case (2): Does parName indicate result should be put into keyword */
@@ -971,7 +970,7 @@ pub fn ffcalc_rng_safe(
                 *status = PARSE_BAD_TYPE;
                 return *status;
             }
-            let parName = &parName[1..]; /* Advance past '#' */
+            parName = &parName[1..]; /* Advance past '#' */
             if (fits_strcasecmp(parName, cs!(c"HISTORY")) == 0
                 || fits_strcasecmp(parName, cs!(c"COMMENT")) == 0)
                 && Info.datatype != TSTRING
@@ -1430,9 +1429,12 @@ pub(crate) fn ffiprs(
 
         if let Some(temp_ptr) = temp_ptr {
             lexpr = strlen_safe(&temp_ptr) as c_int;
-            // Convert C string to Vec<u8> and then to Box<[u8]>
+            // Convert C string to Vec<u8>, appending the trailing newline that
+            // the parser requires (matches C's strcat(lParse->expr+lexpr,"\n")).
             let lexpr_cstr = CStr::from_bytes_until_nul(cast_slice(&temp_ptr)).unwrap();
-            let vec = lexpr_cstr.to_bytes_with_nul().to_vec();
+            let mut vec = lexpr_cstr.to_bytes().to_vec();
+            vec.push(b'\n');
+            vec.push(0);
             lParse.expr = Some(vec.into_boxed_slice());
         }
     } else {

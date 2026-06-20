@@ -890,13 +890,22 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
             return status;
         }
 
-        let mut m = MEM_TABLE.lock().unwrap();
+        /* extract the raw pointers under the lock, then release it so that the
+        IRAF conversion (and any error cleanup, e.g. mem_close_free) can safely
+        re-lock MEM_TABLE without deadlocking */
+        let (memaddrptr, memsizeptr) = {
+            let mut m = MEM_TABLE.lock().unwrap();
+            (
+                m[*hdl as usize].memaddrptr,
+                m[*hdl as usize].memsizeptr.as_mut().unwrap() as *mut usize,
+            )
+        };
 
         /* convert the iraf file into a FITS file in memory */
         status = iraf2mem(
             filename,
-            m[*hdl as usize].memaddrptr,
-            m[*hdl as usize].memsizeptr.as_mut().unwrap(),
+            memaddrptr,
+            &mut *memsizeptr,
             &mut filesize,
             &mut status,
         );
@@ -907,6 +916,7 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
             return status;
         }
 
+        let mut m = MEM_TABLE.lock().unwrap();
         m[*hdl as usize].currentpos = 0; /* save starting position */
         m[*hdl as usize].fitsfilesize = filesize as LONGLONG; /* and initial file size  */
 
@@ -1314,7 +1324,17 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
         let memsize = m[handle].memsize;
 
         // HEAP DEALLOCATION
-        _ = Vec::from_raw_parts(*(m[handle].memaddrptr), memsize, memsize);
+        /* free( *(m[handle].memaddrptr) );  - C free() tolerates a NULL pointer, so
+        guard against it here (the buffer may never have been allocated, e.g. when
+        an IRAF conversion failed before writing the buffer pointer). */
+        let dataptr = *(m[handle].memaddrptr);
+        if !dataptr.is_null() {
+            if let Some((l, c)) = ALLOCATIONS.lock().unwrap().remove(&(dataptr as usize)) {
+                _ = Vec::from_raw_parts(dataptr, l, c);
+            } else {
+                _ = Vec::from_raw_parts(dataptr, memsize, memsize);
+            }
+        }
         // free( *(m[handle].memaddrptr) );
 
         m[handle].memaddrptr = ptr::null_mut();

@@ -44,8 +44,6 @@ pub unsafe extern "C" fn fits_read_wcstab(
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
-        let wtb = slice::from_raw_parts(wtb, nwtb as usize);
-
         if *status != 0 {
             return *status;
         }
@@ -54,6 +52,15 @@ pub unsafe extern "C" fn fits_read_wcstab(
             *status = NULL_INPUT_PTR;
             return *status;
         }
+
+        if nwtb == 0 {
+            return 0;
+        }
+
+        // Only construct the slice after validating the pointer and length;
+        // slice::from_raw_parts requires a non-null, aligned pointer even for
+        // a zero-length slice.
+        let wtb = slice::from_raw_parts(wtb, nwtb as usize);
 
         let fptr = fptr.as_mut().expect(NULL_MSG);
 

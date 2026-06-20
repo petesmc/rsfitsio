@@ -1307,7 +1307,12 @@ pub(crate) fn ffs1fi8(
         /* are valid ULONGLONG values. */
 
         for ii in 0..(ntodo as usize) {
-            output[ii] = ((input[ii] as ULONGLONG) ^ 0x8000000000000000) as LONGLONG;
+            if input[ii] < 0 {
+                *status = OVERFLOW_ERR;
+                output[ii] = LONGLONG_MIN;
+            } else {
+                output[ii] = ((input[ii] as ULONGLONG) ^ 0x8000000000000000) as LONGLONG;
+            }
         }
     } else if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {

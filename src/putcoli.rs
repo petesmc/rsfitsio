@@ -847,39 +847,44 @@ pub fn ffpcli_safe(
 
                 let formlen = strlen_safe(&cform);
 
-                if hdutype == ASCII_TBL && formlen > 1 {
-                    if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
-                        ffi2fstr(
-                            &array[(next as usize)..],
-                            ntodo,
-                            scale,
-                            zero,
-                            &cform,
-                            twidth,
+                let mut handled = false;
+                if hdutype == ASCII_TBL
+                    && formlen > 1
+                    && (cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E'))
+                {
+                    ffi2fstr(
+                        &array[(next as usize)..],
+                        ntodo,
+                        scale,
+                        zero,
+                        &cform,
+                        twidth,
+                        cast_slice_mut(&mut buffer),
+                        status,
+                    );
+
+                    if incre == twidth {
+                        /* contiguous bytes */
+                        ffpbyt(
+                            fptr,
+                            (ntodo * twidth) as LONGLONG,
                             cast_slice_mut(&mut buffer),
                             status,
                         );
-
-                        if incre == twidth {
-                            /* contiguous bytes */
-                            ffpbyt(
-                                fptr,
-                                (ntodo * twidth) as LONGLONG,
-                                cast_slice_mut(&mut buffer),
-                                status,
-                            );
-                        } else {
-                            ffpbytoff(
-                                fptr,
-                                twidth,
-                                ntodo,
-                                incre - twidth,
-                                cast_slice_mut(&mut buffer),
-                                status,
-                            );
-                        }
+                    } else {
+                        ffpbytoff(
+                            fptr,
+                            twidth,
+                            ntodo,
+                            incre - twidth,
+                            cast_slice_mut(&mut buffer),
+                            status,
+                        );
                     }
-                } else {
+                    handled = true;
+                }
+
+                if !handled {
                     /* can't write to string column, so fall thru to default: */
                     /*  error trap  */
                     int_snprintf!(

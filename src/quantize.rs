@@ -1302,8 +1302,8 @@ fn FnNoise5_short(
     let mut v7: c_short;
     let mut v8: c_short;
     let mut v9: c_short;
-    let mut xmaxval = c_short::MAX;
-    let mut xminval = c_short::MIN;
+    let mut xminval = c_short::MAX;
+    let mut xmaxval = c_short::MIN;
 
     let xnoise2: f64;
     let xnoise3: f64;
@@ -1768,8 +1768,8 @@ fn FnNoise5_int(
     let mut v7: c_int;
     let mut v8: c_int;
     let mut v9: c_int;
-    let mut xminval: c_int = c_int::MIN;
-    let mut xmaxval = c_int::MAX;
+    let mut xminval: c_int = c_int::MAX;
+    let mut xmaxval = c_int::MIN;
 
     let xnoise2: f64;
     let xnoise3: f64;
@@ -2239,8 +2239,8 @@ fn FnNoise5_float(
     let mut v7: f32;
     let mut v8: f32;
     let mut v9: f32;
-    let mut xminval: f32 = f32::MIN;
-    let mut xmaxval = f32::MAX;
+    let mut xminval: f32 = f32::MAX;
+    let mut xmaxval = -f32::MAX;
 
     let xnoise2: f64;
     let xnoise3: f64;
@@ -2689,8 +2689,8 @@ fn FnNoise5_double(
     let mut v7: f64;
     let mut v8: f64;
     let mut v9: f64;
-    let mut xminval: f64 = f64::MIN;
-    let mut xmaxval = f64::MAX;
+    let mut xminval: f64 = f64::MAX;
+    let mut xmaxval = -f64::MAX;
 
     let xnoise2: f64;
     let xnoise3: f64;
@@ -3131,8 +3131,8 @@ fn FnNoise3_short(
     let mut v3: c_short;
     let mut v4: c_short;
     let mut v5: c_short;
-    let mut xminval: c_short = c_short::MIN; /* minimum non-null value */
-    let mut xmaxval: c_short = -c_short::MAX; /* maximum non-null value */
+    let mut xminval: c_short = c_short::MAX; /* minimum non-null value */
+    let mut xmaxval: c_short = c_short::MIN; /* maximum non-null value */
     let mut diffs: Vec<f64> = Vec::new();
     let mut xnoise: f64 = 0.0; /* returned R.M.S. value of all non-null pixels */
     let mut sigma: f64 = 0.0;
@@ -3435,8 +3435,8 @@ fn FnNoise3_int(
     let mut v3: c_int;
     let mut v4: c_int;
     let mut v5: c_int;
-    let mut xminval: c_int = c_int::MIN; /* minimum non-null value */
-    let mut xmaxval: c_int = -c_int::MAX; /* maximum non-null value */
+    let mut xminval: c_int = c_int::MAX; /* minimum non-null value */
+    let mut xmaxval: c_int = c_int::MIN; /* maximum non-null value */
     let mut diffs: Vec<f64> = Vec::new();
     let mut xnoise: f64 = 0.0; /* returned R.M.S. value of all non-null pixels */
     let mut sigma: f64 = 0.0;
@@ -3740,7 +3740,7 @@ fn FnNoise3_float(
     let mut v3: f32;
     let mut v4: f32;
     let mut v5: f32;
-    let mut xminval: f32 = f32::MIN; /* minimum non-null value */
+    let mut xminval: f32 = f32::MAX; /* minimum non-null value */
     let mut xmaxval: f32 = -f32::MAX; /* maximum non-null value */
     let mut diffs: Vec<f64> = Vec::new();
     let mut xnoise: f64 = 0.0; /* returned R.M.S. value of all non-null pixels */
@@ -4016,7 +4016,7 @@ fn FnNoise3_double(
     let mut v3: f64;
     let mut v4: f64;
     let mut v5: f64;
-    let mut xminval: f64 = f64::MIN; /* minimum non-null value */
+    let mut xminval: f64 = f64::MAX; /* minimum non-null value */
     let mut xmaxval: f64 = -f64::MAX; /* maximum non-null value */
     let mut diffs: Vec<f64> = Vec::new();
     let mut xnoise: f64 = 0.0; /* returned R.M.S. value of all non-null pixels */

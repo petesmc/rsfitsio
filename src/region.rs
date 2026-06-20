@@ -317,6 +317,7 @@ pub(crate) fn fits_read_ascii_region(
             while currLine[currLoc] != 0 {
                 namePtr = currLoc;
                 paramPtr = 0;
+                paramPtrSet = false;
                 nParams = 1;
 
                 /*  Search for closing parenthesis  */
@@ -334,7 +335,6 @@ pub(crate) fn fits_read_ascii_region(
                                 paramPtrSet = true;
                                 paramPtr = currLoc;
                             }
-                            break;
                         }
                         b')' => {
                             currLine[currLoc] = 0;
@@ -345,7 +345,6 @@ pub(crate) fn fits_read_ascii_region(
                             } else {
                                 done = true;
                             }
-                            break;
                         }
                         b'#' | b'\n' => {
                             currLine[currLoc] = 0;
@@ -353,29 +352,27 @@ pub(crate) fn fits_read_ascii_region(
                                 /* Allow for a blank line */
                                 done = true;
                             }
-                            break;
+                            /* C breaks the switch but the outer while loop
+                            terminates here because *currLoc is now '\0' */
                         }
                         b':' => {
                             currLoc += 1;
                             if paramPtrSet {
                                 cFmt = CoordFmt::HHMMSS; /* set format if parameter has : */
                             }
-                            break;
                         }
                         b'd' => {
                             currLoc += 1;
                             if paramPtrSet {
                                 cFmt = CoordFmt::Degree; /* set format if parameter has d */
                             }
-                            break;
                         }
                         b',' => {
-                            nParams += 1;
+                            nParams += 1; /* Fall through to default */
                             currLoc += 1;
                         }
                         _ => {
                             currLoc += 1;
-                            break;
                         }
                     }
                 }
@@ -665,7 +662,8 @@ pub(crate) fn fits_read_ascii_region(
                 }
 
                 /*  Parse the initial "WCS?" coordinates  */
-                for i in (0..nCoords).step_by(2) {
+                i = 0;
+                while i < nCoords {
                     pX = paramPtr; // Into currLine
                     while currLine[paramPtr] != bb(b',') {
                         paramPtr += 1;
@@ -785,6 +783,7 @@ pub(crate) fn fits_read_ascii_region(
                     }
                     coords[i as usize] = X;
                     coords[i as usize + 1] = Y;
+                    i += 2;
                 }
 
                 /*  Read in remaining parameters...  */
@@ -930,14 +929,15 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
     let mut xprime: f64;
     let mut yprime: f64;
     let mut r: f64;
-    let th: f64;
+    let mut th: f64;
     let mut cur_comp: c_int;
     let mut result: bool = false;
     let mut comp_result: bool = false;
 
     cur_comp = Rgn.Shapes[0].comp;
 
-    for (i, Shapes) in Rgn.Shapes.iter_mut().enumerate() {
+    let nShapes = Rgn.nShapes as usize;
+    for (i, Shapes) in Rgn.Shapes[..nShapes].iter_mut().enumerate() {
         /* if this region has a different component number to the last one  */
         /*	then replace the accumulated selection logical with the union of */
         /*	the current logical and the total logical. Reinitialize the      */
@@ -973,7 +973,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if (x < -dx) || (x > dx) || (y < -dy) || (y > dy) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::BoxAnnulus => {
                     /*  Shift origin to center of region  */
@@ -999,7 +998,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Rectangle => {
                     /*  Shift origin to center of region  */
@@ -1015,7 +1013,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if (x < -dx) || (x > dx) || (y < -dy) || (y > dy) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Diamond => {
                     /*  Shift origin to center of region  */
@@ -1032,7 +1029,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > 1.0 {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Circle => {
                     /*  Shift origin to center of region  */
@@ -1043,7 +1039,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > Shapes.genericParams.a {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Annulus => {
                     /*  Shift origin to center of region  */
@@ -1054,7 +1049,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r < Shapes.genericParams.a || r > Shapes.genericParams.b {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Sector => {
                     /*  Shift origin to center of region  */
@@ -1071,7 +1065,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Ellipse => {
                     /*  Shift origin to center of region  */
@@ -1088,7 +1081,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > 1.0 {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::ElliptAnnulus => {
                     /*  Shift origin to center of region  */
@@ -1116,7 +1108,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Line => {
                     /*  Shift origin to first point of line  */
@@ -1130,7 +1121,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if !(-0.5..0.5).contains(&y) || (x < -0.5) || (x >= Shapes.genericParams.a) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Point => {
                     /*  Shift origin to center of region  */
@@ -1140,7 +1130,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if !(-0.5..0.5).contains(&x) || !(-0.5..0.5).contains(&y) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Poly => {
                     if X < Shapes.xmin || X > Shapes.xmax || Y < Shapes.ymin || Y > Shapes.ymax {
@@ -1150,7 +1139,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             Pt_in_Poly(X, Y, Shapes.polyParams.nPts, &mut Shapes.polyParams.Pts)
                                 != 0;
                     }
-                    break;
                 }
                 ShapeType::Panda => {
                     /*  Shift origin to center of region  */
@@ -1170,7 +1158,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::EPanda => {
                     /*  Shift origin to center of region  */
@@ -1214,7 +1201,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             }
                         }
                     }
-                    break;
                 }
                 ShapeType::BPanda => {
                     /*  Shift origin to center of region  */
@@ -1254,7 +1240,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             }
                         }
                     }
-                    break;
                 }
             }
 

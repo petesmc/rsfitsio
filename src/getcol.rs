@@ -2153,7 +2153,10 @@ pub fn ffgcv_safe(
 ) -> c_int {
     let mut cdummy: [c_char; 2] = [0; 2];
 
-    let mut dummy_nularray = vec![0; nelem as usize];
+    /* The complex datatypes (TCOMPLEX, TDBLCOMPLEX) are read as pairs of    */
+    /* numbers, so the underlying ffgcle/ffgcld call processes nelem * 2     */
+    /* elements and would index this dummy null array up to that count.      */
+    let mut dummy_nularray = vec![0; nelem as usize * 2];
 
     if *status > 0 {
         /* inherit input status value if > 0 */

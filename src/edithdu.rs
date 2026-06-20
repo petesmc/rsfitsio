@@ -41,6 +41,10 @@ pub unsafe extern "C" fn ffcopy(
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
+        if *status > 0 {
+            return *status;
+        }
+
         if std::ptr::eq(infptr, outfptr) {
             *status = SAME_FILE;
             return *status;
@@ -632,8 +636,10 @@ pub fn ffiimg_safe(
         return *status;
     }
 
-    for i in 0..(naxis as usize) {
-        tnaxes[i] = naxes[i] as LONGLONG;
+    let mut ii = 0;
+    while (ii as c_int) < naxis {
+        tnaxes[ii] = naxes[ii] as LONGLONG;
+        ii += 1;
     }
 
     ffiimgll_safe(fptr, bitpix, naxis, &tnaxes, status);

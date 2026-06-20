@@ -223,7 +223,7 @@ pub fn ffpcnl_safe(
 ) -> c_int {
     let mut ngood: LONGLONG = 0;
     let mut nbad: LONGLONG = 0;
-    let ii: LONGLONG = 0;
+    let mut ii: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
     let mut first: LONGLONG = 0;
     let mut fstelm: LONGLONG = 0;
@@ -271,14 +271,15 @@ pub fn ffpcnl_safe(
     /* absolute element number in the column */
     first = (firstrow - 1) * repeat + firstelem;
 
-    for ii in 0..(nelem as usize) {
-        if array[ii] != nulvalue {
+    ii = 0;
+    while ii < nelem {
+        if array[ii as usize] != nulvalue {
             /* is this a good pixel? */
 
             if nbad != 0 {
                 /* write previous string of bad pixels */
 
-                fstelm = (ii as LONGLONG) - nbad + first; /* absolute element number */
+                fstelm = ii - nbad + first; /* absolute element number */
                 fstrow = (fstelm - 1) / repeat + 1; /* starting row number */
                 fstelm -= (fstrow - 1) * repeat; /* relative number */
 
@@ -294,7 +295,7 @@ pub fn ffpcnl_safe(
             if ngood != 0
             /* write previous string of good pixels */
             {
-                fstelm = (ii as LONGLONG) - ngood + first; /* absolute element number */
+                fstelm = ii - ngood + first; /* absolute element number */
                 fstrow = (fstelm - 1) / repeat + 1; /* starting row number */
                 fstelm -= (fstrow - 1) * repeat; /* relative number */
 
@@ -308,6 +309,7 @@ pub fn ffpcnl_safe(
 
             nbad += 1; /* the consecutive number of bad pixels */
         }
+        ii += 1;
     }
 
     /* finished loop;  now just write the last set of pixels */

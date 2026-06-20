@@ -1234,7 +1234,7 @@ pub fn ffmkys_safe(
 
             nextcomm[0] = 0;
             ffgcnt(fptr, &mut valstring, Some(&mut nextcomm), status);
-            if valstring[0] == 0 || strlen_safe(&nextcomm) != 0 {
+            if valstring[0] != 0 || strlen_safe(&nextcomm) != 0 {
                 ffdrec_safe(fptr, keypos, status); /* delete the continuation */
                 len = strlen_safe(&valstring);
             } else {

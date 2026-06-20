@@ -180,14 +180,14 @@ pub fn fits_delete_iraf_file_safe(
     }
 
     let _ = std::fs::remove_file(
-        CStr::from_bytes_with_nul(cast_slice(filename))
+        CStr::from_bytes_until_nul(cast_slice(filename))
             .unwrap()
             .to_str()
             .unwrap(),
     );
 
     let _ = std::fs::remove_file(
-        CStr::from_bytes_with_nul(cast_slice(&pixfilename))
+        CStr::from_bytes_until_nul(cast_slice(&pixfilename))
             .unwrap()
             .to_str()
             .unwrap(),
@@ -270,7 +270,7 @@ fn irafrdhead(
 
     /* open the image header file */
     let fd = File::options().read(true).write(false).open(
-        CStr::from_bytes_with_nul(cast_slice(filename))
+        CStr::from_bytes_until_nul(cast_slice(filename))
             .unwrap()
             .to_str()
             .unwrap(),
@@ -387,14 +387,14 @@ fn irafrdimage(
     let bang = strchr_safe(&pixname, bb(b'!'));
     let fd = if let Some(bang) = bang {
         File::options().read(true).write(false).open(
-            CStr::from_bytes_with_nul(cast_slice(&pixname[bang + 1..]))
+            CStr::from_bytes_until_nul(cast_slice(&pixname[bang + 1..]))
                 .unwrap()
                 .to_str()
                 .unwrap(),
         )
     } else {
         File::options().read(true).write(false).open(
-            CStr::from_bytes_with_nul(cast_slice(&pixname))
+            CStr::from_bytes_until_nul(cast_slice(&pixname))
                 .unwrap()
                 .to_str()
                 .unwrap(),
@@ -424,7 +424,7 @@ fn irafrdimage(
         pixheader.resize(lpixhead as usize, 0);
     }
 
-    let _r = fd.read(cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
+    nbr = fd.read(cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
 
     /* Check size of pixel header */
     if nbr < lpixhead {
@@ -505,31 +505,34 @@ fn irafrdimage(
     // *buffptr = fitsheader; No need since using Vec<>'s now
     *buffsize = newfilesize;
 
+    /* image = fitsheader + *filesize;  (offset of the old filesize = end of header) */
+    let image_offset = *filesize;
     *filesize = newfilesize;
 
     /* Read IRAF image all at once if physical and image dimensions are the same */
     if npaxis1 == naxis1 {
-        let image = &mut fitsheader[*filesize..];
+        let image = &mut fitsheader[image_offset..];
 
         nbr = fd.read(cast_slice_mut(&mut image[..nbimage])).unwrap();
 
     /* Read IRAF image one line at a time if physical and image dimensions differ */
     } else {
-        // nbdiff = ((npaxis1 - naxis1) * bytepix) as c_long;
+        let nbdiff = ((npaxis1 - naxis1) * bytepix) as i64;
         nbaxis = (naxis1 * bytepix) as usize;
-        let mut linebuff = &mut fitsheader[*filesize..];
+        let mut line_offset = image_offset;
         nbr = 0;
         if naxis2 == 1 && naxis3 > 1 {
             naxis2 = naxis3;
         }
 
         for _i in 0..naxis2 {
+            let linebuff = &mut fitsheader[line_offset..];
             nbl = fd.read(cast_slice_mut(&mut linebuff[..nbaxis])).unwrap();
             nbr += nbl;
 
-            let _ = fd.seek(std::io::SeekFrom::Start(0)).unwrap();
+            let _ = fd.seek(std::io::SeekFrom::Current(nbdiff)).unwrap();
 
-            linebuff = &mut linebuff[nbaxis..];
+            line_offset += nbaxis;
         }
     }
 
@@ -552,7 +555,7 @@ fn irafrdimage(
 
     /* Byte-reverse image, if necessary */
     if *SWAPDATA.lock().unwrap() {
-        let image = &mut fitsheader[*filesize..];
+        let image = &mut fitsheader[image_offset..];
         irafswap(bitpix, image, nbimage);
     }
 
@@ -717,15 +720,22 @@ fn iraftofits(
     /*  first byte of the word != 0, then the file in little endian format */
     /*  like on an Alpha machine.                                          */
 
-    let mut swaphead = SWAPHEAD.lock().unwrap();
-    let mut swapdata = SWAPDATA.lock().unwrap();
-
-    *swaphead = isirafswapped(irafheader, impixtype);
-    if imhver == 1 {
-        *swapdata = *swaphead; /* vers 1 data has same swapness as header */
-    } else {
-        *swapdata = irafgeti4(irafheader, IM2_SWAPPED) != 0;
+    /* Set the SWAPHEAD global first (note: irafgeti4 reads SWAPHEAD, so the
+    guard must be released before any irafgeti4 call to avoid a deadlock) */
+    {
+        let mut swaphead = SWAPHEAD.lock().unwrap();
+        *swaphead = isirafswapped(irafheader, impixtype);
     }
+
+    if imhver == 1 {
+        let swaphead = *SWAPHEAD.lock().unwrap();
+        *SWAPDATA.lock().unwrap() = swaphead; /* vers 1 data has same swapness as header */
+    } else {
+        let v = irafgeti4(irafheader, IM2_SWAPPED) != 0;
+        *SWAPDATA.lock().unwrap() = v;
+    }
+
+    let swapdata = *SWAPDATA.lock().unwrap();
 
     /*  Set pixel size in FITS header */
     pixtype = irafgeti4(irafheader, impixtype);
@@ -742,8 +752,8 @@ fn iraftofits(
         TY_USHORT => {
             nbits = -16;
         }
-        TY_INT => {}
-        TY_LONG => {
+        /* TY_INT falls through to TY_LONG in the C original (both => 32 bits) */
+        TY_INT | TY_LONG => {
             nbits = 32;
         }
         TY_REAL => {
@@ -921,7 +931,7 @@ fn iraftofits(
     fhead += 80;
 
     /* Save flag as to whether to swap IRAF data for this file and machine */
-    if *swapdata {
+    if swapdata {
         hputl(fitsheader, cs!(c"PIXSWAP"), 1);
     } else {
         hputl(fitsheader, cs!(c"PIXSWAP"), 0);
@@ -977,7 +987,7 @@ fn iraftofits(
     } else {
         imu = LEN_IMHDR;
         let chead = irafheader;
-        let ib: usize = if *swaphead { 0 } else { 1 };
+        let ib: usize = if *SWAPHEAD.lock().unwrap() { 0 } else { 1 };
 
         for k in 0..80 {
             fitsline[k] = bb(b' ');
@@ -1110,6 +1120,11 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
+        #[cfg(not(target_os = "vms"))]
+        while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
+            len -= 1;
+        }
+        #[cfg(target_os = "vms")]
         while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
@@ -1125,6 +1140,11 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
+        #[cfg(not(target_os = "vms"))]
+        while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
+            len -= 1;
+        }
+        #[cfg(target_os = "vms")]
         while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
@@ -1366,7 +1386,7 @@ fn irafswap8(
 
 /*--------------------------------------------------------------------------*/
 fn machswap() -> bool {
-    let mut itest: [c_int; 1] = [0; 1];
+    let mut itest: [c_int; 1] = [1; 1];
     let ctest: &[c_char] = cast_slice_mut(&mut itest);
 
     ctest[0] != 0
@@ -1526,27 +1546,30 @@ fn hgetc(
     let mut c1 = strsrch(&line, &slash);
     let mut q2 = None;
 
+    /* note: strsrch on a subslice returns an offset relative to that subslice;
+    make q2 absolute (relative to the start of `line`) by adding q1_tmp + 1, to
+    match the C original where q2 = strsrch(q1+1, ...) is an absolute pointer */
     if let Some(q1_tmp) = q1 {
         if let Some(c1_tmp) = c1 {
             if q1_tmp < c1_tmp {
-                q2 = strsrch(&line[(q1_tmp + 1)..], &squot);
+                q2 = strsrch(&line[(q1_tmp + 1)..], &squot).map(|o| q1_tmp + 1 + o);
             } else {
                 q1 = None;
             }
         } else {
-            q2 = strsrch(&line[(q1_tmp + 1)..], &squot);
+            q2 = strsrch(&line[(q1_tmp + 1)..], &squot).map(|o| q1_tmp + 1 + o);
         }
     } else {
         q1 = strsrch(&line, &dquot);
         if let Some(q1_tmp) = q1 {
             if let Some(c1_tmp) = c1 {
                 if q1_tmp < c1_tmp {
-                    q2 = strsrch(&line[(q1_tmp + 1)..], &dquot);
+                    q2 = strsrch(&line[(q1_tmp + 1)..], &dquot).map(|o| q1_tmp + 1 + o);
                 } else {
                     q1 = None;
                 }
             } else {
-                q2 = strsrch(&line[(q1_tmp + 1)..], &dquot);
+                q2 = strsrch(&line[(q1_tmp + 1)..], &dquot).map(|o| q1_tmp + 1 + o);
             }
         } else {
             q1 = None;
@@ -2184,7 +2207,10 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
         /* check for quoted value */
         let q1 = strchr_safe(&line, squot);
         q2 = match q1 {
-            Some(x) => strchr_safe(&line[(x + 1)..], squot),
+            /* make the second-quote offset relative to the start of `line`
+            (strchr_safe returns it relative to line[q1+1..]) so that it can be
+            compared/used as `q2 - line` like in the C original */
+            Some(x) => strchr_safe(&line[(x + 1)..], squot).map(|off| x + 1 + off),
             None => None,
         };
 
@@ -2198,7 +2224,8 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
             c0 = v1 + 31;
         }
 
-        strncpy_safe(&mut line[c0..], cs!(c"/ "), 2);
+        /* strncpy (c0, "/ ",2);  - c0 is an index into hstring, not line */
+        strncpy_safe(&mut hstring[c0..], cs!(c"/ "), 2);
     }
 
     /* create new entry */

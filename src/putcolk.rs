@@ -882,39 +882,44 @@ pub fn ffpclk_safe(
 
                     let formlen = strlen_safe(&cform);
 
-                    if hdutype == ASCII_TBL && formlen > 1 {
-                        if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
-                            ffintfstr(
-                                &array[(next as usize)..],
-                                ntodo,
-                                scale,
-                                zero,
-                                &cform,
-                                twidth,
-                                cast_slice_mut(&mut buffer),
+                    let mut handled = false;
+                    if hdutype == ASCII_TBL
+                        && formlen > 1
+                        && (cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E'))
+                    {
+                        ffintfstr(
+                            &array[(next as usize)..],
+                            ntodo,
+                            scale,
+                            zero,
+                            &cform,
+                            twidth,
+                            cast_slice_mut(&mut buffer),
+                            status,
+                        );
+
+                        if incre == twidth {
+                            /* contiguous bytes */
+                            ffpbyt(
+                                fptr,
+                                (ntodo * twidth) as LONGLONG,
+                                cast_slice(&buffer),
                                 status,
                             );
-
-                            if incre == twidth {
-                                /* contiguous bytes */
-                                ffpbyt(
-                                    fptr,
-                                    (ntodo * twidth) as LONGLONG,
-                                    cast_slice(&buffer),
-                                    status,
-                                );
-                            } else {
-                                ffpbytoff(
-                                    fptr,
-                                    twidth,
-                                    ntodo,
-                                    incre - twidth,
-                                    cast_slice(&buffer),
-                                    status,
-                                );
-                            }
+                        } else {
+                            ffpbytoff(
+                                fptr,
+                                twidth,
+                                ntodo,
+                                incre - twidth,
+                                cast_slice(&buffer),
+                                status,
+                            );
                         }
-                    } else {
+                        handled = true;
+                    }
+
+                    if !handled {
                         /* can't write to string column, so fall thru to default: */
                         /*  error trap  */
                         int_snprintf!(
@@ -1259,7 +1264,10 @@ pub(crate) fn ffintfi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] > c_int::from(c_short::MAX) {
+            if input[ii] < c_int::from(c_short::MIN) {
+                *status = OVERFLOW_ERR;
+                output[ii] = c_short::MIN;
+            } else if input[ii] > c_int::from(c_short::MAX) {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -1334,15 +1342,17 @@ pub(crate) fn ffintfi8(
     status: &mut c_int,      /* IO - error status                    */
 ) -> c_int {
     if scale == 1.0 && zero == 9223372036854775808.0 {
-        /* Writing to unsigned long long column. */
+        /* Writing to unsigned long long column. Input values must not be negative */
         /* Instead of subtracting 9223372036854775808, it is more efficient */
         /* and more precise to just flip the sign bit with the XOR operator */
 
-        /* no need to check range limits because all c_uint values */
-        /* are valid ULONGLONG values. */
-
         for ii in 0..(ntodo as usize) {
-            output[ii] = (input[ii] as ULONGLONG ^ 0x8000000000000000) as LONGLONG;
+            if input[ii] < 0 {
+                *status = OVERFLOW_ERR;
+                output[ii] = LONGLONG_MIN;
+            } else {
+                output[ii] = (input[ii] as ULONGLONG ^ 0x8000000000000000) as LONGLONG;
+            }
         }
     } else if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {

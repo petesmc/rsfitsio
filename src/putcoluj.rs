@@ -817,39 +817,44 @@ pub fn ffpcluj_safe(
 
                 let formlen = strlen_safe(&cform);
 
-                if hdutype == ASCII_TBL && formlen > 1 {
-                    if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
-                        ffu4fstr(
-                            &array[(next as usize)..],
-                            ntodo,
-                            scale,
-                            zero,
-                            &cform,
-                            twidth,
-                            cast_slice_mut(&mut buffer),
+                let mut handled = false;
+                if hdutype == ASCII_TBL
+                    && formlen > 1
+                    && (cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E'))
+                {
+                    ffu4fstr(
+                        &array[(next as usize)..],
+                        ntodo,
+                        scale,
+                        zero,
+                        &cform,
+                        twidth,
+                        cast_slice_mut(&mut buffer),
+                        status,
+                    );
+
+                    if incre == twidth {
+                        /* contiguous bytes */
+                        ffpbyt(
+                            fptr,
+                            (ntodo * twidth) as LONGLONG,
+                            cast_slice(&buffer),
                             status,
                         );
-
-                        if incre == twidth {
-                            /* contiguous bytes */
-                            ffpbyt(
-                                fptr,
-                                (ntodo * twidth) as LONGLONG,
-                                cast_slice(&buffer),
-                                status,
-                            );
-                        } else {
-                            ffpbytoff(
-                                fptr,
-                                twidth,
-                                ntodo,
-                                incre - twidth,
-                                cast_slice(&buffer),
-                                status,
-                            );
-                        }
+                    } else {
+                        ffpbytoff(
+                            fptr,
+                            twidth,
+                            ntodo,
+                            incre - twidth,
+                            cast_slice(&buffer),
+                            status,
+                        );
                     }
-                } else {
+                    handled = true;
+                }
+
+                if !handled {
                     /* can't write to string column, so fall thru to default: */
                     /*  error trap  */
                     int_snprintf!(
@@ -1192,10 +1197,7 @@ pub(crate) fn ffu4fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < c_short::MIN as c_ulong {
-                *status = OVERFLOW_ERR;
-                output[ii] = c_short::MIN;
-            } else if input[ii] > c_short::MAX as c_ulong {
+            if input[ii] > c_short::MAX as c_ulong {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -2165,39 +2167,44 @@ pub fn ffpclujj_safe(
 
                 let formlen = strlen_safe(&cform);
 
-                if hdutype == ASCII_TBL && formlen > 1 {
-                    if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
-                        ffu8fstr(
-                            &array[(next as usize)..],
-                            ntodo,
-                            scale,
-                            zero,
-                            &cform,
-                            twidth,
-                            cast_slice_mut(&mut buffer),
+                let mut handled = false;
+                if hdutype == ASCII_TBL
+                    && formlen > 1
+                    && (cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E'))
+                {
+                    ffu8fstr(
+                        &array[(next as usize)..],
+                        ntodo,
+                        scale,
+                        zero,
+                        &cform,
+                        twidth,
+                        cast_slice_mut(&mut buffer),
+                        status,
+                    );
+
+                    if incre == twidth {
+                        /* contiguous bytes */
+                        ffpbyt(
+                            fptr,
+                            (ntodo * twidth) as LONGLONG,
+                            cast_slice(&buffer),
                             status,
                         );
-
-                        if incre == twidth {
-                            /* contiguous bytes */
-                            ffpbyt(
-                                fptr,
-                                (ntodo * twidth) as LONGLONG,
-                                cast_slice(&buffer),
-                                status,
-                            );
-                        } else {
-                            ffpbytoff(
-                                fptr,
-                                twidth,
-                                ntodo,
-                                incre - twidth,
-                                cast_slice(&buffer),
-                                status,
-                            );
-                        }
+                    } else {
+                        ffpbytoff(
+                            fptr,
+                            twidth,
+                            ntodo,
+                            incre - twidth,
+                            cast_slice(&buffer),
+                            status,
+                        );
                     }
-                } else {
+                    handled = true;
+                }
+
+                if !handled {
                     /* can't write to string column, so fall thru to default: */
                     /*  error trap  */
                     int_snprintf!(
@@ -2537,10 +2544,7 @@ pub(crate) fn ffu8fi2(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < c_short::MIN as ULONGLONG {
-                *status = OVERFLOW_ERR;
-                output[ii] = c_short::MIN;
-            } else if input[ii] > c_short::MAX as ULONGLONG {
+            if input[ii] > c_short::MAX as ULONGLONG {
                 *status = OVERFLOW_ERR;
                 output[ii] = c_short::MAX;
             } else {
@@ -2580,10 +2584,7 @@ pub(crate) fn ffu8fi4(
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
-            if input[ii] < INT32_MIN as ULONGLONG {
-                *status = OVERFLOW_ERR;
-                output[ii] = INT32_MIN;
-            } else if input[ii] > INT32_MAX as ULONGLONG {
+            if input[ii] > INT32_MAX as ULONGLONG {
                 *status = OVERFLOW_ERR;
                 output[ii] = INT32_MAX;
             } else {

@@ -52,7 +52,7 @@ pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
 
     assert!(n <= dst.len());
 
-    while src[i] != 0 && i < n {
+    while i < n && src[i] != 0 {
         dst[i] = src[i];
         i += 1;
     }

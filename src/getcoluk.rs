@@ -741,7 +741,6 @@ pub fn ffgsfuk_safe(
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
-    let dir: [c_long; 9] = [0; 9];
     let mut nelem: c_long = 0;
     let mut nultyp = NullCheckType::None;
     let mut ninc: c_long = 0;
@@ -866,21 +865,14 @@ pub fn ffgsfuk_safe(
     }
 
     for row in (rstr..=rstp).step_by(rinc as usize) {
-        for i8 in ((str[8] * dir[8])..=(stp[8] * dir[8])).step_by(incr[8] as usize) {
-            for i7 in ((str[7] * dir[7])..=(stp[7] * dir[7])).step_by(incr[7] as usize) {
-                for i6 in ((str[6] * dir[6])..=(stp[6] * dir[6])).step_by(incr[6] as usize) {
-                    for i5 in ((str[5] * dir[5])..=(stp[5] * dir[5])).step_by(incr[5] as usize) {
-                        for i4 in ((str[4] * dir[4])..=(stp[4] * dir[4])).step_by(incr[4] as usize)
-                        {
-                            for i3 in
-                                ((str[3] * dir[3])..=(stp[3] * dir[3])).step_by(incr[3] as usize)
-                            {
-                                for i2 in ((str[2] * dir[2])..=(stp[2] * dir[2]))
-                                    .step_by(incr[2] as usize)
-                                {
-                                    for i1 in ((str[1] * dir[1])..=(stp[1] * dir[1]))
-                                        .step_by(incr[1] as usize)
-                                    {
+        for i8 in ((str[8])..=(stp[8])).step_by(incr[8] as usize) {
+            for i7 in ((str[7])..=(stp[7])).step_by(incr[7] as usize) {
+                for i6 in ((str[6])..=(stp[6])).step_by(incr[6] as usize) {
+                    for i5 in ((str[5])..=(stp[5])).step_by(incr[5] as usize) {
+                        for i4 in ((str[4])..=(stp[4])).step_by(incr[4] as usize) {
+                            for i3 in ((str[3])..=(stp[3])).step_by(incr[3] as usize) {
+                                for i2 in ((str[2])..=(stp[2])).step_by(incr[2] as usize) {
+                                    for i1 in ((str[1])..=(stp[1])).step_by(incr[1] as usize) {
                                         felem = (str[0] as LONGLONG)
                                             + (i1 as LONGLONG - 1) * dsize[1]
                                             + (i2 as LONGLONG - 1) * dsize[2]

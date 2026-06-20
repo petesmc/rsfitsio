@@ -81,9 +81,10 @@ pub fn ffgpvuj_safe(
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     let mut row: c_long = 0;
-    let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let mut nullvalue: c_ulong = 0;
+
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -117,7 +118,7 @@ pub fn ffgpvuj_safe(
         NullCheckType::SetPixel,
         nulval,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         anynul,
         status,
     );
@@ -345,7 +346,6 @@ pub fn ffg3duj_safe(
     status: &mut c_int,             /* IO - error status                           */
 ) -> c_int {
     let mut tablerow = 0;
-    let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let inc: [c_long; 3] = [1, 1, 1];
     let fpixel: [LONGLONG; 3] = [1, 1, 1];
@@ -353,6 +353,8 @@ pub fn ffg3duj_safe(
     let mut narray = 0;
     let mut lpixel: [LONGLONG; 3] = [0; 3];
     let mut nullvalue: c_ulong = 0;
+
+    let mut dummy_nularray = vec![0; (naxis1 * naxis2 * naxis3) as usize];
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -394,7 +396,7 @@ pub fn ffg3duj_safe(
             NullCheckType::SetPixel,
             nulval,
             cast_slice_mut(array),
-            &mut [cdummy],
+            &mut dummy_nularray,
             anynul.as_deref_mut(),
             status,
         );
@@ -424,7 +426,7 @@ pub fn ffg3duj_safe(
                 NullCheckType::SetPixel,
                 nulval,
                 cast_slice_mut(&mut array[(narray as usize)..]),
-                &mut [cdummy],
+                &mut dummy_nularray,
                 anynul.as_deref_mut(),
                 status,
             ) > 0
@@ -958,8 +960,9 @@ pub fn ffggpuj_safe(
     array: &mut [c_ulong], /* O - array of values that are returned       */
     status: &mut c_int,    /* IO - error status                           */
 ) -> c_int {
-    let cdummy: c_char = 0;
     let mut anynul = 0;
+
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     let row = cmp::max(1, group);
 
@@ -973,7 +976,7 @@ pub fn ffggpuj_safe(
         NullCheckType::SetPixel,
         0,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         Some(&mut anynul),
         status,
     );
@@ -1030,7 +1033,7 @@ pub fn ffgcvuj_safe(
     anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
-    let cdummy: c_char = 0;
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     ffgcluj(
         fptr,
@@ -1042,7 +1045,7 @@ pub fn ffgcvuj_safe(
         NullCheckType::SetPixel,
         nulval,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         anynul,
         status,
     )
@@ -1927,10 +1930,10 @@ pub(crate) fn fffi8u4(
         } else if scale == 1.0 && zero == 0.0 {
             /* no scaling */
             for ii in 0..(ntodo as usize) {
-                if input[ii] < c_ulong::MIN as LONGLONG {
+                if input[ii] < 0 {
                     *status = OVERFLOW_ERR;
-                    output[ii] = c_ulong::MIN;
-                } else if input[ii] > c_ulong::MAX as LONGLONG {
+                    output[ii] = 0;
+                } else if (input[ii] as ULONGLONG) > c_ulong::MAX as ULONGLONG {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_ulong::MAX;
                 } else {
@@ -1991,10 +1994,10 @@ pub(crate) fn fffi8u4(
                     } else {
                         nullarray[ii] = 1;
                     }
-                } else if input[ii] < c_ulong::MIN as LONGLONG {
+                } else if input[ii] < 0 {
                     *status = OVERFLOW_ERR;
-                    output[ii] = c_ulong::MIN;
-                } else if input[ii] > c_ulong::MAX as LONGLONG {
+                    output[ii] = 0;
+                } else if (input[ii] as ULONGLONG) > c_ulong::MAX as ULONGLONG {
                     *status = OVERFLOW_ERR;
                     output[ii] = c_ulong::MAX;
                 } else {
@@ -2594,9 +2597,10 @@ pub fn ffgpvujj_safe(
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
     let mut row = 0;
-    let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let mut nullvalue: ULONGLONG = 0;
+
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -2630,7 +2634,7 @@ pub fn ffgpvujj_safe(
         NullCheckType::SetPixel,
         nulval,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         anynul,
         status,
     );
@@ -2857,7 +2861,6 @@ pub fn ffg3dujj_safe(
     status: &mut c_int,             /* IO - error status                           */
 ) -> c_int {
     let mut tablerow: c_long = 0;
-    let cdummy: c_char = 0;
     let nullcheck = NullCheckType::SetPixel;
     let inc: [c_long; 3] = [1, 1, 1];
 
@@ -2866,6 +2869,8 @@ pub fn ffg3dujj_safe(
     let mut narray: LONGLONG = 0;
     let mut lpixel: [LONGLONG; 3] = [0; 3];
     let mut nullvalue: ULONGLONG = 0;
+
+    let mut dummy_nularray = vec![0; (naxis1 * naxis2 * naxis3) as usize];
 
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -2907,7 +2912,7 @@ pub fn ffg3dujj_safe(
             NullCheckType::SetPixel,
             nulval,
             array,
-            &mut [cdummy],
+            &mut dummy_nularray,
             anynul.as_deref_mut(),
             status,
         );
@@ -2938,7 +2943,7 @@ pub fn ffg3dujj_safe(
                 NullCheckType::SetPixel,
                 nulval,
                 &mut array[(narray as usize)..],
-                &mut [cdummy],
+                &mut dummy_nularray,
                 anynul.as_deref_mut(),
                 status,
             ) > 0
@@ -3497,8 +3502,9 @@ pub fn ffggpujj_safe(
     status: &mut c_int,      /* IO - error status                           */
 ) -> c_int {
     let mut idummy = 0;
-    let cdummy: c_char = 0;
     let dummy: ULONGLONG = 0;
+
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     let row = cmp::max(1, group);
 
@@ -3512,7 +3518,7 @@ pub fn ffggpujj_safe(
         NullCheckType::SetPixel,
         dummy,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         Some(&mut idummy),
         status,
     );
@@ -3577,7 +3583,7 @@ pub fn ffgcvujj_safe(
     anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
     status: &mut c_int,         /* IO - error status                           */
 ) -> c_int {
-    let cdummy: c_char = 0;
+    let mut dummy_nularray = vec![0; nelem as usize];
 
     ffgclujj(
         fptr,
@@ -3589,7 +3595,7 @@ pub fn ffgcvujj_safe(
         NullCheckType::SetPixel,
         nulval,
         array,
-        &mut [cdummy],
+        &mut dummy_nularray,
         anynul,
         status,
     );

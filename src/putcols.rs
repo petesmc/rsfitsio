@@ -426,7 +426,7 @@ pub fn ffpcns_safe(
     let mut ii: LONGLONG = 0;
     while ii < nelem {
         let arr = array[ii as usize];
-        if strcmp_safe(nulvalue, arr) > 0 {
+        if strcmp_safe(nulvalue, arr) != 0 {
             /* is this a good pixel? */
 
             if nbad != 0 {
