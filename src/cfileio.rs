@@ -5526,7 +5526,7 @@ pub fn ffifile2_safe(
     let ptr4 = strstr_safe(&infile, cs!(c".imh"));
     /* did the infile name end with c".imh" ? */
     if let Some(p4) = ptr4
-        && infile[p4] == 0
+        && infile[p4 + 4] == 0
         && let Some(ref mut s) = urltype
     {
         strcpy_safe(s, cs!(c"irafmem://"));
@@ -7037,9 +7037,11 @@ pub fn ffexts_safe(
         }
     }
 
-    let ptr1 = strchr_safe(&extspec[ptr1..], bb(b';'));
+    // strchr_safe returns an index relative to the start of the slice, so add
+    // the current ptr1 offset to keep it an absolute index into extspec.
+    let semicolon = strchr_safe(&extspec[ptr1..], bb(b';')).map(|p| p + ptr1);
 
-    if let Some(mut ptr1) = ptr1 {
+    if let Some(mut ptr1) = semicolon {
         /* an image is to be opened; the image is contained in a single */
         /* cell of a binary table.  A column name and an expression to  */
         /* determine which row to use has been entered.                 */
@@ -7061,7 +7063,7 @@ pub fn ffexts_safe(
             }
             Some(mut ptr2) => {
                 ptr2 += ptr1;
-                if ptr2 - ptr1 > FLEN_FILENAME - 1 {
+                if ptr2 - ptr1 > FLEN_VALUE - 1 {
                     *status = URL_PARSE_ERROR;
                     return *status;
                 }
@@ -7074,7 +7076,7 @@ pub fn ffexts_safe(
                     ptr2 += 1;
                 }
 
-                let ptr1 = strchr_safe(&extspec[ptr2..], bb(b')'));
+                let ptr1 = strchr_safe(&extspec[ptr2..], bb(b')')).map(|p| p + ptr2);
                 match ptr1 {
                     None => {
                         ffpmsg_str("illegal specification of image in table cell in input URL:");
@@ -7551,6 +7553,9 @@ pub fn fits_get_token_safe(
                 }
             }
         }
+
+        /* increment *ptr to the end of the token (past leading blanks + token) */
+        *ptr = (*ptr).add(ptr_idx);
     }
 
     slen as c_int
@@ -9693,5 +9698,35 @@ mod tests {
 
         // keep the backing buffer alive until after the file is closed
         drop(buffer);
+    }
+    
+    /* Tests for fits_find_match_delim - delimiter matching.
+    Ported from test_find_match_delim.c. The C returns a `char *`; the Rust
+    returns the index of the char *after* the matched delimiter, so we deref
+    that index and compare the character. */
+    #[test]
+    fn test_find_match_delim() {
+        // C: *fits_find_match_delim(s, d)  ->  s[idx]
+        fn delim_char(s: &[c_char], d: c_char) -> c_char {
+            let idx = fits_find_match_delim(s, d).unwrap();
+            s[idx]
+        }
+
+        assert_eq!(delim_char(cs!(c"'Xaa'aaa"), bb(b'\'')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c"aaaa'Xaa"), bb(b'\'')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c"aaaaaaa'"), bb(b'\'')), 0);
+
+        assert_eq!(delim_char(cs!(c"\"X"), bb(b'"')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c"x\"X"), bb(b'"')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c"\""), bb(b'"')), 0);
+
+        assert_eq!(delim_char(cs!(c"}X"), bb(b'}')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c" {}  }X"), bb(b'}')), bb(b'X'));
+
+        assert_eq!(delim_char(cs!(c"]X"), bb(b']')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c" []  ]X"), bb(b']')), bb(b'X'));
+
+        assert_eq!(delim_char(cs!(c")X"), bb(b')')), bb(b'X'));
+        assert_eq!(delim_char(cs!(c" ()  )X"), bb(b')')), bb(b'X'));
     }
 }
