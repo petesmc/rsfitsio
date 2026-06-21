@@ -1,5 +1,6 @@
 use core::slice;
 use std::ffi::CStr;
+use std::ptr::addr_of;
 use std::rc::Rc;
 use std::{cmp, ptr};
 
@@ -73,7 +74,7 @@ use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe};
-use crate::fitsio::{LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTAX_ERR, fitsfile};
+use crate::fitsio::{LONG_MAX, LONG_MIN, LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTAX_ERR, fitsfile};
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkyd_safe, ffgkyj_safe, ffgkys_safe};
 use crate::region::{MY_PI, SAORegion, WCSdata, fits_in_region, fits_read_rgnfile};
@@ -227,6 +228,8 @@ pub const CIRCLE_RGN: shapeType = 2;
 pub const LINE_RGN: shapeType = 1;
 pub const POINT_RGN: shapeType = 0;
 pub type yytype_uint8 = c_uchar;
+
+const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -7725,13 +7728,15 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
     let mut n: c_int = 0;
     let mut nelem: c_int = 0;
 
-    let this_node_idx: usize = vecNode as usize;
+    let mut this_node_idx: usize = vecNode as usize;
     n = 0;
     while n < (lParse.Nodes[this_node_idx]).nSubNodes {
-        if ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[n as usize] as usize]).ntype
-            != (lParse.Nodes[this_node_idx]).ntype
-        {
-            (lParse.Nodes[this_node_idx]).SubNodes[n as usize] = New_Unary(
+        let mut subnode = lParse.Nodes[this_node_idx].SubNodes[n as usize];
+        if ((lParse.Nodes)[subnode as usize]).ntype != (lParse.Nodes[this_node_idx]).ntype {
+            /* New_Unary may change the lParse->Nodes pointer if
+            it performs a realloc. Therefore reset 'this' just in case. */
+
+            subnode = New_Unary(
                 lParse,
                 (lParse.Nodes[this_node_idx]).ntype,
                 0,
@@ -7740,11 +7745,12 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
             .try_into()
             .unwrap();
 
-            /*
-            if (lParse.Nodes[this_node_idx]).SubNodes[n as usize] < 0 {
+            if subnode < 0 {
                 return -(1);
             }
-            */
+
+            this_node_idx = vecNode as usize;
+            lParse.Nodes[this_node_idx].SubNodes[n as usize] = subnode;
         }
         nelem = (c_long::from(nelem)
             + ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[n as usize] as usize])
@@ -9485,14 +9491,30 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 37 => {
                     if val2 != 0 {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                        if (val1 == LONG_MIN && val2 == -1) {
+                            *(lParse.Nodes[this_node_idx])
+                                .value
+                                .data
+                                .lngptr
+                                .offset(elem as isize) = 0;
+                        } else {
+                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                        }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 47 => {
                     if val2 != 0 {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                        if (val1 == LONG_MIN && val2 == -1) {
+                            *(lParse.Nodes[this_node_idx])
+                                .value
+                                .data
+                                .lngptr
+                                .offset(elem as isize) = LONG_MAX;
+                        } else {
+                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                        }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
@@ -9694,6 +9716,26 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
         }
     }
 }
+
+fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
+    let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
+    let undef = unsafe { (lParse.Nodes[node_idx]).value.undef };
+
+    if (data.is_null()
+        || (data.addr()) < PARSER_VECTOR_MIN_ADDR
+        || undef.is_null()
+        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR)
+    {
+        fits_parser_yyerror(lParse, cs!(c"parser column data unavailable"));
+        if (lParse.status == 0) {
+            lParse.status = PARSE_SYNTAX_ERR;
+        }
+        return 0;
+    }
+
+    return 1;
+}
+
 fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
@@ -9723,6 +9765,14 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
+        }
+
+        if (vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0) {
+            return;
+        }
+
+        if (vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0) {
+            return;
         }
 
         if vector1 == 0 && vector2 == 0 {
@@ -13518,6 +13568,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -13529,6 +13580,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                     || (lParse.Nodes[this_node_idx]).ntype
@@ -13625,6 +13677,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     cs!(c"Null encountered as vector index"),
                                 );
                                 free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                                 break;
                             } else {
                                 dimVals[i as usize] =
@@ -13702,6 +13755,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                         free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                     }
                     row += 1;
                 }
@@ -13713,6 +13767,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
                         free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         break;
                     } else {
                         dimVals[0] =
@@ -13724,6 +13779,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                             free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BITSTR as c_int
                             || (lParse.Nodes[this_node_idx]).ntype

@@ -286,6 +286,13 @@ pub(crate) fn ffbinse(
                 }
 
                 let slen = strcspn_safe(ptr, cs!(c" ,)"));
+                if (slen >= FLEN_VALUE) {
+                    ffpmsg_str("column name too long in binning specification");
+                    ffpmsg_slice(binspec);
+                    *status = URL_PARSE_ERROR;
+                    return *status;
+                }
+
                 strncat_safe(&mut colname[ii], ptr, slen); /* copy 1st column name */
 
                 ptr = &ptr[slen..];
@@ -3067,6 +3074,7 @@ pub(crate) fn fits_calc_binningde(
                 let errmsg_len = strlen_safe(&errmsg);
                 strncat_safe(&mut errmsg, ce[ii].unwrap(), FLEN_ERRMSG - errmsg_len - 1);
                 ffpmsg_slice(&errmsg);
+                ffcprs(&mut lParse);
                 return *status;
             }
             if nelem < 0 {
@@ -3332,6 +3340,23 @@ pub(crate) fn fits_calc_binningde(
         /* if the min is greater than the max, make the binsize negative */
         if (amin[ii] > amax[ii] && binsize[ii] > 0.) || (amin[ii] < amax[ii] && binsize[ii] < 0.) {
             binsize[ii] = -binsize[ii]; /* reverse the sign of binsize */
+        }
+
+        if (binsize[ii] == 0.0) {
+            ffpmsg_str("error: computed histogram binsize = 0");
+
+            let cond = colexpr.is_some()
+                && colexpr.unwrap()[ii].is_some()
+                && colexpr.unwrap()[ii].as_ref().unwrap()[0] != 0;
+            if cond {
+                ffpmsg_str("binning expression:");
+                ffpmsg_slice(colexpr.unwrap()[ii].as_ref().unwrap());
+            } else if (colname[ii][0] != 0) {
+                ffpmsg_str("binning column:");
+                ffpmsg_slice(&colname[ii]);
+            }
+            *status = ZERO_SCALE;
+            return *status;
         }
 
         ibin = binsize[ii] as c_int;

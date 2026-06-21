@@ -4071,7 +4071,7 @@ pub fn ffinit_safe(
     let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
     let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut tmplfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-    let mut compspec: [c_char; 80] = [0; 80];
+    let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut handle: c_int = 0;
     let mut create_disk_file: c_int = 0;
 
@@ -6312,7 +6312,8 @@ pub fn ffifile2_safe(
 
             /* Check for overflow; add extra 4 characters if we have pre-existing expression */
             if strlen_safe(rowfilterx_slice)
-                + (p2 - p1 + (if rowfilterx_slice[0] != 0 { 4 } else { 0 }))
+                + (p2 - p1 - 1)
+                + (if rowfilterx_slice[0] != 0 { 4 } else { 0 })
                 > FLEN_FILENAME - 1
             {
                 *status = URL_PARSE_ERROR;
@@ -7061,7 +7062,7 @@ pub fn ffexts_safe(
             }
             Some(mut ptr2) => {
                 ptr2 += ptr1;
-                if ptr2 - ptr1 > FLEN_FILENAME - 1 {
+                if ptr2 - ptr1 > FLEN_VALUE - 1 {
                     *status = URL_PARSE_ERROR;
                     return *status;
                 }

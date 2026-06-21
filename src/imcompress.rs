@@ -42,13 +42,15 @@ use crate::getcold::{
     fffi1r8, fffi2r8, fffi4r8, fffr4r8, fffr8r8, fffr8r8_inplace, ffgcvd_safe, ffgsvd_safe,
 };
 use crate::getcole::{fffi1r4, fffi2r4, fffi4r4, fffr4r4, fffr4r4_inplace, fffr8r4, ffgsve_safe};
-use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffr4i2, fffr8i2, ffgsvi_safe};
-use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffr4i4, fffr8i4};
-use crate::getcolk::{fffi1int, fffi2int, fffi4int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe};
+use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffi8i2, fffr4i2, fffr8i2, ffgsvi_safe};
+use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffi8i4, fffr4i4, fffr8i4};
+use crate::getcolk::{
+    fffi1int, fffi2int, fffi4int, fffi8int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe,
+};
 use crate::getcolsb::{fffi1s1, fffi2s1, fffi4s1};
-use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffr4u2, fffr8u2};
-use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffr4u4, fffr8u4};
-use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffr4uint, fffr8uint};
+use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffi8u2, fffr4u2, fffr8u2};
+use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffi8u4, fffr4u4, fffr8u4};
+use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffi8uint, fffr4uint, fffr8uint};
 use crate::putcolb::ffpclb_safe;
 use crate::putcold::ffpcld_safe;
 use crate::putcoli::ffpcli_safe;
@@ -1837,14 +1839,6 @@ pub(crate) fn imcomp_init_table(
                     Some(cs!(c"dithering offset when quantizing floats")),
                     status,
                 );
-
-                if strcmp_safe(&zcmptype, cs!(c"RICE_1")) == 0 {
-                    /* when using this new dithering method, change the compression type */
-                    /* to an alias, so that old versions of funpack will not be able to */
-                    /* created a corrupted uncompressed image. */
-                    /* ******* can remove this cludge after about June 2015, after most old versions of fpack are gone */
-                    strcpy_safe(&mut zcmptype, cs!(c"RICE_ONE"));
-                }
             } else if (outfptr.Fptr).request_quantize_method == NO_DITHER {
                 ffpkys_safe(
                     outfptr,
@@ -3210,6 +3204,31 @@ unsafe fn imcomp_compress_tile(
                 cast_slice(&cbuf),
                 status,
             );
+
+            /* we must zero out existing existing compressed data if it exists. */
+            /* otherwise on read this data is read ahead of the gzipped */
+            /* data and will cause a bug. */
+            let mut _test_nelemll: LONGLONG = 0;
+            let mut _test_offset: LONGLONG = 0;
+            ffgdesll_safe(
+                outfptr,
+                (outfptr.Fptr).cn_compressed,
+                row.into(),
+                Some(&mut _test_nelemll),
+                Some(&mut _test_offset),
+                status,
+            );
+            if (_test_nelemll != 0) {
+                ffpclb_safe(
+                    outfptr,
+                    (outfptr.Fptr).cn_compressed,
+                    row.into(),
+                    1,
+                    0,
+                    &[],
+                    status,
+                );
+            }
 
             /* finished with this buffer */
         }
@@ -6918,20 +6937,33 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
     } else {
         /* get the floating point to integer quantization type, if present. */
         /* FITS files produced before 2009 will not have this keyword */
+        /* NO_DITHER should be treated as the default if it is not present. */
         tstatus = 0;
         if fits_read_key_str(infptr, cs!(c"ZQUANTIZ"), &mut value, None, &mut tstatus) > 0 {
-            (infptr.Fptr).quantize_method = 0;
+            (infptr.Fptr).quantize_method = NO_DITHER;
             (infptr.Fptr).quantize_level = 0.0;
+
+            /* Note that we need to set quantize_level to something other than */
+            /* NO_QUANTIZE, since that would cause quantize_method to be ignored, */
+            /* and it might already be set from a different HDU. */
         } else if FSTRCMP(&value, cs!(c"NONE")) == 0 {
             (infptr.Fptr).quantize_level = NO_QUANTIZE;
         } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_1")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_1;
+            (infptr.Fptr).quantize_level = 0.0;
         } else if FSTRCMP(&value, cs!(c"SUBTRACTIVE_DITHER_2")) == 0 {
             (infptr.Fptr).quantize_method = SUBTRACTIVE_DITHER_2;
+            (infptr.Fptr).quantize_level = 0.0;
         } else if FSTRCMP(&value, cs!(c"NO_DITHER")) == 0 {
             (infptr.Fptr).quantize_method = NO_DITHER;
+            (infptr.Fptr).quantize_level = 0.0;
         } else {
-            (infptr.Fptr).quantize_method = 0;
+            /* This is an invalid ZQUANTIZ key or an old CFITSIO */
+            /* encountering some future standard key. */
+            ffpmsg_str("Unknown quantization type:");
+            ffpmsg_slice(&value);
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
         }
     }
 
@@ -8531,38 +8563,7 @@ fn imcomp_decompress_tile(
     if datatype == TSHORT {
         pixlen = mem::size_of::<c_short>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8i2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_short,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8638,42 +8639,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8i2(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_short,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TINT {
         pixlen = mem::size_of::<c_int>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_int,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8int(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_int,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8733,42 +8717,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8int(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_int,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TLONG {
         pixlen = mem::size_of::<c_long>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_long,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8i4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_long,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -8822,6 +8789,20 @@ fn imcomp_decompress_tile(
                 bzero,
                 nullcheck,
                 tnull as c_uchar,
+                nulval.get_value_as_f64() as c_long,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
+        } else {
+            fffi8i4(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
                 nulval.get_value_as_f64() as c_long,
                 bnullarray,
                 anynul.as_deref_mut(),
@@ -9230,38 +9211,7 @@ fn imcomp_decompress_tile(
     } else if datatype == TUSHORT {
         pixlen = mem::size_of::<c_short>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8u2(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_ushort,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9321,42 +9271,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8u2(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_ushort,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TUINT {
         pixlen = mem::size_of::<c_int>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8uint(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_uint,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9416,42 +9349,25 @@ fn imcomp_decompress_tile(
                 cast_slice_mut(buffer),
                 status,
             );
+        } else {
+            fffi8uint(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
+                nulval.get_value_as_f64() as c_uint,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
         }
     } else if datatype == TULONG {
         pixlen = mem::size_of::<c_long>();
 
-        if (infptr.Fptr).quantize_level == NO_QUANTIZE {
-            /* the floating point pixels were losselessly compressed with GZIP */
-            /* Just have to copy the values to the output array */
-
-            if tiledatatype == TINT {
-                fffr4u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            } else {
-                fffr8u4(
-                    cast_slice_mut(idata),
-                    c_long::from(tilelen),
-                    bscale,
-                    bzero,
-                    nullcheck,
-                    nulval.get_value_as_f64() as c_ulong,
-                    bnullarray,
-                    anynul.as_deref_mut(),
-                    cast_slice_mut(buffer),
-                    status,
-                );
-            }
-        } else if tiledatatype == TINT {
+        if tiledatatype == TINT {
             if (infptr.Fptr).compress_type == PLIO_1 && actual_bzero == 32768. {
                 /* special case where unsigned 16-bit integers have been */
                 /* offset by +32768 when using PLIO */
@@ -9505,6 +9421,20 @@ fn imcomp_decompress_tile(
                 bzero,
                 nullcheck,
                 tnull as c_uchar,
+                nulval.get_value_as_f64() as c_ulong,
+                bnullarray,
+                anynul.as_deref_mut(),
+                cast_slice_mut(buffer),
+                status,
+            );
+        } else {
+            fffi8u4(
+                cast_slice_mut(idata),
+                c_long::from(tilelen),
+                bscale,
+                bzero,
+                nullcheck,
+                tnull as LONGLONG,
                 nulval.get_value_as_f64() as c_ulong,
                 bnullarray,
                 anynul.as_deref_mut(),

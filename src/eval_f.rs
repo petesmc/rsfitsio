@@ -1438,7 +1438,13 @@ pub(crate) fn ffiprs(
     } else {
         lexpr = strlen_safe(expr) as c_int;
         // Create a new boxed slice with the expression
-        let mut vec = Vec::with_capacity((lexpr + 2) as usize);
+        let mut vec = Vec::new();
+        if vec.try_reserve_exact((lexpr + 2) as usize).is_err() {
+            ffpmsg_str("memory allocation failed (ffiprs)");
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        }
+
         for i in 0..lexpr {
             vec.push(expr[i as usize] as u8);
         }
@@ -1534,6 +1540,10 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
         let col: c_int = 0;
         let mut node: c_int = 0;
         let mut i: usize = 0;
+
+        if lParse.expr.is_some() {
+            lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
+        }
 
         if lParse.nCols > 0 {
             lParse.colData.clear();
