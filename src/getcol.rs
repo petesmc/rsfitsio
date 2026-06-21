@@ -3900,7 +3900,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [5];
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -3947,7 +3947,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [5];
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -4250,7 +4250,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [5];
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
             let firstpix: [c_long; 1] = [1];
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -4298,7 +4298,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [5];
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
             let firstpix: [LONGLONG; 1] = [1];
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -5238,7 +5238,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
 
             let mut f = make_table(&name, "ICOL", "5I", 1, &mut status);
             // Write TNULL keyword to define null value for column
@@ -5285,7 +5285,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let wdata: [i16; 5] = [100, -32768, 200, -32768, 300];
-            let nulval: c_long = -32768;
+            let nulval: LONGLONG = -32768;
 
             let mut f = make_table(&name, "ICOL", "5I", 1, &mut status);
             fits_update_key_lng(

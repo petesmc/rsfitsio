@@ -3557,7 +3557,7 @@ mod tests {
             let bdata = [255u8];
             let sdata = [32000i16];
             let idata = [2000000 as c_int];
-            let ldata = [4000000000 as c_long];
+            let ldata = [2000000000 as c_long];
             let fdata = [3.14159f32];
             let ddata = [2.71828182845f64];
 

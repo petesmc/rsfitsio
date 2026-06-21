@@ -6356,7 +6356,7 @@ mod tests {
             let mut status: c_int = 0;
             let name = to_buf(filename);
 
-            let ulval: u64 = 4000000000;
+            let ulval: c_ulong = 4000000000;
             let ullval: u64 = 18000000000000000000;
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -7935,7 +7935,7 @@ mod tests {
             let mut status: c_int = 0;
             let name = to_buf(filename);
 
-            let mut ulval: u64 = 3000000000;
+            let mut ulval: c_ulong = 3000000000;
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
