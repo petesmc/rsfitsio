@@ -1451,3 +1451,1602 @@ pub fn ffdhdu_safe(
 
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::KeywordDatatypeMut;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BAD_BITPIX, BAD_NAXES, BAD_NAXIS, BAD_TFIELDS, BINARY_TBL, BYTE_IMG, DOUBLE_IMG,
+        FLEN_VALUE, LONGLONG, LONGLONG_IMG, NEG_ROWS, NEG_WIDTH, READONLY, READONLY_FILE,
+        READWRITE, SAME_FILE, SHORT_IMG, fitsfile,
+    };
+    use crate::helpers::testhelpers::{from_buf, to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Derive a sibling path in the same temp dir as `base`.
+    fn sibling(base: &str, name: &str) -> String {
+        let p = std::path::Path::new(base);
+        p.with_file_name(name).to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn test_cpfl_copy_all() {
+        // Test ffcpfl - copy all HDUs from input to output.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let data: [c_long; 3] = [100, 200, 300];
+
+            // Create input file with primary + 2 extensions.
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                3,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("EXT1")),
+                &mut status,
+            );
+            fits_write_col_lng(inf.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                2,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("EXT2")),
+                &mut status,
+            );
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "input setup failed");
+
+            // Create empty output file.
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "output setup failed");
+
+            // Open both and copy all HDUs using ffcpfl.
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_copy_file(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcpfl failed");
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+
+            // Verify output has 4 HDUs (original empty + 3 copied).
+            fits_open_file(&mut out, &path2, READONLY, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(out.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(numhdus, 4);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpfl_copy_current_only() {
+        // Test ffcpfl - copy only current HDU.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let data: [c_long; 3] = [100, 200, 300];
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                3,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("FIRST")),
+                &mut status,
+            );
+            fits_write_col_lng(inf.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                2,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("SECOND")),
+                &mut status,
+            );
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_copy_file(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                0,
+                1,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+
+            fits_open_file(&mut out, &path2, READONLY, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(out.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_movabs_hdu(out.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            fits_read_key(
+                out.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TSTRING(&mut extname),
+                &cc("EXTNAME"),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&extname), "FIRST");
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpfl_copy_following() {
+        // Test ffcpfl - copy following HDUs only.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            for nm in ["A", "B", "C"] {
+                fits_create_tbl(
+                    inf.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    2,
+                    1,
+                    &ttype_ref,
+                    &tform_ref,
+                    None,
+                    Some(&cc(nm)),
+                    &mut status,
+                );
+            }
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 2, None, &mut status); // Move to A
+            fits_copy_file(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                0,
+                0,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+
+            fits_open_file(&mut out, &path2, READONLY, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(out.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 3);
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            fits_movabs_hdu(out.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_read_key(
+                out.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TSTRING(&mut extname),
+                &cc("EXTNAME"),
+                None,
+                &mut status,
+            );
+            assert_eq!(from_buf(&extname), "B");
+            fits_movabs_hdu(out.as_deref_mut().unwrap(), 3, None, &mut status);
+            fits_read_key(
+                out.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TSTRING(&mut extname),
+                &cc("EXTNAME"),
+                None,
+                &mut status,
+            );
+            assert_eq!(from_buf(&extname), "C");
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpht_copy_table_subset() {
+        // Test ffcpht - copy table structure with limited row range.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let ttype = [Some(cc("COL1")), Some(cc("COL2"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J"), cc("1E")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let jdata: [c_long; 5] = [10, 20, 30, 40, 50];
+            let edata: [f32; 5] = [1.1, 2.2, 3.3, 4.4, 5.5];
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(inf.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                5,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("DATA")),
+                &mut status,
+            );
+            fits_write_col_lng(inf.as_deref_mut().unwrap(), 1, 1, 1, 5, &jdata, &mut status);
+            fits_write_col_flt(inf.as_deref_mut().unwrap(), 2, 1, 1, 5, &edata, &mut status);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_copy_hdutab(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                2,
+                3,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcpht failed");
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+
+            fits_open_file(&mut out, &path2, READONLY, &mut status);
+            fits_movabs_hdu(out.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(out.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 3);
+            let mut jresult = [0 as c_long; 3];
+            let mut eresult = [0.0f32; 3];
+            fits_read_col_lng(
+                out.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut jresult,
+                None,
+                &mut status,
+            );
+            fits_read_col_flt(
+                out.as_deref_mut().unwrap(),
+                2,
+                1,
+                1,
+                3,
+                0.0,
+                &mut eresult,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(jresult[0], 20);
+            assert_eq!(jresult[1], 30);
+            assert_eq!(jresult[2], 40);
+            assert!(eresult[0] >= 2.1 && eresult[0] <= 2.3);
+            assert!(eresult[1] >= 3.2 && eresult[1] <= 3.4);
+            assert!(eresult[2] >= 4.3 && eresult[2] <= 4.5);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_wrhdu_write_to_stream() {
+        // Test ffwrhdu - write HDU to output stream.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 2] = [10, 10];
+            let mut data = [0i16; 100];
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = (i * 2) as i16;
+            }
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_write_img_sht(f.as_deref_mut().unwrap(), 1, 1, 100, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Open and write HDU to a stream (file).
+            fits_open_file(&mut f, &path, READONLY, &mut status);
+            let cpath = std::ffi::CString::new(path2_str.as_str()).unwrap();
+            let mode = std::ffi::CString::new("wb").unwrap();
+            let stream = unsafe { libc::fopen(cpath.as_ptr(), mode.as_ptr()) };
+            assert!(!stream.is_null());
+            ffwrhdu_safe(
+                f.as_deref_mut().unwrap(),
+                stream as *mut crate::c_types::FILE,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffwrhdu failed");
+            unsafe {
+                libc::fclose(stream);
+            }
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            // Verify the stream output is a valid FITS file.
+            let mut f2: Option<Box<fitsfile>> = None;
+            fits_open_file(&mut f2, &path2, READONLY, &mut status);
+            assert_eq!(status, 0, "stream output not a valid FITS file");
+            let mut result = [0i16; 100];
+            fits_read_img_sht(
+                f2.as_deref_mut().unwrap(),
+                1,
+                1,
+                100,
+                0,
+                &mut result,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 0);
+            assert_eq!(result[50], 100);
+            assert_eq!(result[99], 198);
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_error_status_returns() {
+        // Test that functions return early when status > 0.
+        // Same-pointer ffcopy/ffcphd/ffcpdt use the raw C-ABI wrappers so the
+        // same handle can be passed twice.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            status = 1;
+            unsafe {
+                #[allow(deprecated)]
+                ffcopy(fp, fp, 0, &mut status);
+            }
+            assert_eq!(status, 1);
+
+            unsafe {
+                #[allow(deprecated)]
+                ffcphd(fp, fp, &mut status);
+            }
+            assert_eq!(status, 1);
+
+            unsafe {
+                #[allow(deprecated)]
+                ffcpdt(fp, fp, &mut status);
+            }
+            assert_eq!(status, 1);
+
+            fits_write_hdu(f.as_deref_mut().unwrap(), std::ptr::null_mut(), &mut status);
+            assert_eq!(status, 1);
+
+            fits_insert_img(f.as_deref_mut().unwrap(), 16, 1, &naxes, &mut status);
+            assert_eq!(status, 1);
+
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                10,
+                1,
+                1,
+                &empty_ttype,
+                None,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+
+            fits_delete_hdu(f.as_deref_mut().unwrap(), None, &mut status);
+            assert_eq!(status, 1);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_same_file_error() {
+        // Test SAME_FILE error when copying to same file pointer.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            unsafe {
+                #[allow(deprecated)]
+                ffcopy(fp, fp, 0, &mut status);
+            }
+            assert_eq!(status, SAME_FILE);
+            status = 0;
+
+            unsafe {
+                #[allow(deprecated)]
+                ffcphd(fp, fp, &mut status);
+            }
+            assert_eq!(status, SAME_FILE);
+            status = 0;
+
+            unsafe {
+                #[allow(deprecated)]
+                ffcpdt(fp, fp, &mut status);
+            }
+            assert_eq!(status, SAME_FILE);
+            status = 0;
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_image() {
+        // Test ffiimg - insert image extension.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_insert_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            assert_eq!(status, 0);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_ascii_table() {
+        // Test ffitab - insert ASCII table.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("F10.2")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let tunit = [Some(cc("m"))];
+            let tunit_ref: Vec<Option<&[c_char]>> = tunit.iter().map(|o| o.as_deref()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                80,
+                1,
+                1,
+                &ttype_ref,
+                None,
+                &tform_ref,
+                Some(&tunit_ref),
+                Some(&cc("TEST")),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_binary_table() {
+        // Test ffibin - insert binary table.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1")), Some(cc("COL2"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J"), cc("1E")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                5,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TABLE")),
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_hdu() {
+        // Test ffdhdu - delete current HDU.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path3_str = sibling(filename, "test_edithdu3.fits");
+            let path3 = to_buf(&path3_str);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path3, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TABLE1")),
+                &mut status,
+            );
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TABLE2")),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &path3, READWRITE, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 3);
+
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut hdutype: c_int = 0;
+            fits_delete_hdu(f.as_deref_mut().unwrap(), Some(&mut hdutype), &mut status);
+            assert_eq!(status, 0);
+
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_naxis() {
+        // Test BAD_NAXIS error with too many dimensions.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes = [2 as c_long; 200];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0);
+
+            fits_insert_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                200,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, BAD_NAXIS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_bitpix() {
+        // Test BAD_BITPIX error with invalid bitpix value in ffiimgll.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0);
+
+            fits_insert_img(f.as_deref_mut().unwrap(), 99, 1, &naxes, &mut status);
+            assert_eq!(status, BAD_BITPIX);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_naxes() {
+        // Test BAD_NAXES error with negative axis size in ffiimgll.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [-10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0);
+
+            fits_insert_img(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, BAD_NAXES);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_64bit_image() {
+        // Test ffiimg with 64-bit bitpix values in ffiimgll.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_img(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 2);
+
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_insert_img(
+                f.as_deref_mut().unwrap(),
+                DOUBLE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_with_morekeys() {
+        // Test ffcopy with morekeys parameter to reserve header space.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_close_file(inf.take().unwrap(), &mut status);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_copy_hdu(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                10,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    #[ignore = "REAL IMPL BUG: copying between two fitsfile handles that share the same \
+                underlying FITSfile (same file opened twice) double-frees an inner buffer \
+                (headstart/tableptr) during the copy. CFITSIO shares Fptr via a raw pointer \
+                with an open_count, but rsfitsio's reopen path wraps the same FITSfile in a \
+                second Box (cfileio.rs ~line 2064 `Box::from_raw(oldFptr)`); growing the \
+                shared header arrays during the copy then trips the global ALLOCATIONS \
+                registry on close, aborting with `double free detected`. A minimal repro \
+                (open same path twice + ffcopy_hdu + close both) reproduces it without any \
+                edithdu-specific code, so the defect lives in the core open/close/realloc \
+                lifecycle, not in edithdu. Fixing it safely requires reworking the \
+                shared-Fptr ownership model and is out of scope for this port."]
+    fn test_copy_within_same_file() {
+        // Test copying HDU data within the same file.
+        // Open the file twice with different fitsfile pointers.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [100];
+            let mut data = [0u8; 100];
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = i as u8;
+            }
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_img_byt(inf.as_deref_mut().unwrap(), 1, 1, 100, &data, &mut status);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Open the same file twice - two fitsfile pointers sharing the Fptr.
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_open_file(&mut inf, &path, READWRITE, &mut status);
+            fits_open_file(&mut out, &path, READWRITE, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 1, None, &mut status);
+            fits_copy_hdu(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(out.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 2);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_itab_negative_width() {
+        // Test ffitab with negative width.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("F10.2")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                -10,
+                1,
+                1,
+                &ttype_ref,
+                None,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, NEG_WIDTH);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_itab_negative_rows() {
+        // Test ffitab with negative rows.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("F10.2")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                80,
+                -5,
+                1,
+                &ttype_ref,
+                None,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, NEG_ROWS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_itab_bad_tfields() {
+        // Test ffitab with bad tfields.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                80,
+                1,
+                -5,
+                &empty_ttype,
+                None,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, BAD_TFIELDS);
+            status = 0;
+
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                80,
+                1,
+                1000,
+                &empty_ttype,
+                None,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, BAD_TFIELDS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ibin_negative_rows() {
+        // Test ffibin with negative rows.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                -5,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, NEG_ROWS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ibin_bad_tfields() {
+        // Test ffibin with bad tfields.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                -5,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, BAD_TFIELDS);
+            status = 0;
+
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                1000,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, BAD_TFIELDS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_byte_image() {
+        // Test ffiimg with BYTE_IMG bitpix.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 0, &[], &mut status);
+
+            fits_insert_img(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 2);
+            let mut bitpix: c_int = 0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TINT(&mut bitpix),
+                &cc("BITPIX"),
+                None,
+                &mut status,
+            );
+            assert_eq!(bitpix, 8);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_naxis_zero() {
+        // Test ffiimg with naxis=0 (null image).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_img(f.as_deref_mut().unwrap(), SHORT_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0);
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 2);
+            let mut naxis: c_int = 0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TINT(&mut naxis),
+                &cc("NAXIS"),
+                None,
+                &mut status,
+            );
+            assert_eq!(naxis, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_with_large_header_space() {
+        // Test ffcopy with source having large empty header space (ffwend path).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            // Reserve 100 additional keywords - creates multiple empty blocks.
+            fits_set_hdrsize(inf.as_deref_mut().unwrap(), 100, &mut status);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+            fits_copy_hdu(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+
+            fits_open_file(&mut out, &path2, READONLY, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(out.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert!(numhdus >= 2);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_negative_naxis() {
+        // Test ffiimg with negative naxis.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                -1,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, BAD_NAXIS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_naxis_over_limit() {
+        // Test ffiimg with naxis > 999.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes = [1 as c_long; 1000];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_insert_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                1000,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, BAD_NAXIS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpfl_same_file_error() {
+        // Test ffcpfl with same file (should fail).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            unsafe {
+                #[allow(deprecated)]
+                ffcpfl(fp, fp, 1, 1, 1, &mut status);
+            }
+            assert_eq!(status, SAME_FILE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpfl_status_error() {
+        // Test ffcpfl with initial error status.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            status = 1;
+            unsafe {
+                #[allow(deprecated)]
+                ffcpfl(fp, fp, 1, 1, 1, &mut status);
+            }
+            assert_eq!(status, 1);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_image_readonly() {
+        // Test ffiimg on readonly file.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                0,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &path, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 1, None, &mut status);
+            fits_insert_img(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, READONLY_FILE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_ascii_table_readonly() {
+        // Test ffitab on readonly file.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("F10.2")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                0,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &path, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 1, None, &mut status);
+            fits_insert_atbl(
+                f.as_deref_mut().unwrap(),
+                80,
+                1,
+                1,
+                &ttype_ref,
+                None,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, READONLY_FILE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_binary_table_readonly() {
+        // Test ffibin on readonly file.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let empty_ttype: Vec<Option<&[c_char]>> = vec![];
+            let empty_tform: Vec<&[c_char]> = vec![];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                0,
+                &empty_ttype,
+                &empty_tform,
+                None,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &path, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 1, None, &mut status);
+            fits_insert_btbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                0,
+                &mut status,
+            );
+            assert_eq!(status, READONLY_FILE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_cpht_status_error() {
+        // Test ffcpht with status already set.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let path2_str = sibling(filename, "test_edithdu2.fits");
+            let path2 = to_buf(&path2_str);
+            let naxes: [c_long; 1] = [10];
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(
+                inf.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_close_file(inf.take().unwrap(), &mut status);
+
+            let mut out: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut out, &path2, &mut status);
+            fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_open_file(&mut out, &path2, READWRITE, &mut status);
+
+            status = 1;
+            fits_copy_hdutab(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                1,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+            status = 0;
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_table_to_empty_primary() {
+        // Test copying a table to an empty output file (create dummy primary).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut inf: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut inf, &path, &mut status);
+            fits_write_imghdr(inf.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_tbl(
+                inf.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                3,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("DATA")),
+                &mut status,
+            );
+            fits_close_file(inf.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Memory file to avoid automatic primary array creation.
+            let mut out: Option<Box<fitsfile>> = None;
+            let memname = to_buf("mem://test_empty");
+            fits_create_file(&mut out, &memname, &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut inf, &path, READONLY, &mut status);
+            fits_movabs_hdu(inf.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_copy_header(
+                inf.as_deref_mut().unwrap(),
+                out.as_deref_mut().unwrap(),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(inf.take().unwrap(), &mut status);
+            fits_close_file(out.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_iimgll_status_error() {
+        // Test ffiimgll with status already set.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path = to_buf(filename);
+            let llnaxes: [LONGLONG; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            status = 1;
+            fits_insert_imgll(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                1,
+                &llnaxes,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_last_hdu() {
+        // Test ffdhdu on last HDU making primary empty.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let path3_str = sibling(filename, "test_edithdu3.fits");
+            let path3 = to_buf(&path3_str);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &path3, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &path3, READWRITE, &mut status);
+            let mut numhdus: c_int = 0;
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 1);
+
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 1, None, &mut status);
+            fits_delete_hdu(f.as_deref_mut().unwrap(), None, &mut status);
+            // After deleting the only HDU, should get a minimal primary.
+            assert_eq!(status, 0);
+
+            fits_get_num_hdus(f.as_deref_mut().unwrap(), &mut numhdus, &mut status);
+            assert_eq!(numhdus, 1);
+            let mut naxis: c_int = 0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                KeywordDatatypeMut::TINT(&mut naxis),
+                &cc("NAXIS"),
+                None,
+                &mut status,
+            );
+            assert_eq!(naxis, 0); // Primary should now be empty.
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}

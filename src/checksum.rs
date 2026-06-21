@@ -845,4 +845,724 @@ mod tests {
 
         assert_eq!(sum, 0x12345678); // Replace with the expected decoded value
     }
+
+    // --- Ported from test_checksum.c ---
+
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{BINARY_TBL, BYTE_IMG, KEY_NO_EXIST, READONLY, READWRITE, TBYTE, fitsfile};
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long, c_ulong};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    #[test]
+    fn test_write_checksum() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            assert_eq!(status, 0);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_verify_checksum() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            // setup: create + write checksum
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_update_checksum() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_update_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_get_checksums() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            let mut datasum: c_ulong = 0;
+            let mut hdusum: c_ulong = 0;
+            fits_get_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datasum,
+                &mut hdusum,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_encode_decode_checksum() {
+        let sum: c_ulong = 0x12345678;
+        let mut decoded: c_ulong = 0;
+        let mut ascii: [c_char; 17] = [0; 17];
+        ffesum_safe(sum, false, &mut ascii);
+        ffdsum_safe(&ascii, false, &mut decoded);
+        assert!(!(decoded != sum));
+    }
+
+    #[test]
+    fn test_encode_complement() {
+        let sum: c_ulong = 0xABCDEF00;
+        let mut ascii: [c_char; 17] = [0; 17];
+        ffesum_safe(sum, true, &mut ascii);
+        // strlen(ascii) == 16
+        let len = ascii.iter().position(|&c| c == 0).unwrap();
+        assert!(!(len != 16));
+    }
+
+    #[test]
+    fn test_verify_no_keywords() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 0));
+            assert!(!(hdustatus != 0));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_checksum_binary_table() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 3] = [100, 200, 300];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                3,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            assert_eq!(status, 0);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_update_existing_checksum() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let newdata: [u8; 10] = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            assert_eq!(status, 0);
+            fits_write_img(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                10,
+                &newdata,
+                &mut status,
+            );
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_large_data_checksum() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10000];
+            let data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                10000,
+                &data,
+                &mut status,
+            );
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_decode_with_carry() {
+        // Test ffdsum with values that cause carry in the decode loop
+        let mut sum: c_ulong = 0;
+        let mut ascii: [c_char; 17] = [0; 17];
+        // Use a value that will cause carries during decode
+        ffesum_safe(0xFFFFFFFF, false, &mut ascii);
+        ffdsum_safe(&ascii, false, &mut sum);
+        assert!(!(sum != 0xFFFFFFFF));
+        // Test with complement
+        ffesum_safe(0xFFFFFFFF, true, &mut ascii);
+        ffdsum_safe(&ascii, true, &mut sum);
+        assert!(!(sum != 0xFFFFFFFF));
+    }
+
+    #[test]
+    fn test_upck_no_checksum_keyword() {
+        // Test ffupck when CHECKSUM keyword doesn't exist
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            // Write DATASUM but not CHECKSUM
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("DATASUM"),
+                &cc("         0"),
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_update_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_upck_no_datasum_keyword() {
+        // Test ffupck when DATASUM keyword doesn't exist
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            status = 0;
+            fits_update_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert!(!(status != KEY_NO_EXIST));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_verify_incorrect_checksum() {
+        // Test ffvcks with incorrect checksum values
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let mut data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Corrupt the file by changing data after checksum was written
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            data[0] = 99;
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Verify should fail now
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != -1));
+            assert!(!(hdustatus != -1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_pcks_update_existing_datasum() {
+        // Test ffpcks when DATASUM exists but data changes
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let newdata: [u8; 10] = [99, 98, 97, 96, 95, 94, 93, 92, 91, 90];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Open and change data, then recalculate checksum
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_write_img(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                10,
+                &newdata,
+                &mut status,
+            );
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Verify new checksum is correct
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_upck_existing_correct_checksum() {
+        // Test ffupck when CHECKSUM already exists and is correct
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Call ffupck on file with correct checksum
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_update_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Verify checksum is still correct
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_pcks_bad_status() {
+        // Test that ffpcks returns immediately with bad status
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            status = 1;
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert!(!(status != 1));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_vcks_bad_status() {
+        // Test that ffvcks returns immediately with bad status
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            status = 1;
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert!(!(status != 1));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_gcks_bad_status() {
+        // Test that ffgcks returns immediately with bad status
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            status = 1;
+            let mut datasum: c_ulong = 0;
+            let mut hdusum: c_ulong = 0;
+            fits_get_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datasum,
+                &mut hdusum,
+                &mut status,
+            );
+            assert!(!(status != 1));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_upck_bad_status() {
+        // Test that ffupck returns immediately with bad status
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            status = 1;
+            fits_update_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert!(!(status != 1));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_csum_bad_status() {
+        // Test that ffcsum returns immediately with bad status
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0);
+            status = 1;
+            let mut sum: c_ulong = 0;
+            ffcsum_safe(f.as_deref_mut().unwrap(), 1, &mut sum, &mut status);
+            assert!(!(status != 1));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_empty_hdu_checksum() {
+        // Test checksum on HDU with no data
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_varlen_column_checksum() {
+        // Test checksum with variable-length column (heapsize > 0)
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let data1: [c_long; 3] = [1, 2, 3];
+            let data2: [c_long; 5] = [10, 20, 30, 40, 50];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            let ttype = [Some(cc("VARDATA"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1PJ(100)")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                2,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 2, 1, 5, &data2, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_pcks_nonzero_checksum() {
+        // Test ffpcks when CHECKSUM is not "0000..." and DATASUM exists
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_img(f.as_deref_mut().unwrap(), TBYTE, 1, 10, &data, &mut status);
+            // Write checksum first
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            // Reopen and call ffpcks again - checksum should be rechecked
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_write_chksum(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut datastatus: c_int = 0;
+            let mut hdustatus: c_int = 0;
+            fits_verify_chksum(
+                f.as_deref_mut().unwrap(),
+                &mut datastatus,
+                &mut hdustatus,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(datastatus != 1));
+            assert!(!(hdustatus != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_decode_large_values() {
+        // Test ffdsum with values that cause carry in decode loop
+        let mut sum: c_ulong = 0;
+        let mut ascii: [c_char; 17] = [0; 17];
+        let test_values: [c_ulong; 8] = [
+            0xFFFFFFFF, 0xAAAAAAAA, 0x55555555, 0x80808080, 0xF0F0F0F0, 0x0F0F0F0F, 0x12345678,
+            0x87654321,
+        ];
+        for &v in test_values.iter() {
+            ffesum_safe(v, false, &mut ascii);
+            ffdsum_safe(&ascii, false, &mut sum);
+            assert!(!(sum != v));
+        }
+    }
 }

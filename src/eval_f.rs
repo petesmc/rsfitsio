@@ -5023,3 +5023,3458 @@ fn load_column(
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        ASCII_TBL, BINARY_TBL, BYTE_IMG, CASEINSEN, FLEN_VALUE, LONGLONG, NOT_BTABLE,
+        PARSE_BAD_TYPE, READONLY, READWRITE, TBYTE, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG,
+        TLONGLONG, TSHORT, fitsfile,
+    };
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long, c_void};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// View a typed slice as a mutable byte slice (native layout) - this is how
+    /// the C `void *array` argument of ffcrow is interpreted.
+    fn as_bytes_mut<T>(s: &mut [T]) -> &mut [u8] {
+        unsafe {
+            std::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), std::mem::size_of_val(s))
+        }
+    }
+
+    /// Build the ttype/tform argument vectors needed by fits_create_tbl.
+    fn make_cols(ttype: &[&str], tform: &[&str]) -> (Vec<Option<Vec<c_char>>>, Vec<Vec<c_char>>) {
+        let tt: Vec<Option<Vec<c_char>>> = ttype.iter().map(|s| Some(cc(s))).collect();
+        let tf: Vec<Vec<c_char>> = tform.iter().map(|s| cc(s)).collect();
+        (tt, tf)
+    }
+
+    fn create_tbl(
+        f: &mut fitsfile,
+        tbltype: c_int,
+        nrows: LONGLONG,
+        ttype: &[&str],
+        tform: &[&str],
+        tunit: Option<&[&str]>,
+        status: &mut c_int,
+    ) {
+        let (tt, tf) = make_cols(ttype, tform);
+        let tt_ref: Vec<Option<&[c_char]>> = tt.iter().map(|o| o.as_deref()).collect();
+        let tf_ref: Vec<&[c_char]> = tf.iter().map(|v| v.as_slice()).collect();
+        let tu_owned: Option<Vec<Option<Vec<c_char>>>> =
+            tunit.map(|u| u.iter().map(|s| Some(cc(s))).collect());
+        let tu_ref: Option<Vec<Option<&[c_char]>>> = tu_owned
+            .as_ref()
+            .map(|v| v.iter().map(|o| o.as_deref()).collect());
+        fits_create_tbl(
+            f,
+            tbltype,
+            nrows,
+            ttype.len() as c_int,
+            &tt_ref,
+            &tf_ref,
+            tu_ref.as_deref(),
+            None,
+            status,
+        );
+    }
+
+    /// Create a test table (binary) with various column types for expression
+    /// testing.  Returns an open file pointing at the table HDU.
+    fn create_test_table(name: &[c_char]) -> Box<fitsfile> {
+        let mut status = 0;
+        let intdata: [c_long; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let floatdata: [f32; 10] = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5];
+        let logdata: [c_char; 10] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+        let strdata = [
+            "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        ];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, &mut status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+        create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            10,
+            &["INTCOL", "FLOATCOL", "STRCOL", "BOOLCOL"],
+            &["1J", "1E", "10A", "1L"],
+            None,
+            &mut status,
+        );
+
+        fits_write_col_lng(
+            f.as_deref_mut().unwrap(),
+            1,
+            1,
+            1,
+            10,
+            &intdata,
+            &mut status,
+        );
+        fits_write_col_flt(
+            f.as_deref_mut().unwrap(),
+            2,
+            1,
+            1,
+            10,
+            &floatdata,
+            &mut status,
+        );
+        for (i, s) in strdata.iter().enumerate() {
+            let sv = cc(s);
+            let arr: [&[c_char]; 1] = [sv.as_slice()];
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                3,
+                (i + 1) as LONGLONG,
+                1,
+                1,
+                &arr,
+                &mut status,
+            );
+        }
+        fits_write_col_log(
+            f.as_deref_mut().unwrap(),
+            4,
+            1,
+            1,
+            10,
+            &logdata,
+            &mut status,
+        );
+        assert_eq!(status, 0, "create_test_table setup failed");
+        f.unwrap()
+    }
+
+    /// Create an ASCII table for testing ASCII-specific code paths.
+    fn create_ascii_table(name: &[c_char]) -> Box<fitsfile> {
+        let mut status = 0;
+        let intdata: [c_long; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let floatdata: [f64; 10] = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5];
+        let strdata = [
+            "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        ];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, &mut status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+        create_tbl(
+            f.as_deref_mut().unwrap(),
+            ASCII_TBL,
+            10,
+            &["INTCOL", "FLOATCOL", "STRCOL"],
+            &["I11", "D23.15", "A10"],
+            Some(&["", "", ""]),
+            &mut status,
+        );
+
+        for i in 0..10 {
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                (i + 1) as LONGLONG,
+                1,
+                1,
+                &intdata[i..i + 1],
+                &mut status,
+            );
+        }
+        for i in 0..10 {
+            fits_write_col_dbl(
+                f.as_deref_mut().unwrap(),
+                2,
+                (i + 1) as LONGLONG,
+                1,
+                1,
+                &floatdata[i..i + 1],
+                &mut status,
+            );
+        }
+        for (i, s) in strdata.iter().enumerate() {
+            let sv = cc(s);
+            let arr: [&[c_char]; 1] = [sv.as_slice()];
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                3,
+                (i + 1) as LONGLONG,
+                1,
+                1,
+                &arr,
+                &mut status,
+            );
+        }
+        assert_eq!(status, 0, "create_ascii_table setup failed");
+        f.unwrap()
+    }
+
+    // ===================== fffrow tests =====================
+
+    #[test]
+    fn test_fffrow_basic() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            /* Test simple comparison: INTCOL > 5 */
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL > 5"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 6,7,8,9,10 */
+            assert_eq!(row_status[0], 0); /* row 1: 1 > 5 is false */
+            assert_eq!(row_status[5], 1); /* row 6: 6 > 5 is true */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_float_comparison() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("FLOATCOL < 5.0"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 4); /* rows 1,2,3,4 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_logical_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("BOOLCOL"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* odd rows are true */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_compound_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL > 3 && INTCOL < 8"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 4); /* rows 4,5,6,7 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_constant_true() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("1 == 1"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 10); /* all rows match */
+            assert_eq!(row_status[0], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_constant_false() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("1 == 0"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(row_status[0], 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_or_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL == 1 || INTCOL == 10"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 2);
+            assert_eq!(row_status[0], 1);
+            assert_eq!(row_status[9], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_not_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("!(INTCOL > 5)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 1-5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_modulo() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL % 2 == 0"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 2,4,6,8,10 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_between() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL >= 3 && INTCOL <= 7"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 3,4,5,6,7 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_not_equal() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL != 5"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 9); /* all except row 5 */
+            assert_eq!(row_status[4], 0); /* row 5 should be false */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== fftexp tests =====================
+
+    #[test]
+    fn test_fftexp_integer() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+
+            fits_test_expr(
+                &mut f,
+                &cc("INTCOL"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TLONG);
+            assert_eq!(nelem, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+
+            fits_test_expr(
+                &mut f,
+                &cc("FLOATCOL"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TDOUBLE); /* floats promoted to double in expressions */
+            assert_eq!(nelem, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_arithmetic() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+
+            fits_test_expr(
+                &mut f,
+                &cc("INTCOL * 2 + 1"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TLONG);
+            assert_eq!(nelem, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_boolean() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+
+            fits_test_expr(
+                &mut f,
+                &cc("INTCOL > 5"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TLOGICAL);
+            assert_eq!(nelem, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== ffcrow tests =====================
+
+    #[test]
+    fn test_ffcrow_arithmetic() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("INTCOL * 2"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2.0);
+            assert_eq!(results[1], 4.0);
+            assert_eq!(results[4], 10.0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_add_columns() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("INTCOL + FLOATCOL"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2.5);
+            assert_eq!(results[1], 4.5);
+            assert_eq!(results[2], 6.5);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_math_functions() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ABS(INTCOL - 5)"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 4.0).abs() < 0.1); /* |1-5| = 4 */
+            assert!(results[4].abs() < 0.1); /* |5-5| = 0 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_min_max() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("MIN(INTCOL, 3)"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 1.0).abs() < 0.1); /* min(1,3) = 1 */
+            assert!((results[4] - 3.0).abs() < 0.1); /* min(5,3) = 3 */
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("MAX(INTCOL, 3)"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 3.0).abs() < 0.1); /* max(1,3) = 3 */
+            assert!((results[4] - 5.0).abs() < 0.1); /* max(5,3) = 5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_sqrt() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("SQRT(FLOATCOL)"),
+                1,
+                4,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 1.2 && results[0] <= 1.3);
+            assert!(results[3] >= 2.1 && results[3] <= 2.2); /* sqrt(4.5) ~ 2.12 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_power() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("INTCOL ** 2"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 1.0).abs() < 0.1);
+            assert!((results[1] - 4.0).abs() < 0.1);
+            assert!((results[2] - 9.0).abs() < 0.1);
+            assert!((results[4] - 25.0).abs() < 0.1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_log() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("LOG(INTCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.1); /* ln(1) = 0 */
+            assert!(results[1] >= 0.6 && results[1] <= 0.75); /* ln(2) ~ 0.693 */
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("LOG10(INTCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.1); /* log10(1) = 0 */
+            assert!(results[1] >= 0.29 && results[1] <= 0.32); /* log10(2) ~ 0.301 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_trig() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("SIN(FLOATCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= -1.1 && results[0] <= 1.1);
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("COS(FLOATCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= -1.1 && results[0] <= 1.1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_conditional() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("(INTCOL > 5) ? 100 : 0"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] <= 0.1); /* row 1: false -> 0 */
+            assert!(results[5] >= 99.9); /* row 6: true -> 100 */
+            assert!(results[9] >= 99.9); /* row 10: true */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_division() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("FLOATCOL / INTCOL"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 1.4 && results[0] <= 1.6); /* 1.5 / 1 */
+            assert!(results[1] >= 1.2 && results[1] <= 1.3); /* 2.5 / 2 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_subtraction() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("FLOATCOL - INTCOL"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 0.4 && results[0] <= 0.6); /* 1.5 - 1 */
+            assert!(results[4] >= 0.4 && results[4] <= 0.6); /* 5.5 - 5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_row_number() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("#row"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 1.0).abs() < 0.1);
+            assert!((results[4] - 5.0).abs() < 0.1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_negation() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("-INTCOL"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] + 1.0).abs() < 0.1); /* -1 */
+            assert!((results[4] + 5.0).abs() < 0.1); /* -5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_floor_ceil() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("FLOOR(FLOATCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 1.0).abs() < 0.1); /* floor(1.5) = 1 */
+            assert!((results[1] - 2.0).abs() < 0.1); /* floor(2.5) = 2 */
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("CEIL(FLOATCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 2.0).abs() < 0.1); /* ceil(1.5) = 2 */
+            assert!((results[1] - 3.0).abs() < 0.1); /* ceil(2.5) = 3 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_round() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ROUND(FLOATCOL)"),
+                1,
+                3,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 2.0).abs() < 0.1); /* round(1.5) = 2 */
+            assert!((results[1] - 3.0).abs() < 0.1); /* round(2.5) = 3 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_exp() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("EXP(0)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 1.0).abs() < 0.01); /* exp(0) = 1 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_atan() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ATAN(0)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.01); /* atan(0) = 0 */
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ARCTAN2(1, 1)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 0.78 && results[0] <= 0.79); /* pi/4 ~ 0.785 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_tan() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("TAN(0)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.01); /* tan(0) = 0 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_asin_acos() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ASIN(0)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.01); /* asin(0) = 0 */
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("ACOS(1)"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0].abs() < 0.01); /* acos(1) = 0 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_short_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0i16; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TSHORT,
+                &cc("INTCOL * 2"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2);
+            assert_eq!(results[9], 20);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_float_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f32; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TFLOAT,
+                &cc("FLOATCOL + 1.0"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 2.4 && results[0] <= 2.6); /* 1.5 + 1.0 = 2.5 */
+            assert!(results[9] >= 11.4 && results[9] <= 11.6); /* 10.5 + 1.0 = 11.5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_long_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_long; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("INTCOL + 100"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 101);
+            assert_eq!(results[9], 110);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_logical_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_char; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLOGICAL,
+                &cc("INTCOL > 5"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 0); /* 1 > 5 false */
+            assert_eq!(results[5], 1); /* 6 > 5 true */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_with_nullval() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_long; 10];
+            let nulval: c_long = -999;
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("INTCOL * 2"),
+                1,
+                10,
+                (&nulval as *const c_long).cast::<c_void>(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2);
+            assert_eq!(results[9], 20);
+            assert_eq!(anynul, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let vecdata: [f64; 5] = [1.0, 2.0, 3.0, 4.0, 5.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["VECCOL"],
+                &["5D"],
+                None,
+                &mut status,
+            );
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut results = [0.0f64; 5];
+            let mut anynul = 0;
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                &cc("VECCOL * 2"),
+                1,
+                5,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((results[0] - 2.0).abs() < 0.1);
+            assert!((results[4] - 10.0).abs() < 0.1);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_defnull() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_long; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("DEFNULL(INTCOL, 0)"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1);
+            assert_eq!(results[9], 10);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_byte_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0u8; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TBYTE,
+                &cc("INTCOL"),
+                1,
+                10,
+                std::ptr::null(),
+                &mut results,
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1);
+            assert_eq!(results[9], 10);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_longlong_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as LONGLONG; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLONGLONG,
+                &cc("INTCOL * 1000000000"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1000000000);
+            assert_eq!(results[9], 10000000000);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_int_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_int; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TINT,
+                &cc("INTCOL + 1000"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1001);
+            assert_eq!(results[9], 1010);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_double_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TDOUBLE,
+                &cc("FLOATCOL * 2.5"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 3.7 && results[0] <= 3.8); /* 1.5 * 2.5 = 3.75 */
+            assert!(results[9] >= 26.2 && results[9] <= 26.3); /* 10.5 * 2.5 = 26.25 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_bitwise() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_long; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("INTCOL & 1"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1); /* 1 & 1 = 1 */
+            assert_eq!(results[1], 0); /* 2 & 1 = 0 */
+
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("INTCOL | 16"),
+                1,
+                10,
+                std::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 17); /* 1 | 16 = 17 */
+            assert_eq!(results[1], 18); /* 2 | 16 = 18 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== ffcalc tests =====================
+
+    #[test]
+    fn test_ffcalc_new_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 2.5"),
+                unsafe { &mut *fp_self },
+                &cc("DOUBLECOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 2.4 && results[0] <= 2.6);
+            assert!(results[1] >= 4.9 && results[1] <= 5.1);
+            assert!(results[9] >= 24.9 && results[9] <= 25.1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_overwrite_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL + 100"),
+                unsafe { &mut *fp_self },
+                &cc("FLOATCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                2,
+                1,
+                1,
+                5,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 100.9 && results[0] <= 101.1);
+            assert!(results[4] >= 104.9 && results[4] <= 105.1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_with_tform() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 3.14159"),
+                unsafe { &mut *fp_self },
+                &cc("NEWCOL"),
+                &cc("1D"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 3.1 && results[0] <= 3.2);
+            assert!(results[9] >= 31.4 && results[9] <= 31.5);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_output() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut keyval = 0.0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("3.14159"),
+                unsafe { &mut *fp_self },
+                &cc("#MYCONST"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_key_dbl(&mut f, &cc("MYCONST"), &mut keyval, None, &mut status);
+            assert_eq!(status, 0);
+            assert!(keyval >= 3.14 && keyval <= 3.15);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_logical_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0 as c_char; 10];
+            let mut nullarr = [0 as c_char; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL > 5"),
+                unsafe { &mut *fp_self },
+                &cc("BIGVAL"),
+                &cc("1L"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_colnull_log(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                &mut results,
+                &mut nullarr,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 0);
+            assert_eq!(results[5], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_string_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'test'"),
+                unsafe { &mut *fp_self },
+                &cc("STRCOL2"),
+                &cc("4A"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut buffer = [0 as c_char; 80];
+            let mut nullarr = [0 as c_char; 1];
+            let mut anynul = 0;
+            {
+                let mut arr: Vec<&mut [c_char]> = vec![&mut buffer[..]];
+                fits_read_colnull_str(
+                    &mut f,
+                    5,
+                    1,
+                    1,
+                    1,
+                    &mut arr,
+                    &mut nullarr,
+                    Some(&mut anynul),
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0);
+            assert_eq!(crate::helpers::testhelpers::from_buf(&buffer), "test");
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_nonconstant_error() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 2"),
+                unsafe { &mut *fp_self },
+                &cc("#BADKEY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_ne!(status, 0); /* Should fail */
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_byte_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0u8; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL"),
+                unsafe { &mut *fp_self },
+                &cc("BYTECOL"),
+                &cc("1B"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_col_byt(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1);
+            assert_eq!(results[9], 10);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_short_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0i16; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 100"),
+                unsafe { &mut *fp_self },
+                &cc("SHORTCOL"),
+                &cc("1I"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_col_sht(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 100);
+            assert_eq!(results[9], 1000);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_longlong_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0 as LONGLONG; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 1000000000"),
+                unsafe { &mut *fp_self },
+                &cc("BIGCOL"),
+                &cc("1K"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_col_lnglng(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1000000000);
+            assert_eq!(results[9], 10000000000);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_int_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0 as c_int; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL + 500"),
+                unsafe { &mut *fp_self },
+                &cc("INTCOL2"),
+                &cc("J"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_col_int(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 501);
+            assert_eq!(results[9], 510);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_int() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut keyval = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("42"),
+                unsafe { &mut *fp_self },
+                &cc("#INTKEY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_key_lng(&mut f, &cc("INTKEY"), &mut keyval, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(keyval, 42);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_logical() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut keyval = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("1==1"),
+                unsafe { &mut *fp_self },
+                &cc("#LOGKEY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_key_log(&mut f, &cc("LOGKEY"), &mut keyval, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(keyval, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut keyval = [0 as c_char; FLEN_VALUE];
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'hello'"),
+                unsafe { &mut *fp_self },
+                &cc("#STRKEY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_key_str(&mut f, &cc("STRKEY"), &mut keyval, None, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(crate::helpers::testhelpers::from_buf(&keyval), "hello");
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_history() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'Test history entry'"),
+                unsafe { &mut *fp_self },
+                &cc("#HISTORY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_keyword_comment() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'Test comment entry'"),
+                unsafe { &mut *fp_self },
+                &cc("#COMMENT"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_history_nonstring_error() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("42"),
+                unsafe { &mut *fp_self },
+                &cc("#HISTORY"),
+                &cc(""),
+                &mut status,
+            );
+            assert_ne!(status, 0);
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_logical_no_tform() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0 as c_char; 10];
+            let mut nullarr = [0 as c_char; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL > 5"),
+                unsafe { &mut *fp_self },
+                &cc("LOGCOL2"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_colnull_log(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                &mut results,
+                &mut nullarr,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 0);
+            assert_eq!(results[5], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_string_no_tform() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'test'"),
+                unsafe { &mut *fp_self },
+                &cc("STRCOL3"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            let mut buffer = [0 as c_char; 80];
+            let mut nullarr = [0 as c_char; 1];
+            let mut anynul = 0;
+            {
+                let mut arr: Vec<&mut [c_char]> = vec![&mut buffer[..]];
+                fits_read_colnull_str(
+                    &mut f,
+                    5,
+                    1,
+                    1,
+                    1,
+                    &mut arr,
+                    &mut nullarr,
+                    Some(&mut anynul),
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0);
+            assert_eq!(crate::helpers::testhelpers::from_buf(&buffer), "test");
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_double_no_tform() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut ncols = 0;
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("FLOATCOL * 2.5"),
+                unsafe { &mut *fp_self },
+                &cc("DBLCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_get_num_cols(&mut f, &mut ncols, &mut status);
+            assert_eq!(ncols, 5);
+
+            fits_read_col_dbl(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 3.7 && results[0] <= 3.8);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_bit_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("b11110000"),
+                unsafe { &mut *fp_self },
+                &cc("BITCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut colnum = 0;
+            fits_get_colnum(
+                &mut f,
+                CASEINSEN as c_int,
+                &cc("BITCOL"),
+                &mut colnum,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(colnum, 5);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_longlong_no_tform() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as LONGLONG; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 1000000000"),
+                unsafe { &mut *fp_self },
+                &cc("BIGNUM"),
+                &cc("1K"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_lnglng(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 1000000000);
+            assert_eq!(results[4], 5000000000);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_multidim_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let matdata: [c_long; 9] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+            let naxes: [c_long; 2] = [3, 3];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["MATRIX"],
+                &["9J"],
+                None,
+                &mut status,
+            );
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1, 2, &naxes, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 9, &matdata, &mut status);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            fits_calculator(
+                unsafe { &mut *fp },
+                &cc("MATRIX * 2"),
+                unsafe { &mut *fp },
+                &cc("DOUBLED"),
+                &cc("9J"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut results = [0 as c_long; 9];
+            let mut anynul = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                2,
+                1,
+                1,
+                9,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2);
+            assert_eq!(results[8], 18);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ===================== ffcalc_rng tests =====================
+
+    #[test]
+    fn test_ffcalc_rng_basic() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+            let start: [c_long; 1] = [3];
+            let end: [c_long; 1] = [7];
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator_rng(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 10"),
+                unsafe { &mut *fp_self },
+                &cc("COMPUTED"),
+                &cc(""),
+                1,
+                &start,
+                &end,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                5,
+                3,
+                1,
+                5,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 29.9 && results[0] <= 30.1); /* 3 * 10 */
+            assert!(results[4] >= 69.9 && results[4] <= 70.1); /* 7 * 10 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_rng_multiple_ranges() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynull = 0;
+            let start: [c_long; 2] = [1, 8];
+            let end: [c_long; 2] = [3, 10];
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator_rng(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 5"),
+                unsafe { &mut *fp_self },
+                &cc("RANGED"),
+                &cc(""),
+                2,
+                &start,
+                &end,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                5,
+                1,
+                1,
+                3,
+                0.0,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 4.9 && results[0] <= 5.1); /* 1 * 5 */
+            assert!(results[2] >= 14.9 && results[2] <= 15.1); /* 3 * 5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== string / error tests =====================
+
+    #[test]
+    fn test_ffcrow_string_comparison() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("STRCOL == 'alpha'"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 1);
+            assert_eq!(row_status[0], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_invalid_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("NONEXISTENT > 5"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_ne!(status, 0);
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_non_boolean_expression() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL + 1"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_ne!(status, 0);
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_expr_from_file() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            // Create expression file
+            let exprpath = format!("{}.expr.txt", filename);
+            std::fs::write(&exprpath, "INTCOL > 5\n").unwrap();
+            let exprarg = cc(&format!("@{}", exprpath));
+
+            fits_find_rows(
+                &mut f,
+                &exprarg,
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* Rows 6,7,8,9,10 match */
+
+            fits_close_file(f, &mut status);
+            let _ = std::fs::remove_file(&exprpath);
+        });
+    }
+
+    // ===================== ffsrow tests =====================
+
+    #[test]
+    fn test_ffsrow_copy_to_different_file() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+
+                let f = create_test_table(&iname);
+                let mut fb = Some(f);
+                fits_close_file(fb.take().unwrap(), &mut status);
+
+                fits_open_file(&mut fb, &iname, READONLY, &mut status);
+                fits_movabs_hdu(fb.as_deref_mut().unwrap(), 2, None, &mut status);
+
+                let mut out: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut out, &oname, &mut status);
+                fits_write_imghdr(out.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+                create_tbl(
+                    out.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    0,
+                    &["INTCOL", "FLOATCOL", "STRCOL", "BOOLCOL"],
+                    &["1J", "1E", "10A", "1L"],
+                    None,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "out setup");
+
+                fits_select_rows(
+                    fb.as_deref_mut().unwrap(),
+                    out.as_deref_mut().unwrap(),
+                    &cc("INTCOL > 5"),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let mut nrows = 0;
+                fits_get_num_rows(out.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 5);
+
+                let mut intdata = [0 as c_long; 10];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    out.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    5,
+                    0,
+                    &mut intdata,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+                assert_eq!(intdata[0], 6);
+                assert_eq!(intdata[4], 10);
+
+                fits_close_file(fb.take().unwrap(), &mut status);
+                fits_close_file(out.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_same_file_filter() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let coldata: [c_long; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                10,
+                &["INTCOL"],
+                &["1J"],
+                None,
+                &mut status,
+            );
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                10,
+                &coldata,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            fits_select_rows(
+                unsafe { &mut *fp },
+                unsafe { &mut *fp },
+                &cc("INTCOL <= 5"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut nrows = 0;
+            fits_get_num_rows(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 5);
+
+            let mut intdata = [0 as c_long; 5];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut intdata,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(intdata[0], 1);
+            assert_eq!(intdata[4], 5);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_constant_true() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                let coldata: [c_long; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+                let mut infile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut infile, &iname, &mut status);
+                fits_write_imghdr(
+                    infile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    infile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    10,
+                    &["INTCOL"],
+                    &["1J"],
+                    None,
+                    &mut status,
+                );
+                fits_write_col_lng(
+                    infile.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    10,
+                    &coldata,
+                    &mut status,
+                );
+
+                let mut outfile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut outfile, &oname, &mut status);
+                fits_write_imghdr(
+                    outfile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    outfile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    0,
+                    &["INTCOL"],
+                    &["1J"],
+                    None,
+                    &mut status,
+                );
+
+                fits_movabs_hdu(infile.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(outfile.as_deref_mut().unwrap(), 2, None, &mut status);
+
+                fits_select_rows(
+                    infile.as_deref_mut().unwrap(),
+                    outfile.as_deref_mut().unwrap(),
+                    &cc("1==1"),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let mut nrows = 0;
+                fits_get_num_rows(outfile.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 10);
+
+                fits_close_file(infile.take().unwrap(), &mut status);
+                fits_close_file(outfile.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_constant_false() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                let coldata: [c_long; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+                let mut infile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut infile, &iname, &mut status);
+                fits_write_imghdr(
+                    infile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    infile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    10,
+                    &["INTCOL"],
+                    &["1J"],
+                    None,
+                    &mut status,
+                );
+                fits_write_col_lng(
+                    infile.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    10,
+                    &coldata,
+                    &mut status,
+                );
+
+                let mut outfile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut outfile, &oname, &mut status);
+                fits_write_imghdr(
+                    outfile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    outfile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    0,
+                    &["INTCOL"],
+                    &["1J"],
+                    None,
+                    &mut status,
+                );
+
+                fits_movabs_hdu(infile.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(outfile.as_deref_mut().unwrap(), 2, None, &mut status);
+
+                fits_select_rows(
+                    infile.as_deref_mut().unwrap(),
+                    outfile.as_deref_mut().unwrap(),
+                    &cc("1==0"),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let mut nrows = 0;
+                fits_get_num_rows(outfile.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 0);
+
+                fits_close_file(infile.take().unwrap(), &mut status);
+                fits_close_file(outfile.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_varlen_copy() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                let intdata: [c_long; 5] = [1, 2, 3, 4, 5];
+                let vardata: [c_long; 5] = [10, 20, 30, 40, 50];
+
+                let mut infile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut infile, &iname, &mut status);
+                fits_write_imghdr(
+                    infile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    infile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    5,
+                    &["INTCOL", "VARCOL"],
+                    &["1J", "1PJ"],
+                    None,
+                    &mut status,
+                );
+
+                for i in 0..5 {
+                    fits_write_col_lng(
+                        infile.as_deref_mut().unwrap(),
+                        1,
+                        (i + 1) as LONGLONG,
+                        1,
+                        1,
+                        &intdata[i..i + 1],
+                        &mut status,
+                    );
+                    fits_write_col(
+                        infile.as_deref_mut().unwrap(),
+                        TLONG,
+                        2,
+                        (i + 1) as LONGLONG,
+                        1,
+                        1,
+                        as_bytes_const(&vardata[i..i + 1]),
+                        &mut status,
+                    );
+                }
+
+                let mut outfile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut outfile, &oname, &mut status);
+                fits_write_imghdr(
+                    outfile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    outfile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    0,
+                    &["INTCOL", "VARCOL"],
+                    &["1J", "1PJ"],
+                    None,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "varlen setup");
+
+                fits_select_rows(
+                    infile.as_deref_mut().unwrap(),
+                    outfile.as_deref_mut().unwrap(),
+                    &cc("INTCOL > 2"),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let mut nrows = 0;
+                fits_get_num_rows(outfile.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 3);
+
+                fits_close_file(infile.take().unwrap(), &mut status);
+                fits_close_file(outfile.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_varlen_heap_copy() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                let intdata: [c_long; 5] = [1, 2, 3, 4, 5];
+                let mut vardata = [0 as c_long; 100];
+                for (j, v) in vardata.iter_mut().enumerate() {
+                    *v = (j * 10) as c_long;
+                }
+
+                let mut infile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut infile, &iname, &mut status);
+                fits_write_imghdr(
+                    infile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    infile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    5,
+                    &["INTCOL", "VARCOL"],
+                    &["1J", "PJ(100)"],
+                    None,
+                    &mut status,
+                );
+
+                for i in 0..5 {
+                    fits_write_col_lng(
+                        infile.as_deref_mut().unwrap(),
+                        1,
+                        (i + 1) as LONGLONG,
+                        1,
+                        1,
+                        &intdata[i..i + 1],
+                        &mut status,
+                    );
+                    fits_write_col(
+                        infile.as_deref_mut().unwrap(),
+                        TLONG,
+                        2,
+                        (i + 1) as LONGLONG,
+                        1,
+                        100,
+                        as_bytes_const(&vardata),
+                        &mut status,
+                    );
+                }
+
+                let mut outfile: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut outfile, &oname, &mut status);
+                fits_write_imghdr(
+                    outfile.as_deref_mut().unwrap(),
+                    BYTE_IMG,
+                    0,
+                    &[],
+                    &mut status,
+                );
+                create_tbl(
+                    outfile.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    0,
+                    &["INTCOL", "VARCOL"],
+                    &["1J", "PJ(100)"],
+                    None,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "heap setup");
+
+                fits_select_rows(
+                    infile.as_deref_mut().unwrap(),
+                    outfile.as_deref_mut().unwrap(),
+                    &cc("INTCOL > 2"),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let mut nrows = 0;
+                fits_get_num_rows(outfile.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 3);
+
+                fits_close_file(infile.take().unwrap(), &mut status);
+                fits_close_file(outfile.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_nonboolean_error() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let fp: *mut fitsfile = &mut *f;
+            fits_select_rows(
+                unsafe { &mut *fp },
+                unsafe { &mut *fp },
+                &cc("INTCOL + 5"),
+                &mut status,
+            );
+            assert_eq!(status, PARSE_BAD_TYPE);
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== ASCII table tests =====================
+
+    #[test]
+    fn test_ffcalc_ascii_int_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_ascii_table(&to_buf(filename));
+            let mut results = [0 as c_long; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL * 2"),
+                unsafe { &mut *fp_self },
+                &cc("DOUBLED"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_lng(
+                &mut f,
+                4,
+                1,
+                1,
+                10,
+                0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results[0], 2);
+            assert_eq!(results[4], 10);
+            assert_eq!(results[9], 20);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_ascii_double_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_ascii_table(&to_buf(filename));
+            let mut results = [0.0f64; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("FLOATCOL + 0.5"),
+                unsafe { &mut *fp_self },
+                &cc("SHIFTED"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_col_dbl(
+                &mut f,
+                4,
+                1,
+                1,
+                10,
+                0.0,
+                &mut results,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(results[0] >= 1.9 && results[0] <= 2.1); /* 1.5 + 0.5 */
+            assert!(results[4] >= 5.9 && results[4] <= 6.1); /* 5.5 + 0.5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_ascii_string_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_ascii_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("'test'"),
+                unsafe { &mut *fp_self },
+                &cc("NEWSTR"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut buffer = [0 as c_char; 20];
+            let mut anynull = 0;
+            {
+                let mut arr: Vec<&mut [c_char]> = vec![&mut buffer[..]];
+                fits_read_col_str(
+                    &mut f,
+                    4,
+                    1,
+                    1,
+                    1,
+                    None,
+                    &mut arr,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0);
+            assert_eq!(&crate::helpers::testhelpers::from_buf(&buffer)[..4], "test");
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_ascii_logical_error() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_ascii_table(&to_buf(filename));
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("INTCOL > 5"),
+                unsafe { &mut *fp_self },
+                &cc("LOGCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_eq!(status, NOT_BTABLE);
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    // ===================== overflow / div-by-zero / deref tests =====================
+
+    #[test]
+    fn test_ffcrow_long_div_overflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let minval: c_long = i32::MIN as c_long;
+            let negone: c_long = -1;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["MINCOL", "NEGCOL"],
+                &["1J", "1J"],
+                None,
+                &mut status,
+            );
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &[minval],
+                &mut status,
+            );
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                2,
+                1,
+                1,
+                1,
+                &[negone],
+                &mut status,
+            );
+
+            let mut div_result = [0 as c_long; 1];
+            let mut mod_result = [0 as c_long; 1];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                &cc("MINCOL / NEGCOL"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut div_result),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            if std::mem::size_of::<c_long>() == 4 {
+                assert_eq!(div_result[0], c_long::MAX);
+            } else {
+                assert_eq!(div_result[0], -(i32::MIN as i64) as c_long);
+            }
+
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                &cc("MINCOL % NEGCOL"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut mod_result),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(mod_result[0], 0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_long_div_by_zero() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["NUMCOL", "DENCOL"],
+                &["1J", "1J"],
+                None,
+                &mut status,
+            );
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &[42 as c_long],
+                &mut status,
+            );
+            fits_write_col_lng(
+                f.as_deref_mut().unwrap(),
+                2,
+                1,
+                1,
+                1,
+                &[0 as c_long],
+                &mut status,
+            );
+
+            let mut div_result = [0 as c_long; 1];
+            let mut mod_result = [0 as c_long; 1];
+
+            let mut anynul = 0;
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                &cc("NUMCOL / DENCOL"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut div_result),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(anynul, 1);
+
+            let mut anynul = 0;
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                &cc("NUMCOL % DENCOL"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut mod_result),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(anynul, 1);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_index_out_of_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let vecdata: [c_long; 5] = [10, 20, 30, 40, 50];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["VECCOL"],
+                &["5J"],
+                None,
+                &mut status,
+            );
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            fits_calculator(
+                unsafe { &mut *fp },
+                &cc("VECCOL[99]"),
+                unsafe { &mut *fp },
+                &cc("BADCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_ne!(status, 0);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_index_zero() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let vecdata: [c_long; 5] = [10, 20, 30, 40, 50];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["VECCOL"],
+                &["5J"],
+                None,
+                &mut status,
+            );
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            fits_calculator(
+                unsafe { &mut *fp },
+                &cc("VECCOL[0]"),
+                unsafe { &mut *fp },
+                &cc("BADCOL"),
+                &cc(""),
+                &mut status,
+            );
+            assert_ne!(status, 0);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_double_column_arithmetic() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let v1: f64 = 1.0e308;
+            let v2: f64 = 2.0;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["DCOL1", "DCOL2"],
+                &["1D", "1D"],
+                None,
+                &mut status,
+            );
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &[v1], &mut status);
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 2, 1, 1, 1, &[v2], &mut status);
+
+            let mut result = [0.0f64; 1];
+            let mut anynul = 0;
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                &cc("DCOL1 / DCOL2"),
+                1,
+                1,
+                std::ptr::null(),
+                as_bytes_mut(&mut result),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(result[0] >= 4.9e307 && result[0] <= 5.1e307);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// View a typed const slice as a byte slice for fits_write_col(TLONG, ...).
+    fn as_bytes_const<T>(s: &[T]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(s.as_ptr().cast::<u8>(), std::mem::size_of_val(s)) }
+    }
+}

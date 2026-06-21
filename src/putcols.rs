@@ -501,3 +501,776 @@ pub fn ffpcns_safe(
 
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        ASCII_TBL, BAD_COL_NUM, BAD_ROW_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, NOT_ASCII_COL,
+        READONLY, READWRITE, fitsfile,
+    };
+    use crate::helpers::testhelpers::{from_buf, to_buf, with_temp_file};
+    use libc::{c_char, c_int};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column table (binary or ascii) and return the open file.
+    fn make_table(
+        name: &[c_char],
+        hdutype: c_int,
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            hdutype,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_write_string_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 3, &mut status);
+            let data = [cc("Alice"), cc("Bob"), cc("Charlie")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Alice");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_ascii_table_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, ASCII_TBL, "NAME", "A10", 2, &mut status);
+            let data = [cc("Test1"), cc("Test2")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Test1");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_variable_length_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "VARSTR", "1PA", 1, &mut status);
+            let data = [cc("Variable length string")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 64];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Variable length string");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bad_col_num() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "COL", "10A", 1, &mut status);
+            let data = [cc("test")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                0,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, BAD_COL_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_not_ascii_col() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "INTCOL", "1J", 1, &mut status);
+            let data = [cc("test")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, NOT_ASCII_COL);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_strings_with_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 4, &mut status);
+            let data = [cc("Good1"), cc("NULL"), cc("Good2"), cc("NULL")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("NULL");
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &data_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Good1");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_nulls_at_end() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 4, &mut status);
+            let data = [cc("Good1"), cc("Good2"), cc("NULL"), cc("NULL")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("NULL");
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &data_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_all_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 3, &mut status);
+            let data = [cc("NULL"), cc("NULL"), cc("NULL")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("NULL");
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_string_vector() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAMES", "30A", 1, &mut status);
+            let data = [cc("First"), cc("Second"), cc("Third")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "First");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_multirow_strings() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "20A", 2, &mut status);
+            let data = [
+                cc("Row1Col1"),
+                cc("Row1Col2"),
+                cc("Row2Col1"),
+                cc("Row2Col2"),
+            ];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 21];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Row1Col1");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_empty_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 3, &mut status);
+            let data = [cc(""), cc("NotEmpty"), cc("")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "NotEmpty");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// Test string columns wider than IOBUFLEN (2880)
+    #[test]
+    fn test_write_very_wide_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            // Fill with pattern
+            let mut data0 = [0 as c_char; 3001];
+            let mut data1 = [0 as c_char; 3001];
+            for i in 0..3000 {
+                data0[i] = (b'A' + (i % 26) as u8) as c_char;
+                data1[i] = (b'a' + (i % 26) as u8) as c_char;
+            }
+            data0[3000] = 0;
+            data1[3000] = 0;
+
+            let mut f = make_table(&name, BINARY_TBL, "WIDE", "3000A", 2, &mut status);
+            let data_ref: Vec<&[c_char]> = vec![&data0, &data1];
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut r1 = [0 as c_char; 3001];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Just verify first few chars
+            assert_eq!(r1[0], b'A' as c_char);
+            assert_eq!(r1[1], b'B' as c_char);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// Test that functions return early when status > 0
+    #[test]
+    fn test_calls_with_error_status() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 1, &mut status);
+            let data = [cc("test")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("");
+
+            // Call ffpcls with pre-existing error
+            status = 1;
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+
+            // Call ffpcns with pre-existing error
+            status = 1;
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_eq!(status, 1);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// Test ffgcprll error paths in ffpcls. Tests variable length string
+    /// and fixed string ffgcprll error paths
+    #[test]
+    fn test_ffgcprll_errors() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let ttype_v = [Some(cc("VARSTR")), Some(cc("FIXSTR"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1PA"), cc("10A")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let data = [cc("test")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+
+            // Bad row number for variable length column
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ROW_NUM);
+            status = 0;
+
+            // Bad row number for fixed length column
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                2,
+                0,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ROW_NUM);
+            status = 0;
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// Test error paths within ffpcns when ffpclu/ffpcls fail
+    #[test]
+    fn test_ffpcns_internal_errors() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 2, &mut status);
+            let data1 = [cc("NULL"), cc("good")];
+            let data1_ref: Vec<&[c_char]> = data1.iter().map(|v| v.as_slice()).collect();
+            let data2 = [cc("good"), cc("NULL")];
+            let data2_ref: Vec<&[c_char]> = data2.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("NULL");
+
+            // "NULL" then "good" - should fail when writing nulls
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                2,
+                &data1_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_ne!(status, 0);
+            status = 0;
+
+            // "good" then "NULL" - should fail when writing good values
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                2,
+                &data2_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_ne!(status, 0);
+            status = 0;
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    /// Test HDU position mismatch recovery in ffpcls and ffpcns. Create a
+    /// file with two tables, then manipulate HDUposition to trigger the
+    /// mismatch correction code
+    #[test]
+    fn test_hdu_position_mismatch() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let data = [cc("test")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            let nulval = cc("X");
+
+            // Create file with primary + 2 tables
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let ttype_v = [Some(cc("NAME"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("10A")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TABLE1")),
+                &mut status,
+            );
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TABLE2")),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            // Reopen and move to HDU 3 (TABLE2)
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            assert_eq!(status, 0);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 3, None, &mut status);
+            assert_eq!(status, 0);
+
+            // Set HDUposition to 1 (TABLE1) to trigger mismatch
+            // curhdu=2 (0-indexed, TABLE2), HDUposition=1 (TABLE1)
+            f.as_deref_mut().unwrap().HDUposition = 1;
+
+            // ffpcls should call ffmahd to move to HDU 2 (TABLE1)
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            // Now move back to HDU 3 and set mismatch for ffpcns
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 3, None, &mut status);
+            assert_eq!(status, 0);
+            f.as_deref_mut().unwrap().HDUposition = 1;
+            fits_write_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}

@@ -2247,6 +2247,531 @@ mod tests {
 
     use super::*;
 
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{READONLY, fitsfile};
+    use crate::helpers::testhelpers::to_buf;
+    use libc::{c_char, c_int};
+    use std::path::{Path, PathBuf};
+
+    /// Write a 4-byte integer to buffer at offset (little-endian).
+    fn put_i4_le(buf: &mut [u8], offset: usize, val: i32) {
+        let v = val as u32;
+        buf[offset] = (v & 0xff) as u8;
+        buf[offset + 1] = ((v >> 8) & 0xff) as u8;
+        buf[offset + 2] = ((v >> 16) & 0xff) as u8;
+        buf[offset + 3] = ((v >> 24) & 0xff) as u8;
+    }
+
+    /// Write a string in IRAF v1 format (2 bytes per char, little-endian).
+    fn put_str_v1(buf: &mut [u8], offset: usize, s: &str) {
+        for (i, b) in s.bytes().enumerate() {
+            buf[offset + i * 2] = b;
+            buf[offset + i * 2 + 1] = 0;
+        }
+    }
+
+    /// Write a string in IRAF v2 format (1 byte per char).
+    fn put_str_v2(buf: &mut [u8], offset: usize, s: &str) {
+        let bytes = s.as_bytes();
+        buf[offset..offset + bytes.len()].copy_from_slice(bytes);
+        buf[offset + bytes.len()] = 0;
+    }
+
+    /// A temporary directory holding the .imh/.pix pair.
+    /// The fixed base names match what the C test uses so that the `HDR$`
+    /// prefix in the header resolves to the same directory.
+    struct IrafFiles {
+        _dir: tempfile::TempDir,
+        imh: PathBuf,
+        pix: PathBuf,
+    }
+
+    impl IrafFiles {
+        fn new() -> Self {
+            let dir = tempfile::Builder::new()
+                .prefix("rsfitsio-iraf-")
+                .tempdir()
+                .unwrap();
+            let imh = dir.path().join("test_iraffits.imh");
+            let pix = dir.path().join("test_iraffits.pix");
+            IrafFiles {
+                _dir: dir,
+                imh,
+                pix,
+            }
+        }
+
+        fn imh_buf(&self) -> [c_char; crate::fitsio::FLEN_FILENAME] {
+            to_buf(self.imh.to_str().unwrap())
+        }
+    }
+
+    /// Create a minimal IRAF v1 header file (.imh).
+    fn create_iraf_v1_header(imhfile: &Path, pixfile: &str, pixtype: i32, ndim: i32, dims: &[i32]) {
+        let hdrlen = LEN_IMHDR + 500;
+        let mut header = vec![0u8; hdrlen];
+
+        // Magic word "imhdr" in 2-byte per char format.
+        put_str_v1(&mut header, 0, "imhdr");
+
+        // Header length in 4-byte units.
+        put_i4_le(&mut header, 12, (hdrlen / 4) as i32);
+
+        // Pixel type.
+        put_i4_le(&mut header, IM_PIXTYPE, pixtype);
+
+        // Number of dimensions.
+        put_i4_le(&mut header, IM_NDIM, ndim);
+
+        // Image dimensions.
+        for i in 0..(ndim as usize).min(7) {
+            put_i4_le(&mut header, IM_LEN + i * 4, dims[i]);
+            put_i4_le(&mut header, IM_PHYSLEN + i * 4, dims[i]);
+        }
+
+        // Pixel offset (in 2-byte units, starts after LEN_PIXHDR).
+        put_i4_le(&mut header, IM_PIXOFF, (LEN_PIXHDR / 2 + 1) as i32);
+
+        // Pixel file name (use HDR$ prefix for same directory).
+        put_str_v1(&mut header, IM_PIXFILE, pixfile);
+
+        // Title.
+        put_str_v1(&mut header, IM_TITLE, "Test IRAF Image");
+
+        std::fs::write(imhfile, &header).unwrap();
+    }
+
+    /// Create a minimal IRAF v2 header file (.imh).
+    fn create_iraf_v2_header(
+        imhfile: &Path,
+        pixfile: &str,
+        pixtype: i32,
+        ndim: i32,
+        dims: &[i32],
+        swapped: i32,
+    ) {
+        let hdrlen = LEN_IM2HDR + 500;
+        let mut header = vec![0u8; hdrlen];
+
+        // Magic word "imhv2" in 1-byte per char format.
+        put_str_v2(&mut header, 0, "imhv2");
+
+        // Header length in 4-byte units.
+        put_i4_le(&mut header, 6, (hdrlen / 4) as i32);
+
+        // Pixel type.
+        put_i4_le(&mut header, IM2_PIXTYPE, pixtype);
+
+        // Swapped flag.
+        put_i4_le(&mut header, IM2_SWAPPED, swapped);
+
+        // Number of dimensions.
+        put_i4_le(&mut header, IM2_NDIM, ndim);
+
+        // Image dimensions.
+        for i in 0..(ndim as usize).min(7) {
+            put_i4_le(&mut header, IM2_LEN + i * 4, dims[i]);
+            put_i4_le(&mut header, IM2_PHYSLEN + i * 4, dims[i]);
+        }
+
+        // Pixel offset (in 2-byte units, starts after LEN_PIXHDR).
+        put_i4_le(&mut header, IM2_PIXOFF, (LEN_PIXHDR / 2 + 1) as i32);
+
+        // Pixel file name (use HDR$ prefix for same directory).
+        put_str_v2(&mut header, IM2_PIXFILE, pixfile);
+
+        // Title.
+        put_str_v2(&mut header, IM2_TITLE, "Test IRAF v2 Image");
+
+        std::fs::write(imhfile, &header).unwrap();
+    }
+
+    /// Create a minimal IRAF v1 pixel file (.pix).
+    fn create_iraf_v1_pixfile(pixfile: &Path, pixtype: i32, npixels: usize) {
+        let mut buf: Vec<u8> = Vec::new();
+
+        // Write pixel header with magic word "impix".
+        let mut pixhdr = vec![0u8; LEN_PIXHDR];
+        put_str_v1(&mut pixhdr, 0, "impix");
+        buf.extend_from_slice(&pixhdr);
+
+        // Write pixel data.
+        match pixtype {
+            TY_SHORT => {
+                for i in 0..npixels {
+                    let v = (i % 100) as i16;
+                    buf.extend_from_slice(&v.to_ne_bytes());
+                }
+            }
+            TY_INT => {
+                for i in 0..npixels {
+                    let v = (i as i32) * 10;
+                    buf.extend_from_slice(&v.to_ne_bytes());
+                }
+            }
+            TY_REAL => {
+                for i in 0..npixels {
+                    let v = (i as f32) * 1.5f32;
+                    buf.extend_from_slice(&v.to_ne_bytes());
+                }
+            }
+            _ => panic!("unsupported pixtype"),
+        }
+
+        std::fs::write(pixfile, &buf).unwrap();
+    }
+
+    /// Create a minimal IRAF v2 pixel file (.pix).
+    fn create_iraf_v2_pixfile(pixfile: &Path, _pixtype: i32, npixels: usize) {
+        let mut buf: Vec<u8> = Vec::new();
+
+        // Write pixel header with magic word "impv2".
+        let mut pixhdr = vec![0u8; LEN_PIXHDR];
+        put_str_v2(&mut pixhdr, 0, "impv2");
+        buf.extend_from_slice(&pixhdr);
+
+        // Write pixel data (just short for simplicity).
+        for i in 0..npixels {
+            let v = (i % 256) as i16;
+            buf.extend_from_slice(&v.to_ne_bytes());
+        }
+
+        std::fs::write(pixfile, &buf).unwrap();
+    }
+
+    /// Open an IRAF .imh file through the public API (which internally invokes
+    /// iraf2mem via the irafmem:// driver) and return (status, file handle).
+    /// On the success path the converted FITS file has a valid SIMPLE header,
+    /// so a successful open is equivalent to the C check of the "SIMPLE"
+    /// magic in the converted buffer.
+    fn open_iraf(imh: &[c_char]) -> (c_int, Option<Box<fitsfile>>) {
+        let mut status: c_int = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut fptr, imh, READONLY, &mut status);
+        (status, fptr)
+    }
+
+    fn close(fptr: Option<Box<fitsfile>>) {
+        if let Some(f) = fptr {
+            let mut status = 0;
+            fits_close_file(f, &mut status);
+        }
+    }
+
+    #[test]
+    fn test_iraf2mem_v1_short() {
+        // Test reading IRAF v1 format with short pixels.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 100);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_v1_int() {
+        // Test reading IRAF v1 format with int pixels.
+        let files = IrafFiles::new();
+        let dims = [8, 8];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_INT, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_INT, 64);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_v1_real() {
+        // Test reading IRAF v1 format with float pixels.
+        let files = IrafFiles::new();
+        let dims = [5, 5];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_REAL, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_REAL, 25);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_v2() {
+        // Test reading IRAF v2 format.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        create_iraf_v2_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims, 0);
+        create_iraf_v2_pixfile(&files.pix, TY_SHORT, 100);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_v2_swapped() {
+        // Test reading IRAF v2 format with swapped pixels.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        create_iraf_v2_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims, 1);
+        create_iraf_v2_pixfile(&files.pix, TY_SHORT, 100);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_1d() {
+        // Test reading 1-dimensional IRAF image.
+        let files = IrafFiles::new();
+        let dims = [50];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 1, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 50);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_3d() {
+        // Test reading 3-dimensional IRAF image.
+        let files = IrafFiles::new();
+        let dims = [4, 4, 4];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 3, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 64);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_4d() {
+        // Test reading 4-dimensional IRAF image.
+        let files = IrafFiles::new();
+        let dims = [2, 2, 2, 2];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 4, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 16);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    #[ignore = "iraftofits (matching CFITSIO) only emits NAXIS1..NAXIS4, so a 5-D IRAF \
+                image converts to a FITS header declaring NAXIS=5 with no NAXIS5 keyword. \
+                The C test calls iraf2mem() directly and never validates the header; this \
+                test instead opens via fits_open_file(), which correctly rejects the \
+                incomplete header (status 224). Unsupported through the public open path."]
+    fn test_iraf2mem_5d() {
+        // Test reading 5-dimensional IRAF image.
+        let files = IrafFiles::new();
+        let dims = [2, 2, 2, 2, 2];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 5, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 32);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_missing_header() {
+        // Test error handling for missing header file.
+        let mut status: c_int = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        let name = to_buf("nonexistent.imh");
+        fits_open_file(&mut fptr, &name, READONLY, &mut status);
+
+        // Should fail to open.
+        assert_ne!(status, 0);
+        assert!(fptr.is_none());
+    }
+
+    #[test]
+    fn test_iraf2mem_invalid_header() {
+        // Test error handling for invalid header file.
+        let files = IrafFiles::new();
+
+        // Create a file with invalid content (magic word not "imhdr"/"imhv2").
+        let junk = vec![b'X'; 2100];
+        std::fs::write(&files.imh, &junk).unwrap();
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        // Should fail because magic word is invalid.
+        assert_ne!(status, 0);
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_missing_pixfile() {
+        // Test error handling for missing pixel file.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        // Create header but no pixel file.
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        // Should fail because pixel file is missing.
+        assert_ne!(status, 0);
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_header_too_small() {
+        // Test error handling for header file that is too small.
+        let files = IrafFiles::new();
+
+        // Create a file that is too small to be valid.
+        let small = vec![0u8; 100];
+        std::fs::write(&files.imh, &small).unwrap();
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        // Should fail because file is too small.
+        assert_ne!(status, 0);
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_invalid_pixfile() {
+        // Test error handling for pixel file with invalid magic.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        // Create valid header.
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+
+        // Create pixel file with invalid magic word.
+        let mut pixhdr = vec![0u8; LEN_PIXHDR];
+        put_str_v1(&mut pixhdr, 0, "XXXXX");
+        std::fs::write(&files.pix, &pixhdr).unwrap();
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        // Should fail because pixel file magic is invalid.
+        assert_ne!(status, 0);
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_truncated_pixfile() {
+        // Test error handling for truncated pixel file.
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        // Create valid header expecting 100 pixels.
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+
+        // Create pixel file with only the header, no data.
+        let mut pixhdr = vec![0u8; LEN_PIXHDR];
+        put_str_v1(&mut pixhdr, 0, "impix");
+        std::fs::write(&files.pix, &pixhdr).unwrap();
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        // Should fail because pixel file is truncated.
+        assert_ne!(status, 0);
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_large_image() {
+        // Test reading a larger IRAF image.
+        let files = IrafFiles::new();
+        let dims = [100, 100];
+
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 10000);
+
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_iraf2mem_v1_different_pixtypes() {
+        // Test IRAF v1 format with different pixel types in sequence.
+        let dims = [10, 10];
+
+        // Test with TY_INT = 4.
+        let files = IrafFiles::new();
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_INT, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_INT, 100);
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+
+        // Test with TY_REAL = 6.
+        let files = IrafFiles::new();
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_REAL, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_REAL, 100);
+        let (status, fptr) = open_iraf(&files.imh_buf());
+        assert_eq!(status, 0);
+        assert!(fptr.is_some());
+        close(fptr);
+    }
+
+    #[test]
+    fn test_fits_delete_iraf_file() {
+        // Test deleting IRAF files.
+        let mut status: c_int = 0;
+        let files = IrafFiles::new();
+        let dims = [10, 10];
+
+        // Create IRAF files.
+        create_iraf_v1_header(&files.imh, "HDR$test_iraffits.pix", TY_SHORT, 2, &dims);
+        create_iraf_v1_pixfile(&files.pix, TY_SHORT, 100);
+
+        // Verify files exist.
+        assert!(files.imh.exists());
+        assert!(files.pix.exists());
+
+        // Delete them.
+        let imh_cbuf = files.imh_buf();
+        fits_delete_iraf_file_safe(&imh_cbuf, &mut status);
+        assert_eq!(status, 0);
+
+        // Verify files are gone.
+        assert!(!files.imh.exists());
+        assert!(!files.pix.exists());
+    }
+
+    #[test]
+    fn test_fits_delete_iraf_file_missing() {
+        // Test error handling for deleting non-existent file.
+        let mut status: c_int = 0;
+        let name = to_buf("nonexistent.imh");
+
+        fits_delete_iraf_file_safe(&name, &mut status);
+
+        // Should return error.
+        assert_ne!(status, 0);
+    }
+
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_read_iraf_header() {

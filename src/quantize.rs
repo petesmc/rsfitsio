@@ -5300,3 +5300,1987 @@ pub fn quick_select_double(arr: &mut [f64], n: usize) -> f64 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fitsio::{NO_DITHER, SUBTRACTIVE_DITHER_1, SUBTRACTIVE_DITHER_2};
+    use libc::{c_int, c_long, c_short};
+
+
+    fn dither(v: c_int) -> DitherType {
+        match v {
+            SUBTRACTIVE_DITHER_1 => DitherType::SubtractiveDither1,
+            SUBTRACTIVE_DITHER_2 => DitherType::SubtractiveDither2,
+            _ => DitherType::NoDither,
+        }
+    }
+
+    /// Read back the int that the in-place float quantizer stored in a f32 slot.
+    fn idata_f(fdata: &[f32], i: usize) -> i32 {
+        fdata[i].to_bits() as i32
+    }
+
+    /// Read back the int that the in-place double quantizer stored.
+    /// The double quantizer reinterprets the `&mut [f64]` slice as `&mut [i32]`
+    /// (via bytemuck::cast_slice_mut) and writes idata[i] there, so index `i`
+    /// maps to bytes 4*i..4*i+4 of the f64 buffer.
+    fn idata_d(ddata: &[f64], i: usize) -> i32 {
+        let idata: &[i32] = bytemuck::cast_slice(ddata);
+        idata[i]
+    }
+
+    /*
+     * Test basic float quantization with gradient data
+     */
+    #[test]
+    fn test_quantize_float_basic() {
+        let mut fdata = [0.0f32; 64];
+
+        /* Create gradient data with some noise */
+        for i in 0..64 {
+            fdata[i] = (i as f64 * 10.0 + (i % 3) as f64 * 0.5) as f32;
+        }
+        let orig = fdata;
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        /* Quantize with no dithering, negative qlevel for absolute quant */
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1); /* Should succeed */
+        assert_ne!(bscale, 0.0);
+
+        /* Verify roundtrip approximate equality */
+        for i in 0..64 {
+            let recovered = idata_f(&fdata, i) as f64 * bscale + bzero;
+            let diff = (recovered - orig[i] as f64).abs();
+            assert!(diff <= bscale); /* Error should be less than 1 quant */
+        }
+    }
+
+    /*
+     * Test basic double quantization
+     */
+    #[test]
+    fn test_quantize_double_basic() {
+        let mut ddata = [0.0f64; 64];
+
+        for i in 0..64 {
+            ddata[i] = i as f64 * 10.0 + (i % 3) as f64 * 0.5;
+        }
+        let orig = ddata;
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+
+        for i in 0..64 {
+            let recovered = idata_d(&ddata, i) as f64 * bscale + bzero;
+            let diff = (recovered - orig[i]).abs();
+            assert!(diff <= bscale);
+        }
+    }
+
+    /*
+     * Test quantization with dithering method 1
+     */
+    #[test]
+    fn test_quantize_dither1() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            fdata[i] = (i as f64 * 5.0 + (i % 5) as f64 * 0.3) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test quantization with dithering method 2
+     */
+    #[test]
+    fn test_quantize_dither2() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            if i % 8 == 0 {
+                fdata[i] = 0.0;
+            } else {
+                fdata[i] = (i as f64 * 5.0 + (i % 5) as f64 * 0.3) as f32;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_2),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test quantization with null values
+     */
+    #[test]
+    fn test_quantize_with_nulls() {
+        let mut fdata = [0.0f32; 64];
+        let null_value = -999.0f32;
+        for i in 0..64 {
+            if i % 10 == 0 {
+                fdata[i] = null_value;
+            } else {
+                fdata[i] = (i as f64 * 10.0 + (i % 3) as f64 * 0.5) as f32;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        /* Null values should be preserved as NULL_VALUE (-2147483647) */
+        for i in 0..64 {
+            if i % 10 == 0 {
+                assert_eq!(idata_f(&fdata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test uniform data (should return 0 - no quantization needed)
+     */
+    #[test]
+    fn test_quantize_uniform() {
+        let mut fdata = [42.0f32; 64];
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        /* With positive qlevel, uniform data has zero noise -> delta=0 */
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            4.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        /* Should return 0 (no quantization) because delta=0 */
+        assert_eq!(result, 0);
+    }
+
+    /*
+     * Test quantization with negative qlevel (absolute quantization)
+     */
+    #[test]
+    fn test_quantize_absolute() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            fdata[i] = (i as f64 * 100.0) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        /* Negative qlevel = absolute quantization level */
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -10.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        /* bscale should be close to 10 (the absolute level) */
+        assert!((bscale - 10.0_f64).abs() <= 0.001);
+    }
+
+    /*
+     * Test small image (nx * ny <= 1 should return 0)
+     */
+    #[test]
+    fn test_quantize_small() {
+        let mut fdata = [42.0f32; 1];
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            1,
+            1,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 0);
+        assert_eq!(bscale, 1.0);
+        assert_eq!(bzero, 0.0);
+    }
+
+    /*
+     * Test larger image with noise
+     */
+    #[test]
+    fn test_quantize_large() {
+        let mut fdata = vec![0.0f32; 256 * 256];
+
+        for i in 0..256 * 256 {
+            let x = i % 256;
+            let y = i / 256;
+            fdata[i] = (x as f64 + y as f64 * 100.0 + (i % 7) as f64 * 0.1) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            256,
+            256,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test double quantization with null values and dithering
+     */
+    #[test]
+    fn test_quantize_double_nulls_dither() {
+        let mut ddata = [0.0f64; 64];
+        let null_value = -999.0f64;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                ddata[i] = null_value;
+            } else {
+                ddata[i] = i as f64 * 10.0 + (i % 3) as f64 * 0.5;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        for i in 0..64 {
+            if i % 8 == 0 {
+                assert_eq!(idata_d(&ddata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test fits_img_stats_short
+     */
+    #[test]
+    fn test_img_stats_short_basic() {
+        let mut array = [0i16; 64];
+        for i in 0..64 {
+            array[i] = (i * 10 + (i % 3)) as i16;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            8,
+            8,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 64);
+        assert_eq!(minvalue, 0);
+        assert_eq!(maxvalue, 630); /* 63 * 10 + 0 (63 % 3 = 0) */
+    }
+
+    /*
+     * Test fits_img_stats_short with null values
+     */
+    #[test]
+    fn test_img_stats_short_nulls() {
+        let mut array = [0i16; 64];
+        let null_value: c_short = -999;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                array[i] = null_value;
+            } else {
+                array[i] = (i * 10 + (i % 3)) as i16;
+            }
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            8,
+            8,
+            true,
+            null_value,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 56); /* 64 - 8 nulls */
+    }
+
+    /*
+     * Test fits_img_stats_int
+     */
+    #[test]
+    fn test_img_stats_int_basic() {
+        let mut array = [0i32; 64];
+        for i in 0..64 {
+            array[i] = (i * 1000 + (i % 7)) as i32;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_int = 0;
+        let mut maxvalue: c_int = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_int_safe(
+            &array,
+            8,
+            8,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 64);
+        assert_eq!(minvalue, 0);
+        assert_eq!(maxvalue, 63000); /* 63 * 1000 + 0 */
+    }
+
+    /*
+     * Test fits_img_stats_int with null values
+     */
+    #[test]
+    fn test_img_stats_int_nulls() {
+        let mut array = [0i32; 64];
+        let null_value: c_int = -99999;
+        for i in 0..64 {
+            if i % 10 == 0 {
+                array[i] = null_value;
+            } else {
+                array[i] = (i * 1000 + (i % 7)) as i32;
+            }
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_int = 0;
+        let mut maxvalue: c_int = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_int_safe(
+            &array,
+            8,
+            8,
+            true,
+            null_value,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 57); /* 64 - 7 nulls (0, 10, 20, 30, 40, 50, 60) */
+    }
+
+    /*
+     * Test fits_img_stats_float
+     */
+    #[test]
+    fn test_img_stats_float_basic() {
+        let mut array = [0.0f32; 64];
+        for i in 0..64 {
+            array[i] = (i as f64 * 10.5 + (i % 5) as f64 * 0.3) as f32;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: f32 = 0.0;
+        let mut maxvalue: f32 = 0.0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_float_safe(
+            &array,
+            8,
+            8,
+            false,
+            0.0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 64);
+    }
+
+    /*
+     * Test fits_img_stats_float with null values
+     */
+    #[test]
+    fn test_img_stats_float_nulls() {
+        let mut array = [0.0f32; 64];
+        let null_value = -999.0f32;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                array[i] = null_value;
+            } else {
+                array[i] = (i as f64 * 10.5 + (i % 5) as f64 * 0.3) as f32;
+            }
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: f32 = 0.0;
+        let mut maxvalue: f32 = 0.0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_float_safe(
+            &array,
+            8,
+            8,
+            true,
+            null_value,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 56); /* 64 - 8 nulls */
+    }
+
+    /*
+     * Test quantization with positive qlevel (noise-based)
+     */
+    #[test]
+    fn test_quantize_positive_qlevel() {
+        let mut fdata = [0.0f32; 256];
+        for i in 0..256 {
+            fdata[i] = (i as f64 * 10.0 + (i % 7) as f64 * 0.5) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            16,
+            16,
+            false,
+            0.0,
+            4.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        /* May or may not quantize depending on noise estimate */
+        assert!(result >= 0); /* Should not fail */
+    }
+
+    /*
+     * Test double quantization with positive qlevel
+     */
+    #[test]
+    fn test_quantize_double_positive_qlevel() {
+        let mut ddata = [0.0f64; 256];
+        for i in 0..256 {
+            ddata[i] = i as f64 * 10.0 + (i % 7) as f64 * 0.5;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            16,
+            16,
+            false,
+            0.0,
+            4.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0); /* Should not fail */
+    }
+
+    /*
+     * Test double quantization with dithering
+     */
+    #[test]
+    fn test_quantize_double_dither1() {
+        let mut ddata = [0.0f64; 64];
+        for i in 0..64 {
+            ddata[i] = i as f64 * 5.0 + (i % 5) as f64 * 0.3;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test double quantization with dithering method 2
+     */
+    #[test]
+    fn test_quantize_double_dither2() {
+        let mut ddata = [0.0f64; 64];
+        for i in 0..64 {
+            if i % 8 == 0 {
+                ddata[i] = 0.0;
+            } else {
+                ddata[i] = i as f64 * 5.0 + (i % 5) as f64 * 0.3;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_2),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test quantization with range exceeding int
+     */
+    #[test]
+    fn test_quantize_range_too_large() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            if i < 32 {
+                fdata[i] = -1e38;
+            } else {
+                fdata[i] = 1e38;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        /* Should return 0 because range is too large */
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -0.001,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 0); /* Should not quantize */
+    }
+
+    /*
+     * Test double quantization small image
+     */
+    #[test]
+    fn test_quantize_double_small() {
+        let mut ddata = [42.0f64; 1];
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            1,
+            1,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 0);
+        assert_eq!(bscale, 1.0);
+        assert_eq!(bzero, 0.0);
+    }
+
+    /*
+     * Test img_stats with larger image
+     */
+    #[test]
+    fn test_img_stats_short_large() {
+        let mut array = vec![0i16; 256 * 256];
+        for i in 0..256 * 256 {
+            let x = i % 256;
+            let y = i / 256;
+            array[i] = ((x + y * 10) % 32000) as i16;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            256,
+            256,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 256 * 256);
+    }
+
+    /*
+     * Test img_stats_int with larger image
+     */
+    #[test]
+    fn test_img_stats_int_large() {
+        let mut array = vec![0i32; 256 * 256];
+        for i in 0..256 * 256 {
+            let x = i % 256;
+            let y = i / 256;
+            array[i] = (x + y * 1000) as i32;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_int = 0;
+        let mut maxvalue: c_int = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_int_safe(
+            &array,
+            256,
+            256,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 256 * 256);
+    }
+
+    /*
+     * Test img_stats_float with larger image
+     */
+    #[test]
+    fn test_img_stats_float_large() {
+        let mut array = vec![0.0f32; 256 * 256];
+        for i in 0..256 * 256 {
+            let x = i % 256;
+            let y = i / 256;
+            array[i] = (x as f64 + y as f64 * 10.5 + (i % 7) as f64 * 0.1) as f32;
+        }
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: f32 = 0.0;
+        let mut maxvalue: f32 = 0.0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_float_safe(
+            &array,
+            256,
+            256,
+            false,
+            0.0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 256 * 256);
+    }
+
+    /*
+     * Test img_stats with very small image (nx < 9)
+     */
+    #[test]
+    fn test_img_stats_short_small() {
+        let array: [i16; 4] = [10, 20, 30, 40];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            4,
+            1,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 4);
+        assert_eq!(minvalue, 10);
+        assert_eq!(maxvalue, 40);
+    }
+
+    /*
+     * Test img_stats with single pixel (ngood == 1 branch)
+     */
+    #[test]
+    fn test_img_stats_short_single() {
+        let array: [i16; 1] = [42];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            1,
+            1,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 1);
+        assert_eq!(mean, 42.0);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test img_stats_int with single pixel
+     */
+    #[test]
+    fn test_img_stats_int_single() {
+        let array: [i32; 1] = [42];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_int = 0;
+        let mut maxvalue: c_int = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_int_safe(
+            &array,
+            1,
+            1,
+            false,
+            0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 1);
+        assert_eq!(mean, 42.0);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test img_stats_float with single pixel
+     */
+    #[test]
+    fn test_img_stats_float_single() {
+        let array: [f32; 1] = [42.5];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: f32 = 0.0;
+        let mut maxvalue: f32 = 0.0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_float_safe(
+            &array,
+            1,
+            1,
+            false,
+            0.0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 1);
+        assert!((mean - 42.5).abs() <= 0.001);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test img_stats with all nulls (ngood == 0 branch)
+     */
+    #[test]
+    fn test_img_stats_short_all_nulls() {
+        let array: [i16; 4] = [-999, -999, -999, -999];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            4,
+            1,
+            true,
+            -999,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 0);
+        assert_eq!(mean, 0.0);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test img_stats_int all nulls
+     */
+    #[test]
+    fn test_img_stats_int_all_nulls() {
+        let array: [i32; 4] = [-999, -999, -999, -999];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_int = 0;
+        let mut maxvalue: c_int = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_int_safe(
+            &array,
+            4,
+            1,
+            true,
+            -999,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 0);
+        assert_eq!(mean, 0.0);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test img_stats_float all nulls
+     */
+    #[test]
+    fn test_img_stats_float_all_nulls() {
+        let array: [f32; 4] = [-999.0, -999.0, -999.0, -999.0];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: f32 = 0.0;
+        let mut maxvalue: f32 = 0.0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_float_safe(
+            &array,
+            4,
+            1,
+            true,
+            -999.0,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 0);
+        assert_eq!(mean, 0.0);
+        assert_eq!(sigma, 0.0);
+    }
+
+    /*
+     * Test quantization with qlevel == 0 (default quantization)
+     */
+    #[test]
+    fn test_quantize_qlevel_zero() {
+        let mut fdata = [0.0f32; 256];
+        for i in 0..256 {
+            fdata[i] = (i as f64 * 10.0 + (i % 17) as f64 * 2.5) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            16,
+            16,
+            false,
+            0.0,
+            0.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0);
+    }
+
+    /*
+     * Test double quantization with qlevel == 0
+     */
+    #[test]
+    fn test_quantize_double_qlevel_zero() {
+        let mut ddata = [0.0f64; 256];
+        for i in 0..256 {
+            ddata[i] = i as f64 * 10.0 + (i % 17) as f64 * 2.5;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            16,
+            16,
+            false,
+            0.0,
+            0.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0);
+    }
+
+    /*
+     * Test float quantization all null values (ngood == 0)
+     */
+    #[test]
+    fn test_quantize_float_all_nulls() {
+        let null_value = -999.0f32;
+        let mut fdata = [null_value; 64];
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            true,
+            null_value,
+            4.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        /* Should return 1 with dummy values for all nulls */
+        assert_eq!(result, 1);
+    }
+
+    /*
+     * Test double quantization all null values (ngood == 0)
+     */
+    #[test]
+    fn test_quantize_double_all_nulls() {
+        let null_value = -999.0f64;
+        let mut ddata = [null_value; 64];
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            8,
+            8,
+            true,
+            null_value,
+            4.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        /* Should return 1 with dummy values for all nulls */
+        assert_eq!(result, 1);
+    }
+
+    /*
+     * Test float dithering with null values (row > 0 + nulls)
+     */
+    #[test]
+    fn test_quantize_float_dither_nulls() {
+        let mut fdata = [0.0f32; 64];
+        let null_value = -999.0f32;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                fdata[i] = null_value;
+            } else {
+                fdata[i] = (i as f64 * 10.0 + (i % 3) as f64 * 0.5) as f32;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        for i in 0..64 {
+            if i % 8 == 0 {
+                assert_eq!(idata_f(&fdata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test double quantization with nulls and no dithering
+     */
+    #[test]
+    fn test_quantize_double_nulls_nodither() {
+        let mut ddata = [0.0f64; 64];
+        let null_value = -999.0f64;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                ddata[i] = null_value;
+            } else {
+                ddata[i] = i as f64 * 10.0 + (i % 3) as f64 * 0.5;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        for i in 0..64 {
+            if i % 8 == 0 {
+                assert_eq!(idata_d(&ddata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test double range too large
+     */
+    #[test]
+    fn test_quantize_double_range_too_large() {
+        let mut ddata = [0.0f64; 64];
+        for i in 0..64 {
+            if i < 32 {
+                ddata[i] = -1e300;
+            } else {
+                ddata[i] = 1e300;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            8,
+            8,
+            false,
+            0.0,
+            -0.001,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 0); /* Should not quantize */
+    }
+
+    /*
+     * Test float with very large range (zeropt centering)
+     */
+    #[test]
+    fn test_quantize_float_large_range() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            fdata[i] = ((i as f64 - 32.0) * 1e8) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -1e6,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0);
+    }
+
+    /*
+     * Test img_stats short with small and null rows
+     */
+    #[test]
+    fn test_img_stats_short_small_nulls() {
+        let array: [i16; 8] = [-999, 10, 20, 30, 40, 50, 60, -999];
+
+        let mut status = 0;
+        let mut ngoodpix: c_long = 0;
+        let mut minvalue: c_short = 0;
+        let mut maxvalue: c_short = 0;
+        let mut mean = 0.0;
+        let mut sigma = 0.0;
+        let mut noise1 = 0.0;
+        let mut noise2 = 0.0;
+        let mut noise3 = 0.0;
+        let mut noise5 = 0.0;
+
+        fits_img_stats_short_safe(
+            &array,
+            8,
+            1,
+            true,
+            -999,
+            Some(&mut ngoodpix),
+            Some(&mut minvalue),
+            Some(&mut maxvalue),
+            Some(&mut mean),
+            Some(&mut sigma),
+            Some(&mut noise1),
+            Some(&mut noise2),
+            Some(&mut noise3),
+            Some(&mut noise5),
+            &mut status,
+        );
+
+        assert_eq!(status, 0);
+        assert_eq!(ngoodpix, 6); /* 8 - 2 nulls */
+    }
+
+    /*
+     * Test float dithering with null values and zeros (DITHER_2)
+     */
+    #[test]
+    fn test_quantize_float_dither2_nulls_zeros() {
+        let mut fdata = [0.0f32; 64];
+        let null_value = -999.0f32;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                fdata[i] = null_value;
+            } else if i % 4 == 0 {
+                fdata[i] = 0.0; /* Zero value in DITHER_2 */
+            } else {
+                fdata[i] = (i as f64 * 10.0 + (i % 3) as f64 * 0.5) as f32;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_2),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        for i in 0..64 {
+            if i % 8 == 0 {
+                assert_eq!(idata_f(&fdata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test double dithering with null values and zeros (DITHER_2)
+     */
+    #[test]
+    fn test_quantize_double_dither2_nulls_zeros() {
+        let mut ddata = [0.0f64; 64];
+        let null_value = -999.0f64;
+        for i in 0..64 {
+            if i % 8 == 0 {
+                ddata[i] = null_value;
+            } else if i % 4 == 0 {
+                ddata[i] = 0.0; /* Zero value in DITHER_2 */
+            } else {
+                ddata[i] = i as f64 * 10.0 + (i % 3) as f64 * 0.5;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            8,
+            8,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_2),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+
+        for i in 0..64 {
+            if i % 8 == 0 {
+                assert_eq!(idata_d(&ddata, i), NULL_VALUE);
+            }
+        }
+    }
+
+    /*
+     * Test large dithered image (to exercise N_RANDOM wraparound)
+     * N_RANDOM is 10000, so we need >10000 pixels per row to trigger wraparound
+     */
+    #[test]
+    fn test_quantize_float_large_dither() {
+        let nx = 10500usize; /* > N_RANDOM (10000) to trigger wraparound */
+        let ny = 10usize;
+        let size = nx * ny;
+
+        let mut fdata = vec![0.0f32; size];
+        for i in 0..size {
+            let x = i % nx;
+            let y = i / nx;
+            fdata[i] = (x as f64 + y as f64 * 100.0 + (i % 7) as f64 * 0.1) as f32;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            nx,
+            ny,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test large dithered double image
+     */
+    #[test]
+    fn test_quantize_double_large_dither() {
+        let nx = 10500usize;
+        let ny = 10usize;
+        let size = nx * ny;
+
+        let mut ddata = vec![0.0f64; size];
+        for i in 0..size {
+            let x = i % nx;
+            let y = i / nx;
+            ddata[i] = x as f64 + y as f64 * 100.0 + (i % 7) as f64 * 0.1;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            nx,
+            ny,
+            false,
+            0.0,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test large dithered image with null values (to exercise N_RANDOM wraparound)
+     */
+    #[test]
+    fn test_quantize_float_large_dither_nulls() {
+        let nx = 10500usize;
+        let ny = 10usize;
+        let size = nx * ny;
+        let null_value = -999.0f32;
+
+        let mut fdata = vec![0.0f32; size];
+        for i in 0..size {
+            if i % 1000 == 0 {
+                fdata[i] = null_value;
+            } else {
+                fdata[i] =
+                    ((i % nx) as f64 + (i / nx) as f64 * 100.0 + (i % 7) as f64 * 0.1) as f32;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            1,
+            &mut fdata,
+            nx,
+            ny,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test large dithered double image with null values
+     */
+    #[test]
+    fn test_quantize_double_large_dither_nulls() {
+        let nx = 10500usize;
+        let ny = 10usize;
+        let size = nx * ny;
+        let null_value = -999.0f64;
+
+        let mut ddata = vec![0.0f64; size];
+        for i in 0..size {
+            if i % 1000 == 0 {
+                ddata[i] = null_value;
+            } else {
+                ddata[i] = (i % nx) as f64 + (i / nx) as f64 * 100.0 + (i % 7) as f64 * 0.1;
+            }
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            1,
+            &mut ddata,
+            nx,
+            ny,
+            true,
+            null_value,
+            -1.0,
+            dither(SUBTRACTIVE_DITHER_1),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert_eq!(result, 1);
+        assert_ne!(bscale, 0.0);
+    }
+
+    /*
+     * Test float with range requiring centering
+     */
+    #[test]
+    fn test_quantize_float_needs_centering() {
+        let mut fdata = [0.0f32; 64];
+        for i in 0..64 {
+            fdata[i] = (i as f32 - 32.0) * 5e7;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_float_inplace(
+            0,
+            &mut fdata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0);
+    }
+
+    /*
+     * Test double with range requiring centering
+     */
+    #[test]
+    fn test_quantize_double_needs_centering() {
+        let mut ddata = [0.0f64; 64];
+        for i in 0..64 {
+            ddata[i] = (i as f64 - 32.0) * 5e7;
+        }
+
+        let mut bscale = 0.0;
+        let mut bzero = 0.0;
+        let mut iminval = 0;
+        let mut imaxval = 0;
+
+        let result = fits_quantize_double_inplace(
+            0,
+            &mut ddata,
+            8,
+            8,
+            false,
+            0.0,
+            -1.0,
+            dither(NO_DITHER),
+            &mut bscale,
+            &mut bzero,
+            &mut iminval,
+            &mut imaxval,
+        );
+
+        assert!(result >= 0);
+    }
+}

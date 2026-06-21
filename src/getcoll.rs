@@ -972,3 +972,1255 @@ pub fn ffgcxuk_safe(
 
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BAD_COL_NUM, BAD_ELEM_NUM, BAD_ROW_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, NOT_BTABLE,
+        NOT_LOGICAL_COL, READONLY, TLOGICAL, fitsfile,
+    };
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column binary table and return the open file.
+    fn make_table(
+        name: &[c_char],
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_read_logical_column() {
+        // Test ffgcvl - read logical values with null substitution.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 5] = [1, 0, 1, 0, 1];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 5, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 5];
+            let mut anynull = -1;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, [1, 0, 1, 0, 1]);
+            assert_eq!(anynull, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_deprecated() {
+        // Test ffgcl - deprecated logical read function.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 3] = [1, 0, 1];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 3, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 3];
+            #[allow(deprecated)]
+            ffgcl_safe(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, [1, 0, 1]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_with_null_flags() {
+        // Test ffgcfl - read logical with null flag array.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 2] = [1, 0];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 3, &mut status);
+            // Write T, F, then leave row 3 as undefined.
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 3];
+            let mut nularray = [0 as c_char; 3];
+            let mut anynull = -1;
+            fits_read_colnull_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1);
+            assert_eq!(result[1], 0);
+            assert_eq!(nularray[2], 1); // Row 3 is undefined.
+            assert_eq!(anynull, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_vector() {
+        // Test reading logical vector column.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 4] = [1, 0, 1, 0];
+
+            let mut f = make_table(&name, "LOGVEC", "4L", 1, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 4, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 4];
+            let mut anynull = -1;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, [1, 0, 1, 0]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_multiple_rows() {
+        // Test reading logical values across multiple rows.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 6] = [1, 0, 0, 1, 1, 1];
+
+            let mut f = make_table(&name, "LOGCOL", "2L", 3, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 6, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 6];
+            let mut anynull = -1;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                6,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Row 1: T, F; Row 2: F, T; Row 3: T, T.
+            assert_eq!(result, [1, 0, 0, 1, 1, 1]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_with_nulval() {
+        // Test null value substitution with ffgcvl.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 2, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            // Row 2 is undefined.
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Use 99 as the null substitute value.
+            let mut result = [0 as c_char; 2];
+            let mut anynull = -1;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                99,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1);
+            assert_eq!(result[1], 99); // Null replaced with 99.
+            assert_eq!(anynull, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_as_logical() {
+        // Test ffgcx - read bits from X column as logical array.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 8] = [1, 0, 1, 0, 1, 0, 1, 0]; // 8 bits per row.
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 8, &bits, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1);
+            assert_eq!(result[1], 0);
+            assert_eq!(result[2], 1);
+            assert_eq!(result[3], 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_from_byte_column() {
+        // Test ffgcx with B column (byte).
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [u8; 1] = [0xAA]; // 10101010 in binary.
+
+            let mut f = make_table(&name, "BYTECOL", "1B", 1, &mut status);
+            fits_write_col_byt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // 0xAA = 10101010: bit 1=1, bit 2=0, bit 3=1, bit 4=0, etc.
+            assert_eq!(result, [1, 0, 1, 0, 1, 0, 1, 0]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_spanning_rows() {
+        // Test ffgcx reading bits that span multiple rows.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits_row1: [c_char; 4] = [1, 1, 0, 0]; // 4 bits per row.
+            let bits_row2: [c_char; 4] = [0, 0, 1, 1];
+
+            let mut f = make_table(&name, "BITCOL", "4X", 2, &mut status);
+            fits_write_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &bits_row1,
+                &mut status,
+            );
+            fits_write_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                1,
+                4,
+                &bits_row2,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            // Read 4 bits from row 1, then 4 bits from row 2.
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &mut result[0..4],
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1);
+            assert_eq!(result[1], 1);
+            assert_eq!(result[2], 0);
+            assert_eq!(result[3], 0);
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                1,
+                4,
+                &mut result[4..8],
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[4], 0);
+            assert_eq!(result[5], 0);
+            assert_eq!(result[6], 1);
+            assert_eq!(result[7], 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_as_ushort() {
+        // Test ffgcxui - read bits as unsigned short.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            // Set up bit pattern: 0xFFFF = all 1s, 0x0000 = all 0s.
+            let bits_all_one = [1 as c_char; 16];
+            let bits_all_zero = [0 as c_char; 16];
+
+            let mut f = make_table(&name, "BITCOL", "16X", 2, &mut status);
+            fits_write_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                16,
+                &bits_all_one,
+                &mut status,
+            );
+            fits_write_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                1,
+                16,
+                &bits_all_zero,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 2];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                2,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 0xFFFF);
+            assert_eq!(result[1], 0x0000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_as_ushort_partial() {
+        // Test ffgcxui - read partial bits as unsigned short.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 16] = [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+            let mut f = make_table(&name, "BITCOL", "16X", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 16, &bits, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Read only first 4 bits: 1010 = 10 in decimal.
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                4,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_as_uint() {
+        // Test ffgcxuk - read bits as unsigned int.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            // Set up bit pattern: high byte = 0xFF, rest = 0.
+            let mut bits = [0 as c_char; 32];
+            for b in bits.iter_mut().take(8) {
+                *b = 1;
+            }
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 32, &bits, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // 11111111 00000000 00000000 00000000 = 0xFF000000.
+            assert_eq!(result[0], 0xFF000000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_as_uint_partial() {
+        // Test ffgcxuk - read partial bits as unsigned int.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 32] = [
+                1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ];
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 32, &bits, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Read only first 8 bits: 11110000 = 240 in decimal.
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 240);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_bad_row() {
+        // Test ffgcx with bad row number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            ); // Row 0 is invalid.
+            assert_eq!(status, BAD_ROW_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_bad_elem() {
+        // Test ffgcx with bad element number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                0,
+                8,
+                &mut result,
+                &mut status,
+            ); // Bit 0 is invalid.
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_bad_row() {
+        // Test ffgcxui with bad row number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "16X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            ); // Row 0 is invalid.
+            assert_eq!(status, BAD_ROW_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_bad_bit() {
+        // Test ffgcxui with bad first bit number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "16X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                0,
+                16,
+                &mut result,
+                &mut status,
+            ); // Bit 0 is invalid.
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_too_many() {
+        // Test ffgcxui with too many bits (>16).
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                17,
+                &mut result,
+                &mut status,
+            ); // > 16 bits.
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_bad_row() {
+        // Test ffgcxuk with bad row number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                0,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            ); // Row 0 is invalid.
+            assert_eq!(status, BAD_ROW_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_bad_bit() {
+        // Test ffgcxuk with bad first bit number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                0,
+                32,
+                &mut result,
+                &mut status,
+            ); // Bit 0 is invalid.
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_too_many() {
+        // Test ffgcxuk with too many bits (>32).
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "64X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                33,
+                &mut result,
+                &mut status,
+            ); // > 32 bits.
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_logical_not_logical_col() {
+        // Test ffgcvl with non-logical column returns error.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 1];
+            let mut anynull = -1;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, NOT_LOGICAL_COL);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_not_bit_col() {
+        // Test ffgcx with non-bit/byte column returns error.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, NOT_LOGICAL_COL);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_not_bit_col() {
+        // Test ffgcxui with non-bit/byte column returns error.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, NOT_LOGICAL_COL);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_not_bit_col() {
+        // Test ffgcxuk with non-bit/byte column returns error.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, NOT_LOGICAL_COL);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_bad_col() {
+        // Test ffgcxui with bad column number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "16X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                99,
+                1,
+                1,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            ); // Column 99 invalid.
+            assert_eq!(status, BAD_COL_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_bad_col() {
+        // Test ffgcxuk with bad column number.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "32X", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                99,
+                1,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            ); // Column 99 invalid.
+            assert_eq!(status, BAD_COL_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_ushort_not_bintable() {
+        // Test ffgcxui when not in binary table.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, NOT_BTABLE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_not_bintable() {
+        // Test ffgcxuk when not in binary table.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, NOT_BTABLE);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_overflow_x_col() {
+        // Test ffgcxui reading past end of X column.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status); // Only 8 bits.
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Try to read 16 bits from an 8-bit column.
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_overflow_b_col() {
+        // Test ffgcxui reading past end of B column.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BYTECOL", "1B", 1, &mut status); // Only 8 bits (1 byte).
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Try to read 16 bits starting at bit 1 from a 1-byte column.
+            let mut result = [0u16; 1];
+            fits_read_col_bit_usht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                16,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_illegal_logical_char() {
+        // Test reading a logical column that contains illegal characters.
+        // Write raw bytes to a logical column to simulate corruption.
+        // This exercises the "other illegal character" path in ffgcll.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let illegal_data: [u8; 4] = [b'T', b'X', b'F', 1]; // 'X' is illegal, 1 is special case
+
+            let mut f = make_table(&name, "LOGCOL", "4L", 1, &mut status);
+            // Write raw bytes directly to bypass validation
+            fits_write_tblbytes(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                4,
+                &illegal_data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u8; 4];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TLOGICAL,
+                1,
+                1,
+                1,
+                4,
+                None,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // 'T' should become 1, 'X' should return as char value, 'F' should become 0
+            // The value 1 is a special case - returns 49 (ASCII '1')
+            assert_eq!(result[0], 1); // 'T'
+            assert_eq!(result[1], b'X'); // illegal char returned as-is
+            assert_eq!(result[2], 0); // 'F'
+            assert_eq!(result[3], 49); // byte value 1 becomes ASCII '1' (49)
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_varlen_overflow() {
+        // Test BAD_ELEM_NUM error for variable length bit column.
+        // Try to read more bits than exist in a variable length descriptor.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 4] = [1, 0, 1, 0];
+
+            let mut f = make_table(&name, "VARBITS", "1PX", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 4, &bits, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Try to read 100 bits but we only wrote 4
+            let mut result = [0 as c_char; 10];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                100,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_overflow_x_col() {
+        // Test ffgcxuk reading past end of X column (TBIT).
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status); // Only 8 bits.
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Try to read 32 bits from an 8-bit column.
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_bits_uint_overflow_b_col() {
+        // Test ffgcxuk reading past end of B column (TBYTE).
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, "BYTECOL", "1B", 1, &mut status); // Only 8 bits (1 byte).
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Try to read 32 bits starting at bit 1 from a 1-byte column.
+            let mut result = [0u32; 1];
+            fits_read_col_bit_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                32,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, BAD_ELEM_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}

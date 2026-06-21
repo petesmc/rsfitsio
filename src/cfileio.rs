@@ -3606,158 +3606,147 @@ pub unsafe extern "C" fn fits_get_section_range(
         let incre = incre.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_get_section_range_safer(ptr, secmin, secmax, incre, status)
+        /* Bridge the C `char **ptr` to the safe slice + index form: parse the
+        NUL-terminated remainder, then advance the caller's pointer past the
+        characters that were consumed. */
+        let p: &[c_char] = cast_slice(CStr::from_ptr(*ptr).to_bytes_with_nul());
+        let mut ptr_index = 0usize;
+        let r = fits_get_section_range_safe(p, &mut ptr_index, secmin, secmax, incre, status);
+        *ptr = (*ptr).add(ptr_index);
+        r
     }
 }
 
-pub fn fits_get_section_range_safer(
-    ptr: &mut *mut c_char,
+/// Parse the input image section specification string, returning
+/// the  min, max and increment values.
+/// Typical string =   "1:512:2"  or "1:512"
+pub fn fits_get_section_range_safe(
+    ptr: &[c_char],        /* I - the image section specifier string         */
+    ptr_index: &mut usize, /* IO - current parse offset into ptr; advanced   */
     secmin: &mut c_long,
     secmax: &mut c_long,
     incre: &mut c_long,
     status: &mut c_int,
 ) -> c_int {
-    // Initialize output values
-    *secmin = 1;
-    *secmax = 1;
-    *incre = 1;
+    let mut isanumber: c_int = 0;
+    let mut token: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tstbuff: Option<Vec<c_char>> = None;
+    let mut sublen = 0usize; /* characters consumed by the latest token */
+
+    // C 'atol': parse a leading long, ignoring trailing junk; 0 on failure.
+    let atol =
+        |tok: &[c_char]| -> c_long { strtol_safe::<c_long>(tok).map(|(v, _)| v).unwrap_or(0) };
 
     if *status > 0 {
         return *status;
     }
 
-    if (*ptr).is_null() {
-        return *status;
-    }
-
-    // Skip any leading whitespace
-    while !(*ptr).is_null() && unsafe { **ptr } == b' ' as c_char {
-        *ptr = unsafe { (*ptr).add(1) };
-    }
-
-    // Parse the minimum value
-    let mut num_str = Vec::new();
-    while !(*ptr).is_null() {
-        let ch = unsafe { **ptr };
-        if ch == b':' as c_char || ch == b' ' as c_char || ch == b'\0' as c_char {
-            break;
-        }
-        if ch >= b'0' as c_char && ch <= b'9' as c_char {
-            num_str.push(ch as u8);
-        } else if ch == b'-' as c_char && num_str.is_empty() {
-            num_str.push(ch as u8);
-        } else {
-            // Invalid character
-            ffpmsg_cstr(c"Error parsing section range minimum value");
-            *status = PARSE_SYNTAX_ERR;
-            return *status;
-        }
-        *ptr = unsafe { (*ptr).add(1) };
-    }
-
-    if !num_str.is_empty()
-        && let Ok(s) = std::str::from_utf8(&num_str)
-    {
-        if let Ok(val) = s.parse::<c_long>() {
-            *secmin = val;
-        } else {
-            ffpmsg_cstr(c"Error converting section range minimum value");
-            *status = PARSE_SYNTAX_ERR;
-            return *status;
-        }
-    }
-
-    // Check for colon separator
-    if !(*ptr).is_null() && unsafe { **ptr } == b':' as c_char {
-        *ptr = unsafe { (*ptr).add(1) };
-
-        // Parse the maximum value
-        num_str.clear();
-        while !(*ptr).is_null() {
-            let ch = unsafe { **ptr };
-            if ch == b':' as c_char || ch == b' ' as c_char || ch == b'\0' as c_char {
-                break;
-            }
-            if ch >= b'0' as c_char && ch <= b'9' as c_char {
-                num_str.push(ch as u8);
-            } else if ch == b'-' as c_char && num_str.is_empty() {
-                num_str.push(ch as u8);
-            } else {
-                // Invalid character
-                ffpmsg_cstr(c"Error parsing section range maximum value");
-                *status = PARSE_SYNTAX_ERR;
-                return *status;
-            }
-            *ptr = unsafe { (*ptr).add(1) };
-        }
-
-        if !num_str.is_empty() {
-            if let Ok(s) = std::str::from_utf8(&num_str) {
-                if let Ok(val) = s.parse::<c_long>() {
-                    *secmax = val;
-                } else {
-                    ffpmsg_cstr(c"Error converting section range maximum value");
-                    *status = PARSE_SYNTAX_ERR;
-                    return *status;
-                }
-            }
-        } else {
-            // If no max specified, default to same as min
-            *secmax = *secmin;
-        }
-
-        // Check for second colon separator (increment)
-        if !(*ptr).is_null() && unsafe { **ptr } == b':' as c_char {
-            *ptr = unsafe { (*ptr).add(1) };
-
-            // Parse the increment value
-            num_str.clear();
-            while !(*ptr).is_null() {
-                let ch = unsafe { **ptr };
-                if ch == b' ' as c_char || ch == b'\0' as c_char {
-                    break;
-                }
-                if ch >= b'0' as c_char && ch <= b'9' as c_char {
-                    num_str.push(ch as u8);
-                } else if ch == b'-' as c_char && num_str.is_empty() {
-                    num_str.push(ch as u8);
-                } else {
-                    // Invalid character
-                    ffpmsg_cstr(c"Error parsing section range increment value");
-                    *status = PARSE_SYNTAX_ERR;
-                    return *status;
-                }
-                *ptr = unsafe { (*ptr).add(1) };
-            }
-
-            if !num_str.is_empty()
-                && let Ok(s) = std::str::from_utf8(&num_str)
-            {
-                if let Ok(val) = s.parse::<c_long>() {
-                    *incre = val;
-                } else {
-                    ffpmsg_cstr(c"Error converting section range increment value");
-                    *status = PARSE_SYNTAX_ERR;
-                    return *status;
-                }
-            }
-        }
+    /* get 1st token. fits_get_token2 reports how many characters it consumed
+    (leading blanks + token) via sublen, so advance ptr_index by that. */
+    let mut slen = fits_get_token2_safe(
+        &ptr[*ptr_index..],
+        &mut sublen,
+        cs!(c" ,:"),
+        &mut tstbuff,
+        Some(&mut isanumber),
+        status,
+    );
+    *ptr_index += sublen;
+    if slen == 0 {
+        /* support [:2,:2] type syntax, where the leading * is implied */
+        strcpy_safe(&mut token, cs!(c"*"));
     } else {
-        // No range specified, just a single value
-        *secmax = *secmin;
+        let tstbuff = tstbuff.as_deref().unwrap_or_default();
+        if strlen_safe(tstbuff) > FLEN_VALUE - 1 {
+            ffpmsg_str("Error: image section string too long (fits_get_section_range)");
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        strcpy_safe(&mut token, tstbuff);
     }
 
-    // Validate the values
-    if *incre == 0 {
-        ffpmsg_cstr(c"Section range increment cannot be zero");
-        *status = PARSE_SYNTAX_ERR;
-        return *status;
+    if token[0] == bb(b'*') {
+        /* wild card means to use the whole range */
+        *secmin = 1;
+        *secmax = 0;
+    } else if token[0] == bb(b'-') && token[1] == bb(b'*') {
+        /* invert the whole range */
+        *secmin = 0;
+        *secmax = 1;
+    } else {
+        if slen == 0 || isanumber == 0 || ptr[*ptr_index] != bb(b':') {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+
+        /* the token contains the min value */
+        *secmin = atol(&token);
+
+        *ptr_index += 1; /* skip the colon between the min and max values */
+        slen = fits_get_token2_safe(
+            &ptr[*ptr_index..],
+            &mut sublen,
+            cs!(c" ,:"),
+            &mut tstbuff,
+            Some(&mut isanumber),
+            status,
+        ); /* get token */
+        *ptr_index += sublen;
+        if slen == 0 || isanumber == 0 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        let tstbuff = tstbuff.as_deref().unwrap_or_default();
+        if strlen_safe(tstbuff) > FLEN_VALUE - 1 {
+            ffpmsg_str("Error: image section string too long (fits_get_section_range)");
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        strcpy_safe(&mut token, tstbuff);
+
+        /* the token contains the max value */
+        *secmax = atol(&token);
     }
 
-    if (*secmin > *secmax && *incre > 0) || (*secmin < *secmax && *incre < 0) {
-        ffpmsg_cstr(c"Invalid section range specification");
-        *status = PARSE_SYNTAX_ERR;
-        return *status;
+    if ptr[*ptr_index] == bb(b':') {
+        *ptr_index += 1; /* skip the colon between the max and incre values */
+        slen = fits_get_token2_safe(
+            &ptr[*ptr_index..],
+            &mut sublen,
+            cs!(c" ,"),
+            &mut tstbuff,
+            Some(&mut isanumber),
+            status,
+        ); /* get token */
+        *ptr_index += sublen;
+        if slen == 0 || isanumber == 0 {
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        let tstbuff = tstbuff.as_deref().unwrap_or_default();
+        if strlen_safe(tstbuff) > FLEN_VALUE - 1 {
+            ffpmsg_str("Error: image section string too long (fits_get_section_range)");
+            *status = URL_PARSE_ERROR;
+            return *status;
+        }
+        strcpy_safe(&mut token, tstbuff);
+
+        *incre = atol(&token);
+    } else {
+        *incre = 1; /* default increment if none is supplied */
+    }
+
+    if ptr[*ptr_index] == bb(b',') {
+        *ptr_index += 1;
+    }
+
+    while ptr[*ptr_index] == bb(b' ') {
+        /* skip any trailing blanks */
+        *ptr_index += 1;
+    }
+
+    if *secmin < 0 || *secmax < 0 || *incre < 1 {
+        *status = URL_PARSE_ERROR;
     }
 
     *status
@@ -8524,8 +8513,11 @@ pub fn fits_get_token2_safe(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::KeywordDatatypeMut;
+    use crate::aliases::rust_api::*;
     use crate::cfileio::MAX_PREFIX_LEN;
     use crate::fitsio::{FLEN_FILENAME, URL_PARSE_ERROR};
+    use crate::helpers::testhelpers::{from_buf, path_with_ext, to_buf, with_temp_file};
 
     // Helper function to create and initialize C-style string buffers
     fn create_buffer(size: usize) -> Vec<c_char> {
@@ -8548,6 +8540,54 @@ mod tests {
             let c_str = CStr::from_ptr(buf);
             c_str.to_string_lossy().into_owned()
         }
+    }
+
+    // ------------------------------------------------------------------
+    // fits_get_section_range tests
+    // ------------------------------------------------------------------
+
+    fn section_range(spec: &str) -> (c_long, c_long, c_long) {
+        let mut status: c_int = 0;
+        let buf = str_to_c_array(spec); // NUL-terminated
+        let mut ptr_index = 0usize;
+        let mut secmin: c_long = 0;
+        let mut secmax: c_long = 0;
+        let mut incre: c_long = 0;
+        fits_get_section_range_safe(
+            &buf,
+            &mut ptr_index,
+            &mut secmin,
+            &mut secmax,
+            &mut incre,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        (secmin, secmax, incre)
+    }
+
+    #[test]
+    fn test_section_range_simple() {
+        assert_eq!(section_range("1:100"), (1, 100, 1));
+    }
+
+    #[test]
+    fn test_section_range_increment() {
+        assert_eq!(section_range("1:100:2"), (1, 100, 2));
+    }
+
+    #[test]
+    fn test_section_range_wildcard() {
+        assert_eq!(section_range("*"), (1, 0, 1));
+    }
+
+    #[test]
+    fn test_section_range_inverted() {
+        assert_eq!(section_range("-*"), (0, 1, 1));
+    }
+
+    #[test]
+    fn test_section_range_implied() {
+        assert_eq!(section_range(":2"), (1, 0, 2));
     }
 
     #[test]
@@ -9699,7 +9739,7 @@ mod tests {
         // keep the backing buffer alive until after the file is closed
         drop(buffer);
     }
-    
+
     /* Tests for fits_find_match_delim - delimiter matching.
     Ported from test_find_match_delim.c. The C returns a `char *`; the Rust
     returns the index of the char *after* the matched delimiter, so we deref
@@ -9728,5 +9768,2303 @@ mod tests {
 
         assert_eq!(delim_char(cs!(c")X"), bb(b')')), bb(b'X'));
         assert_eq!(delim_char(cs!(c" ()  )X"), bb(b')')), bb(b'X'));
+    }
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Helper: build the column-name/tform reference vectors for `fits_create_tbl`.
+    fn make_table(
+        f: &mut fitsfile,
+        nrows: LONGLONG,
+        names: &[&str],
+        forms: &[&str],
+        extname: Option<&str>,
+        status: &mut c_int,
+    ) {
+        let ttype: Vec<Option<Vec<c_char>>> = names.iter().map(|s| Some(cc(s))).collect();
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+        let tform_v: Vec<Vec<c_char>> = forms.iter().map(|s| cc(s)).collect();
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        let ext = extname.map(cc);
+        fits_create_tbl(
+            f,
+            BINARY_TBL,
+            nrows,
+            names.len() as c_int,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            ext.as_deref(),
+            status,
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // fits_get_token tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_get_token_basic() {
+        let mut input = cc("token1,token2,token3");
+        let mut ptr = input.as_mut_ptr();
+        let mut token = [0 as c_char; 80];
+        let mut isanumber: c_int = 0;
+
+        let slen =
+            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(&token), "token1");
+        assert_eq!(isanumber, 0);
+
+        ptr = unsafe { ptr.add(1) }; // skip comma
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(&token), "token2");
+
+        ptr = unsafe { ptr.add(1) };
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(&token), "token3");
+    }
+
+    #[test]
+    fn test_fits_get_token_numeric() {
+        let mut input = cc("123 456.789 1.5D10");
+        let mut ptr = input.as_mut_ptr();
+        let mut token = [0 as c_char; 80];
+        let mut isanumber: c_int = 0;
+
+        let slen =
+            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        assert_eq!(slen, 3);
+        assert_eq!(from_buf(&token), "123");
+        assert_eq!(isanumber, 1);
+
+        ptr = unsafe { ptr.add(1) };
+        let slen =
+            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        assert_eq!(slen, 7);
+        assert_eq!(from_buf(&token), "456.789");
+        assert_eq!(isanumber, 1);
+
+        ptr = unsafe { ptr.add(1) };
+        let slen =
+            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(&token), "1.5D10");
+        assert_eq!(isanumber, 1); // D notation for doubles
+    }
+
+    #[test]
+    fn test_fits_get_token_blanks() {
+        let mut input = cc("   spaced");
+        let mut ptr = input.as_mut_ptr();
+        let mut token = [0 as c_char; 80];
+        let mut isanumber: c_int = 0;
+
+        let slen =
+            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(&token), "spaced");
+    }
+
+    #[test]
+    fn test_fits_get_token_null_isanumber() {
+        let mut input = cc("value");
+        let mut ptr = input.as_mut_ptr();
+        let mut token = [0 as c_char; 80];
+
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        assert_eq!(slen, 5);
+        assert_eq!(from_buf(&token), "value");
+    }
+
+    // ------------------------------------------------------------------
+    // fits_get_token2 tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_get_token2_basic() {
+        let mut status: c_int = 0;
+        let input = cc("first:second:third");
+        let mut idx: usize = 0;
+        let mut token: Option<Vec<c_char>> = None;
+        let mut isanumber: c_int = 0;
+
+        let slen = fits_get_token2_safe(
+            &input,
+            &mut idx,
+            &cc(":"),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 5);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "first");
+        assert_eq!(isanumber, 0);
+
+        // skip colon and advance the slice
+        let rest = &input[idx + 1..];
+        let mut idx2: usize = 0;
+        let slen = fits_get_token2_safe(
+            rest,
+            &mut idx2,
+            &cc(":"),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "second");
+
+        let rest2 = &rest[idx2 + 1..];
+        let mut idx3: usize = 0;
+        let slen = fits_get_token2_safe(
+            rest2,
+            &mut idx3,
+            &cc(":"),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 5);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "third");
+    }
+
+    #[test]
+    fn test_fits_get_token2_numeric() {
+        let mut status: c_int = 0;
+        let input = cc("42,3.14159,2.5D-3");
+        let mut idx: usize = 0;
+        let mut token: Option<Vec<c_char>> = None;
+        let mut isanumber: c_int = 0;
+
+        let slen = fits_get_token2_safe(
+            &input,
+            &mut idx,
+            &cc(","),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 2);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "42");
+        assert_eq!(isanumber, 1);
+
+        let rest = &input[idx + 1..];
+        let mut idx2: usize = 0;
+        let slen = fits_get_token2_safe(
+            rest,
+            &mut idx2,
+            &cc(","),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 7);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "3.14159");
+        assert_eq!(isanumber, 1);
+
+        let rest2 = &rest[idx2 + 1..];
+        let mut idx3: usize = 0;
+        let slen = fits_get_token2_safe(
+            rest2,
+            &mut idx3,
+            &cc(","),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(slen, 6);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "2.5D-3");
+        assert_eq!(isanumber, 1); // D notation
+    }
+
+    #[test]
+    fn test_fits_get_token2_null_isanumber() {
+        let mut status: c_int = 0;
+        let input = cc("somevalue");
+        let mut idx: usize = 0;
+        let mut token: Option<Vec<c_char>> = None;
+
+        let slen = fits_get_token2_safe(&input, &mut idx, &cc(","), &mut token, None, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(slen, 9);
+        assert_eq!(from_buf(token.as_ref().unwrap()), "somevalue");
+    }
+
+    #[test]
+    fn test_fits_get_token2_error_status() {
+        let mut status: c_int = 1; // pre-existing error
+        let input = cc("value");
+        let mut idx: usize = 0;
+        let mut token: Option<Vec<c_char>> = None;
+        let mut isanumber: c_int = 0;
+
+        let slen = fits_get_token2_safe(
+            &input,
+            &mut idx,
+            &cc(","),
+            &mut token,
+            Some(&mut isanumber),
+            &mut status,
+        );
+        assert_eq!(slen, 0); // should return 0 on error
+    }
+
+    // ------------------------------------------------------------------
+    // ffexist tests (ffexist_safer is todo!())
+    // ------------------------------------------------------------------
+
+    #[test]
+    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
+    fn test_ffexist_exists() {}
+
+    #[test]
+    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
+    fn test_ffexist_not_exists() {}
+
+    #[test]
+    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
+    fn test_ffexist_non_disk() {}
+
+    #[test]
+    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
+    fn test_ffexist_stdin() {}
+
+    // ------------------------------------------------------------------
+    // ffrtnm (fits_parse_rootname) tests
+    // ------------------------------------------------------------------
+
+    fn rtnm(url: &str) -> String {
+        let mut status: c_int = 0;
+        let mut rootname = [0 as c_char; FLEN_FILENAME];
+        ffrtnm_safe(&cc(url), &mut rootname, &mut status);
+        assert_eq!(status, 0);
+        from_buf(&rootname).to_string()
+    }
+
+    #[test]
+    fn test_ffrtnm_simple() {
+        assert_eq!(rtnm("myfile.fits"), "myfile.fits");
+    }
+
+    #[test]
+    fn test_ffrtnm_extension() {
+        assert_eq!(rtnm("myfile.fits[1]"), "myfile.fits");
+    }
+
+    #[test]
+    fn test_ffrtnm_file_prefix() {
+        // file:// is kept in the rootname - unlike file: which is stripped
+        assert_eq!(rtnm("file://myfile.fits"), "file://myfile.fits");
+    }
+
+    #[test]
+    fn test_ffrtnm_rowfilter() {
+        assert_eq!(rtnm("myfile.fits[EVENTS][X>5]"), "myfile.fits");
+    }
+
+    #[test]
+    fn test_ffrtnm_stdin() {
+        assert_eq!(rtnm("-"), "-");
+        assert_eq!(rtnm("stdin"), "-");
+    }
+
+    #[test]
+    fn test_ffrtnm_http() {
+        assert_eq!(
+            rtnm("http://example.com/file.fits"),
+            "http://example.com/file.fits"
+        );
+    }
+
+    #[test]
+    fn test_ffrtnm_ftp() {
+        assert_eq!(
+            rtnm("ftp://example.com/file.fits"),
+            "ftp://example.com/file.fits"
+        );
+    }
+
+    #[test]
+    fn test_ffrtnm_fits() {
+        assert!(rtnm("fitsfile://path/to/file.fits").contains("file.fits"));
+    }
+
+    #[test]
+    fn test_ffrtnm_compressed() {
+        assert_eq!(rtnm("file.fits.gz"), "file.fits.gz");
+    }
+
+    // ------------------------------------------------------------------
+    // ffexts (fits_parse_extspec) tests
+    // ------------------------------------------------------------------
+
+    struct Exts {
+        extnum: c_int,
+        extname: String,
+        extvers: c_int,
+        hdutype: c_int,
+        imagecolname: String,
+        rowexpress: String,
+    }
+
+    fn exts(spec: &str) -> Exts {
+        let mut status: c_int = 0;
+        let mut extnum: c_int = 0;
+        let mut extname = [0 as c_char; FLEN_VALUE];
+        let mut extvers: c_int = 0;
+        let mut hdutype: c_int = 0;
+        let mut imagecolname = [0 as c_char; FLEN_VALUE];
+        let mut rowexpress = [0 as c_char; FLEN_FILENAME];
+        ffexts_safe(
+            &cc(spec),
+            &mut extnum,
+            &mut extname,
+            &mut extvers,
+            &mut hdutype,
+            &mut imagecolname,
+            &mut rowexpress,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        Exts {
+            extnum,
+            extname: from_buf(&extname).to_string(),
+            extvers,
+            hdutype,
+            imagecolname: from_buf(&imagecolname).to_string(),
+            rowexpress: from_buf(&rowexpress).to_string(),
+        }
+    }
+
+    #[test]
+    fn test_ffexts_number() {
+        let e = exts("3");
+        assert_eq!(e.extnum, 3);
+        assert_eq!(e.extname, "");
+        assert_eq!(e.extvers, 0);
+        assert_eq!(e.hdutype, ANY_HDU);
+    }
+
+    #[test]
+    fn test_ffexts_name() {
+        let e = exts("EVENTS");
+        assert_eq!(e.extnum, 0);
+        assert_eq!(e.extname, "EVENTS");
+        assert_eq!(e.extvers, 0);
+        assert_eq!(e.hdutype, ANY_HDU);
+    }
+
+    #[test]
+    fn test_ffexts_name_version() {
+        let e = exts("EVENTS,2");
+        assert_eq!(e.extnum, 0);
+        assert_eq!(e.extname, "EVENTS");
+        assert_eq!(e.extvers, 2);
+        assert_eq!(e.hdutype, ANY_HDU);
+    }
+
+    #[test]
+    fn test_ffexts_name_version_type() {
+        let e = exts("EVENTS,1,b");
+        assert_eq!(e.extname, "EVENTS");
+        assert_eq!(e.extvers, 1);
+        assert_eq!(e.hdutype, BINARY_TBL);
+
+        let e = exts("DATA,1,a");
+        assert_eq!(e.hdutype, ASCII_TBL);
+
+        let e = exts("IMG,1,i");
+        assert_eq!(e.hdutype, IMAGE_HDU);
+    }
+
+    #[test]
+    fn test_ffexts_image_column() {
+        let e = exts("PICS;IMAGE(3)");
+        assert_eq!(e.extname, "PICS");
+        assert_eq!(e.imagecolname, "IMAGE");
+        assert_eq!(e.rowexpress, "3");
+    }
+
+    #[test]
+    fn test_ffexts_row_expression() {
+        let e = exts("PICS;colname(exposure>1000)");
+        assert_eq!(e.extname, "PICS");
+        assert_eq!(e.imagecolname, "colname");
+        assert_eq!(e.rowexpress, "exposure>1000");
+    }
+
+    #[test]
+    fn test_ffexts_negative_name() {
+        // "-5" is treated as an extension NAME, not a number
+        let e = exts("-5");
+        assert_eq!(e.extnum, 0);
+        assert_eq!(e.extname, "-5");
+    }
+
+    #[test]
+    fn test_ffexts_xtension_types() {
+        let e = exts("EVENTS,1,t");
+        assert_eq!(e.extname, "EVENTS");
+        assert_eq!(e.extvers, 1);
+        assert_eq!(e.hdutype, ASCII_TBL);
+    }
+
+    #[test]
+    fn test_ffexts_table_type() {
+        let e = exts("DATA,0,t");
+        assert_eq!(e.hdutype, ASCII_TBL);
+        let e = exts("DATA,0,T");
+        assert_eq!(e.hdutype, ASCII_TBL);
+    }
+
+    // ------------------------------------------------------------------
+    // ffextn (fits_parse_extnum) tests - ffextn_safer is todo!()
+    // ------------------------------------------------------------------
+
+    #[test]
+    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
+    fn test_ffextn_number() {}
+
+    #[test]
+    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
+    fn test_ffextn_none() {}
+
+    #[test]
+    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
+    fn test_ffextn_binspec() {}
+
+    // ------------------------------------------------------------------
+    // Open function variants
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffdopn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status); // null primary
+            make_table(
+                f.as_deref_mut().unwrap(),
+                0,
+                &["COL1"],
+                &["1J"],
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            // Open with ffdopn - should skip null primary
+            ffdopn_safer(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffdopn failed");
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 2); // should be at extension 2
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftopn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                0,
+                &["COL1"],
+                &["1J"],
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fftopn_safe(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "fftopn failed");
+            let mut hdutype: c_int = 0;
+            fits_get_hdu_type(f.as_deref_mut().unwrap(), &mut hdutype, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(hdutype, BINARY_TBL);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffiopn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            ffiopn_safer(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffiopn failed");
+            let mut hdutype: c_int = 0;
+            fits_get_hdu_type(f.as_deref_mut().unwrap(), &mut hdutype, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(hdutype, IMAGE_HDU);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffreopen() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f1: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f1, &name, &mut status);
+            fits_write_imghdr(f1.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0, "setup");
+
+            // Reopen the file - ffreopen outputs a raw *mut fitsfile
+            let mut newptr: *mut fitsfile = std::ptr::null_mut();
+            ffreopen_safer(f1.as_deref_mut().unwrap(), &mut newptr, &mut status);
+            assert_eq!(status, 0, "ffreopen failed");
+            assert!(!newptr.is_null());
+            let mut f2: Option<Box<fitsfile>> = Some(unsafe { Box::from_raw(newptr) });
+
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f1.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 1);
+            fits_get_hdu_num(f2.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 1);
+
+            fits_close_file(f1.take().unwrap(), &mut status);
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    // NOTE: fits_get_section_range tests were migrated into src/cfileio.rs's
+    // `mod tests` (they exercise the now-private fits_get_section_range_safe).
+
+    // ------------------------------------------------------------------
+    // fits_copy_image_section tests - fits_copy_image_section_safer is todo!()
+    // ------------------------------------------------------------------
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_stride() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_short() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_int() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_float() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_double() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_longlong() {}
+
+    #[test]
+    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
+    fn test_copy_image_section_3d() {}
+
+    // ------------------------------------------------------------------
+    // URL type tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffurlt() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+            let mut urltype = [0 as c_char; 80];
+            fits_url_type(f.as_deref_mut().unwrap(), &mut urltype, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&urltype), "file://");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // ffiurl (fits_parse_input_url) tests
+    // ------------------------------------------------------------------
+
+    struct IUrl {
+        urltype: String,
+        infile: String,
+        outfile: String,
+        extspec: String,
+        rowfilter: String,
+        binspec: String,
+        colspec: String,
+    }
+
+    fn iurl(url: &str) -> (c_int, IUrl) {
+        let mut status: c_int = 0;
+        let mut urltype = [0 as c_char; 80];
+        let mut infile = [0 as c_char; FLEN_FILENAME];
+        let mut outfile = [0 as c_char; FLEN_FILENAME];
+        let mut extspec = [0 as c_char; FLEN_FILENAME];
+        let mut rowfilter = [0 as c_char; FLEN_FILENAME];
+        let mut binspec = [0 as c_char; FLEN_FILENAME];
+        let mut colspec = [0 as c_char; FLEN_FILENAME];
+        let rc = ffiurl_safe(
+            &cc(url),
+            Some(&mut urltype),
+            Some(&mut infile),
+            Some(&mut outfile),
+            Some(&mut extspec),
+            Some(&mut rowfilter),
+            Some(&mut binspec),
+            Some(&mut colspec),
+            &mut status,
+        );
+        (
+            rc,
+            IUrl {
+                urltype: from_buf(&urltype).to_string(),
+                infile: from_buf(&infile).to_string(),
+                outfile: from_buf(&outfile).to_string(),
+                extspec: from_buf(&extspec).to_string(),
+                rowfilter: from_buf(&rowfilter).to_string(),
+                binspec: from_buf(&binspec).to_string(),
+                colspec: from_buf(&colspec).to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn test_ffiurl() {
+        let (_, u) = iurl("file.fits[1]");
+        assert_eq!(u.urltype, "file://");
+        assert_eq!(u.infile, "file.fits");
+        assert_eq!(u.extspec, "1");
+    }
+
+    #[test]
+    fn test_ffiurl_outfile() {
+        let (_, u) = iurl("file.fits(output.fits)");
+        assert_eq!(u.infile, "file.fits");
+        assert_eq!(u.outfile, "output.fits");
+    }
+
+    #[test]
+    fn test_ffiurl_rowfilter() {
+        let (_, u) = iurl("file.fits[EVENTS][X>100]");
+        assert_eq!(u.infile, "file.fits");
+        assert_eq!(u.extspec, "EVENTS");
+        assert_eq!(u.rowfilter, "X>100");
+    }
+
+    #[test]
+    fn test_ffiurl_binspec() {
+        let (_, u) = iurl("file.fits[bin X,Y]");
+        assert_eq!(u.infile, "file.fits");
+        assert_eq!(u.binspec, "bin X,Y");
+    }
+
+    #[test]
+    fn test_ffiurl_colspec() {
+        let (_, u) = iurl("file.fits[col X;Y]");
+        assert_eq!(u.infile, "file.fits");
+        assert_eq!(u.colspec, "col X;Y");
+    }
+
+    #[test]
+    fn test_ffiurl_mem() {
+        let (_, u) = iurl("mem://filename");
+        assert_eq!(u.urltype, "mem://");
+        assert_eq!(u.infile, "filename");
+    }
+
+    #[test]
+    fn test_ffiurl_compressed() {
+        let (_, u) = iurl("file.fits.gz[1]");
+        assert_eq!(u.urltype, "file://");
+        assert_eq!(u.infile, "file.fits.gz");
+        assert_eq!(u.extspec, "1");
+    }
+
+    #[test]
+    fn test_ffiurl_urltype_no_slashes() {
+        let (_, u) = iurl("ftp:example.com/file.fits");
+        assert_eq!(u.urltype, "ftp://");
+        assert_eq!(u.infile, "example.com/file.fits");
+
+        let (_, u) = iurl("http:example.com/file.fits");
+        assert_eq!(u.urltype, "http://");
+        assert_eq!(u.infile, "example.com/file.fits");
+
+        let (_, u) = iurl("file:localfile.fits");
+        assert_eq!(u.urltype, "file://");
+        assert_eq!(u.infile, "localfile.fits");
+
+        let (_, u) = iurl("mem:memfile");
+        assert_eq!(u.urltype, "mem://");
+        assert_eq!(u.infile, "memfile");
+
+        let (_, u) = iurl("shmem:sharedmem");
+        assert_eq!(u.urltype, "shmem://");
+        assert_eq!(u.infile, "sharedmem");
+
+        let (_, u) = iurl("gsiftp:example.com/file.fits");
+        assert_eq!(u.urltype, "gsiftp://");
+        assert_eq!(u.infile, "example.com/file.fits");
+    }
+
+    #[test]
+    fn test_ffiurl_urltype_too_long() {
+        let (rc, _) = iurl("verylongurltypeprefix://file.fits");
+        assert_eq!(rc, URL_PARSE_ERROR);
+    }
+
+    #[test]
+    fn test_ffiurl_outfile_urltype() {
+        let (_, u) = iurl("input.fits(mem://output.fits)");
+        assert_eq!(u.urltype, "file://");
+        assert_eq!(u.infile, "input.fits");
+        assert_eq!(u.outfile, "mem://output.fits");
+    }
+
+    // ------------------------------------------------------------------
+    // ffifile (fits_parse_input_filename) test
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffifile() {
+        let mut status: c_int = 0;
+        let mut urltype = [0 as c_char; 80];
+        let mut infile = [0 as c_char; FLEN_FILENAME];
+        let mut outfile = [0 as c_char; FLEN_FILENAME];
+        let mut extspec = [0 as c_char; FLEN_FILENAME];
+        let mut rowfilter = [0 as c_char; FLEN_FILENAME];
+        let mut binspec = [0 as c_char; FLEN_FILENAME];
+        let mut colspec = [0 as c_char; FLEN_FILENAME];
+        let mut pixfilter = [0 as c_char; FLEN_FILENAME];
+        ffifile_safe(
+            &cc("file.fits[1]"),
+            Some(&mut urltype),
+            Some(&mut infile),
+            Some(&mut outfile),
+            Some(&mut extspec),
+            Some(&mut rowfilter),
+            Some(&mut binspec),
+            Some(&mut colspec),
+            Some(&mut pixfilter),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&urltype), "file://");
+        assert_eq!(from_buf(&infile), "file.fits");
+        assert_eq!(from_buf(&extspec), "1");
+    }
+
+    // ------------------------------------------------------------------
+    // ffourl (fits_parse_output_url) tests
+    // ------------------------------------------------------------------
+
+    struct OUrl {
+        urltype: String,
+        outfile: String,
+        tpltfile: String,
+        compspec: String,
+    }
+
+    fn ourl(url: &str) -> OUrl {
+        let mut status: c_int = 0;
+        let mut urltype = [0 as c_char; 80];
+        let mut outfile = [0 as c_char; FLEN_FILENAME];
+        let mut tpltfile = [0 as c_char; FLEN_FILENAME];
+        let mut compspec = [0 as c_char; FLEN_FILENAME];
+        ffourl(
+            &cc(url),
+            &mut urltype,
+            &mut outfile,
+            &mut tpltfile,
+            &mut compspec,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        OUrl {
+            urltype: from_buf(&urltype).to_string(),
+            outfile: from_buf(&outfile).to_string(),
+            tpltfile: from_buf(&tpltfile).to_string(),
+            compspec: from_buf(&compspec).to_string(),
+        }
+    }
+
+    #[test]
+    fn test_ffourl_template() {
+        let o = ourl("output.fits(template.fits)");
+        assert_eq!(o.urltype, "file://");
+        assert_eq!(o.outfile, "output.fits");
+        assert_eq!(o.tpltfile, "template.fits");
+        assert_eq!(o.compspec, "");
+    }
+
+    #[test]
+    fn test_ffourl_compress() {
+        let o = ourl("output.fits[compress]");
+        assert_eq!(o.outfile, "output.fits");
+        assert_eq!(o.compspec, "compress");
+    }
+
+    #[test]
+    fn test_ffourl_gzip() {
+        let o = ourl("output.fits.gz");
+        assert_eq!(o.urltype, "compressoutfile://");
+        assert_eq!(o.outfile, "output.fits.gz");
+    }
+
+    #[test]
+    fn test_ffourl_stdout() {
+        assert_eq!(ourl("-").urltype, "stdout://");
+        assert_eq!(ourl("stdout").urltype, "stdout://");
+        assert_eq!(ourl("STDOUT").urltype, "stdout://");
+    }
+
+    #[test]
+    fn test_ffourl_explicit_urltype() {
+        let o = ourl("mem://memfile.fits");
+        assert_eq!(o.urltype, "mem://");
+        assert_eq!(o.outfile, "memfile.fits");
+    }
+
+    // ------------------------------------------------------------------
+    // Misc file operations
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffflus() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+            fits_flush_file(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghdn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffdelt() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0, "setup");
+
+            // Delete it (closes and removes)
+            ffdelt_safe(&mut f, &mut status);
+            assert_eq!(status, 0, "ffdelt failed");
+
+            // Verify it's gone (use std::fs since ffexist is todo!())
+            assert!(!std::path::Path::new(filename).exists());
+        });
+    }
+
+    #[test]
+    fn test_ffflnm() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+            let mut fname = [0 as c_char; FLEN_FILENAME];
+            fits_file_name(f.as_deref_mut().unwrap(), &mut fname, &mut status);
+            assert_eq!(status, 0);
+            assert!(from_buf(&fname).contains("test.fits"));
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffflmd() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            // Test write mode
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            let mut mode: c_int = 0;
+            fits_file_mode(f.as_deref_mut().unwrap(), &mut mode, &mut status);
+            assert_eq!(mode, READWRITE);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            // Test read mode
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_file_mode(f.as_deref_mut().unwrap(), &mut mode, &mut status);
+            assert_eq!(mode, READONLY);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffflmd_readwrite() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            let mut mode: c_int = 0;
+            fits_file_mode(f.as_deref_mut().unwrap(), &mut mode, &mut status);
+            assert_eq!(mode, READWRITE);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_memory_file() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [10];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &to_buf("mem://"), &mut status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+        let data: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        fits_write_img_byt(f.as_deref_mut().unwrap(), 1, 1, 10, &data, &mut status);
+        assert_eq!(status, 0);
+        fits_close_file(f.take().unwrap(), &mut status);
+    }
+
+    // ------------------------------------------------------------------
+    // Memory buffer operations - ffimem_safer is todo!()
+    // ------------------------------------------------------------------
+
+    #[test]
+    #[ignore = "ffimem_safer is todo!() in src/cfileio.rs"]
+    fn test_ffimem() {}
+
+    #[test]
+    #[ignore = "ffimem_safer is todo!() in src/cfileio.rs (needed to build memory buffer for ffomem)"]
+    fn test_ffomem() {}
+
+    // ------------------------------------------------------------------
+    // Misc
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_is_reentrant() {
+        let reentrant = crate::fitscore::fits_is_reentrant_safe();
+        assert!(reentrant == 0 || reentrant == 1);
+    }
+
+    #[test]
+    fn test_ffdkopn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            ffdkopn_safer(&mut f, &name, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffdkopn failed");
+            assert!(f.is_some());
+
+            let mut bitpix: c_int = 0;
+            fits_get_img_equivtype(f.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            assert_eq!(bitpix, BYTE_IMG);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffdkinit() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+
+            // with_temp_file gives a fresh dir; the file does not yet exist
+            let mut f: Option<Box<fitsfile>> = None;
+            ffdkinit_safer(&mut f, &name, &mut status);
+            assert_eq!(status, 0, "ffdkinit failed");
+            assert!(f.is_some());
+
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut naxis: c_int = 0;
+            fits_get_img_dim(f.as_deref_mut().unwrap(), &mut naxis, &mut status);
+            assert_eq!(naxis, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffrprt() {
+        // Push some error messages.
+        fits_write_errmsg(&cc("Test error message 1"));
+        fits_write_errmsg(&cc("Test error message 2"));
+
+        // Call ffrprt - pass null stream (function returns immediately, just
+        // verify it doesn't panic). The C version writes to stdout.
+        fits_report_error(std::ptr::null_mut(), 1);
+
+        // Clear error stack.
+        fits_clear_errmsg();
+    }
+
+    #[test]
+    fn test_ffgtmo() {
+        let timeout = fits_get_timeout();
+        assert!(timeout >= 0);
+    }
+
+    #[test]
+    fn test_ffstmo() {
+        let mut status: c_int = 0;
+        let orig_timeout = fits_get_timeout();
+
+        fits_set_timeout(30, &mut status);
+        assert_eq!(status, 0);
+
+        let new_timeout = fits_get_timeout();
+        // If net services are available, should be 30. Otherwise 0.
+        assert!(new_timeout == 30 || new_timeout == 0);
+
+        if orig_timeout > 0 {
+            fits_set_timeout(orig_timeout, &mut status);
+            assert_eq!(status, 0);
+        }
+    }
+
+    #[test]
+    #[ignore = "ffihtps_safe / ffchtps_safe are todo!() in src/cfileio.rs"]
+    fn test_ffihtps() {}
+
+    #[test]
+    fn test_ffeopn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status); // null primary
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let mut hdutype: c_int = 0;
+            ffeopn_safe(
+                &mut f,
+                &name,
+                READONLY,
+                Some(&cc("DATA")),
+                Some(&mut hdutype),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffeopn failed");
+            assert!(f.is_some());
+            assert_eq!(hdutype, BINARY_TBL);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fits_is_this_a_copy() {
+        fn isacopy(s: &str) -> c_int {
+            let mut buf = [0 as c_char; 20];
+            for (i, &b) in s.as_bytes().iter().enumerate() {
+                buf[i] = b as c_char;
+            }
+            fits_is_this_a_copy(buf)
+        }
+        assert_eq!(isacopy("mem://"), 1);
+        assert_eq!(isacopy("compress://"), 1);
+        assert_eq!(isacopy("stdin://"), 1);
+        assert_eq!(isacopy("http://"), 1);
+        assert_eq!(isacopy("ftp://"), 1);
+        assert_eq!(isacopy("file://"), 0);
+    }
+
+    #[test]
+    fn test_ffvhtps_ffshdwn() {
+        fits_verbose_https(1);
+        fits_verbose_https(0);
+        fits_show_download_progress(1);
+        fits_show_download_progress(0);
+    }
+
+    #[test]
+    fn test_ffimport_file() {
+        // Create a simple text file in a temp dir.
+        let dir = tempfile::Builder::new()
+            .prefix("rsfitsio-import-")
+            .tempdir()
+            .unwrap();
+        let path = dir.path().join("test_import.txt");
+        std::fs::write(&path, "Line 1\nLine 2\nLine 3\n").unwrap();
+
+        let mut status: c_int = 0;
+        let mut contents: Option<Vec<c_char>> = None;
+        ffimport_file_safe(&to_buf(path.to_str().unwrap()), &mut contents, &mut status);
+        assert_eq!(status, 0);
+        let s = from_buf(contents.as_ref().unwrap());
+        assert!(s.contains("Line 1"));
+        assert!(s.contains("Line 2"));
+        assert!(s.contains("Line 3"));
+    }
+
+    // ------------------------------------------------------------------
+    // fitscore functions
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffgnrw() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                100,
+                &["DATA"],
+                &["1J"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut nrows: c_long = 0;
+            fits_get_num_rows(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 100);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghof() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut headstart: libc::off_t = 0;
+            let mut datastart: libc::off_t = 0;
+            let mut dataend: libc::off_t = 0;
+            fits_get_hduoff(
+                f.as_deref_mut().unwrap(),
+                Some(&mut headstart),
+                Some(&mut datastart),
+                Some(&mut dataend),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(headstart, 0); // Primary HDU starts at 0
+            assert!(datastart > headstart); // Data after header
+            assert!(dataend > datastart); // End after start
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghad() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut headstart: c_long = 0;
+            let mut datastart: c_long = 0;
+            let mut dataend: c_long = 0;
+            fits_get_hduaddr(
+                f.as_deref_mut().unwrap(),
+                Some(&mut headstart),
+                Some(&mut datastart),
+                Some(&mut dataend),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(headstart, 0);
+            assert!(datastart > headstart);
+            assert!(dataend > datastart);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgiprll() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [100, 200, 3];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), LONG_IMG, 3, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut bitpix: c_int = 0;
+            let mut naxis: c_int = 0;
+            let mut naxesll = [0 as LONGLONG; 3];
+            fits_get_img_paramll(
+                f.as_deref_mut().unwrap(),
+                3,
+                Some(&mut bitpix),
+                Some(&mut naxis),
+                Some(&mut naxesll),
+                &mut status,
+            );
+            assert_eq!(bitpix, LONG_IMG);
+            assert_eq!(naxis, 3);
+            assert_eq!(naxesll[0], 100);
+            assert_eq!(naxesll[1], 200);
+            assert_eq!(naxesll[2], 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Template functions
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fftplt() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let naxes: [c_long; 2] = [20, 20];
+
+            // template path lives in same temp dir
+            let dir = std::path::Path::new(filename).parent().unwrap();
+            let tpl = dir.join("template.fits");
+            let out = dir.join("from_template.fits");
+            let tpl_name = to_buf(tpl.to_str().unwrap());
+            let out_name = to_buf(out.to_str().unwrap());
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &tpl_name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let mut f2: Option<Box<fitsfile>> = None;
+            fftplt_safer(&mut f2, &out_name, &tpl_name, &mut status);
+            assert_eq!(status, 0, "fftplt failed");
+            assert!(f2.is_some());
+
+            let mut naxis: c_int = 0;
+            fits_get_img_dim(f2.as_deref_mut().unwrap(), &mut naxis, &mut status);
+            assert_eq!(naxis, 2);
+            let mut bitpix: c_int = 0;
+            fits_get_img_equivtype(f2.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            assert_eq!(bitpix, SHORT_IMG);
+
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftplt_multi_hdu() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let naxes: [c_long; 1] = [10];
+
+            let dir = std::path::Path::new(filename).parent().unwrap();
+            let tpl = dir.join("template.fits");
+            let out = dir.join("from_template.fits");
+            let tpl_name = to_buf(tpl.to_str().unwrap());
+            let out_name = to_buf(out.to_str().unwrap());
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &tpl_name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                5,
+                &["DATA"],
+                &["1D"],
+                Some("TABLE"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let mut f2: Option<Box<fitsfile>> = None;
+            fftplt_safer(&mut f2, &out_name, &tpl_name, &mut status);
+            assert_eq!(status, 0, "fftplt failed");
+
+            let mut nhdu: c_int = 0;
+            fits_get_num_hdus(f2.as_deref_mut().unwrap(), &mut nhdu, &mut status);
+            assert_eq!(nhdu, 2);
+
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffoptplt_empty() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+
+            // Empty template should be a no-op.
+            ffoptplt(f.as_deref_mut().unwrap(), &cc(""), &mut status);
+            assert_eq!(status, 0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Extension opening
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffopen_extension_number() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("EXT1"),
+                &mut status,
+            );
+            make_table(
+                f.as_deref_mut().unwrap(),
+                20,
+                &["DATA"],
+                &["1E"],
+                Some("EXT2"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[2]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen[2] failed");
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 3);
+            let mut hdutype: c_int = 0;
+            fits_get_hdu_type(f.as_deref_mut().unwrap(), &mut hdutype, &mut status);
+            assert_eq!(hdutype, BINARY_TBL);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffopen_extension_name() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("FIRST"),
+                &mut status,
+            );
+            make_table(
+                f.as_deref_mut().unwrap(),
+                20,
+                &["DATA"],
+                &["1E"],
+                Some("SECOND"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[SECOND]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen[SECOND] failed");
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 3);
+            let mut extname = [0 as c_char; 80];
+            fits_read_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("EXTNAME"),
+                &mut extname,
+                None,
+                &mut status,
+            );
+            assert_eq!(from_buf(&extname), "SECOND");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffopen_extension_name_version() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("EXTVER"),
+                1,
+                None,
+                &mut status,
+            );
+            make_table(
+                f.as_deref_mut().unwrap(),
+                20,
+                &["DATA"],
+                &["1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("EXTVER"),
+                2,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA,2]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen[DATA,2] failed");
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 3);
+            let mut extver: c_long = 0;
+            fits_read_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("EXTVER"),
+                &mut extver,
+                None,
+                &mut status,
+            );
+            assert_eq!(extver, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffopen_plus_extension() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("TABLE"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "+1");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen+1 failed");
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
+            assert_eq!(hdunum, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffopen_image_type() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let mut naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["DATA"],
+                &["1E"],
+                Some("TABLE"),
+                &mut status,
+            );
+            naxes[0] = 20;
+            fits_create_img(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[TABLE,1,b]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen[TABLE,1,b] failed");
+            let mut hdutype: c_int = 0;
+            fits_get_hdu_type(f.as_deref_mut().unwrap(), &mut hdutype, &mut status);
+            assert_eq!(hdutype, BINARY_TBL);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // fits_copy_cell2image - fits_copy_cell2image_safe is todo!()
+    #[test]
+    #[ignore = "fits_copy_cell2image_safe is todo!() in src/cfileio.rs"]
+    fn test_fits_copy_cell2image() {}
+
+    // ------------------------------------------------------------------
+    // Table functions
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_ffgncl() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["A", "B", "C"],
+                &["1J", "1E", "10A"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut ncols: c_int = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fits_get_num_cols() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["A", "B"],
+                &["1J", "1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut ncols: c_int = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgcno() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["ALPHA", "BETA", "GAMMA"],
+                &["1J", "1E", "10A"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut colnum: c_int = 0;
+            fits_get_colnum(
+                f.as_deref_mut().unwrap(),
+                crate::fitsio::CASEINSEN as c_int,
+                &cc("BETA"),
+                &mut colnum,
+                &mut status,
+            );
+            assert_eq!(colnum, 2);
+            fits_get_colnum(
+                f.as_deref_mut().unwrap(),
+                crate::fitsio::CASEINSEN as c_int,
+                &cc("beta"),
+                &mut colnum,
+                &mut status,
+            );
+            assert_eq!(colnum, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fits_get_colname() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["ALPHA", "BETA"],
+                &["1J", "1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut colname = [0 as c_char; FLEN_VALUE];
+            let mut colnum: c_int = 0;
+            fits_get_colname(
+                f.as_deref_mut().unwrap(),
+                crate::fitsio::CASEINSEN as c_int,
+                &cc("ALP*"),
+                &mut colname,
+                &mut colnum,
+                &mut status,
+            );
+            assert_eq!(colnum, 1);
+            assert_eq!(from_buf(&colname), "ALPHA");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgnrwll() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                1000,
+                &["DATA"],
+                &["1J"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 1000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtcl() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["INT", "FLOAT", "STRING"],
+                &["1J", "1E", "20A"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut typecode: c_int = 0;
+            let mut repeat: c_long = 0;
+            let mut width: c_long = 0;
+            fits_get_coltype(
+                f.as_deref_mut().unwrap(),
+                1,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                &mut status,
+            );
+            assert_eq!(typecode, TLONG);
+            assert_eq!(repeat, 1);
+            fits_get_coltype(
+                f.as_deref_mut().unwrap(),
+                2,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                &mut status,
+            );
+            assert_eq!(typecode, TFLOAT);
+            fits_get_coltype(
+                f.as_deref_mut().unwrap(),
+                3,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                &mut status,
+            );
+            assert_eq!(typecode, TSTRING);
+            assert_eq!(repeat, 20);
+            assert_eq!(width, 20);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgcdw() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                10,
+                &["INT", "FLOAT", "STRING"],
+                &["1J", "1E", "20A"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut dispwidth: c_int = 0;
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 3, &mut dispwidth, &mut status);
+            assert_eq!(dispwidth, 20);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgabc() {
+        let mut status: c_int = 0;
+        let tform_v = [cc("A20"), cc("E12.4")];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        let mut rowlen: c_long = 0;
+        let mut tbcol = [0 as c_long; 2];
+        fits_get_tbcol(2, &tform_ref, 1, &mut rowlen, &mut tbcol, &mut status);
+        assert_eq!(status, 0);
+        assert!(rowlen >= 32);
+        assert!(tbcol[0] >= 1);
+    }
+
+    #[test]
+    fn test_ffgrsz() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            make_table(
+                f.as_deref_mut().unwrap(),
+                1000,
+                &["DATA"],
+                &["1E"],
+                Some("DATA"),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            let ext_name = path_with_ext(filename, "[DATA]");
+            ffopen_safe(&mut f, &ext_name, READONLY, &mut status);
+            let mut nrows: c_long = 0;
+            fits_get_rowsize(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert!(nrows > 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Keyword classification
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_get_keyclass() {
+        assert_eq!(fits_get_keyclass(&cc("SIMPLE")), TYP_STRUC_KEY);
+        assert_eq!(fits_get_keyclass(&cc("BITPIX")), TYP_STRUC_KEY);
+        assert_eq!(fits_get_keyclass(&cc("COMMENT")), TYP_COMM_KEY);
+        assert_eq!(fits_get_keyclass(&cc("HISTORY")), TYP_COMM_KEY);
+        assert_eq!(fits_get_keyclass(&cc("MYKEY")), TYP_USER_KEY);
+    }
+
+    // ------------------------------------------------------------------
+    // Version and utility functions
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_get_version() {
+        let mut version: f32 = 0.0;
+        fits_get_version(&mut version);
+        assert!(version >= 4.0);
+    }
+
+    // ------------------------------------------------------------------
+    // fits_already_open
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fits_already_open() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f1: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f1, &name, &mut status);
+            fits_write_imghdr(f1.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            assert_eq!(status, 0, "setup");
+
+            // Opening again should give a different fitsfile pointer that shares
+            // the same underlying FITSfile.
+            let mut f2: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut f2, &name, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffopen again failed");
+            assert!(f2.is_some());
+
+            // Both should point to same underlying file.
+            let p1: *const _ = &*f1.as_deref().unwrap().Fptr;
+            let p2: *const _ = &*f2.as_deref().unwrap().Fptr;
+            assert_eq!(p1, p2);
+
+            fits_close_file(f1.take().unwrap(), &mut status);
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_create_and_read() {
+        // test_create_file + test_open_and_read
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [4, 3];
+            let data: [u8; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            fits_write_imghdr(
+                fptr.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                2,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphps failed");
+            fits_write_img(
+                fptr.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                data.len() as LONGLONG,
+                &data,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffppr failed");
+            fits_close_file(fptr.take().unwrap(), &mut status);
+
+            // open and read
+            fits_open_file(&mut fptr, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut rdata = [0u8; 12];
+            let mut anynull: c_int = 0;
+            fits_read_img(
+                fptr.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                12,
+                None,
+                &mut rdata,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgpv failed");
+            assert_eq!(rdata[0], 1);
+            assert_eq!(rdata[5], 6);
+            assert_eq!(rdata[11], 12);
+            fits_close_file(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_error_handling() {
+        let mut status: c_int = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        let name = to_buf("nonexistent_file.fits");
+        let rc = fits_open_file(&mut fptr, &name, READONLY, &mut status);
+        assert_ne!(rc, 0, "opening a nonexistent file should fail");
+        assert_ne!(status, 0);
+
+        let mut errmsg = [0 as c_char; FLEN_VALUE];
+        fits_get_errstatus(status, &mut errmsg);
+        assert!(!from_buf(&errmsg).is_empty(), "errmsg should be non-empty");
+        fits_clear_errmsg();
+    }
+
+    #[test]
+    fn test_hdu_and_keywords() {
+        // Replicates main()'s READWRITE section operating on one handle.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let pnaxes: [c_long; 2] = [4, 3];
+            let data: [u8; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+            // create the file (as test_create_file does)
+            let mut fptr: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut fptr, &name, &mut status);
+            fits_write_imghdr(
+                fptr.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                2,
+                &pnaxes,
+                &mut status,
+            );
+            fits_write_img(
+                fptr.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                data.len() as LONGLONG,
+                &data,
+                &mut status,
+            );
+            fits_close_file(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup failed");
+
+            fits_open_file(&mut fptr, &name, READWRITE, &mut status);
+            assert_eq!(status, 0, "ffopen RW failed");
+            let f = fptr.as_deref_mut().unwrap();
+
+            // --- test_hdu_operations ---
+            let mut hdunum: c_int = 0;
+            fits_get_hdu_num(f, &mut hdunum);
+            assert_eq!(hdunum, 1);
+
+            let naxes: [c_long; 2] = [5, 5];
+            fits_create_img(f, SHORT_IMG, 2, &naxes, &mut status);
+            assert_eq!(status, 0, "ffcrim failed");
+            fits_get_hdu_num(f, &mut hdunum);
+            assert_eq!(hdunum, 2);
+
+            let ttype = [Some(cc("COL1"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f,
+                BINARY_TBL,
+                0,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcrtb failed");
+            fits_get_hdu_num(f, &mut hdunum);
+            assert_eq!(hdunum, 3);
+
+            let mut hdutype: c_int = -1;
+            fits_movabs_hdu(f, 1, Some(&mut hdutype), &mut status);
+            assert_eq!(status, 0, "ffmahd failed");
+            assert_eq!(hdutype, IMAGE_HDU);
+            fits_get_hdu_num(f, &mut hdunum);
+            assert_eq!(hdunum, 1);
+
+            // --- test_write_keywords ---
+            fits_write_key_str(
+                f,
+                &cc("STRKEY"),
+                &cc("hello"),
+                Some(&cc("string comment")),
+                &mut status,
+            );
+            fits_write_key_lng(
+                f,
+                &cc("LONGKEY"),
+                42,
+                Some(&cc("long comment")),
+                &mut status,
+            );
+            fits_write_key_dbl(
+                f,
+                &cc("DBLKEY"),
+                3.14159,
+                6,
+                Some(&cc("double comment")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "writing keywords failed");
+
+            // --- test_read_keywords ---
+            let mut strval = [0 as c_char; FLEN_VALUE];
+            let mut comment = [0 as c_char; FLEN_COMMENT];
+            fits_read_key_str(
+                f,
+                &cc("STRKEY"),
+                &mut strval,
+                Some(&mut comment),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&strval), "hello");
+            assert_eq!(from_buf(&comment), "string comment");
+
+            let mut longval: c_long = 0;
+            fits_read_key(
+                f,
+                KeywordDatatypeMut::TLONG(&mut longval),
+                &cc("LONGKEY"),
+                Some(&mut comment),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(longval, 42);
+
+            let mut dblval: f64 = 0.0;
+            fits_read_key(
+                f,
+                KeywordDatatypeMut::TDOUBLE(&mut dblval),
+                &cc("DBLKEY"),
+                Some(&mut comment),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((3.14..=3.15).contains(&dblval));
+
+            // --- test_keyword_types ---
+            let mut value = [0 as c_char; FLEN_VALUE];
+            fits_write_key_str(
+                f,
+                &cc("KEY1"),
+                &cc("val1"),
+                Some(&cc("comment")),
+                &mut status,
+            );
+            fits_read_keyword(f, &cc("KEY1"), &mut value, Some(&mut comment), &mut status);
+            assert_eq!(from_buf(&value), "'val1    '");
+
+            fits_write_key_str(f, &cc("KEY2"), &cc(""), Some(&cc("empty")), &mut status);
+            fits_read_keyword(f, &cc("KEY2"), &mut value, Some(&mut comment), &mut status);
+            assert_eq!(from_buf(&value), "'        '");
+
+            // C passes NULL value here -> an empty c_char slice maps to '' (ffs2c).
+            fits_write_key_str(f, &cc("KEY3"), &[], Some(&cc("null")), &mut status);
+            fits_read_keyword(f, &cc("KEY3"), &mut value, Some(&mut comment), &mut status);
+            assert_eq!(from_buf(&value), "''");
+            assert_eq!(status, 0, "keyword types failed");
+
+            // --- test_raw_record ---
+            let mut val = [0 as c_char; FLEN_VALUE];
+            fits_write_record(f, &cc("RAWKEY  = 'rawval' / raw comment"), &mut status);
+            fits_read_keyword(f, &cc("RAWKEY"), &mut val, Some(&mut comment), &mut status);
+            assert_eq!(status, 0, "ffprec/ffgkey failed");
+            assert_eq!(from_buf(&val), "'rawval'");
+
+            // --- test_header_space ---
+            let mut nkeys: c_int = 0;
+            let mut morekeys: c_int = 0;
+            fits_get_hdrspace(f, Some(&mut nkeys), Some(&mut morekeys), &mut status);
+            assert_eq!(status, 0, "ffghsp failed");
+            assert!(nkeys >= 1);
+            for i in 1..=nkeys {
+                let mut keyname = [0 as c_char; FLEN_KEYWORD];
+                let mut kvalue = [0 as c_char; FLEN_VALUE];
+                fits_read_keyn(
+                    f,
+                    i,
+                    &mut keyname,
+                    &mut kvalue,
+                    Some(&mut comment),
+                    &mut status,
+                );
+                assert_eq!(status, 0, "ffgkyn failed at key {i}");
+            }
+
+            fits_close_file(fptr.take().unwrap(), &mut status);
+        });
     }
 }

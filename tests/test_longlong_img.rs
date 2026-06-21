@@ -807,11 +807,14 @@ mod tests {
                     "Expected NUM_OVERFLOW (412) for LONGLONG with negatives → ULONG"
                 );
 
-                // Verify clamping: negatives → 0
+                // Verify clamping: negatives → 0. (Compare the upper bound in
+                // unsigned space: `c_ulong::MAX as c_longlong` would wrap to -1
+                // on 64-bit and wrongly clamp every positive value — that mirrors
+                // the same conversion bug fixed in fffi8u4.)
                 for i in 0..nelements {
                     let expected = if write_data[i] < 0 {
                         0
-                    } else if write_data[i] > c_ulong::MAX as c_longlong {
+                    } else if (write_data[i] as u64) > c_ulong::MAX as u64 {
                         c_ulong::MAX
                     } else {
                         write_data[i] as c_ulong

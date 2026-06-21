@@ -3927,3 +3927,2349 @@ pub fn ffiter_safe(
     // col is a Vec, so it will be automatically freed
     *status
 }
+
+// Ported from test_putcol.c - generic column/pixel write functions
+// (ffppx, ffppxll, ffppxnll, ffppn, ffpss, ffpcn, ffpthp). These take an
+// explicit `datatype` argument. Data is written then read back to verify.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::NullValue;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BINARY_TBL, BYTE_IMG, DOUBLE_IMG, FLOAT_IMG, LONG_IMG, LONGLONG, LONGLONG_IMG, READONLY,
+        SBYTE_IMG, SHORT_IMG, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG,
+        TLONGLONG, TSBYTE, TSHORT, TSTRING, TUINT, TULONG, TULONGLONG, TUSHORT, ULONG_IMG,
+        USHORT_IMG, fitsfile,
+    };
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use bytemuck::{cast_slice, cast_slice_mut};
+    use libc::{c_char, c_int, c_long};
+    use std::ffi::CString;
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column binary table and return the open file.
+    fn make_table(
+        name: &[c_char],
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    // ----------------------------------------------------------------------
+    // ffppx tests (long *firstpix)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffppx_sbyte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i8; 5] = [-100, -50, 0, 50, 100];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            // SBYTE stored in short
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i8; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppx_ushort() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [u16; 5] = [0, 1000, 30000, 50000, 65535];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                USHORT_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u16; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppx_uint() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [u32; 3] = [0, 1000000, 4294967295];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u32; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppx_ulong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [libc::c_ulong; 3] = [0, 100000, 4294967295];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as libc::c_ulong; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppx_ulonglong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            // Use values that fit in LONGLONG_IMG range (signed 64-bit).
+            let data: [u64; 3] = [0, 1000000000, 9000000000000000000];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TULONGLONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u64; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TULONGLONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppx_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [LONGLONG; 3] = [-9000000000, 0, 9000000000];
+            let firstpix: [c_long; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pix(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as LONGLONG; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffppxll tests (LONGLONG *firstpix)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffppxll_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [u8; 5] = [10, 20, 30, 40, 50];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                &firstpix,
+                5,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u8; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                5,
+                None,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i16; 5] = [-100, 0, 100, 200, 300];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i16; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_int() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [c_int; 3] = [-1000000, 0, 1000000];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), LONG_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as c_int; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [LONGLONG; 3] = [-9000000000, 0, 9000000000];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as LONGLONG; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [4];
+            let data: [f32; 4] = [1.5, 2.5, 3.5, 4.5];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                &firstpix,
+                4,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 4];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                4,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_double() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [4];
+            let data: [f64; 4] = [1.5, 2.5, 3.5, 4.5];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                DOUBLE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                &firstpix,
+                4,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f64; 4];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                1,
+                4,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_ushort() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [u16; 3] = [0, 32768, 65535];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                USHORT_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u16; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_ulong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [libc::c_ulong; 3] = [0, 2147483648, 4294967295];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as libc::c_ulong; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_sbyte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i8; 5] = [-128, -64, 0, 64, 127];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SBYTE_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i8; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_uint() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [u32; 3] = [0, 2000000000, 4000000000];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u32; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxll_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [3];
+            let data: [c_long; 3] = [-2000000000, 0, 2000000000];
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), LONG_IMG, 1, &naxes, &mut status);
+            fits_write_pixll(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                &firstpix,
+                3,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                1,
+                3,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result, data);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffppn tests (write primary array with null value)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffppn_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i16; 5] = [10, -999, 20, -999, 30];
+            let nulval: i16 = -999;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Short(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i16; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_int() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [c_int; 5] = [100, -99999, 200, -99999, 300];
+            let nulval: c_int = -99999;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), LONG_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Int(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as c_int; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [f32; 5] = [1.5, -999.0, 2.5, -999.0, 3.5];
+            let nulval: f32 = -999.0;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 1, &naxes, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Float(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            // Use a different null value to get actual stored values
+            let mut result = [0f32; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                5,
+                Some(NullValue::Float(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[2], 2.5);
+            assert_eq!(result[4], 3.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_double() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [f64; 5] = [1.5, -999.0, 2.5, -999.0, 3.5];
+            let nulval: f64 = -999.0;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                DOUBLE_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Double(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f64; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                1,
+                5,
+                Some(NullValue::Double(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[2], 2.5);
+            assert_eq!(result[4], 3.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [u8; 5] = [10, 255, 20, 255, 30];
+            let nulval: u8 = 255;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                5,
+                &data,
+                Some(NullValue::UByte(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u8; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                5,
+                None,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_sbyte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i8; 5] = [10, -128, 20, -128, 30];
+            let nulval: i8 = -128;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SBYTE_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Byte(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i8; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_ushort() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [u16; 5] = [100, 65535, 200, 65535, 300];
+            let nulval: u16 = 65535;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                USHORT_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::UShort(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u16; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_uint() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [u32; 5] = [100, 4294967295, 200, 4294967295, 300];
+            let nulval: u32 = 4294967295;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::UInt(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0u32; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_ulong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [libc::c_ulong; 5] = [100, 4294967295, 200, 4294967295, 300];
+            let nulval: libc::c_ulong = 4294967295;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::ULong(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as libc::c_ulong; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [c_long; 5] = [100, -2147483648, 200, -2147483648, 300];
+            let nulval: c_long = -2147483648;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), LONG_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Long(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as c_long; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppn_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [LONGLONG; 5] = [100, -9223372036854775807, 200, -9223372036854775807, 300];
+            let nulval: LONGLONG = -9223372036854775807;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval, &mut status);
+            fits_write_imgnull(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::LONGLONG(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0 as LONGLONG; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffpss tests (write subset)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffpss_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [4, 4];
+            let data: [i16; 4] = [11, 12, 21, 22];
+            let blc: [c_long; 2] = [2, 2];
+            let trc: [c_long; 2] = [3, 3];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_write_subset(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                &blc,
+                &trc,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i16; 16];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                16,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Data at (2,2) should be at index 5 (row 2, col 2 = 1*4 + 1)
+            assert_eq!(result[5], 11);
+            assert_eq!(result[6], 12);
+            assert_eq!(result[9], 21);
+            assert_eq!(result[10], 22);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpss_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [5, 5];
+            let data: [f32; 9] = [1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3];
+            let blc: [c_long; 2] = [2, 2];
+            let trc: [c_long; 2] = [4, 4];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 2, &naxes, &mut status);
+            fits_write_subset(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                &blc,
+                &trc,
+                cast_slice(&data),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 25];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                25,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Data at (2,2) should be at index 6 (row 2, col 2 = 1*5 + 1)
+            assert_eq!(result[6], 1.1);
+            assert_eq!(result[7], 1.2);
+            assert_eq!(result[8], 1.3);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffpcn tests (write column with null)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffpcn_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [i16; 5] = [10, -999, 20, -999, 30];
+            let nulval: i16 = -999;
+
+            let mut f = make_table(&name, "VALUE", "1J", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Short(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0i16; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Short(-888)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_int() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_int; 5] = [100, -99999, 200, -99999, 300];
+            let nulval: c_int = -99999;
+
+            let mut f = make_table(&name, "VALUE", "1J", 5, &mut status);
+            // A TNULL value must be defined for an integer column before null
+            // values can be written.
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Int(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_int; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TINT,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Int(-88888)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 5] = [1.5, -999.0, 2.5, -999.0, 3.5];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, "VALUE", "1E", 5, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Float(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Float(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[2], 2.5);
+            assert_eq!(result[4], 3.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_double() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f64; 5] = [1.5, -999.0, 2.5, -999.0, 3.5];
+            let nulval: f64 = -999.0;
+
+            let mut f = make_table(&name, "VALUE", "1D", 5, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Double(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f64; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TDOUBLE,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Double(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[2], 2.5);
+            assert_eq!(result[4], 3.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [u8; 5] = [10, 255, 20, 255, 30];
+            let nulval: u8 = 255;
+
+            let mut f = make_table(&name, "VALUE", "1B", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                1,
+                1,
+                5,
+                &data,
+                Some(NullValue::UByte(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u8; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TBYTE,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::UByte(254)),
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_sbyte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [i8; 5] = [10, -128, 20, -128, 30];
+            let nulval: i8 = -128;
+
+            let mut f = make_table(&name, "VALUE", "1S", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Byte(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0i8; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TSBYTE,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Byte(-127)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_ushort() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [u16; 5] = [100, 65535, 200, 65535, 300];
+            let nulval: u16 = 65535;
+
+            let mut f = make_table(&name, "VALUE", "1U", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::UShort(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u16; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TUSHORT,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::UShort(65534)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_uint() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [u32; 5] = [100, 4294967295, 200, 4294967295, 300];
+            let nulval: u32 = 4294967295;
+
+            let mut f = make_table(&name, "VALUE", "1V", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::UInt(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u32; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TUINT,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::UInt(4294967294)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_ulong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [libc::c_ulong; 5] = [100, 4294967295, 200, 4294967295, 300];
+            let nulval: libc::c_ulong = 4294967295;
+
+            let mut f = make_table(&name, "VALUE", "1V", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::ULong(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as libc::c_ulong; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TULONG,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::ULong(4294967294)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 5] = [100, -2147483647, 200, -2147483647, 300];
+            let nulval: c_long = -2147483647;
+
+            let mut f = make_table(&name, "VALUE", "1J", 5, &mut status);
+            fits_set_btblnull(
+                f.as_deref_mut().unwrap(),
+                1,
+                nulval as LONGLONG,
+                &mut status,
+            );
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Long(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TLONG,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Long(-2147483646)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [LONGLONG; 5] = [100, -9223372036854775807, 200, -9223372036854775807, 300];
+            let nulval: LONGLONG = -9223372036854775807;
+
+            let mut f = make_table(&name, "VALUE", "1K", 5, &mut status);
+            fits_set_btblnull(f.as_deref_mut().unwrap(), 1, nulval, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::LONGLONG(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as LONGLONG; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TLONGLONG,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::LONGLONG(-9223372036854775806)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[2], 200);
+            assert_eq!(result[4], 300);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_logical() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            // The C test used { 'T', 0, 'F', 0, 'T' }, but for TLOGICAL any
+            // nonzero byte is TRUE, so 'F' (70) round-trips to 1 (true), not 0.
+            // The 0 entries equal the null value and are written as nulls.
+            let data: [c_char; 5] = [1, 0, 1, 0, 1];
+            let nulval: c_char = 0;
+
+            let mut f = make_table(&name, "FLAG", "1L", 5, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TLOGICAL,
+                1,
+                1,
+                1,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Byte(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_char; 5];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TLOGICAL,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::Byte(2)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1);
+            assert_eq!(result[2], 1);
+            assert_eq!(result[4], 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let strings = ["Hello", "NULL", "World", "NULL", "Test"];
+
+            let mut f = make_table(&name, "NAME", "10A", 5, &mut status);
+
+            // The byte buffer holds an array of `*const c_char` pointers to
+            // per-element string buffers. The generic ffpcn TSTRING path reads
+            // FLEN_VALUE bytes from each pointer, so back each string with a
+            // full-width, NUL-padded buffer.
+            let str_bufs: Vec<Vec<c_char>> = strings
+                .iter()
+                .map(|s| {
+                    let mut v = vec![0 as c_char; 71];
+                    for (i, b) in s.bytes().enumerate() {
+                        v[i] = b as c_char;
+                    }
+                    v
+                })
+                .collect();
+            let ptrs: Vec<*const c_char> = str_bufs.iter().map(|v| v.as_ptr()).collect();
+            let ptr_bytes: &[u8] = unsafe {
+                std::slice::from_raw_parts(
+                    ptrs.as_ptr() as *const u8,
+                    std::mem::size_of_val(&ptrs[..]),
+                )
+            };
+            let nulval = CString::new("NULL").unwrap();
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TSTRING,
+                1,
+                1,
+                1,
+                5,
+                ptr_bytes,
+                Some(NullValue::String(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut buf: [[c_char; 11]; 5] = [[0; 11]; 5];
+            let mut read_ptrs: [*mut c_char; 5] = std::array::from_fn(|i| buf[i].as_mut_ptr());
+            let read_ptr_bytes: &mut [u8] = unsafe {
+                std::slice::from_raw_parts_mut(
+                    read_ptrs.as_mut_ptr() as *mut u8,
+                    std::mem::size_of_val(&read_ptrs),
+                )
+            };
+            let readnul = CString::new("UNDEF").unwrap();
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TSTRING,
+                1,
+                1,
+                1,
+                5,
+                Some(NullValue::String(readnul)),
+                read_ptr_bytes,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let read_str = |row: usize| -> Vec<u8> {
+                buf[row]
+                    .iter()
+                    .take_while(|&&c| c != 0)
+                    .map(|&c| c as u8)
+                    .collect()
+            };
+            assert_eq!(read_str(0), b"Hello");
+            assert_eq!(read_str(2), b"World");
+            assert_eq!(read_str(4), b"Test");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_complex() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 6] = [1.0, 2.0, -999.0, -999.0, 3.0, 4.0];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, "CPLX", "1C", 5, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TCOMPLEX,
+                1,
+                1,
+                1,
+                3,
+                cast_slice(&data),
+                Some(NullValue::Float(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 6];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TCOMPLEX,
+                1,
+                1,
+                1,
+                3,
+                Some(NullValue::Float(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[1], 2.0);
+            assert_eq!(result[4], 3.0);
+            assert_eq!(result[5], 4.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffpcn_dblcomplex() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f64; 6] = [1.0, 2.0, -999.0, -999.0, 3.0, 4.0];
+            let nulval: f64 = -999.0;
+
+            let mut f = make_table(&name, "DCPLX", "1M", 5, &mut status);
+            fits_write_colnull(
+                f.as_deref_mut().unwrap(),
+                TDBLCOMPLEX,
+                1,
+                1,
+                1,
+                3,
+                cast_slice(&data),
+                Some(NullValue::Double(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f64; 6];
+            let mut anynull = -1;
+            fits_read_col(
+                f.as_deref_mut().unwrap(),
+                TDBLCOMPLEX,
+                1,
+                1,
+                1,
+                3,
+                Some(NullValue::Double(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[1], 2.0);
+            assert_eq!(result[4], 3.0);
+            assert_eq!(result[5], 4.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffppxnll tests (write pixels with null value, LONGLONG *firstpix)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffppxnll_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [i16; 5] = [10, -999, 20, -999, 30];
+            let nulval: i16 = -999;
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_set_imgnull(f.as_deref_mut().unwrap(), nulval as LONGLONG, &mut status);
+            fits_write_pixnullll(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Short(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0i16; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TSHORT,
+                1,
+                5,
+                None,
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10);
+            assert_eq!(result[2], 20);
+            assert_eq!(result[4], 30);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffppxnll_float() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [f32; 5] = [1.5, -999.0, 2.5, -999.0, 3.5];
+            let nulval: f32 = -999.0;
+            let firstpix: [LONGLONG; 1] = [1];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 1, &naxes, &mut status);
+            fits_write_pixnullll(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                &firstpix,
+                5,
+                cast_slice(&data),
+                Some(NullValue::Float(nulval)),
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 5];
+            let mut anynull = -1;
+            fits_read_img(
+                f.as_deref_mut().unwrap(),
+                TFLOAT,
+                1,
+                5,
+                Some(NullValue::Float(-888.0)),
+                cast_slice_mut(&mut result),
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[2], 2.5);
+            assert_eq!(result[4], 3.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ----------------------------------------------------------------------
+    // ffpthp test (set heap pointer for binary table)
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn test_ffpthp() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            let ttype_v = [Some(cc("DATA"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+            // Variable length array.
+            let tform_v = [cc("1PJ(10)")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let extname = cc("DATA");
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                10,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&extname),
+                &mut status,
+            );
+
+            // Set heap start at offset 1000 bytes from start of data.
+            fits_write_theap(f.as_deref_mut().unwrap(), 1000, &mut status);
+
+            // Verify THEAP keyword was written.
+            let mut theap: c_long = 0;
+            fits_read_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("THEAP"),
+                &mut theap,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(theap, 1000);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}
