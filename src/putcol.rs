@@ -5909,7 +5909,7 @@ mod tests {
             // nonzero byte is TRUE, so 'F' (70) round-trips to 1 (true), not 0.
             // The 0 entries equal the null value and are written as nulls.
             let data: [c_char; 5] = [1, 0, 1, 0, 1];
-            let nulval: c_char = 0;
+            let nulval: c_schar = 0;
 
             let mut f = make_table(&name, "FLAG", "1L", 5, &mut status);
             fits_write_colnull(
