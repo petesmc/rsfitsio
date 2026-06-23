@@ -3650,7 +3650,7 @@ mod tests {
         with_byte_img(|f, status| {
             let sval = cc("teststring");
             let bval: u8 = 42;
-            let sbval: c_char = -42;
+            let sbval: c_schar = -42;
             let usval: u16 = 1000;
             let shval: i16 = -1000;
             let ival: c_int = 123456;

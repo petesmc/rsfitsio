@@ -6273,7 +6273,7 @@ mod tests {
             let mut status: c_int = 0;
             let name = to_buf(filename);
 
-            let sbval: c_char = -42;
+            let sbval: c_schar = -42;
             let usval: u16 = 12345;
             let uival: u32 = 3000000000;
             let llval: LONGLONG = 9876543210;

@@ -420,7 +420,7 @@ impl NullValue {
 #[derive(Debug, PartialEq)]
 pub enum KeywordDatatype<'a> {
     TBYTE(&'a c_uchar),
-    TSBYTE(&'a c_char),
+    TSBYTE(&'a c_schar),
     TSHORT(&'a c_short),
     TUSHORT(&'a c_ushort),
     TINT(&'a c_int),
