@@ -442,7 +442,7 @@ impl KeywordDatatype<'_> {
     pub fn from_datatype(datatype: c_int, value: *const c_void) -> Self {
         match datatype {
             TBYTE => KeywordDatatype::TBYTE(unsafe { &*value.cast::<c_uchar>() }),
-            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*value.cast::<c_char>() }),
+            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*value.cast::<c_schar>() }),
             TSHORT => KeywordDatatype::TSHORT(unsafe { &*value.cast::<c_short>() }),
             TUSHORT => KeywordDatatype::TUSHORT(unsafe { &*value.cast::<c_ushort>() }),
             TINT => KeywordDatatype::TINT(unsafe { &*value.cast::<c_int>() }),
