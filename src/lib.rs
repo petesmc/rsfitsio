@@ -127,7 +127,12 @@ use crate::c_types::*;
 pub(crate) static MUTEX_LOCK: Mutex<bool> = Mutex::new(false);
 
 pub(crate) fn FFLOCK<'a>() -> MutexGuard<'a, bool> {
-    MUTEX_LOCK.lock().unwrap()
+    // Recover from a poisoned mutex rather than panicking. The guarded value is
+    // just a sentinel bool used to serialize critical sections, so it isn't
+    // meaningfully corrupted if a thread (e.g. a panicking unit test) unwinds
+    // while holding the lock. Without this, one panicking test poisons the
+    // process-wide lock and cascades PoisonError into every later FFLOCK caller.
+    MUTEX_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub(crate) fn FFUNLOCK(p: MutexGuard<'_, bool>) {
