@@ -6444,6 +6444,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Long long not supported on Windows"]
     fn test_ffcrow_longlong_output() {
         with_temp_file(|filename| {
             let mut status = 0;
@@ -6900,6 +6901,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Long long not supported on Windows"]
     fn test_ffcalc_longlong_column() {
         with_temp_file(|filename| {
             let mut status = 0;
@@ -7287,6 +7289,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Long long not supported on Windows"]
     fn test_ffcalc_longlong_no_tform() {
         with_temp_file(|filename| {
             let mut status = 0;
@@ -8204,6 +8207,7 @@ mod tests {
     // ===================== overflow / div-by-zero / deref tests =====================
 
     #[test]
+    #[ignore = "Long long not supported on Windows"]
     fn test_ffcrow_long_div_overflow() {
         with_temp_file(|filename| {
             let mut status = 0;
