@@ -892,7 +892,7 @@ fn iraftofits(
             pixname = newpixname;
         }
     }
-    if strchr_safe(&pixname, bb(b'/')).is_none() && strchr_safe(&pixname, bb(b'$')).is_none() {
+    if !has_path_sep(&pixname) && strchr_safe(&pixname, bb(b'$')).is_none() {
         newpixname = same_path(&pixname, hdrname);
         if let Some(newpixname) = newpixname {
             pixname = newpixname;
@@ -1079,7 +1079,7 @@ fn getirafpixname(
         }
     }
 
-    if strchr_safe(&pixname, bb(b'/')).is_none() && strchr_safe(&pixname, bb(b'$')).is_none() {
+    if !has_path_sep(&pixname) && strchr_safe(&pixname, bb(b'$')).is_none() {
         newpixname = same_path(&pixname, hdrname);
         if let Some(newpixname) = newpixname {
             pixname = newpixname;
@@ -1094,6 +1094,27 @@ fn getirafpixname(
     }
 
     *status
+}
+
+/*--------------------------------------------------------------------------*/
+/* True if `c` is a directory separator.  CFITSIO only looks for '/', but on
+ * Windows header pathnames arrive with '\' separators, so accept both there;
+ * otherwise the directory prefix is stripped and the pixel file can't be found. */
+#[cfg(not(target_os = "vms"))]
+fn is_path_sep(c: c_char) -> bool {
+    c == bb(b'/') || (cfg!(target_os = "windows") && c == bb(b'\\'))
+}
+
+/*--------------------------------------------------------------------------*/
+/* True if `pixname` already contains a directory separator.  CFITSIO only
+ * tests for '/', which is how it decides a pixel file name is "bare" (no path)
+ * and needs the header directory prepended.  On Windows a resolved absolute
+ * path uses '\' separators, so without also checking '\' an already-resolved
+ * path looks bare and same_path() prepends the header directory a second time,
+ * yielding "<hdrdir>\C:\...". */
+fn has_path_sep(s: &[c_char]) -> bool {
+    strchr_safe(s, bb(b'/')).is_some()
+        || (cfg!(target_os = "windows") && strchr_safe(s, bb(b'\\')).is_some())
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1121,7 +1142,7 @@ fn same_path(
         let mut len = strlen_safe(&newpixname);
 
         #[cfg(not(target_os = "vms"))]
-        while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
+        while (len > 0) && !is_path_sep(newpixname[len - 1]) {
             len -= 1;
         }
         #[cfg(target_os = "vms")]
@@ -1134,14 +1155,14 @@ fn same_path(
         strncat_safe(&mut newpixname, &pixname[4..], SZ_IM2PIXFILE);
     }
     /* Bare pixel file with no path is assumed to be same as HDR$filename */
-    else if strchr_safe(pixname, bb(b'/')).is_none() && strchr_safe(pixname, bb(b'$')).is_none() {
+    else if !has_path_sep(pixname) && strchr_safe(pixname, bb(b'$')).is_none() {
         strncpy_safe(&mut newpixname, hdrname, SZ_IM2PIXFILE);
 
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
         #[cfg(not(target_os = "vms"))]
-        while (len > 0) && (newpixname[len - 1] != bb(b'/')) {
+        while (len > 0) && !is_path_sep(newpixname[len - 1]) {
             len -= 1;
         }
         #[cfg(target_os = "vms")]
@@ -2225,7 +2246,14 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
         }
 
         /* strncpy (c0, "/ ",2);  - c0 is an index into hstring, not line */
-        strncpy_safe(&mut hstring[c0..], cs!(c"/ "), 2);
+        /* A long quoted value (e.g. a long IMHFILE/PIXFILE path on Windows,
+           where temp paths easily exceed the column at which the closing quote
+           sits) can push c0 to the very end of this 80-char card.  The C code
+           writes "/ " unconditionally, running past the card end; only do so
+           while it still fits inside the card. */
+        if c0 + 2 <= v2 {
+            strncpy_safe(&mut hstring[c0..], cs!(c"/ "), 2);
+        }
     }
 
     /* create new entry */
@@ -2233,10 +2261,18 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
 
     if lcom > 0 {
         c1 = c0 + 2;
-        if c1 + lcom > v2 {
+        /* Clamp the comment to whatever room is left in the card.  C computes
+           `lcom = v2 - c1` as a signed int, which goes negative when the value
+           already fills the card (c1 > v2) and then overruns in strncpy; guard
+           against that so we never underflow or write past the card. */
+        if c1 >= v2 {
+            lcom = 0;
+        } else if c1 + lcom > v2 {
             lcom = v2 - c1;
         }
-        strncpy_safe(&mut hstring[c1..], comment, lcom);
+        if lcom > 0 {
+            strncpy_safe(&mut hstring[c1..], comment, lcom);
+        }
     }
 }
 
@@ -2288,9 +2324,18 @@ mod tests {
 
     impl IrafFiles {
         fn new() -> Self {
+            // Create the temp dir under a short *relative* base ("." = the crate
+            // root where `cargo test` runs) rather than the system temp dir.
+            // iraffits resolves "HDR$<pix>" to an absolute pathname and stores it
+            // in an 80-column FITS card, whose value field holds at most ~68
+            // chars.  The system temp dir on Windows
+            // (C:\Users\<user>\AppData\Local\Temp\...) overruns that card and the
+            // pixfile path is silently truncated, so the pixel file can't be
+            // opened.  A short relative base keeps the resolved path well under
+            // the limit on every platform.
             let dir = tempfile::Builder::new()
                 .prefix("rsfitsio-iraf-")
-                .tempdir()
+                .tempdir_in(".")
                 .unwrap();
             let imh = dir.path().join("test_iraffits.imh");
             let pix = dir.path().join("test_iraffits.pix");
