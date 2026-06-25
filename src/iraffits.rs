@@ -2324,15 +2324,23 @@ mod tests {
 
     impl IrafFiles {
         fn new() -> Self {
-            // Create the temp dir under a short *relative* base ("." = the crate
-            // root where `cargo test` runs) rather than the system temp dir.
-            // iraffits resolves "HDR$<pix>" to an absolute pathname and stores it
-            // in an 80-column FITS card, whose value field holds at most ~68
-            // chars.  The system temp dir on Windows
+            // Create the temp dir as a direct child of the crate root (".", where
+            // `cargo test` runs) rather than the system temp dir.  iraffits
+            // resolves "HDR$<pix>" against the header pathname and stores the
+            // result in an 80-column FITS card, whose value field holds at most
+            // ~68 chars.  The system temp dir on Windows
             // (C:\Users\<user>\AppData\Local\Temp\...) overruns that card and the
             // pixfile path is silently truncated, so the pixel file can't be
-            // opened.  A short relative base keeps the resolved path well under
-            // the limit on every platform.
+            // opened.
+            //
+            // NOTE: `tempdir_in(".")` still returns an *absolute* path
+            // (e.g. /home/<user>/code/rsfitsio/./rsfitsio-iraf-XXXX), so on a deep
+            // working directory the resolved pixfile path again exceeds the card
+            // limit and is truncated (this is what broke the Linux tests).  We
+            // therefore hand the FITS API a path *relative* to the cwd
+            // (`imh_buf()` below), which stays short on every platform regardless
+            // of how deep the cwd is.  The absolute `imh`/`pix` paths are kept for
+            // writing the fixture files via std::fs.
             let dir = tempfile::Builder::new()
                 .prefix("rsfitsio-iraf-")
                 .tempdir_in(".")
@@ -2346,8 +2354,14 @@ mod tests {
             }
         }
 
+        /// Path to the .imh file relative to the current working directory.
+        /// Because the temp dir is a direct child of the cwd, this is just
+        /// `<dirname>/test_iraffits.imh` — short enough to survive the ~68-char
+        /// FITS PIXFILE card on every platform.
         fn imh_buf(&self) -> [c_char; crate::fitsio::FLEN_FILENAME] {
-            to_buf(self.imh.to_str().unwrap())
+            let dirname = self._dir.path().file_name().unwrap();
+            let rel = Path::new(dirname).join("test_iraffits.imh");
+            to_buf(rel.to_str().unwrap())
         }
     }
 
