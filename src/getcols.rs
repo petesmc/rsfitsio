@@ -1296,3 +1296,724 @@ pub(crate) fn ffgcls2(
 
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        ASCII_TBL, BAD_COL_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, READONLY, fitsfile,
+    };
+    use crate::helpers::testhelpers::{from_buf, to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column table (binary or ascii) and return the open file.
+    fn make_table(
+        name: &[c_char],
+        hdutype: c_int,
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            hdutype,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_read_string_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 3, &mut status);
+            let data = [cc("Alice"), cc("Bob"), cc("Charlie")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut r2 = [0 as c_char; 11];
+            let mut r3 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Alice");
+            assert_eq!(from_buf(&r2), "Bob");
+            assert_eq!(from_buf(&r3), "Charlie");
+            assert_eq!(anynull, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_string_column_with_null_flags() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "NAME", "10A", 3, &mut status);
+            let data = [cc("One"), cc("Two"), cc("Three")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut r2 = [0 as c_char; 11];
+            let mut r3 = [0 as c_char; 11];
+            let mut results: Vec<&mut [c_char]> = vec![&mut r1[..], &mut r2[..], &mut r3[..]];
+            let mut nularray = [0 as c_char; 3];
+            let mut anynull = -1;
+            fits_read_colnull_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &mut results,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "One");
+            assert_eq!(from_buf(&r2), "Two");
+            assert_eq!(from_buf(&r3), "Three");
+            assert_eq!(nularray[0], 0);
+            assert_eq!(nularray[1], 0);
+            assert_eq!(nularray[2], 0);
+            assert_eq!(anynull, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_ascii_table_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, ASCII_TBL, "NAME", "A10", 2, &mut status);
+            let data = [cc("Ascii1"), cc("Ascii2")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                &data_ref,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 11];
+            let mut r2 = [0 as c_char; 11];
+            let mut results: [&mut [c_char]; 2] = [&mut r1, &mut r2];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Ascii1");
+            assert_eq!(from_buf(&r2), "Ascii2");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_variable_length_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "VARSTR", "1PA", 1, &mut status);
+            let data = [cc("Variable length string content")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                &data_ref,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 64];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "Variable length string content");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_numeric_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 3] = [12345, -99, 0];
+
+            let mut f = make_table(&name, BINARY_TBL, "INTCOL", "1J", 3, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 32];
+            let mut r2 = [0 as c_char; 32];
+            let mut r3 = [0 as c_char; 32];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // ffgcvs converts any column type to string
+            assert_eq!(from_buf(&r1).trim().parse::<i64>().unwrap(), 12345);
+            assert_eq!(from_buf(&r2).trim().parse::<i64>().unwrap(), -99);
+            assert_eq!(from_buf(&r3).trim().parse::<i64>().unwrap(), 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_float_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [3.14, -2.5];
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 2, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 32];
+            let mut r2 = [0 as c_char; 32];
+            let mut results: [&mut [c_char]; 2] = [&mut r1, &mut r2];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Check that values convert to strings approximately correctly
+            let v0 = from_buf(&r1).trim().parse::<f64>().unwrap();
+            let v1 = from_buf(&r2).trim().parse::<f64>().unwrap();
+            assert!(v0 >= 3.1 && v0 <= 3.2);
+            assert!(v1 >= -2.6 && v1 <= -2.4);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_double_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f64; 2] = [1.23456789, -9.87654321];
+
+            let mut f = make_table(&name, BINARY_TBL, "DBLCOL", "1D", 2, &mut status);
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 32];
+            let mut r2 = [0 as c_char; 32];
+            let mut results: [&mut [c_char]; 2] = [&mut r1, &mut r2];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            let v0 = from_buf(&r1).trim().parse::<f64>().unwrap();
+            let v1 = from_buf(&r2).trim().parse::<f64>().unwrap();
+            assert!(v0 >= 1.23 && v0 <= 1.24);
+            assert!(v1 >= -9.88 && v1 <= -9.87);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_byte_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [u8; 3] = [0, 127, 255];
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 3, &mut status);
+            fits_write_col_byt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 16];
+            let mut r2 = [0 as c_char; 16];
+            let mut r3 = [0 as c_char; 16];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1).trim().parse::<i64>().unwrap(), 0);
+            assert_eq!(from_buf(&r2).trim().parse::<i64>().unwrap(), 127);
+            assert_eq!(from_buf(&r3).trim().parse::<i64>().unwrap(), 255);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_short_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [i16; 3] = [-32768, 0, 32767];
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 3, &mut status);
+            fits_write_col_sht(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 16];
+            let mut r2 = [0 as c_char; 16];
+            let mut r3 = [0 as c_char; 16];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1).trim().parse::<i64>().unwrap(), -32768);
+            assert_eq!(from_buf(&r2).trim().parse::<i64>().unwrap(), 0);
+            assert_eq!(from_buf(&r3).trim().parse::<i64>().unwrap(), 32767);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_longlong_as_string() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [LONGLONG; 3] = [-9223372036854775807, 0, 9223372036854775807];
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 3, &mut status);
+            fits_write_col_lnglng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 32];
+            let mut r2 = [0 as c_char; 32];
+            let mut r3 = [0 as c_char; 32];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(
+                from_buf(&r1).trim().parse::<i64>().unwrap(),
+                -9223372036854775807
+            );
+            assert_eq!(from_buf(&r2).trim().parse::<i64>().unwrap(), 0);
+            assert_eq!(
+                from_buf(&r3).trim().parse::<i64>().unwrap(),
+                9223372036854775807
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_get_column_display_width() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let ttype_v = [Some(cc("COL1")), Some(cc("COL2")), Some(cc("COL3"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("10A"), cc("1J"), cc("1E")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                3,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut width = 0;
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 1, &mut width, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(width, 10); // String column width = 10
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 2, &mut width, &mut status);
+            assert_eq!(status, 0);
+            assert_ne!(width, 0); // Integer column has nonzero width
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 3, &mut width, &mut status);
+            assert_eq!(status, 0);
+            assert_ne!(width, 0); // Float column has nonzero width
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_get_column_display_width_with_tdisp() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "COL1", "1J", 1, &mut status);
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("TDISP1"),
+                &cc("I8"),
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut width = 0;
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 1, &mut width, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(width, 8); // Should use TDISP width
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_get_column_display_width_bad_col() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, BINARY_TBL, "COL1", "10A", 1, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut width = 0;
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 0, &mut width, &mut status);
+            assert_eq!(status, BAD_COL_NUM);
+            status = 0;
+            fits_get_col_display_width(f.as_deref_mut().unwrap(), 99, &mut width, &mut status);
+            assert_eq!(status, BAD_COL_NUM);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_with_tdisp_format() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f64; 1] = [123.456789];
+
+            let mut f = make_table(&name, BINARY_TBL, "VALUE", "1D", 1, &mut status);
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            // Set display format
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("TDISP1"),
+                &cc("F10.2"),
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 64];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Value should be formatted according to TDISP
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_with_scaling() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 1] = [100];
+
+            let mut f = make_table(&name, BINARY_TBL, "SCALED", "1J", 1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            // Set scaling: result = data * 2.0 + 10.0 = 210
+            fits_write_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("TSCAL1"),
+                2.0,
+                15,
+                None,
+                &mut status,
+            );
+            fits_write_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("TZERO1"),
+                10.0,
+                15,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 64];
+            let mut results: [&mut [c_char]; 1] = [&mut r1];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Value should be scaled
+            let v0 = from_buf(&r1).trim().parse::<f64>().unwrap();
+            assert!(v0 >= 209.0 && v0 <= 211.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_read_multielem_vector() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            // 3 strings of 5 chars each
+            let mut f = make_table(&name, BINARY_TBL, "VECSTR", "3A5", 1, &mut status);
+            let data = [cc("One"), cc("Two"), cc("Three")];
+            let data_ref: Vec<&[c_char]> = data.iter().map(|v| v.as_slice()).collect();
+            fits_write_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data_ref,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut r1 = [0 as c_char; 16];
+            let mut r2 = [0 as c_char; 16];
+            let mut r3 = [0 as c_char; 16];
+            let mut results: [&mut [c_char]; 3] = [&mut r1, &mut r2, &mut r3];
+            let mut anynull = -1;
+            fits_read_col_str(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                None,
+                &mut results,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(from_buf(&r1), "One");
+            assert_eq!(from_buf(&r2), "Two");
+            // "Three" may be truncated to 5 chars
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}

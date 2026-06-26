@@ -1567,3 +1567,1719 @@ pub(crate) fn ffr4fstr(
 
     *status
 }
+
+// Ported from test_putcole.c - float (f32) precision write functions.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        ASCII_TBL, BAD_BTABLE_FORMAT, BAD_DIMEN, BINARY_TBL, BYTE_IMG, FLOAT_IMG, LONGLONG,
+        NUM_OVERFLOW, READONLY, TRUE, fitsfile,
+    };
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long, c_uint};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column table (binary or ASCII) with an empty BYTE_IMG
+    /// primary HDU, returning the open file positioned on the table HDU.
+    fn make_table(
+        name: &[c_char],
+        tbltype: c_int,
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            tbltype,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_write_primary_array() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [f32; 5] = [-1.5e30, -1.0, 0.0, 1.0, 1.5e30];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 1, &naxes, &mut status);
+            fits_write_img_flt(f.as_deref_mut().unwrap(), 1, 1, 5, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 5];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                5,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], data[0]);
+            assert_eq!(result[2], 0.0);
+            assert_eq!(result[4], data[4]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_primary_with_null() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [5];
+            let data: [f32; 5] = [1.0, 2.0, -999.0, 4.0, 5.0];
+            let nulval: f32 = -999.0;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 1, &naxes, &mut status);
+            fits_write_imgnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                5,
+                &data,
+                nulval,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 5];
+            let mut nularray = [0 as c_char; 5];
+            let mut anynull = -1;
+            fits_read_imgnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                5,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[1], 2.0);
+            assert_eq!(nularray[2], 1); // Should be null.
+            assert_eq!(result[3], 4.0);
+            assert_eq!(anynull, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_2d_array() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [3, 3];
+            let data: [f32; 9] = [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 2, &naxes, &mut status);
+            fits_write_2d_flt(f.as_deref_mut().unwrap(), 1, 3, 3, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 9];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                9,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((result[0] - 1.1).abs() <= 1e-5);
+            assert!((result[8] - 9.9).abs() <= 1e-5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_3d_array() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [2, 2, 2];
+            let data: [f32; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 3, &naxes, &mut status);
+            fits_write_3d_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                2,
+                2,
+                2,
+                2,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 8];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                8,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[7], 8.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_subsection() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [4, 4];
+            let fpixel: [c_long; 2] = [2, 2];
+            let lpixel: [c_long; 2] = [3, 3];
+            let data: [f32; 4] = [10.5, 20.5, 30.5, 40.5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 2, &naxes, &mut status);
+            fits_write_subset_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                &naxes,
+                &fpixel,
+                &lpixel,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 16];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                16,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((result[5] - 10.5).abs() <= 1e-5);
+            assert!((result[6] - 20.5).abs() <= 1e-5);
+            assert!((result[9] - 30.5).abs() <= 1e-5);
+            assert!((result[10] - 40.5).abs() <= 1e-5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_group_parameters() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let params: [f32; 2] = [3.14159, 2.71828];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_grphdr(
+                f.as_deref_mut().unwrap(),
+                TRUE as c_int,
+                FLOAT_IMG,
+                1,
+                &naxes,
+                2,
+                1,
+                TRUE as c_int,
+                &mut status,
+            );
+            fits_write_grppar_flt(f.as_deref_mut().unwrap(), 1, 1, 2, &params, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 2];
+            fits_read_grppar_flt(f.as_deref_mut().unwrap(), 1, 1, 2, &mut result, &mut status);
+            assert_eq!(status, 0);
+            assert!((result[0] - 3.14159).abs() <= 1e-5);
+            assert!((result[1] - 2.71828).abs() <= 1e-5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_binary_table_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-1e30, 0.0, 1e30];
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 3];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], data[0]);
+            assert_eq!(result[1], 0.0);
+            assert_eq!(result[2], data[2]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_column_with_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 5] = [1.0, -999.0, 3.0, -999.0, 5.0];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 5, &mut status);
+            fits_write_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                &data,
+                nulval,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 5];
+            let mut nularray = [0 as c_char; 5];
+            let mut anynull = -1;
+            fits_read_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(nularray[1], 1);
+            assert_eq!(result[2], 3.0);
+            assert_eq!(nularray[3], 1);
+            assert_eq!(result[4], 5.0);
+            assert_eq!(anynull, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_byte_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [0.0, 127.0, 255.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0u8; 3];
+            let mut anynull = -1;
+            fits_read_col_byt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 0);
+            assert_eq!(result[1], 127);
+            assert_eq!(result[2], 255);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_short_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-32768.0, 0.0, 32767.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0i16; 3];
+            let mut anynull = -1;
+            fits_read_col_sht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], -32768);
+            assert_eq!(result[1], 0);
+            assert_eq!(result[2], 32767);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_long_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-1000000.0, 0.0, 1000000.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LONGCOL", "1J", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = -1;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], -1000000);
+            assert_eq!(result[1], 0);
+            assert_eq!(result[2], 1000000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_double_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-1.5, 0.0, 1.5];
+
+            let mut f = make_table(&name, BINARY_TBL, "DBLCOL", "1D", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f64; 3];
+            let mut anynull = -1;
+            fits_read_col_dbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((result[0] - (-1.5)).abs() <= 1e-6);
+            assert_eq!(result[1], 0.0);
+            assert!((result[2] - 1.5).abs() <= 1e-6);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_longlong_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-1e10, 0.0, 1e10];
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as LONGLONG; 3];
+            let mut anynull = -1;
+            fits_read_col_lnglng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[1], 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_ascii_table() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-1.23456e10, 0.0, 9.87654e-5];
+
+            let mut f = make_table(&name, ASCII_TBL, "NUMCOL", "E15.7", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 3];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[1], 0.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_with_scaling() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [100.0]; // Stored as (100 - 10) / 2 = 45.
+
+            let mut f = make_table(&name, BINARY_TBL, "SCALED", "1E", 1, &mut status);
+            fits_write_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("TSCAL1"),
+                2.0,
+                15,
+                None,
+                &mut status,
+            );
+            fits_write_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("TZERO1"),
+                10.0,
+                15,
+                None,
+                &mut status,
+            );
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 1];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_complex_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 4] = [1.5, 2.5, 3.5, 4.5]; // Two complex numbers.
+
+            let mut f = make_table(&name, BINARY_TBL, "CPLXCOL", "1C", 2, &mut status);
+            fits_write_col_cmp(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 4];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.5);
+            assert_eq!(result[1], 2.5);
+            assert_eq!(result[2], 3.5);
+            assert_eq!(result[3], 4.5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_multirow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 9] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "FLTVEC", "3E", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 9, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 9];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                9,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[4], 5.0);
+            assert_eq!(result[8], 9.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_overflow_to_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [-1.0, 256.0]; // Both overflow.
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 2, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_overflow_to_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [-40000.0, 40000.0]; // Both overflow.
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 2, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_overflow_to_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [-3e9, 3e9]; // Both overflow 32-bit.
+
+            let mut f = make_table(&name, BINARY_TBL, "LONGCOL", "1J", 2, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_overflow_to_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [1e19]; // Overflows LONGLONG_MAX.
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 1, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_overflow_to_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [100.0]; // With scale=0.1, 100/0.1 = 1000 > 255.
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.1, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_overflow_to_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [100.0]; // With scale=0.001, 100/0.001 = 100000 > SHRT_MAX.
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.001, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_overflow_to_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [1000.0]; // With scale=1e-7, 1000/1e-7 = 1e10 > INT32_MAX.
+
+            let mut f = make_table(&name, BINARY_TBL, "LONGCOL", "1J", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.0000001, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_overflow_to_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [1e10]; // With scale=1e-18, 1e10/1e-18 = 1e28 > LONGLONG_MAX.
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 1e-18, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_dimen_3d() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [4, 4, 2];
+            let data = [0f32; 32];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 3, &naxes, &mut status);
+            // ncols=2 < naxis1=4, should fail with BAD_DIMEN.
+            fits_write_3d_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                4,
+                4,
+                4,
+                2,
+                &data,
+                &mut status,
+            );
+            assert_eq!(status, BAD_DIMEN);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_dimen_subsection() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [2, 2];
+            let fpixel: [c_long; 2] = [1, 1];
+            let lpixel: [c_long; 2] = [2, 2];
+            let data = [0f32; 4];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 2, &naxes, &mut status);
+            // naxis=8 > 7, should fail with BAD_DIMEN.
+            fits_write_subset_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                8,
+                &naxes,
+                &fpixel,
+                &lpixel,
+                &data,
+                &mut status,
+            );
+            assert_eq!(status, BAD_DIMEN);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_variable_length_array() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data1: [f32; 3] = [1.1, 2.2, 3.3];
+            let data2: [f32; 2] = [10.0, 20.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "VARCOL", "1PE", 2, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data1, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 2, 1, 2, &data2, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut nelem: c_long = 0;
+            fits_read_descript(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                Some(&mut nelem),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(nelem, 3);
+            let mut result = [0f32; 3];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((result[0] - 1.1).abs() <= 1e-5);
+            assert!((result[2] - 3.3).abs() <= 1e-5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_varlen_with_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [1.0, -999.0, 3.0];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, BINARY_TBL, "VARCOL", "1PE", 1, &mut status);
+            fits_write_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data,
+                nulval,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 3];
+            let mut nularray = [0 as c_char; 3];
+            let mut anynull = -1;
+            fits_read_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(nularray[1], 1);
+            assert_eq!(result[2], 3.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_nan_values() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let nan_val = f32::NAN;
+            let data: [f32; 3] = [1.0, nan_val, 3.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 3, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 3];
+            let mut nularray = [0 as c_char; 3];
+            let mut anynull = -1;
+            fits_read_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(nularray[1], 1); // NaN should be flagged as null.
+            assert_eq!(result[2], 3.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_2d_noncontiguous() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [2, 3];
+            // Input array is 4 columns wide but we only write 2 columns.
+            let data: [f32; 12] = [
+                1.0, 2.0, 99.0, 99.0, 3.0, 4.0, 99.0, 99.0, 5.0, 6.0, 99.0, 99.0,
+            ];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 2, &naxes, &mut status);
+            // ncols=4, naxis1=2, naxis2=3.
+            fits_write_2d_flt(f.as_deref_mut().unwrap(), 1, 4, 2, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 6];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                6,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[1], 2.0);
+            assert_eq!(result[2], 3.0);
+            assert_eq!(result[3], 4.0);
+            assert_eq!(result[4], 5.0);
+            assert_eq!(result[5], 6.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_3d_noncontiguous() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [2, 2, 2];
+            // nrows=3 > naxis2=2, so there's padding between planes.
+            let data: [f32; 12] = [
+                1.0, 2.0, 3.0, 4.0, 99.0, 99.0, // Padding row.
+                5.0, 6.0, 7.0, 8.0, 99.0, 99.0, // Padding row.
+            ];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 3, &naxes, &mut status);
+            // ncols=2, nrows=3, naxis1=2, naxis2=2, naxis3=2.
+            fits_write_3d_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                3,
+                2,
+                2,
+                2,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 8];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                8,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[3], 4.0);
+            assert_eq!(result[4], 5.0);
+            assert_eq!(result[7], 8.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_7d_subsection() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 7] = [2, 2, 2, 1, 1, 1, 1];
+            let fpixel: [c_long; 7] = [1, 1, 1, 1, 1, 1, 1];
+            let lpixel: [c_long; 7] = [2, 2, 2, 1, 1, 1, 1];
+            let data: [f32; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), FLOAT_IMG, 7, &naxes, &mut status);
+            fits_write_subset_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                7,
+                &naxes,
+                &fpixel,
+                &lpixel,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result = [0f32; 8];
+            let mut anynull = -1;
+            fits_read_img_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                8,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            for i in 0..8 {
+                assert_eq!(result[i], data[i]);
+            }
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_to_unsigned_longlong_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [0.0, 1e10, 1e15];
+
+            let mut f = make_table(&name, BINARY_TBL, "ULLCOL", "1K", 3, &mut status);
+            // Set TZERO to 2^63 to make it unsigned longlong.
+            fits_set_tscale(
+                f.as_deref_mut().unwrap(),
+                1,
+                1.0,
+                9223372036854775808.0,
+                &mut status,
+            );
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as LONGLONG; 3];
+            let mut anynull = -1;
+            fits_read_col_lnglng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_unsigned_longlong_negative_overflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-1.0]; // Negative overflows unsigned.
+
+            let mut f = make_table(&name, BINARY_TBL, "ULLCOL", "1K", 1, &mut status);
+            fits_set_tscale(
+                f.as_deref_mut().unwrap(),
+                1,
+                1.0,
+                9223372036854775808.0,
+                &mut status,
+            );
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ascii_table_overflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            // Value 12345.67 needs more than 6 characters.
+            let data: [f32; 1] = [12345.67];
+
+            let mut f = make_table(&name, ASCII_TBL, "NUMCOL", "F6.2", 1, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bad_btable_format() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [1.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LOGCOL", "1L", 1, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, BAD_BTABLE_FORMAT);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_nulls_at_end() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 4] = [1.0, 2.0, -999.0, -999.0];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 4, &mut status);
+            fits_write_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &data,
+                nulval,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 4];
+            let mut nularray = [0 as c_char; 4];
+            let mut anynull = -1;
+            fits_read_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(result[1], 2.0);
+            assert_eq!(nularray[2], 1);
+            assert_eq!(nularray[3], 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_all_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 3] = [-999.0, -999.0, -999.0];
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, BINARY_TBL, "FLOATCOL", "1E", 3, &mut status);
+            fits_write_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                &data,
+                nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_large_vector() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let mut data = vec![0f32; 10000];
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = i as f32 * 0.001;
+            }
+
+            let mut f = make_table(&name, BINARY_TBL, "BIGCOL", "10000E", 1, &mut status);
+            fits_write_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                10000,
+                &data,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = vec![0f32; 10000];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                10000,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            for i in 0..10000 {
+                assert!((result[i] - data[i]).abs() <= 1e-6);
+            }
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_pcne_complex_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 6] = [1.0, 2.0, -999.0, -999.0, 5.0, 6.0]; // 3 float complex.
+            let nulval: f32 = -999.0;
+
+            let mut f = make_table(&name, BINARY_TBL, "CPLXCOL", "3C", 1, &mut status);
+            fits_write_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                6,
+                &data,
+                nulval,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 6];
+            let mut nularray = [0 as c_char; 6];
+            let mut anynull = -1;
+            fits_read_colnull_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                6,
+                &mut result,
+                &mut nularray,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 1.0);
+            assert_eq!(nularray[2], 1);
+            assert_eq!(result[4], 5.0);
+            assert_eq!(anynull, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_underflow_to_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-10.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.1, 10.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_normal_to_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [50.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "BYTECOL", "1B", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.5, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_uint; 1];
+            let mut anynull = -1;
+            fits_read_col_uint(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_underflow_to_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-100.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.001, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_normal_to_short() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [50.0, -50.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "SHORTCOL", "1I", 2, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.1, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0i16; 2];
+            let mut anynull = -1;
+            fits_read_col_sht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 500);
+            assert_eq!(result[1], -500);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_underflow_to_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-1000.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LONGCOL", "1J", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.0000001, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_normal_to_long() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [100.0, -100.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LONGCOL", "1J", 2, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.01, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 2];
+            let mut anynull = -1;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 10000);
+            assert_eq!(result[1], -10000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_underflow_to_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-100.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 1e-18, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_normal_to_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 2] = [100.0, -100.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 2, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.001, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as LONGLONG; 2];
+            let mut anynull = -1;
+            fits_read_col_lnglng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                2,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 100000);
+            assert_eq!(result[1], -100000);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_write_to_double_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [100.0];
+
+            let mut f = make_table(&name, BINARY_TBL, "DBLCOL", "1D", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 2.0, 10.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f64; 1];
+            let mut anynull = -1;
+            fits_read_col_dbl(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!((result[0] - 45.0).abs() <= 0.01);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_ascii_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [100.0];
+
+            let mut f = make_table(&name, ASCII_TBL, "VALUE", "E15.6", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 2.0, 10.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0f32; 1];
+            let mut anynull = -1;
+            fits_read_col_flt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0.0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(anynull, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_unsigned_longlong_positive_overflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [2e19]; // > 2 * 9.2e18.
+
+            let mut f = make_table(&name, BINARY_TBL, "ULLCOL", "1K", 1, &mut status);
+            fits_set_tscale(
+                f.as_deref_mut().unwrap(),
+                1,
+                1.0,
+                9223372036854775808.0,
+                &mut status,
+            );
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_scaled_ascii_overflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            // With scale=0.01, stored = 100/0.01 = 10000, which needs >6 chars.
+            let data: [f32; 1] = [100.0];
+
+            let mut f = make_table(&name, ASCII_TBL, "NUMCOL", "F6.2", 1, &mut status);
+            fits_set_tscale(f.as_deref_mut().unwrap(), 1, 0.01, 0.0, &mut status);
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_unscaled_longlong_underflow() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [f32; 1] = [-1e19]; // < LONGLONG_MIN.
+
+            let mut f = make_table(&name, BINARY_TBL, "LLCOL", "1K", 1, &mut status);
+            // No scaling - scale=1, zero=0.
+            fits_write_col_flt(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert_eq!(status, NUM_OVERFLOW);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+}

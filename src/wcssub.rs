@@ -44,8 +44,6 @@ pub unsafe extern "C" fn fits_read_wcstab(
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
-        let wtb = slice::from_raw_parts(wtb, nwtb as usize);
-
         if *status != 0 {
             return *status;
         }
@@ -54,6 +52,15 @@ pub unsafe extern "C" fn fits_read_wcstab(
             *status = NULL_INPUT_PTR;
             return *status;
         }
+
+        if nwtb == 0 {
+            return 0;
+        }
+
+        // Only construct the slice after validating the pointer and length;
+        // slice::from_raw_parts requires a non-null, aligned pointer even for
+        // a zero-length slice.
+        let wtb = slice::from_raw_parts(wtb, nwtb as usize);
 
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
@@ -1524,4 +1531,916 @@ pub fn ffgtwcs_safe(
     *header = header_ptr;
 
     *status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{BINARY_TBL, BYTE_IMG, READONLY, SHORT_IMG, fitsfile};
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long, c_void};
+    use std::ffi::CStr;
+    use std::ptr;
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Convert a fixed `[c_char; 5]` type buffer to a Rust String (up to NUL).
+    fn type_str(buf: &[c_char; 5]) -> String {
+        let mut s = String::new();
+        for &c in buf.iter() {
+            if c == 0 {
+                break;
+            }
+            s.push(c as u8 as char);
+        }
+        s
+    }
+
+    #[test]
+    fn test_ffgics_cdelt() {
+        // Test ffgics with CDELT/CROTA keywords.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            assert_eq!(status, 0, "ffcrim failed");
+
+            // Write WCS keywords using CDELT form.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 45.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1"), -0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2"), 0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CROTA2"), 30.0, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("DEC--TAN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            assert!((xrval - 180.0).abs() <= 0.001);
+            assert!((yrval - 45.0).abs() <= 0.001);
+            assert!((xrpix - 50.0).abs() <= 0.001);
+            assert!((yrpix - 50.0).abs() <= 0.001);
+            assert!((xinc - (-0.001)).abs() <= 0.0001);
+            assert!((yinc - 0.001).abs() <= 0.0001);
+            assert!((rot - 30.0).abs() <= 0.1);
+            assert_eq!(type_str(&ptype), "-TAN");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_cd_matrix() {
+        // Test ffgics with CD matrix keywords.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+            let scale = 0.001;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // Write WCS keywords using CD matrix form (no rotation).
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 120.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), -30.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD1_1"), -scale, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD1_2"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD2_1"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD2_2"), scale, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("DEC--TAN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            assert!((xrval - 120.0).abs() <= 0.001);
+            assert!((yrval - (-30.0)).abs() <= 0.001);
+            assert!(xinc.abs() - scale <= 0.0001);
+            assert!(yinc.abs() - scale <= 0.0001);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_cd_rotated() {
+        // Test ffgics with rotated CD matrix.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+            let scale = 0.001;
+            let angle: f64 = 45.0 * 3.14159265 / 180.0; // 45 degrees in radians
+            let cosa = angle.cos();
+            let sina = angle.sin();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // Write rotated CD matrix.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD1_1"), -scale * cosa, 15, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD1_2"), scale * sina, 15, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD2_1"), scale * sina, 15, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CD2_2"), scale * cosa, 15, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("DEC--TAN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            // Should extract rotation angle ~-45 degrees.
+            assert!((rot - (-45.0)).abs() <= 1.0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_pc_matrix() {
+        // Test ffgics with PC matrix keywords.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // Write WCS keywords using PC matrix form.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 90.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1"), -0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2"), 0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("PC1_1"), 1.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("PC1_2"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("PC2_1"), 0.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("PC2_2"), 1.0, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("RA---SIN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("DEC--SIN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            assert!((xrval - 90.0).abs() <= 0.001);
+            assert!((yrval - 0.0).abs() <= 0.001);
+            assert_eq!(type_str(&ptype), "-SIN");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_defaults() {
+        // Test ffgics with missing keywords (uses defaults).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            // No WCS keywords - should use defaults.
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            // Default values.
+            assert!((xrval - 0.0).abs() <= 0.001);
+            assert!((yrval - 0.0).abs() <= 0.001);
+            assert!((xrpix - 0.0).abs() <= 0.001);
+            assert!((yrpix - 0.0).abs() <= 0.001);
+            assert!((xinc - 1.0).abs() <= 0.001);
+            assert!((yinc - 1.0).abs() <= 0.001);
+            assert!((rot - 0.0).abs() <= 0.001);
+            assert_eq!(ptype[0], 0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_dec_first() {
+        // Test ffgics with DEC axis first (swapped).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // DEC is first axis.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 45.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1"), 0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2"), -0.001, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("DEC--TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("RA---TAN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            // Values should be swapped.
+            assert!((xrval - 180.0).abs() <= 0.001);
+            assert!((yrval - 45.0).abs() <= 0.001);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgics_glat() {
+        // Test ffgics with galactic coordinates (GLAT first).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // GLAT is first axis.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 30.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 120.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1"), 0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2"), -0.001, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("GLAT-TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("GLON-TAN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgics_safe(
+                f.as_deref_mut().unwrap(),
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgics failed");
+
+            // Values should be swapped because LAT is first.
+            assert!((xrval - 120.0).abs() <= 0.001);
+            assert!((yrval - 30.0).abs() <= 0.001);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgicsa_version() {
+        // Test ffgicsa with alternate WCS version.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+
+            // Write primary WCS.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 45.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2"), 50.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1"), -0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2"), 0.001, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2"), &cc("DEC--TAN"), None, &mut status);
+
+            // Write alternate WCS version A.
+            fits_write_key_dbl(ff, &cc("CRVAL1A"), 90.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2A"), 30.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX1A"), 25.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRPIX2A"), 25.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT1A"), -0.002, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CDELT2A"), 0.002, 10, None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE1A"), &cc("RA---SIN"), None, &mut status);
+            fits_write_key_str(ff, &cc("CTYPE2A"), &cc("DEC--SIN"), None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+
+            // Read primary WCS (blank version).
+            ffgicsa_safe(
+                f.as_deref_mut().unwrap(),
+                b' ' as c_char,
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgicsa failed");
+            assert!((xrval - 180.0).abs() <= 0.001);
+            assert!((yrval - 45.0).abs() <= 0.001);
+
+            // Read alternate WCS version A.
+            status = 0;
+            ffgicsa_safe(
+                f.as_deref_mut().unwrap(),
+                b'A' as c_char,
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgicsa failed");
+            assert!((xrval - 90.0).abs() <= 0.001);
+            assert!((yrval - 30.0).abs() <= 0.001);
+            assert!((xrpix - 25.0).abs() <= 0.001);
+            assert!((xinc - (-0.002)).abs() <= 0.0001);
+            assert_eq!(type_str(&ptype), "-SIN");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgicsa_invalid_version() {
+        // Test ffgicsa with invalid version code.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+
+            // Invalid version code (not A-Z or blank).
+            ffgicsa_safe(
+                f.as_deref_mut().unwrap(),
+                b'1' as c_char,
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_ne!(status, 0, "ffgicsa should fail for invalid version");
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgiwcs() {
+        // Test ffgiwcs (deprecated but still functional).
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_dbl(ff, &cc("CRVAL1"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("CRVAL2"), 45.0, 10, None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut header: *mut c_char = ptr::null_mut();
+            ffgiwcs_safe(f.as_deref_mut().unwrap(), &mut header, &mut status);
+            assert_eq!(status, 0, "ffgiwcs failed");
+
+            assert!(!header.is_null(), "header should not be NULL");
+            // Header should contain WCS keywords.
+            let hdr = unsafe { CStr::from_ptr(header) }.to_str().unwrap();
+            assert!(hdr.contains("CRVAL1"));
+            assert!(hdr.contains("CRVAL2"));
+
+            fits_free_memory(header as *mut c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgiwcs_not_image() {
+        // Test ffgiwcs error when HDU is not an image.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            // Create a primary array.
+            let naxes: [c_long; 2] = [0, 0];
+            fits_create_img(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &naxes, &mut status);
+            // Create a binary table extension.
+            let ttype = [Some(cc("X"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1D")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                0,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcrtb failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            // Move to the table extension.
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0, "ffmahd failed");
+
+            // Should fail because we're on a table, not an image.
+            let mut header: *mut c_char = ptr::null_mut();
+            ffgiwcs_safe(f.as_deref_mut().unwrap(), &mut header, &mut status);
+            assert_ne!(status, 0, "ffgiwcs should fail on a table");
+
+            if !header.is_null() {
+                fits_free_memory(header as *mut c_void, &mut status);
+            }
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtcs() {
+        // Test ffgtcs - get WCS from table columns.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [0, 0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &naxes, &mut status);
+            let ttype = [Some(cc("X")), Some(cc("Y"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1D"), cc("1D")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                10,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+
+            // Write WCS keywords for table columns.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_str(ff, &cc("TCTYP1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("TCTYP2"), &cc("DEC--TAN"), None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRVL1"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRVL2"), 45.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRPX1"), 1.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRPX2"), 1.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCDLT1"), -0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCDLT2"), 0.001, 10, None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut xrval = 0.0;
+            let mut yrval = 0.0;
+            let mut xrpix = 0.0;
+            let mut yrpix = 0.0;
+            let mut xinc = 0.0;
+            let mut yinc = 0.0;
+            let mut rot = 0.0;
+            let mut ptype = [0 as c_char; 5];
+            ffgtcs_safe(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                &mut xrval,
+                &mut yrval,
+                &mut xrpix,
+                &mut yrpix,
+                &mut xinc,
+                &mut yinc,
+                &mut rot,
+                &mut ptype,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgtcs failed");
+
+            assert!((xrval - 180.0).abs() <= 0.001);
+            assert!((yrval - 45.0).abs() <= 0.001);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtwcs() {
+        // Test ffgtwcs - get table WCS keywords string.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [0, 0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &naxes, &mut status);
+            let ttype = [Some(cc("X")), Some(cc("Y"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1D"), cc("1D")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                10,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+
+            // Write WCS keywords for table columns.
+            let ff = f.as_deref_mut().unwrap();
+            fits_write_key_str(ff, &cc("TCTYP1"), &cc("RA---TAN"), None, &mut status);
+            fits_write_key_str(ff, &cc("TCTYP2"), &cc("DEC--TAN"), None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRVL1"), 180.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRVL2"), 45.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRPX1"), 1.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCRPX2"), 1.0, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCDLT1"), -0.001, 10, None, &mut status);
+            fits_write_key_dbl(ff, &cc("TCDLT2"), 0.001, 10, None, &mut status);
+            fits_write_key_lng(ff, &cc("TLMIN1"), 1, None, &mut status);
+            fits_write_key_lng(ff, &cc("TLMAX1"), 100, None, &mut status);
+            fits_write_key_lng(ff, &cc("TLMIN2"), 1, None, &mut status);
+            fits_write_key_lng(ff, &cc("TLMAX2"), 100, None, &mut status);
+            assert_eq!(status, 0, "writing keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut header: *mut c_char = ptr::null_mut();
+            ffgtwcs_safe(f.as_deref_mut().unwrap(), 1, 2, &mut header, &mut status);
+            assert_eq!(status, 0, "ffgtwcs failed");
+
+            assert!(!header.is_null(), "header should not be NULL");
+            // Header should contain converted WCS keywords.
+            let hdr = unsafe { CStr::from_ptr(header) }.to_str().unwrap();
+            assert!(hdr.contains("NAXIS"));
+            assert!(hdr.contains("CTYPE1"));
+            assert!(hdr.contains("CRVAL1"));
+            assert!(hdr.contains("END"));
+
+            fits_free_memory(header as *mut c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtwcs_not_table() {
+        // Test ffgtwcs error when HDU is not a table.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+
+            // Should fail because we're on an image, not a table.
+            let mut header: *mut c_char = ptr::null_mut();
+            ffgtwcs_safe(f.as_deref_mut().unwrap(), 1, 2, &mut header, &mut status);
+            assert_ne!(status, 0, "ffgtwcs should fail on an image");
+
+            if !header.is_null() {
+                fits_free_memory(header as *mut c_void, &mut status);
+            }
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffgtwcs_bad_col() {
+        // Test ffgtwcs error with bad column number.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [0, 0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &naxes, &mut status);
+            let ttype = [Some(cc("X")), Some(cc("Y"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1D"), cc("1D")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                10,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            // Invalid column number.
+            let mut header: *mut c_char = ptr::null_mut();
+            ffgtwcs_safe(f.as_deref_mut().unwrap(), 0, 2, &mut header, &mut status);
+            assert_ne!(status, 0, "ffgtwcs should fail for col 0");
+
+            if !header.is_null() {
+                fits_free_memory(header as *mut c_void, &mut status);
+            }
+            status = 0;
+            header = ptr::null_mut();
+
+            ffgtwcs_safe(f.as_deref_mut().unwrap(), 1, 99, &mut header, &mut status);
+            assert_ne!(status, 0, "ffgtwcs should fail for col 99");
+
+            if !header.is_null() {
+                fits_free_memory(header as *mut c_void, &mut status);
+            }
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fits_read_wcstab_null() {
+        // Test fits_read_wcstab with NULL pointer.
+        // The C version passes a NULL fitsfile pointer; the _safer Rust form
+        // takes a &mut fitsfile, so we exercise the FFI wrapper directly.
+        let mut status: c_int = 0;
+        #[allow(deprecated)]
+        let rc = unsafe { fits_read_wcstab(ptr::null_mut(), 0, ptr::null(), &mut status) };
+        // With nwtb=0 the routine returns immediately before checking the file
+        // pointer, mirroring the C implementation. The C test still expects a
+        // nonzero status because it passes NULL with nwtb=0; see note below.
+        // Match the C expectation: status should be set (NULL_INPUT_PTR).
+        let _ = rc;
+        assert_ne!(status, 0, "fits_read_wcstab should fail for NULL pointer");
+    }
+
+    #[test]
+    fn test_fits_read_wcstab_zero() {
+        // Test fits_read_wcstab with nwtb=0.
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_img(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+
+            // With nwtb=0, should return immediately with no error.
+            fits_read_wcstab_safer(f.as_deref_mut().unwrap(), 0, &[], &mut status);
+            assert_eq!(status, 0, "fits_read_wcstab with nwtb=0 should succeed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
 }

@@ -223,7 +223,7 @@ pub fn ffpcnl_safe(
 ) -> c_int {
     let mut ngood: LONGLONG = 0;
     let mut nbad: LONGLONG = 0;
-    let ii: LONGLONG = 0;
+    let mut ii: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
     let mut first: LONGLONG = 0;
     let mut fstelm: LONGLONG = 0;
@@ -271,14 +271,15 @@ pub fn ffpcnl_safe(
     /* absolute element number in the column */
     first = (firstrow - 1) * repeat + firstelem;
 
-    for ii in 0..(nelem as usize) {
-        if array[ii] != nulvalue {
+    ii = 0;
+    while ii < nelem {
+        if array[ii as usize] != nulvalue {
             /* is this a good pixel? */
 
             if nbad != 0 {
                 /* write previous string of bad pixels */
 
-                fstelm = (ii as LONGLONG) - nbad + first; /* absolute element number */
+                fstelm = ii - nbad + first; /* absolute element number */
                 fstrow = (fstelm - 1) / repeat + 1; /* starting row number */
                 fstelm -= (fstrow - 1) * repeat; /* relative number */
 
@@ -294,7 +295,7 @@ pub fn ffpcnl_safe(
             if ngood != 0
             /* write previous string of good pixels */
             {
-                fstelm = (ii as LONGLONG) - ngood + first; /* absolute element number */
+                fstelm = ii - ngood + first; /* absolute element number */
                 fstrow = (fstelm - 1) / repeat + 1; /* starting row number */
                 fstelm -= (fstrow - 1) * repeat; /* relative number */
 
@@ -308,6 +309,7 @@ pub fn ffpcnl_safe(
 
             nbad += 1; /* the consecutive number of bad pixels */
         }
+        ii += 1;
     }
 
     /* finished loop;  now just write the last set of pixels */
@@ -579,5 +581,580 @@ pub fn ffpclx_safe(
             }
         }
         bitloc = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BAD_ELEM_NUM, BAD_ROW_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, NOT_LOGICAL_COL, READONLY,
+        fitsfile,
+    };
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a single-column binary table and return the open file.
+    fn make_table(
+        name: &[c_char],
+        ttype: &str,
+        tform: &str,
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v = [Some(cc(ttype))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v = [cc(tform)];
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            nrows,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_write_logical_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 5] = [1, 0, 1, 1, 0];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 5, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 5];
+            let mut anynull = 0;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[0] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_not_logical_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            assert_eq!(status, 0);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert!(!(status != NOT_LOGICAL_COL));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_logical_with_nulls() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 5] = [1, 99, 0, 99, 1];
+            let nulval: c_char = 99;
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 5, &mut status);
+            fits_write_colnull_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                &data,
+                nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_nulls_at_end() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 4] = [1, 0, 99, 99];
+            let nulval: c_char = 99;
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 4, &mut status);
+            fits_write_colnull_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &data,
+                nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 8] = [1, 0, 1, 0, 1, 0, 1, 0];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 8, &bits, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 8];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                8,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[0] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_bad_row() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            assert_eq!(status, 0);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 0, 1, 1, &bits, &mut status);
+            assert!(!(status != BAD_ROW_NUM));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_bad_elem() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            assert_eq!(status, 0);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 0, 1, &bits, &mut status);
+            assert!(!(status != BAD_ELEM_NUM));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_not_logical() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "INTCOL", "1J", 1, &mut status);
+            assert_eq!(status, 0);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &bits, &mut status);
+            assert!(!(status != NOT_LOGICAL_COL));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_beyond_repeat() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            assert_eq!(status, 0);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 9, 1, &bits, &mut status);
+            assert!(!(status != BAD_ELEM_NUM));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_varlen_bit() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 6] = [1, 0, 1, 1, 0, 1];
+
+            let mut f = make_table(&name, "VARBIT", "1PX", 1, &mut status);
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 6, &bits, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 6];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                6,
+                &mut result,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[0] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_logical_spanning_rows() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 9] = [1, 0, 1, 0, 1, 0, 1, 0, 1];
+
+            let mut f = make_table(&name, "LOGCOL", "3L", 3, &mut status);
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 9, &data, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 9];
+            let mut anynull = 0;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                9,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            for i in 0..9 {
+                assert!(!(result[i] != data[i]));
+            }
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_varlen_logical_with_nulls() {
+        // Test writing variable length logical array with nulls.
+        // This exercises the tcode < 0 path in ffpcnl.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 5] = [1, 0, 1, 0, 1];
+            let nulval: c_char = 0;
+
+            let mut f = make_table(&name, "VARCOL", "1PL", 1, &mut status);
+            fits_write_colnull_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                &data,
+                nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 5];
+            let mut anynull = 0;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[0] != 1));
+            assert!(!(result[2] != 1));
+            assert!(!(result[4] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_logical_nulls_mixed() {
+        // Test writing logical values with mixed null/non-null values.
+        // Exercise the nbad path with nulls at different positions.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 5] = [1, 99, 99, 1, 99];
+            let nulval: c_char = 99;
+
+            let mut f = make_table(&name, "LOGCOL", "5L", 1, &mut status);
+            fits_write_colnull_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                &data,
+                nulval,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 5];
+            let mut anynull = 0;
+            fits_read_col_log(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Non-null values should be 1
+            assert!(!(result[0] != 1));
+            assert!(!(result[3] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_bit_bad_elem_beyond() {
+        // Test BAD_ELEM_NUM error when fbit exceeds repeat count.
+        // This exercises the fbyte > repeat check in ffpclx.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            assert_eq!(status, 0);
+            // Try to write at bit position 100 which exceeds 8-bit column
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 100, 1, &bits, &mut status);
+            assert!(!(status != BAD_ELEM_NUM));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bit_byte_col_overflow() {
+        // Test BAD_ELEM_NUM when writing bits beyond byte column width.
+        // Uses single byte column to trigger the fbyte > repeat path.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BYTECOL", "1B", 1, &mut status); // 1 byte = 8 bits
+            assert_eq!(status, 0);
+            // Try to write at bit 9 which exceeds 8 bits (1 byte)
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 9, 1, &bits, &mut status);
+            assert!(!(status != BAD_ELEM_NUM));
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bits_spanning_rows() {
+        // Test writing bits that span multiple rows.
+        // Exercises the row boundary handling in ffpclx.
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 12] = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+
+            let mut f = make_table(&name, "BITCOL", "4X", 3, &mut status); // 4 bits per row
+            // Write 12 bits starting at row 1, which spans all 3 rows
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 12, &bits, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0 as c_char; 12];
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                &mut result[0..4],
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[0] != 1));
+            fits_read_col_bit(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                1,
+                4,
+                &mut result[4..8],
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert!(!(result[4] != 1));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_bits_to_new_row() {
+        // Test writing bits to a row beyond current table size. When writing
+        // past EOF, ffpclu reads cbuff which triggers the END_OF_FILE case and
+        // sets status=0, cbuff=0
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 4] = [1, 0, 1, 0];
+
+            // Create table with 0 rows initially
+            let mut f = make_table(&name, "BITCOL", "8X", 0, &mut status);
+            // Write bits to row 1 which extends the table
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 4, &bits, &mut status);
+            assert_eq!(status, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0);
+            let mut result = [0u8; 1];
+            let mut anynull = 0;
+            fits_read_col_byt(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                1,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            // Bits 1,0,1,0 starting at bit 1 = binary 10100000 = 0xA0 = 160
+            assert!(!(result[0] != 0xA0));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_write_zero_bits() {
+        // Test ffpclx with nbit=0 for early return
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let bits: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "BITCOL", "8X", 1, &mut status);
+            assert_eq!(status, 0);
+            // nbit=0 should return early without error
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 0, &bits, &mut status);
+            assert!(!(status != 0));
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_calls_with_error_status() {
+        // Test that functions return early when status > 0
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_char; 1] = [1];
+
+            let mut f = make_table(&name, "LOGCOL", "1L", 1, &mut status);
+            assert_eq!(status, 0);
+
+            // Call ffpcll with pre-existing error
+            status = 1;
+            fits_write_col_log(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert!(!(status != 1));
+
+            // Call ffpcnl with pre-existing error
+            status = 1;
+            fits_write_colnull_log(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, 0, &mut status);
+            assert!(!(status != 1));
+
+            // Call ffpclx with pre-existing error
+            status = 1;
+            fits_write_col_bit(f.as_deref_mut().unwrap(), 1, 1, 1, 1, &data, &mut status);
+            assert!(!(status != 1));
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
     }
 }

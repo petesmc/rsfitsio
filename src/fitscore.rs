@@ -2230,7 +2230,7 @@ pub fn fits_translate_keyword_safer(
     let mut s: c_char;
     let mut ip: usize;
     let mut ic: usize;
-    let pat: c_int = 0;
+    let mut pat: c_int = 0;
     let mut pass = false;
     let mut firstfail;
 
@@ -2255,8 +2255,9 @@ pub fn fits_translate_keyword_safer(
     let mut spat;
 
     /* ===== Pattern match stage */
-    for pat in 0..(npat as usize) {
-        spat = cast_slice(patterns[pat][0].to_bytes_with_nul());
+    pat = 0;
+    while pat < npat {
+        spat = cast_slice(patterns[pat as usize][0].to_bytes_with_nul());
 
         i1 = 0;
         j1 = 0;
@@ -2274,6 +2275,7 @@ pub fn fits_translate_keyword_safer(
         /* Optimization: if we have seen this initial pattern character before,
         then it must have failed, and we can skip the pattern */
         if firstfail && spat[0] == oldp {
+            pat += 1;
             continue;
         }
         oldp = spat[0];
@@ -2363,6 +2365,8 @@ pub fn fits_translate_keyword_safer(
         if pass && (ic >= 8 || inrec[ic] == bb(b' ')) {
             break;
         }
+
+        pat += 1;
     }
 
     /* Transfer the pattern-matched numbers to the output parameters */
@@ -2899,7 +2903,7 @@ pub(crate) fn fits_translate_pixkeyword(
     let mut s: c_char;
     let mut ip: c_int;
     let mut ic: c_int;
-    let pat: c_int = 0;
+    let mut pat: c_int = 0;
     let mut pass: bool = false;
     let mut firstfail: bool;
     let mut spat;
@@ -2924,8 +2928,12 @@ pub(crate) fn fits_translate_pixkeyword(
     firstfail = false;
 
     /* ===== Pattern match stage */
-    for pat in 0..(npat) {
-        spat = unsafe { cast_slice(CStr::from_ptr(patterns[pat][0]).to_bytes_with_nul()) };
+    // NOTE: `pat` must retain its matched value after the loop so the output
+    // rewriting stage below uses the correct pattern (mirrors the single C
+    // `pat` variable, not a fresh per-iteration for-loop binding).
+    pat = 0;
+    while (pat as usize) < npat {
+        spat = unsafe { cast_slice(CStr::from_ptr(patterns[pat as usize][0]).to_bytes_with_nul()) };
 
         i1 = 0;
         j1 = 0;
@@ -2941,6 +2949,7 @@ pub(crate) fn fits_translate_pixkeyword(
         /* Optimization: if we have seen this initial pattern character before,
         then it must have failed, and we can skip the pattern */
         if firstfail && spat[0] == oldp {
+            pat += 1;
             continue;
         }
         oldp = spat[0];
@@ -3044,6 +3053,11 @@ pub(crate) fn fits_translate_pixkeyword(
         if pass && (ic >= 8 || inrec[ic as usize] == bb(b' ')) {
             break;
         }
+
+        // Advance to the next pattern. This mirrors the increment expression
+        // of the C `for (pat=0; pat < npat; pat++)` loop. Without it the outer
+        // loop would spin forever on a non-matching pattern.
+        pat += 1;
     }
 
     /* Transfer the pattern-matched numbers to the output parameters */
@@ -7719,6 +7733,7 @@ pub fn fftheap_safe(
     while jj <= fptr.Fptr.tfield && *status <= 0 {
         ffgtcl_safe(fptr, jj, Some(&mut typecode), None, None, status);
         if typecode > 0 {
+            jj += 1;
             continue; /* ignore fixed length columns */
         }
 
@@ -7909,6 +7924,7 @@ pub fn ffcmph_safe(
         ffgtcl_safe(&mut tptr, jj, Some(&mut typecode), None, None, status);
 
         if typecode > 0 {
+            jj += 1;
             continue; /* ignore fixed length columns */
         }
 

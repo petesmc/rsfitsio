@@ -802,3 +802,1495 @@ pub fn ffxypx_safe(
     *ypix = dy / yinc + yrefpix;
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use libc::{c_char, c_int};
+
+    const TOLERANCE: f64 = 1e-10;
+
+    /// Build a NUL-terminated 5-element coordinate-type array from a 4-char str.
+    fn ptype(s: &str) -> [c_char; 5] {
+        let mut v = [0 as c_char; 5];
+        for (i, b) in s.bytes().enumerate() {
+            v[i] = b as c_char;
+        }
+        v
+    }
+
+    /*
+     * Test CAR (Cartesian/linear) projection pixel to world
+     */
+    #[test]
+    fn test_wldp_car() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+        assert!((xpos - 180.0).abs() <= TOLERANCE);
+        assert!((ypos - 45.0).abs() <= TOLERANCE);
+    }
+
+    /*
+     * Test CAR projection with offset
+     */
+    #[test]
+    fn test_wldp_car_offset() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            110.0,
+            105.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+        assert!((xpos - 180.1).abs() <= TOLERANCE);
+        assert!((ypos - 45.05).abs() <= TOLERANCE);
+    }
+
+    /*
+     * Test CAR projection with rotation
+     */
+    #[test]
+    fn test_wldp_car_rotation() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            110.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            45.0,
+            &ptype("-CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test TAN (gnomonic) projection
+     */
+    #[test]
+    fn test_wldp_tan() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-TAN"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test SIN (orthographic) projection
+     */
+    #[test]
+    fn test_wldp_sin() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-SIN"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test ARC (zenithal equidistant) projection
+     */
+    #[test]
+    fn test_wldp_arc() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-ARC"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test NCP (north celestial pole) projection
+     */
+    #[test]
+    fn test_wldp_ncp() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-NCP"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test GLS (global sinusoidal) projection
+     */
+    #[test]
+    fn test_wldp_gls() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-GLS"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test MER (Mercator) projection
+     */
+    #[test]
+    fn test_wldp_mer() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-MER"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test AIT (Aitoff) projection
+     */
+    #[test]
+    fn test_wldp_ait() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test STG (stereographic) projection
+     */
+    #[test]
+    fn test_wldp_stg() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-STG"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test invalid projection type
+     */
+    #[test]
+    fn test_wldp_invalid_projection() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-XXX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid projection type (no leading dash)
+     */
+    #[test]
+    fn test_wldp_no_dash() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test inverse CAR projection (world to pixel)
+     */
+    #[test]
+    fn test_xypx_car() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+        assert!((xpix - 100.0).abs() <= TOLERANCE);
+        assert!((ypix - 100.0).abs() <= TOLERANCE);
+    }
+
+    /*
+     * Test inverse TAN projection
+     */
+    #[test]
+    fn test_xypx_tan() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-TAN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse SIN projection
+     */
+    #[test]
+    fn test_xypx_sin() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-SIN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse ARC projection
+     */
+    #[test]
+    fn test_xypx_arc() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-ARC"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse NCP projection
+     */
+    #[test]
+    fn test_xypx_ncp() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-NCP"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse GLS projection
+     */
+    #[test]
+    fn test_xypx_gls() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-GLS"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse MER projection
+     */
+    #[test]
+    fn test_xypx_mer() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-MER"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse AIT projection
+     */
+    #[test]
+    fn test_xypx_ait() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse STG projection
+     */
+    #[test]
+    fn test_xypx_stg() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-STG"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test inverse invalid projection
+     */
+    #[test]
+    fn test_xypx_invalid() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-XXX"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test roundtrip (pixel to world to pixel)
+     */
+    #[test]
+    fn test_roundtrip_car() {
+        let mut status: c_int = 0;
+        let xpix_in = 150.0;
+        let ypix_in = 75.0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        let (mut xpix_out, mut ypix_out) = (0.0, 0.0);
+        fits_pix_to_world(
+            xpix_in,
+            ypix_in,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+
+        status = 0;
+        fits_world_to_pix(
+            xpos,
+            ypos,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpix_out,
+            &mut ypix_out,
+            &mut status,
+        );
+        assert!(status == 0);
+
+        assert!((xpix_in - xpix_out).abs() <= TOLERANCE);
+        assert!((ypix_in - ypix_out).abs() <= TOLERANCE);
+    }
+
+    /*
+     * Test with rotation for inverse
+     */
+    #[test]
+    fn test_xypx_rotation() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.1,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            30.0,
+            &ptype("-CAR"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test with pre-existing status (forward)
+     */
+    #[test]
+    fn test_wldp_prestatus() {
+        let mut status: c_int = 1;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 1);
+    }
+
+    /*
+     * Test SIN projection with sins > 1.0 (error 501)
+     */
+    #[test]
+    fn test_wldp_sin_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-SIN"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test ARC projection with sins too large
+     */
+    #[test]
+    fn test_wldp_arc_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            1000.0,
+            1000.0,
+            180.0,
+            45.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-ARC"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test NCP projection with dect out of range
+     */
+    #[test]
+    fn test_wldp_ncp_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            200.0,
+            200.0,
+            180.0,
+            89.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-NCP"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test GLS projection with dec too large
+     */
+    #[test]
+    fn test_wldp_gls_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            200.0,
+            200.0,
+            180.0,
+            45.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-GLS"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test MER projection with l out of range
+     */
+    #[test]
+    fn test_wldp_mer_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            2000.0,
+            100.0,
+            180.0,
+            45.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-MER"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test AIT projection with l and m outside valid range
+     */
+    #[test]
+    fn test_wldp_ait_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            500.0,
+            500.0,
+            180.0,
+            45.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test AIT projection center point (l=0, m=0 branch)
+     */
+    #[test]
+    fn test_wldp_ait_center() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+        assert!((xpos - 180.0).abs() <= TOLERANCE);
+        assert!((ypos - 45.0).abs() <= TOLERANCE);
+    }
+
+    /*
+     * Test AIT projection with offset (l,m != 0 branch)
+     */
+    #[test]
+    fn test_wldp_ait_offset() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            110.0,
+            105.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.1,
+            0.1,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test AIT roundtrip
+     */
+    #[test]
+    fn test_roundtrip_ait() {
+        let mut status: c_int = 0;
+        let xpix_in = 110.0;
+        let ypix_in = 105.0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        let (mut xpix_out, mut ypix_out) = (0.0, 0.0);
+        fits_pix_to_world(
+            xpix_in,
+            ypix_in,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.1,
+            0.1,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 0);
+
+        status = 0;
+        fits_world_to_pix(
+            xpos,
+            ypos,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.1,
+            0.1,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpix_out,
+            &mut ypix_out,
+            &mut status,
+        );
+        assert!(status == 0);
+
+        assert!((xpix_in - xpix_out).abs() <= 0.01);
+        assert!((ypix_in - ypix_out).abs() <= 0.01);
+    }
+
+    /*
+     * Test TAN inverse with small sin(ra0) (alternate path)
+     */
+    #[test]
+    fn test_xypx_tan_smallsin() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            0.1,
+            45.0,
+            0.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-TAN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test various invalid CAR-like projections (e.g., -CAX, -CXR)
+     */
+    #[test]
+    fn test_wldp_invalid_car_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+
+        status = 0;
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CXR"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid TAN-like projections
+     */
+    #[test]
+    fn test_wldp_invalid_tan_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-TAX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid NCP-like projections
+     */
+    #[test]
+    fn test_wldp_invalid_ncp_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-NCX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid GLS-like projections
+     */
+    #[test]
+    fn test_wldp_invalid_gls_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-GLX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid MER-like projections
+     */
+    #[test]
+    fn test_wldp_invalid_mer_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-MEX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid S*-like projections (not SIN or STG)
+     */
+    #[test]
+    fn test_wldp_invalid_sin_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-SXX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test invalid A*-like projections (not ARC or AIT)
+     */
+    #[test]
+    fn test_wldp_invalid_arc_variant() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-AXX"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test NCP forward dect==0 case
+     */
+    #[test]
+    fn test_wldp_ncp_dect_zero() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            100.0,
+            100.0,
+            180.0,
+            89.999,
+            100.0,
+            0.0,
+            0.01,
+            1.0,
+            0.0,
+            &ptype("-NCP"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test GLS forward l too large
+     */
+    #[test]
+    fn test_wldp_gls_l_large() {
+        let mut status: c_int = 0;
+        let (mut xpos, mut ypos) = (0.0, 0.0);
+        fits_pix_to_world(
+            10000.0,
+            100.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.1,
+            0.01,
+            0.0,
+            &ptype("-GLS"),
+            &mut xpos,
+            &mut ypos,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test inverse CAR-like invalid projections
+     */
+    #[test]
+    fn test_xypx_invalid_car_variant() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-CAX"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test inverse TAN-like invalid projections
+     */
+    #[test]
+    fn test_xypx_invalid_tan_variant() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.01,
+            0.01,
+            0.0,
+            &ptype("-TAX"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 504);
+    }
+
+    /*
+     * Test inverse with zero xinc (error 502)
+     */
+    #[test]
+    fn test_xypx_zero_inc() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.0,
+            0.01,
+            0.0,
+            &ptype("-CAR"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 502);
+    }
+
+    /*
+     * Test TAN inverse with sint<=0 (error 501)
+     */
+    #[test]
+    fn test_xypx_tan_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            0.0,
+            -45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-TAN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test TAN inverse near pole (cos0<0.001 branch)
+     */
+    #[test]
+    fn test_xypx_tan_pole() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.1,
+            89.95,
+            180.0,
+            89.95,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-TAN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 0);
+    }
+
+    /*
+     * Test SIN inverse with sint<0 (error 501)
+     */
+    #[test]
+    fn test_xypx_sin_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            0.0,
+            -45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-SIN"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test STG inverse with dec too large (error 501)
+     */
+    #[test]
+    fn test_xypx_stg_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            91.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-STG"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test AIT inverse with da too large (error 501)
+     */
+    #[test]
+    fn test_xypx_ait_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            0.0,
+            45.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-AIT"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test NCP inverse with dec0==0 (equator, error 501)
+     */
+    #[test]
+    fn test_xypx_ncp_equator() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            45.0,
+            180.0,
+            0.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-NCP"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test GLS inverse with dec too large (error 501)
+     */
+    #[test]
+    fn test_xypx_gls_bounds() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            91.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-GLS"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 501);
+    }
+
+    /*
+     * Test MER inverse with dec at pole (error 502)
+     */
+    #[test]
+    fn test_xypx_mer_pole() {
+        let mut status: c_int = 0;
+        let (mut xpix, mut ypix) = (0.0, 0.0);
+        fits_world_to_pix(
+            180.0,
+            -90.0,
+            180.0,
+            45.0,
+            100.0,
+            100.0,
+            0.001,
+            0.001,
+            0.0,
+            &ptype("-MER"),
+            &mut xpix,
+            &mut ypix,
+            &mut status,
+        );
+        assert!(status == 502);
+    }
+}

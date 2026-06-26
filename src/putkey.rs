@@ -5447,6 +5447,22 @@ pub fn ffpknjj_safe(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::KeywordDatatype;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BAD_COL_NUM, BAD_DATATYPE, BAD_DATE, BAD_DIMEN, BAD_F2C, BAD_TDIM, BINARY_TBL, BYTE_IMG,
+        FILE_NOT_OPENED, FLEN_VALUE, LONGLONG, LONGLONG_IMG, NOT_BTABLE, READONLY, SBYTE_IMG,
+        SHORT_IMG, ULONG_IMG, ULONGLONG_IMG, USHORT_IMG, fitsfile,
+    };
+    use crate::helpers::testhelpers::{from_buf, to_buf, with_temp_file};
+    use libc::{c_char, c_double, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
 
     #[test]
     fn test_ffverifydate_safe() {
@@ -6068,5 +6084,2241 @@ mod tests {
         datestr = [0; 11];
         assert_eq!(ffdt2s_safe(2024, 3, 15, &mut datestr, &mut status), 123);
         assert_eq!(status, 123);
+    }
+
+    #[test]
+    fn test_putkey_string() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "ffphps failed");
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("STRKEY"),
+                &cc("test value"),
+                Some(&cc("string keyword")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkys failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut sval = [0 as c_char; FLEN_VALUE];
+            fits_read_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("STRKEY"),
+                &mut sval,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkys failed");
+            assert_eq!(from_buf(&sval), "test value");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_long() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "ffphps failed");
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("LONGKEY"),
+                123456789,
+                Some(&cc("long keyword")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyj failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut lval: c_long = 0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                crate::KeywordDatatypeMut::TLONG(&mut lval),
+                &cc("LONGKEY"),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgky failed");
+            assert_eq!(lval, 123456789);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_double() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("DBLKEY"),
+                3.14159265358979,
+                15,
+                Some(&cc("double keyword")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyd failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut dval: c_double = 0.0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                crate::KeywordDatatypeMut::TDOUBLE(&mut dval),
+                &cc("DBLKEY"),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgky failed");
+            assert!(dval >= 3.14 && dval <= 3.15);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_logical() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_log(
+                f.as_deref_mut().unwrap(),
+                &cc("BOOLKEY"),
+                1,
+                Some(&cc("logical keyword")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyl failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut lval: c_int = 0;
+            fits_read_key_log(
+                f.as_deref_mut().unwrap(),
+                &cc("BOOLKEY"),
+                &mut lval,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkyl failed");
+            assert_eq!(lval, 1);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_float() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_flt(
+                f.as_deref_mut().unwrap(),
+                &cc("FLTKEY"),
+                2.71828,
+                6,
+                Some(&cc("float keyword")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkye failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut fval: f32 = 0.0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                crate::KeywordDatatypeMut::TFLOAT(&mut fval),
+                &cc("FLTKEY"),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgky failed");
+            assert!(fval >= 2.71 && fval <= 2.72);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_generic_types() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let sbval: c_schar = -42;
+            let usval: u16 = 12345;
+            let uival: u32 = 3000000000;
+            let llval: LONGLONG = 9876543210;
+            let fval: f32 = 1.5;
+            let dval: f64 = 2.5;
+            let cval: [f32; 2] = [1.0, 2.0];
+            let mval: [f64; 2] = [3.0, 4.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            let g = f.as_deref_mut().unwrap();
+
+            fits_write_key(
+                g,
+                KeywordDatatype::TSBYTE(&sbval),
+                &cc("SBKEY"),
+                Some(&cc("signed byte")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TUSHORT(&usval),
+                &cc("USKEY"),
+                Some(&cc("unsigned short")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TUINT(&uival),
+                &cc("UIKEY"),
+                Some(&cc("unsigned int")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TLONGLONG(&llval),
+                &cc("LLKEY"),
+                Some(&cc("longlong")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TFLOAT(&fval),
+                &cc("FKEY"),
+                Some(&cc("float")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TDOUBLE(&dval),
+                &cc("DKEY"),
+                Some(&cc("double")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TCOMPLEX(&cval),
+                &cc("CKEY"),
+                Some(&cc("complex")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TDBLCOMPLEX(&mval),
+                &cc("MKEY"),
+                Some(&cc("dblcomplex")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpky failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_unsigned_long() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let ulval: c_ulong = 4000000000;
+            let ullval: u64 = 18000000000000000000;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            let g = f.as_deref_mut().unwrap();
+
+            fits_write_key(
+                g,
+                KeywordDatatype::TULONG(&ulval),
+                &cc("ULKEY"),
+                Some(&cc("unsigned long")),
+                &mut status,
+            );
+            fits_write_key(
+                g,
+                KeywordDatatype::TULONGLONG(&ullval),
+                &cc("ULLKEY"),
+                Some(&cc("ulonglong")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpky failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_null() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_null(
+                f.as_deref_mut().unwrap(),
+                &cc("NULLKEY"),
+                Some(&cc("undefined value")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyu failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_units() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("EXPTIME"),
+                300,
+                Some(&cc("Exposure time")),
+                &mut status,
+            );
+            fits_write_key_unit(
+                f.as_deref_mut().unwrap(),
+                &cc("EXPTIME"),
+                &cc("seconds"),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpunt failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut units = [0 as c_char; FLEN_VALUE];
+            fits_read_key_unit(
+                f.as_deref_mut().unwrap(),
+                &cc("EXPTIME"),
+                &mut units,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgunt failed");
+            assert_eq!(from_buf(&units), "seconds");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_fixfmt() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let dval: f64 = 123.456789;
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_fixdbl(
+                f.as_deref_mut().unwrap(),
+                &cc("GKEY"),
+                dval,
+                10,
+                Some(&cc("G format")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyg failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_fixfmt_float() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let dval: f64 = 987.654321;
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            // ffpkyf takes f32 value
+            fits_write_key_fixflt(
+                f.as_deref_mut().unwrap(),
+                &cc("FKEY"),
+                dval as f32,
+                6,
+                Some(&cc("F format")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyf failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_complex() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let cval: [f32; 2] = [1.5, -2.5];
+            let mval: [f64; 2] = [3.14159, -2.71828];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_cmp(
+                f.as_deref_mut().unwrap(),
+                &cc("CFLT"),
+                &cval,
+                6,
+                Some(&cc("complex float")),
+                &mut status,
+            );
+            fits_write_key_dblcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("CDBL"),
+                &mval,
+                14,
+                Some(&cc("complex double")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyc/ffpkym failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_complex_fixed() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let cval: [f32; 2] = [100.0, 200.0];
+            let mval: [f64; 2] = [300.0, 400.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_key_fixcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("FCFLT"),
+                &cval,
+                4,
+                Some(&cc("fixed complex float")),
+                &mut status,
+            );
+            fits_write_key_fixdblcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("FCDBL"),
+                &mval,
+                8,
+                Some(&cc("fixed complex double")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkfc/ffpkfm failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_comment_history() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_comment(
+                f.as_deref_mut().unwrap(),
+                &cc("This is a comment keyword"),
+                &mut status,
+            );
+            fits_write_history(
+                f.as_deref_mut().unwrap(),
+                &cc("This is a history keyword"),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpcom/ffphis failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_date() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            fits_write_date(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffpdat failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_update_key() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("UPDKEY"),
+                100,
+                Some(&cc("original")),
+                &mut status,
+            );
+            fits_update_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("UPDKEY"),
+                200,
+                Some(&cc("updated")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffukyj failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut lval: c_long = 0;
+            fits_read_key(
+                f.as_deref_mut().unwrap(),
+                crate::KeywordDatatypeMut::TLONG(&mut lval),
+                &cc("UPDKEY"),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(lval, 200);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_indexed_arrays() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let svals = [cc("val1"), cc("val2"), cc("val3")];
+            let svals_ptrs: Vec<*const c_char> = svals.iter().map(|v| v.as_ptr()).collect();
+            let lvals: [c_int; 3] = [1, 0, 1];
+            let jvals: [c_long; 3] = [100, 200, 300];
+            let jjvals: [LONGLONG; 3] = [1000000000, 2000000000, 3000000000];
+            let fvals: [f32; 3] = [1.1, 2.2, 3.3];
+            let evals: [f32; 3] = [1.0e10, 2.0e20, 3.0e30];
+            let gvals: [f64; 3] = [1.111, 2.222, 3.333];
+            let dvals: [f64; 3] = [1.0e100, 2.0e200, 3.0e-100];
+            let comm = [cc("comment &"), cc("comment 2"), cc("comment 3")];
+            let comm_ptrs: Vec<*const c_char> = comm.iter().map(|v| v.as_ptr()).collect();
+            let comm_norep = [cc("comm1"), cc("comm2"), cc("comm3")];
+            let comm_norep_ptrs: Vec<*const c_char> =
+                comm_norep.iter().map(|v| v.as_ptr()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            assert_eq!(status, 0, "setup failed");
+            let g = f.as_deref_mut().unwrap();
+
+            // Test with repeated comment (ending with &)
+            fits_write_keys_str(g, &cc("SKEY"), 1, 3, &svals_ptrs, &comm_ptrs, &mut status);
+            fits_write_keys_log(g, &cc("LKEY"), 1, 3, &lvals, &comm_ptrs, &mut status);
+            fits_write_keys_lng(g, &cc("JKEY"), 1, 3, &jvals, &comm_ptrs, &mut status);
+            // Test with NULL comment via ffpknjj (no public alias -> call safe)
+            ffpknjj_safe(g, &cc("JJKEY"), 1, 3, &jjvals, None, &mut status);
+            fits_write_keys_fixflt(g, &cc("FKEY"), 1, 3, &fvals, 2, &comm_ptrs, &mut status);
+            fits_write_keys_flt(g, &cc("EKEY"), 1, 3, &evals, 3, &comm_ptrs, &mut status);
+            fits_write_keys_fixdbl(g, &cc("GKEY"), 1, 3, &gvals, 4, &comm_ptrs, &mut status);
+            fits_write_keys_dbl(g, &cc("DKEY"), 1, 3, &dvals, 5, &comm_ptrs, &mut status);
+
+            // Test with non-repeated comments
+            fits_write_keys_log(g, &cc("LKEY2"), 1, 3, &lvals, &comm_norep_ptrs, &mut status);
+            fits_write_keys_lng(g, &cc("JKEY2"), 1, 3, &jvals, &comm_norep_ptrs, &mut status);
+
+            assert_eq!(status, 0, "indexed array keywords failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_long_string() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let longstr = "This is a very long string value that exceeds the normal \
+                FITS keyword value length limit of 68 characters and requires continuation";
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("LONGSTR"),
+                &cc(longstr),
+                Some(&cc("long string test")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkls failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result: *mut c_char = std::ptr::null_mut();
+            fits_read_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("LONGSTR"),
+                &mut result,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkls failed");
+            assert!(!result.is_null());
+            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(got, longstr);
+            fits_free_memory(result as *mut libc::c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_template() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            // Create a template file alongside the fits file.
+            let tpl_path = std::path::Path::new(filename).with_file_name("test_putkey.tpl");
+            std::fs::write(
+                &tpl_path,
+                "TPLKEY1 = 'template value' / added by template\n\
+                 TPLKEY2 = 42 / integer from template\n\
+                 END\n",
+            )
+            .unwrap();
+            let tpl_buf = to_buf(tpl_path.to_str().unwrap());
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_template(f.as_deref_mut().unwrap(), &tpl_buf, &mut status);
+            assert_eq!(status, 0, "ffpktp failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut sval = [0 as c_char; FLEN_VALUE];
+            fits_read_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("TPLKEY1"),
+                &mut sval,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkys failed");
+            assert_eq!(from_buf(&sval), "template value");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            let _ = std::fs::remove_file(&tpl_path);
+        });
+    }
+
+    // skipped: fftm2s_safe is todo!() (test_putkey_datetime relies on fftm2s/ffs2tm chains)
+
+    #[test]
+    fn test_putkey_tdim() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxes: [c_long; 3] = [10, 20, 30];
+            let ttype = [Some(cc("DATA"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("6000J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                0,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcrtb failed");
+
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1, 3, &naxes, &mut status);
+            assert_eq!(status, 0, "ffptdm failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_time() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_triple(
+                f.as_deref_mut().unwrap(),
+                &cc("TIMEKEY"),
+                12345,
+                0.6789,
+                Some(&cc("time value")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkyt failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_rawrec() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            let card =
+                "RAWKEY  = 'raw value'          / written as raw record                         ";
+            fits_write_record(f.as_deref_mut().unwrap(), &cc(card), &mut status);
+            assert_eq!(status, 0, "ffprec failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_verifydate() {
+        let mut status: c_int = 0;
+
+        // Valid dates
+        ffverifydate_safe(2024, 1, 1, &mut status);
+        assert_eq!(status, 0);
+        ffverifydate_safe(2024, 12, 31, &mut status);
+        assert_eq!(status, 0);
+        ffverifydate_safe(2000, 2, 29, &mut status); // leap year
+        assert_eq!(status, 0);
+
+        // Boundary conditions
+        ffverifydate_safe(1999, 1, 1, &mut status);
+        assert_eq!(status, 0);
+        ffverifydate_safe(9999, 12, 31, &mut status);
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn test_putkey_sysdate() {
+        let mut status: c_int = 0;
+        let mut day: c_int = 0;
+        let mut month: c_int = 0;
+        let mut year: c_int = 0;
+
+        fits_get_system_date(&mut day, &mut month, &mut year, &mut status);
+        assert_eq!(status, 0, "ffgsdt failed");
+        assert!(year >= 2020 && year <= 2100);
+        assert!(month >= 1 && month <= 12);
+        assert!(day >= 1 && day <= 31);
+    }
+
+    #[test]
+    fn test_putkey_insert() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("KEY1"),
+                1,
+                Some(&cc("first key")),
+                &mut status,
+            );
+            fits_write_key_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("KEY3"),
+                3,
+                Some(&cc("third key")),
+                &mut status,
+            );
+
+            let card =
+                "KEY2    =                    2 / second key                                     ";
+            fits_insert_record(f.as_deref_mut().unwrap(), 4, &cc(card), &mut status);
+            assert_eq!(status, 0, "ffirec failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_header() {
+        // ffphpr (own temp file: ffinit cannot overwrite without '!')
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [100, 100];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_grphdr(
+                f.as_deref_mut().unwrap(),
+                1,
+                16,
+                2,
+                &naxes,
+                0,
+                1,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphpr failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+
+        // ffphprll
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxesll: [LONGLONG; 2] = [200, 200];
+
+            let mut f2: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f2, &name, &mut status);
+            fits_write_grphdrll(
+                f2.as_deref_mut().unwrap(),
+                1,
+                16,
+                2,
+                &naxesll,
+                0,
+                1,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphprll failed");
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_table_headers() {
+        // ffphtb (ASCII table header) -- own temp file
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let ttype = [Some(cc("COL1")), Some(cc("COL2"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_ascii_v = [cc("A10"), cc("I5")];
+            let tform_ascii: Vec<&[c_char]> = tform_ascii_v.iter().map(|v| v.as_slice()).collect();
+            let tunit = [Some(cc("unit1")), Some(cc("unit2"))];
+            let tunit_ref: Vec<Option<&[c_char]>> = tunit.iter().map(|o| o.as_deref()).collect();
+            let tbcol: [c_long; 2] = [1, 11];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f.as_deref_mut().unwrap(), &mut status);
+            fits_write_atblhdr(
+                f.as_deref_mut().unwrap(),
+                20,
+                10,
+                2,
+                &ttype_ref,
+                Some(&tbcol),
+                &tform_ascii,
+                Some(&tunit_ref),
+                Some(&cc("TESTTBL")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphtb failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+
+        // ffphbn (binary table header) -- own temp file
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let ttype = [Some(cc("COL1")), Some(cc("COL2"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_bin_v = [cc("10A"), cc("1J")];
+            let tform_bin: Vec<&[c_char]> = tform_bin_v.iter().map(|v| v.as_slice()).collect();
+            let tunit = [Some(cc("unit1")), Some(cc("unit2"))];
+            let tunit_ref: Vec<Option<&[c_char]>> = tunit.iter().map(|o| o.as_deref()).collect();
+
+            let mut f2: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f2, &name, &mut status);
+            fits_write_imghdr(f2.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f2.as_deref_mut().unwrap(), &mut status);
+            fits_write_btblhdr(
+                f2.as_deref_mut().unwrap(),
+                10,
+                2,
+                &ttype_ref,
+                &tform_bin,
+                Some(&tunit_ref),
+                Some(&cc("BINTBL")),
+                0,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphbn failed");
+            fits_close_file(f2.take().unwrap(), &mut status);
+        });
+    }
+
+    // skipped: ffphext_safe is todo!() (test_putkey_exthead)
+
+    #[test]
+    fn test_putkey_updates() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            // string
+            fits_write_key_str(
+                g,
+                &cc("STRKEY"),
+                &cc("original"),
+                Some(&cc("string comment")),
+                &mut status,
+            );
+            fits_update_key_str(
+                g,
+                &cc("STRKEY"),
+                &cc("updated"),
+                Some(&cc("new comment")),
+                &mut status,
+            );
+
+            // float (E format)
+            fits_write_key_flt(
+                g,
+                &cc("FLTKEY"),
+                1.5,
+                3,
+                Some(&cc("float comment")),
+                &mut status,
+            );
+            fits_update_key_flt(
+                g,
+                &cc("FLTKEY"),
+                2.5,
+                3,
+                Some(&cc("updated float")),
+                &mut status,
+            );
+
+            // double (D format)
+            fits_write_key_dbl(
+                g,
+                &cc("DBLKEY"),
+                1.5,
+                6,
+                Some(&cc("double comment")),
+                &mut status,
+            );
+            fits_update_key_dbl(
+                g,
+                &cc("DBLKEY"),
+                2.5,
+                6,
+                Some(&cc("updated double")),
+                &mut status,
+            );
+
+            // fixed format G
+            fits_write_key_fixdbl(g, &cc("GKEY"), 100.5, 4, Some(&cc("G format")), &mut status);
+            fits_update_key_fixdbl(
+                g,
+                &cc("GKEY"),
+                200.5,
+                4,
+                Some(&cc("updated G")),
+                &mut status,
+            );
+
+            // fixed format F
+            fits_write_key_fixflt(g, &cc("FKEY"), 100.5, 3, Some(&cc("F format")), &mut status);
+            fits_update_key_fixflt(
+                g,
+                &cc("FKEY"),
+                200.5,
+                3,
+                Some(&cc("updated F")),
+                &mut status,
+            );
+
+            assert_eq!(status, 0, "updates failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            // Verify updates
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let g = f.as_deref_mut().unwrap();
+            let mut sval = [0 as c_char; FLEN_VALUE];
+            fits_read_key_str(g, &cc("STRKEY"), &mut sval, None, &mut status);
+            assert_eq!(from_buf(&sval), "updated");
+            let mut dval: c_double = 0.0;
+            fits_read_key(
+                g,
+                crate::KeywordDatatypeMut::TDOUBLE(&mut dval),
+                &cc("DBLKEY"),
+                None,
+                &mut status,
+            );
+            assert!(dval >= 2.4 && dval <= 2.6);
+            let mut fval: f32 = 0.0;
+            fits_read_key(
+                g,
+                crate::KeywordDatatypeMut::TFLOAT(&mut fval),
+                &cc("FLTKEY"),
+                None,
+                &mut status,
+            );
+            assert!(fval >= 2.4 && fval <= 2.6);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_image_ext() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxesll: [LONGLONG; 2] = [10, 10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_imgll(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxesll,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcrimll failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_special_images() {
+        let img_test = |bitpix: c_int| {
+            with_temp_file(|filename| {
+                let mut status: c_int = 0;
+                let name = to_buf(filename);
+                let naxes: [c_long; 2] = [10, 10];
+                let mut f: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut f, &name, &mut status);
+                fits_write_grphdr(
+                    f.as_deref_mut().unwrap(),
+                    1,
+                    bitpix,
+                    2,
+                    &naxes,
+                    0,
+                    1,
+                    1,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "ffphpr failed for bitpix {bitpix}");
+                fits_close_file(f.take().unwrap(), &mut status);
+            });
+        };
+        img_test(USHORT_IMG);
+        img_test(ULONG_IMG);
+        img_test(SBYTE_IMG);
+        img_test(ULONGLONG_IMG);
+    }
+
+    #[test]
+    fn test_putkey_longstrn() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_write_key_longwarn(f.as_deref_mut().unwrap(), &mut status);
+            // Calling again should return without writing (keyword exists)
+            fits_write_key_longwarn(f.as_deref_mut().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffplsw failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_random_groups() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxes: [c_long; 2] = [10, 10];
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            // pcount=2, gcount=3
+            fits_write_grphdr(
+                f.as_deref_mut().unwrap(),
+                1,
+                16,
+                2,
+                &naxes,
+                2,
+                3,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphpr failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_bad_datatype() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let value: c_int = 42;
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // Use an invalid datatype code
+            status = 0;
+            fits_write_key(
+                f.as_deref_mut().unwrap(),
+                KeywordDatatype::from_datatype(9999, &value as *const c_int as *const libc::c_void),
+                &cc("BADTYPE"),
+                Some(&cc("bad datatype")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_DATATYPE);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_template_notfound() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            status = 0;
+            fits_write_key_template(
+                f.as_deref_mut().unwrap(),
+                &cc("nonexistent_template.tpl"),
+                &mut status,
+            );
+            assert_eq!(status, FILE_NOT_OPENED);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_date_errors() {
+        let mut status: c_int;
+        let mut yr: c_int = 0;
+        let mut mon: c_int = 0;
+        let mut day: c_int = 0;
+        let mut hr: c_int = 0;
+        let mut min: c_int = 0;
+        let mut sec: c_double = 0.0;
+
+        // invalid date format for ffs2dt
+        status = 0;
+        fits_str2date(
+            Some(&cc("invalid")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // null input
+        status = 0;
+        fits_str2date(
+            None,
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // too short string
+        status = 0;
+        fits_str2date(
+            Some(&cc("12")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // invalid old format (wrong separator)
+        status = 0;
+        fits_str2date(
+            Some(&cc("12-34-56")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // ffs2tm with null input
+        status = 0;
+        fits_str2time(
+            None,
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            Some(&mut hr),
+            Some(&mut min),
+            Some(&mut sec),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // ffs2tm with invalid format
+        status = 0;
+        fits_str2time(
+            Some(&cc("not-a-date")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            Some(&mut hr),
+            Some(&mut min),
+            Some(&mut sec),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // ffs2tm with invalid time format
+        status = 0;
+        fits_str2time(
+            Some(&cc("12:34")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            Some(&mut hr),
+            Some(&mut min),
+            Some(&mut sec),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+
+        // ffs2tm with invalid date-time separator
+        status = 0;
+        fits_str2time(
+            Some(&cc("2024-01-01X12:00:00")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            Some(&mut hr),
+            Some(&mut min),
+            Some(&mut sec),
+            &mut status,
+        );
+        assert_eq!(status, BAD_DATE);
+    }
+
+    // skipped: fftm2s_safe is todo!() (test_putkey_time_errors)
+
+    #[test]
+    fn test_putkey_verifydate_errors() {
+        let mut status: c_int;
+
+        // Invalid year
+        status = 0;
+        ffverifydate_safe(10000, 1, 1, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Invalid month high
+        status = 0;
+        ffverifydate_safe(2024, 13, 1, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Invalid month low
+        status = 0;
+        ffverifydate_safe(2024, 0, 1, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Invalid day high
+        status = 0;
+        ffverifydate_safe(2024, 1, 32, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Invalid day low
+        status = 0;
+        ffverifydate_safe(2024, 1, 0, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Invalid Feb 29 in non-leap year
+        status = 0;
+        ffverifydate_safe(2023, 2, 29, &mut status);
+        assert_eq!(status, BAD_DATE);
+
+        // Valid Feb 29 in leap year
+        status = 0;
+        ffverifydate_safe(2024, 2, 29, &mut status);
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn test_putkey_dt2s_errors() {
+        let mut status: c_int = 0;
+        let mut datestr = [0 as c_char; 11];
+
+        // Invalid date
+        status = 0;
+        fits_date2str(2024, 13, 1, &mut datestr, &mut status);
+        assert_eq!(status, BAD_DATE);
+    }
+
+    #[test]
+    fn test_putkey_time_keyword_errors() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // fraction out of range (negative)
+            status = 0;
+            fits_write_key_triple(
+                f.as_deref_mut().unwrap(),
+                &cc("BADTIME1"),
+                12345,
+                -0.5,
+                Some(&cc("bad fraction")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            // fraction out of range (> 1)
+            status = 0;
+            fits_write_key_triple(
+                f.as_deref_mut().unwrap(),
+                &cc("BADTIME2"),
+                12345,
+                1.5,
+                Some(&cc("bad fraction")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_tdim_errors() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxes: [c_long; 3] = [10, 20, 30];
+            let ttype = [Some(cc("DATA"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("6000J")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                0,
+                1,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffcrtb failed");
+
+            // column number out of range (0)
+            status = 0;
+            fits_write_tdim(f.as_deref_mut().unwrap(), 0, 3, &naxes, &mut status);
+            assert_eq!(status, BAD_COL_NUM);
+
+            // column number out of range (1000)
+            status = 0;
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1000, 3, &naxes, &mut status);
+            assert_eq!(status, BAD_COL_NUM);
+
+            // naxis < 1
+            status = 0;
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1, 0, &naxes, &mut status);
+            assert_eq!(status, BAD_DIMEN);
+
+            // negative axis value
+            let bad_naxes: [c_long; 3] = [10, -20, 30];
+            status = 0;
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1, 3, &bad_naxes, &mut status);
+            assert_eq!(status, BAD_TDIM);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_tdim_nottable() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxes: [c_long; 2] = [10, 10];
+            let tdim: [c_long; 2] = [5, 20];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_grphdr(
+                f.as_deref_mut().unwrap(),
+                1,
+                16,
+                2,
+                &naxes,
+                0,
+                1,
+                1,
+                &mut status,
+            );
+
+            // Try to write TDIM on image HDU - should fail
+            status = 0;
+            fits_write_tdim(f.as_deref_mut().unwrap(), 1, 2, &tdim, &mut status);
+            assert_eq!(status, NOT_BTABLE);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_very_long_string() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let longstr: String = "x".repeat(400);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("VERYLONG"),
+                &cc(&longstr),
+                Some(&cc("very long string")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkls failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result: *mut c_char = std::ptr::null_mut();
+            fits_read_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("VERYLONG"),
+                &mut result,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkls failed");
+            assert!(!result.is_null());
+            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(got, longstr);
+            fits_free_memory(result as *mut libc::c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_long_string_quotes() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let longstr = "This is a string with 'quotes' and more 'quotes' \
+                that needs to be properly escaped when written";
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("QUOTSTR"),
+                &cc(longstr),
+                Some(&cc("string with quotes")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkls failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result: *mut c_char = std::ptr::null_mut();
+            fits_read_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("QUOTSTR"),
+                &mut result,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkls failed");
+            assert!(!result.is_null());
+            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(got, longstr);
+            fits_free_memory(result as *mut libc::c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_header_longlong() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let naxes: [c_long; 2] = [20, 20];
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_grphdr(
+                f.as_deref_mut().unwrap(),
+                1,
+                LONGLONG_IMG,
+                2,
+                &naxes,
+                0,
+                1,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphpr failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_bintable_vla() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let ttype = [Some(cc("COL1")), Some(cc("COL2"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("1J"), cc("PJ")]; // variable length array
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f.as_deref_mut().unwrap(), &mut status);
+            fits_write_btblhdr(
+                f.as_deref_mut().unwrap(),
+                10,
+                2,
+                &ttype_ref,
+                &tform_ref,
+                None,
+                Some(&cc("TESTTBL")),
+                100,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphbn failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_asciitable_multi() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let ttype = [Some(cc("NAME")), Some(cc("VALUE")), Some(cc("COUNT"))];
+            let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+            let tform_v = [cc("A20"), cc("E15.7"), cc("I10")];
+            let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+            let tunit = [Some(cc("text")), Some(cc("meters")), Some(cc("items"))];
+            let tunit_ref: Vec<Option<&[c_char]>> = tunit.iter().map(|o| o.as_deref()).collect();
+            let tbcol: [c_long; 3] = [1, 21, 37];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f.as_deref_mut().unwrap(), &mut status);
+            fits_write_atblhdr(
+                f.as_deref_mut().unwrap(),
+                50,
+                100,
+                3,
+                &ttype_ref,
+                Some(&tbcol),
+                &tform_ref,
+                Some(&tunit_ref),
+                Some(&cc("TESTTBL")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphtb failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // skipped: ffphext_safe is todo!() (test_putkey_extheader_3d)
+
+    #[test]
+    fn test_putkey_empty_string() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // Test writing empty string
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("EMPTY"),
+                &cc(""),
+                Some(&cc("empty string test")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkys failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut sval = [0 as c_char; FLEN_VALUE];
+            fits_read_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("EMPTY"),
+                &mut sval,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkys failed");
+            assert_eq!(from_buf(&sval), "");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // skipped: fftm2s_safe is todo!() (test_putkey_timeonly)
+
+    #[test]
+    fn test_putkey_date_edge_cases() {
+        let mut status: c_int = 0;
+        let mut yr: c_int = 0;
+        let mut mon: c_int = 0;
+        let mut day: c_int = 0;
+        let mut datestr = [0 as c_char; 11];
+
+        // century boundary (year 2000)
+        fits_date2str(2000, 1, 1, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "2000-01-01");
+
+        // old format with single digit day
+        fits_str2date(
+            Some(&cc("01/02/98")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(yr, 1998);
+        assert_eq!(mon, 2);
+        assert_eq!(day, 1);
+    }
+
+    #[test]
+    fn test_putkey_complex_special() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let cval: [f32; 2] = [1.5, 2.5];
+            let mval: [f64; 2] = [3.5, 4.5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            // very small precision
+            fits_write_key_cmp(
+                g,
+                &cc("CKEY1"),
+                &cval,
+                0,
+                Some(&cc("complex low precision")),
+                &mut status,
+            );
+            fits_write_key_dblcmp(
+                g,
+                &cc("MKEY1"),
+                &mval,
+                0,
+                Some(&cc("dblcomplex low precision")),
+                &mut status,
+            );
+
+            // high precision
+            fits_write_key_cmp(
+                g,
+                &cc("CKEY2"),
+                &cval,
+                14,
+                Some(&cc("complex high precision")),
+                &mut status,
+            );
+            fits_write_key_dblcmp(
+                g,
+                &cc("MKEY2"),
+                &mval,
+                14,
+                Some(&cc("dblcomplex high precision")),
+                &mut status,
+            );
+
+            // fixed format complex
+            fits_write_key_fixcmp(
+                g,
+                &cc("FCKEY"),
+                &cval,
+                0,
+                Some(&cc("fixed complex low prec")),
+                &mut status,
+            );
+            fits_write_key_fixdblcmp(
+                g,
+                &cc("FMKEY"),
+                &mval,
+                0,
+                Some(&cc("fixed dblcomplex low prec")),
+                &mut status,
+            );
+
+            assert_eq!(status, 0, "complex special failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_old_date() {
+        let mut status: c_int = 0;
+        let mut datestr = [0 as c_char; 11];
+
+        // pre-1999 date (should use DD/MM/YY format)
+        fits_date2str(1985, 3, 15, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "15/03/85");
+
+        // 1998 (last year for old format)
+        fits_date2str(1998, 12, 31, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "31/12/98");
+
+        // 1999 (first year for new format)
+        fits_date2str(1999, 1, 1, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "1999-01-01");
+    }
+
+    #[test]
+    fn test_putkey_update_unsigned() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut ulval: c_ulong = 3000000000;
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            // Write and update unsigned long
+            fits_write_key(
+                g,
+                KeywordDatatype::TULONG(&ulval),
+                &cc("ULKEY"),
+                Some(&cc("unsigned long")),
+                &mut status,
+            );
+            ulval = 4000000000;
+            fits_update_key(
+                g,
+                KeywordDatatype::TULONG(&ulval),
+                &cc("ULKEY"),
+                Some(&cc("updated unsigned long")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffuky failed");
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_array_null_comment() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let svals = [cc("alpha"), cc("beta"), cc("gamma")];
+            let svals_ptrs: Vec<*const c_char> = svals.iter().map(|v| v.as_ptr()).collect();
+            let lvals: [c_int; 3] = [1, 0, 1];
+            let jvals: [c_long; 3] = [100, 200, 300];
+            let fvals: [f32; 3] = [1.1, 2.2, 3.3];
+            let dvals: [f64; 3] = [4.4, 5.5, 6.6];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            // Test array keywords with NULL comments (empty pointer slice)
+            let no_comm: [*const c_char; 0] = [];
+            fits_write_keys_str(g, &cc("SKEY"), 1, 3, &svals_ptrs, &no_comm, &mut status);
+            fits_write_keys_log(g, &cc("LKEY"), 1, 3, &lvals, &no_comm, &mut status);
+            fits_write_keys_lng(g, &cc("JKEY"), 1, 3, &jvals, &no_comm, &mut status);
+            fits_write_keys_fixflt(g, &cc("FKEY"), 1, 3, &fvals, 2, &no_comm, &mut status);
+            fits_write_keys_dbl(g, &cc("DKEY"), 1, 3, &dvals, 4, &no_comm, &mut status);
+
+            assert_eq!(status, 0, "array null comment failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_array_nonrepeat_comment() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let svals = [cc("one"), cc("two"), cc("three")];
+            let svals_ptrs: Vec<*const c_char> = svals.iter().map(|v| v.as_ptr()).collect();
+            let lvals: [c_int; 3] = [0, 1, 0];
+            let jvals: [c_long; 3] = [1000, 2000, 3000];
+            let evals: [f32; 3] = [1.0e10, 2.0e10, 3.0e10];
+            let gvals: [f64; 3] = [1.111, 2.222, 3.333];
+            // Non-repeating comments (no trailing &)
+            let comm = [cc("comment one"), cc("comment two"), cc("comment three")];
+            let comm_ptrs: Vec<*const c_char> = comm.iter().map(|v| v.as_ptr()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            fits_write_keys_str(g, &cc("NRSKEY"), 1, 3, &svals_ptrs, &comm_ptrs, &mut status);
+            fits_write_keys_log(g, &cc("NRLKEY"), 1, 3, &lvals, &comm_ptrs, &mut status);
+            fits_write_keys_lng(g, &cc("NRJKEY"), 1, 3, &jvals, &comm_ptrs, &mut status);
+            fits_write_keys_flt(g, &cc("NREKEY"), 1, 3, &evals, 3, &comm_ptrs, &mut status);
+            fits_write_keys_fixdbl(g, &cc("NRGKEY"), 1, 3, &gvals, 4, &comm_ptrs, &mut status);
+
+            assert_eq!(status, 0, "array nonrepeat comment failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_longstr_null_comment() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let longstr: String = "a".repeat(100);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_write_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("LSNULL"),
+                &cc(&longstr),
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkls failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut result: *mut c_char = std::ptr::null_mut();
+            fits_read_key_longstr(
+                f.as_deref_mut().unwrap(),
+                &cc("LSNULL"),
+                &mut result,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkls failed");
+            assert!(!result.is_null());
+            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(got, longstr);
+            fits_free_memory(result as *mut libc::c_void, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_hierarch() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // Explicit HIERARCH keyword
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("HIERARCH MY.LONG.KEYWORD"),
+                &cc("hier value"),
+                Some(&cc("hierarch test")),
+                &mut status,
+            );
+
+            // Long keyword that will have HIERARCH prepended
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("MY.EXTRA.LONG.KEYWORD.NAME"),
+                &cc("auto value"),
+                Some(&cc("auto hierarch")),
+                &mut status,
+            );
+
+            assert_eq!(status, 0, "hierarch failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_leading_spaces() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // Keyword with trailing space - should be trimmed
+            fits_write_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("SPACEKEY "),
+                &cc("test value"),
+                Some(&cc("space test")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpkys failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut sval = [0 as c_char; FLEN_VALUE];
+            fits_read_key_str(
+                f.as_deref_mut().unwrap(),
+                &cc("SPACEKEY"),
+                &mut sval,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgkys failed");
+            assert_eq!(from_buf(&sval), "test value");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_float_formats() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            let g = f.as_deref_mut().unwrap();
+
+            // zero values
+            let mut fval: f32 = 0.0;
+            let mut dval: f64 = 0.0;
+            fits_write_key_flt(
+                g,
+                &cc("FZERO"),
+                fval,
+                6,
+                Some(&cc("zero float E")),
+                &mut status,
+            );
+            fits_write_key_fixflt(
+                g,
+                &cc("FZEROF"),
+                fval,
+                3,
+                Some(&cc("zero float F")),
+                &mut status,
+            );
+            fits_write_key_dbl(
+                g,
+                &cc("DZERO"),
+                dval,
+                10,
+                Some(&cc("zero double E")),
+                &mut status,
+            );
+            fits_write_key_fixdbl(
+                g,
+                &cc("DZEROG"),
+                dval,
+                6,
+                Some(&cc("zero double G")),
+                &mut status,
+            );
+
+            // very small values
+            fval = 1.23e-30;
+            dval = 4.56e-200;
+            fits_write_key_flt(
+                g,
+                &cc("FSMALL"),
+                fval,
+                6,
+                Some(&cc("small float E")),
+                &mut status,
+            );
+            fits_write_key_dbl(
+                g,
+                &cc("DSMALL"),
+                dval,
+                10,
+                Some(&cc("small double E")),
+                &mut status,
+            );
+
+            // very large values
+            fval = 9.87e30;
+            dval = 1.23e200;
+            fits_write_key_flt(
+                g,
+                &cc("FLARGE"),
+                fval,
+                6,
+                Some(&cc("large float E")),
+                &mut status,
+            );
+            fits_write_key_dbl(
+                g,
+                &cc("DLARGE"),
+                dval,
+                10,
+                Some(&cc("large double E")),
+                &mut status,
+            );
+
+            assert_eq!(status, 0, "float formats failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_array_trailing_blanks() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let jvals: [c_long; 3] = [10, 20, 30];
+            // Comments with trailing blanks followed by &
+            let comm = [cc("comment with spaces   &"), cc("second"), cc("third")];
+            let comm_ptrs: Vec<*const c_char> = comm.iter().map(|v| v.as_ptr()).collect();
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            fits_write_keys_lng(
+                f.as_deref_mut().unwrap(),
+                &cc("TBKEY"),
+                1,
+                3,
+                &jvals,
+                &comm_ptrs,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpknj failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_putkey_complex_too_long() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+
+            let cval: [f32; 2] = [1.5, 2.5];
+            let mval: [f64; 2] = [3.5, 4.5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+            // Use very high precision to trigger BAD_F2C error
+            status = 0;
+            fits_write_key_cmp(
+                f.as_deref_mut().unwrap(),
+                &cc("CKEY"),
+                &cval,
+                40,
+                Some(&cc("too long")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            status = 0;
+            fits_write_key_dblcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("MKEY"),
+                &mval,
+                40,
+                Some(&cc("too long")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            status = 0;
+            fits_write_key_fixcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("FCKEY"),
+                &cval,
+                40,
+                Some(&cc("too long")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            status = 0;
+            fits_write_key_fixdblcmp(
+                f.as_deref_mut().unwrap(),
+                &cc("FMKEY"),
+                &mval,
+                40,
+                Some(&cc("too long")),
+                &mut status,
+            );
+            assert_eq!(status, BAD_F2C);
+
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
     }
 }

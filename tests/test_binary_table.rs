@@ -1298,11 +1298,10 @@ fn test_read_table_where_hexadecimal_integer() {
 }
 
 #[test]
-#[ignore]
 fn test_read_table_where_octal_integer() {
     let filename = get_filename();
 
-    // Change these - octal integer 0o11610 = 5000 decimal (NOT IMPLEMENTED - status 431)
+    // Change these - octal integer 0o11610 = 5000 decimal
     let query = "(DIAMETER > 0o11610)";
     let expected_rows = 5; // Venus, Earth, Mars, Jupiter, Saturn
 
@@ -1319,6 +1318,165 @@ fn test_read_table_where_binary_integer() {
     let expected_rows = 5; // Venus, Earth, Mars, Jupiter, Saturn
 
     // Execute
+    readtable(&filename, query, expected_rows);
+}
+
+// ---------------------------------------------------------------------------
+// Bit mask / bit string tests.
+//
+// Two distinct features (see CFITSIO User's Guide sections 10.11.1 / 10.11.2):
+//   * 32-bit integer constants: decimal, 0x.. (hex), 0o.. (octal), 0b.. (binary)
+//     combined with the bitwise operators &, |, ^^.
+//   * bit string masks: b.. (binary), o.. (octal), h.. (hex), each allowing the
+//     'x' wildcard bit, used in (in)equality comparisons that yield a boolean.
+//
+// A purely constant where-expression is treated by fits_find_rows as "no
+// filter" and matches every row, so each bit-string comparison below is ANDed
+// with a column predicate (DIAMETER > 5000, which alone matches 5 rows) so that
+// its boolean result actually drives the row selection: a TRUE mask comparison
+// yields 5 matched rows, a FALSE one yields 0.
+
+#[test]
+fn test_read_table_where_bitmask_equal() {
+    let filename = get_filename();
+
+    // b1010 == b1010 is TRUE, so the result follows DIAMETER > 5000
+    let query = "((b1010 == b1010) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_not_equal() {
+    let filename = get_filename();
+
+    // b1010 == b0101 is FALSE, so no rows match
+    let query = "((b1010 == b0101) && (DIAMETER > 5000))";
+    let expected_rows = 0;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_wildcard() {
+    let filename = get_filename();
+
+    // The 'x' wildcard bit matches either 0 or 1: b1010 matches bxx10
+    let query = "((b1010 == bxx10) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_and() {
+    let filename = get_filename();
+
+    // b1100 & b1010 == b1000 is TRUE
+    let query = "(((b1100 & b1010) == b1000) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_or() {
+    let filename = get_filename();
+
+    // b1100 | b0011 == b1111 is TRUE
+    let query = "(((b1100 | b0011) == b1111) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_not() {
+    let filename = get_filename();
+
+    // !b1010 == b0101 is TRUE (bitwise complement of the 4-bit field)
+    let query = "(((!b1010) == b0101) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_octal_literal() {
+    let filename = get_filename();
+
+    // Octal bit string o17 == binary b1111 is TRUE (leading zeros ignored)
+    let query = "((o17 == b1111) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitmask_hex_literal() {
+    let filename = get_filename();
+
+    // Hex bit string hF == binary b1111 is TRUE
+    let query = "((hF == b1111) && (DIAMETER > 5000))";
+    let expected_rows = 5;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitwise_and_hex_const() {
+    let filename = get_filename();
+
+    // Integer bitwise AND with hex constant: select rows where bit 4 (0x10) is set.
+    // DIAMETER values: 4880, 12112, 12742, 6800, 143000, 121000 -> 4 have bit 4 set.
+    let query = "((DIAMETER & 0x10) != 0)";
+    let expected_rows = 4;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitwise_and_octal_const() {
+    let filename = get_filename();
+
+    // 0o20 == 0x10 == 16: identical mask as the hex case, exercising octal constants.
+    let query = "((DIAMETER & 0o20) != 0)";
+    let expected_rows = 4;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitwise_and_binary_const() {
+    let filename = get_filename();
+
+    // 0b10000 == 16: identical mask again, exercising binary constants.
+    let query = "((DIAMETER & 0b10000) != 0)";
+    let expected_rows = 4;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitwise_or_mask() {
+    let filename = get_filename();
+
+    // All DIAMETER values are even, so OR-ing in bit 0 always increases the value.
+    let query = "((DIAMETER | 0x1) > DIAMETER)";
+    let expected_rows = 6;
+
+    readtable(&filename, query, expected_rows);
+}
+
+#[test]
+fn test_read_table_where_bitwise_xor_mask() {
+    let filename = get_filename();
+
+    // XOR with 0xFFFF always flips low bits, so the value always changes.
+    let query = "((DIAMETER ^^ 0xFFFF) != DIAMETER)";
+    let expected_rows = 6;
+
     readtable(&filename, query, expected_rows);
 }
 

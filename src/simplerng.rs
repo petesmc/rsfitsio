@@ -57,9 +57,11 @@ fn simplerng_getuniform_pr(u: &mut c_uint, v: &mut c_uint) -> f64 {
 /// Private routine to get unsigned integer
 /// Marsaglia multiply-with-carry algorithm (MWC)
 fn simplerng_getuint_pr(u: &mut c_uint, v: &mut c_uint) -> c_uint {
-    *v = 36969 * ((*v) & 65535) + ((*v) >> 16);
-    *u = 18000 * ((*u) & 65535) + ((*u) >> 16);
-    ((*v) << 16) + (*u)
+    /* C uses unsigned int arithmetic, which wraps on overflow; mirror that
+    with wrapping ops so the `(*v) << 16` shift below cannot panic in debug. */
+    *v = 36969u32.wrapping_mul((*v) & 65535).wrapping_add((*v) >> 16);
+    *u = 18000u32.wrapping_mul((*u) & 65535).wrapping_add((*u) >> 16);
+    (*v).wrapping_shl(16).wrapping_add(*u)
 }
 
 /// Get uniform deviate [0,1]
@@ -461,4 +463,138 @@ fn simplerng_logfactorial(n: c_int) -> f64 {
         return (x - 0.5) * (x).ln() - x + 0.5 * (2.0 * PI).ln() + 1.0 / (12.0 * x);
     }
     LF[n as usize]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /* Ported from test_simplerng.c - simple random number generator.
+
+    NOTE on divergence from the C: the Rust port replaced the Marsaglia
+    MWC generator driving srand()/getuniform() with the `fastrand` crate.
+    So `simplerng_srand` reseeds `fastrand` (it does NOT touch the M_U/M_V
+    state), and `simplerng_getuniform`/`getnorm`/`getpoisson` draw from
+    `fastrand`. The M_U/M_V state and `simplerng_getuint`/`getuniform_pr`
+    still use the original MWC algorithm. The tests below reflect that.
+
+    These functions use process-global mutable state and Rust runs #[test]s
+    in parallel, so a mutex serialises them for determinism. */
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn test_state() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let mut u: c_uint = 0;
+        let mut v: c_uint = 0;
+        simplerng_setstate(12345, 67890);
+        simplerng_getstate(&mut u, &mut v);
+        assert_eq!(u, 12345);
+        assert_eq!(v, 67890);
+    }
+
+    #[test]
+    fn test_srand() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let (mut u1, mut v1, mut u2, mut v2) = (0u32, 0u32, 0u32, 0u32);
+        simplerng_srand(42);
+        simplerng_getstate(&mut u1, &mut v1);
+        simplerng_srand(42);
+        simplerng_getstate(&mut u2, &mut v2);
+        assert_eq!(u1, u2);
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_getuint() {
+        let _g = TEST_LOCK.lock().unwrap();
+        simplerng_srand(12345);
+        let u1 = simplerng_getuint();
+        let u2 = simplerng_getuint();
+        assert_ne!(u1, u2);
+    }
+
+    #[test]
+    fn test_getuniform_pr() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let mut u: c_uint = 12345;
+        let mut v: c_uint = 67890;
+        for _ in 0..100 {
+            let val = simplerng_getuniform_pr(&mut u, &mut v);
+            assert!((0.0..1.0).contains(&val));
+        }
+    }
+
+    #[test]
+    fn test_uniform() {
+        let _g = TEST_LOCK.lock().unwrap();
+        simplerng_srand(12345);
+        for _ in 0..1000 {
+            let val = simplerng_getuniform();
+            assert!((0.0..1.0).contains(&val), "out of range: {val}");
+        }
+    }
+
+    #[test]
+    fn test_norm() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let mut sum = 0.0;
+        let mut sumsq = 0.0;
+        let n = 10000;
+        simplerng_srand(54321);
+        for _ in 0..n {
+            let val = simplerng_getnorm();
+            sum += val;
+            sumsq += val * val;
+        }
+        let mean = sum / n as f64;
+        let variance = sumsq / n as f64 - mean * mean;
+        assert!(mean.abs() <= 0.1, "mean {mean}");
+        assert!((variance - 1.0).abs() <= 0.1, "variance {variance}");
+    }
+
+    #[test]
+    fn test_poisson() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let mut sum = 0.0;
+        let lambda = 5.0;
+        let n = 10000;
+        simplerng_srand(99999);
+        for _ in 0..n {
+            let val = simplerng_getpoisson(lambda);
+            assert!(val >= 0);
+            sum += val as f64;
+        }
+        let mean = sum / n as f64;
+        assert!((mean - lambda).abs() <= 0.2, "mean {mean}");
+    }
+
+    #[test]
+    fn test_poisson_large() {
+        let _g = TEST_LOCK.lock().unwrap();
+        let mut sum = 0.0;
+        let lambda = 50.0;
+        let n = 10000;
+        simplerng_srand(11111);
+        for _ in 0..n {
+            let val = simplerng_getpoisson(lambda);
+            assert!(val >= 0);
+            sum += val as f64;
+        }
+        let mean = sum / n as f64;
+        assert!((mean - lambda).abs() <= 1.0, "mean {mean}");
+    }
+
+    #[test]
+    fn test_logfactorial() {
+        let _g = TEST_LOCK.lock().unwrap();
+        assert!((simplerng_logfactorial(0) - 0.0).abs() <= 0.001);
+        assert!((simplerng_logfactorial(1) - 0.0).abs() <= 0.001);
+        assert!((simplerng_logfactorial(5) - 120.0_f64.ln()).abs() <= 0.001);
+        assert!((simplerng_logfactorial(10) - 3628800.0_f64.ln()).abs() <= 0.001);
+
+        /* Test large n (uses Stirling approximation for n > 254) */
+        let lf300 = simplerng_logfactorial(300);
+        assert!((1400.0..=1420.0).contains(&lf300), "lf300 {lf300}");
+    }
 }

@@ -127,7 +127,12 @@ use crate::c_types::*;
 pub(crate) static MUTEX_LOCK: Mutex<bool> = Mutex::new(false);
 
 pub(crate) fn FFLOCK<'a>() -> MutexGuard<'a, bool> {
-    MUTEX_LOCK.lock().unwrap()
+    // Recover from a poisoned mutex rather than panicking. The guarded value is
+    // just a sentinel bool used to serialize critical sections, so it isn't
+    // meaningfully corrupted if a thread (e.g. a panicking unit test) unwinds
+    // while holding the lock. Without this, one panicking test poisons the
+    // process-wide lock and cascades PoisonError into every later FFLOCK caller.
+    MUTEX_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub(crate) fn FFUNLOCK(p: MutexGuard<'_, bool>) {
@@ -420,7 +425,7 @@ impl NullValue {
 #[derive(Debug, PartialEq)]
 pub enum KeywordDatatype<'a> {
     TBYTE(&'a c_uchar),
-    TSBYTE(&'a c_char),
+    TSBYTE(&'a c_schar),
     TSHORT(&'a c_short),
     TUSHORT(&'a c_ushort),
     TINT(&'a c_int),
@@ -442,7 +447,7 @@ impl KeywordDatatype<'_> {
     pub fn from_datatype(datatype: c_int, value: *const c_void) -> Self {
         match datatype {
             TBYTE => KeywordDatatype::TBYTE(unsafe { &*value.cast::<c_uchar>() }),
-            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*value.cast::<c_char>() }),
+            TSBYTE => KeywordDatatype::TSBYTE(unsafe { &*value.cast::<c_schar>() }),
             TSHORT => KeywordDatatype::TSHORT(unsafe { &*value.cast::<c_short>() }),
             TUSHORT => KeywordDatatype::TUSHORT(unsafe { &*value.cast::<c_ushort>() }),
             TINT => KeywordDatatype::TINT(unsafe { &*value.cast::<c_int>() }),

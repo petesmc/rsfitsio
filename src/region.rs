@@ -317,6 +317,7 @@ pub(crate) fn fits_read_ascii_region(
             while currLine[currLoc] != 0 {
                 namePtr = currLoc;
                 paramPtr = 0;
+                paramPtrSet = false;
                 nParams = 1;
 
                 /*  Search for closing parenthesis  */
@@ -334,7 +335,6 @@ pub(crate) fn fits_read_ascii_region(
                                 paramPtrSet = true;
                                 paramPtr = currLoc;
                             }
-                            break;
                         }
                         b')' => {
                             currLine[currLoc] = 0;
@@ -345,7 +345,6 @@ pub(crate) fn fits_read_ascii_region(
                             } else {
                                 done = true;
                             }
-                            break;
                         }
                         b'#' | b'\n' => {
                             currLine[currLoc] = 0;
@@ -353,29 +352,27 @@ pub(crate) fn fits_read_ascii_region(
                                 /* Allow for a blank line */
                                 done = true;
                             }
-                            break;
+                            /* C breaks the switch but the outer while loop
+                            terminates here because *currLoc is now '\0' */
                         }
                         b':' => {
                             currLoc += 1;
                             if paramPtrSet {
                                 cFmt = CoordFmt::HHMMSS; /* set format if parameter has : */
                             }
-                            break;
                         }
                         b'd' => {
                             currLoc += 1;
                             if paramPtrSet {
                                 cFmt = CoordFmt::Degree; /* set format if parameter has d */
                             }
-                            break;
                         }
                         b',' => {
-                            nParams += 1;
+                            nParams += 1; /* Fall through to default */
                             currLoc += 1;
                         }
                         _ => {
                             currLoc += 1;
-                            break;
                         }
                     }
                 }
@@ -665,7 +662,8 @@ pub(crate) fn fits_read_ascii_region(
                 }
 
                 /*  Parse the initial "WCS?" coordinates  */
-                for i in (0..nCoords).step_by(2) {
+                i = 0;
+                while i < nCoords {
                     pX = paramPtr; // Into currLine
                     while currLine[paramPtr] != bb(b',') {
                         paramPtr += 1;
@@ -785,6 +783,7 @@ pub(crate) fn fits_read_ascii_region(
                     }
                     coords[i as usize] = X;
                     coords[i as usize + 1] = Y;
+                    i += 2;
                 }
 
                 /*  Read in remaining parameters...  */
@@ -930,14 +929,15 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
     let mut xprime: f64;
     let mut yprime: f64;
     let mut r: f64;
-    let th: f64;
+    let mut th: f64;
     let mut cur_comp: c_int;
     let mut result: bool = false;
     let mut comp_result: bool = false;
 
     cur_comp = Rgn.Shapes[0].comp;
 
-    for (i, Shapes) in Rgn.Shapes.iter_mut().enumerate() {
+    let nShapes = Rgn.nShapes as usize;
+    for (i, Shapes) in Rgn.Shapes[..nShapes].iter_mut().enumerate() {
         /* if this region has a different component number to the last one  */
         /*	then replace the accumulated selection logical with the union of */
         /*	the current logical and the total logical. Reinitialize the      */
@@ -973,7 +973,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if (x < -dx) || (x > dx) || (y < -dy) || (y > dy) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::BoxAnnulus => {
                     /*  Shift origin to center of region  */
@@ -999,7 +998,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Rectangle => {
                     /*  Shift origin to center of region  */
@@ -1015,7 +1013,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if (x < -dx) || (x > dx) || (y < -dy) || (y > dy) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Diamond => {
                     /*  Shift origin to center of region  */
@@ -1032,7 +1029,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > 1.0 {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Circle => {
                     /*  Shift origin to center of region  */
@@ -1043,7 +1039,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > Shapes.genericParams.a {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Annulus => {
                     /*  Shift origin to center of region  */
@@ -1054,7 +1049,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r < Shapes.genericParams.a || r > Shapes.genericParams.b {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Sector => {
                     /*  Shift origin to center of region  */
@@ -1071,7 +1065,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Ellipse => {
                     /*  Shift origin to center of region  */
@@ -1088,7 +1081,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if r > 1.0 {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::ElliptAnnulus => {
                     /*  Shift origin to center of region  */
@@ -1116,7 +1108,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::Line => {
                     /*  Shift origin to first point of line  */
@@ -1130,7 +1121,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if !(-0.5..0.5).contains(&y) || (x < -0.5) || (x >= Shapes.genericParams.a) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Point => {
                     /*  Shift origin to center of region  */
@@ -1140,7 +1130,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                     if !(-0.5..0.5).contains(&x) || !(-0.5..0.5).contains(&y) {
                         comp_result = false;
                     }
-                    break;
                 }
                 ShapeType::Poly => {
                     if X < Shapes.xmin || X > Shapes.xmax || Y < Shapes.ymin || Y > Shapes.ymax {
@@ -1150,7 +1139,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             Pt_in_Poly(X, Y, Shapes.polyParams.nPts, &mut Shapes.polyParams.Pts)
                                 != 0;
                     }
-                    break;
                 }
                 ShapeType::Panda => {
                     /*  Shift origin to center of region  */
@@ -1170,7 +1158,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             comp_result = false;
                         }
                     }
-                    break;
                 }
                 ShapeType::EPanda => {
                     /*  Shift origin to center of region  */
@@ -1214,7 +1201,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             }
                         }
                     }
-                    break;
                 }
                 ShapeType::BPanda => {
                     /*  Shift origin to center of region  */
@@ -1254,7 +1240,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                             }
                         }
                     }
-                    break;
                 }
             }
 
@@ -2403,4 +2388,1378 @@ pub(crate) fn fits_read_fits_region(
     ffclos_safe(fptr, status);
 
     *status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::helpers::testhelpers::with_temp_file;
+    use libc::c_char;
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Write region file `content` into the temp dir alongside `filename`,
+    /// returning the NUL-terminated path buffer to that file.
+    fn write_region_file(filename: &str, content: &str) -> Vec<c_char> {
+        // filename is e.g. <tmpdir>/test.fits; put the region file next to it.
+        let dir = std::path::Path::new(filename).parent().unwrap();
+        let path = dir.join("test_region.reg");
+        std::fs::write(&path, content).unwrap();
+        cc(path.to_str().unwrap())
+    }
+
+    /// Read an ASCII region file (NULL wcs) and return the region + status.
+    fn read_ascii(path: &[c_char]) -> (Option<Box<SAORegion>>, i32) {
+        let mut status = 0;
+        let mut wcs = WCSdata::default();
+        let mut rgn: Option<Box<SAORegion>> = None;
+        fits_read_ascii_region(path, &mut wcs, &mut rgn, &mut status);
+        (rgn, status)
+    }
+
+    #[test]
+    fn test_circle_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Circle);
+            assert!(rgn.Shapes[0].sign == 1);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // inside edge
+            assert!(fits_in_region(200.0, 100.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 0); // far outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_annulus_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "annulus(100,100,30,60)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Annulus);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
+            assert!(fits_in_region(145.0, 100.0, &mut rgn) == 1); // in annulus
+            assert!(fits_in_region(200.0, 100.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_box_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,40,60,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Box);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(115.0, 125.0, &mut rgn) == 1); // corner inside
+            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rotbox_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rotbox(100,100,40,60,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Box); // rotbox is still box_rgn
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_ellipse_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,50,30,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Ellipse);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // along major axis
+            assert!(fits_in_region(100.0, 120.0, &mut rgn) == 1); // along minor axis
+            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_elliptannulus_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "elliptannulus(100,100,20,10,40,20,0,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::ElliptAnnulus);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
+            assert!(fits_in_region(130.0, 100.0, &mut rgn) == 1); // in annulus
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rectangle_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rectangle(50,50,150,150,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Rectangle);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(60.0, 60.0, &mut rgn) == 1); // inside
+            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_diamond_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "diamond(100,100,60,40,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Diamond);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rhombus_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rhombus(100,100,60,40,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Diamond);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_sector_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "sector(100,100,0,90)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Sector);
+
+            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 1); // first quadrant
+            assert!(fits_in_region(50.0, 150.0, &mut rgn) == 0); // second quadrant
+            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 0); // third quadrant
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_pie_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "pie(100,100,-45,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Sector);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_point_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "point(100,100)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Point);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1);
+            assert!(fits_in_region(101.0, 100.0, &mut rgn) == 0);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_line_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "line(50,50,150,150)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Line);
+
+            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 1);
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_polygon_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "polygon(50,50,150,50,150,150,50,150)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Poly);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(60.0, 60.0, &mut rgn) == 1); // inside
+            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(30.0, 30.0, &mut rgn) == 0); // outside
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_panda_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "panda(100,100,0,90,2,20,60,2)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Panda);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
+            assert!(fits_in_region(140.0, 140.0, &mut rgn) == 1); // in panda sector
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_epanda_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "epanda(100,100,0,90,2,20,10,40,20,2,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::EPanda);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_bpanda_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "bpanda(100,100,0,90,2,30,20,60,40,2,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::BPanda);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_boxannulus_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,20,20,40,40,0,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::BoxAnnulus);
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
+            assert!(fits_in_region(115.0, 100.0, &mut rgn) == 1); // in annulus
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_excluded_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50)\n-circle(100,100,20)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 2);
+            assert!(rgn.Shapes[1].sign == 0); // excluded
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
+            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // outer ring included
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_plus_sign_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "+circle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].sign == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_multiple_regions() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(50,50,20)\ncircle(150,150,20)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 2);
+
+            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 1);
+            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 1);
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // between regions
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_comment_lines() {
+        with_temp_file(|filename| {
+            let path = write_region_file(
+                filename,
+                "# This is a comment\ncircle(100,100,50)\n# Another comment\n",
+            );
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_format_pixel() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "# format: pixel\ncircle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_image_prefix() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "image;circle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_physical_prefix() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "physical;circle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_linear_prefix() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "linear;circle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_global_line() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "global color=green\ncircle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_image_format_line() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "image\ncircle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_physical_format_line() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "physical\ncircle(100,100,50)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_missing_file() {
+        with_temp_file(|filename| {
+            let dir = std::path::Path::new(filename).parent().unwrap();
+            let path = cc(dir.join("nonexistent_region_file.reg").to_str().unwrap());
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_empty_file() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // empty file should fail
+        });
+    }
+
+    #[test]
+    fn test_bad_syntax_unmatched_paren() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_bad_syntax_double_open() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle((100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_bad_syntax_double_close() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50))\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_unrecognized_shape() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "unknownshape(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_circle() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_annulus() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "annulus(100,100,30)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_polygon() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "polygon(100,100,200,100)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_ellipse_with_4_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,50,30)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Ellipse);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_box_with_4_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,50,30)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Box);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_ellipse_6_params_annulus() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,20,10,40,20)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::ElliptAnnulus);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_box_6_params_annulus() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,20,20,40,40)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::BoxAnnulus);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rotrectangle() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rotrectangle(50,50,150,150,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Rectangle);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rotdiamond() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rotdiamond(100,100,50,30,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Diamond);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rotrhombus() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rotrhombus(100,100,50,30,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Diamond);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_elliptannulus_7_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,20,10,40,20,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::ElliptAnnulus);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_boxannulus_7_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,20,20,40,40,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::BoxAnnulus);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_epanda_10_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "epanda(100,100,0,90,2,20,10,40,20,2)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::EPanda);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_bpanda_10_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "bpanda(100,100,0,90,2,30,20,60,40,2)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::BPanda);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_sector_wraparound() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "sector(100,100,170,-170)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Sector);
+
+            // Point to the left (180 degrees) should be included
+            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1);
+            // Point to the right should be excluded
+            assert!(fits_in_region(150.0, 100.0, &mut rgn) == 0);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_blank_lines() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "\n\ncircle(100,100,50)\n\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_trailing_comment() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50) # comment\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_complex_polygon() {
+        with_temp_file(|filename| {
+            // L-shaped polygon
+            let path =
+                write_region_file(filename, "polygon(0,0,50,0,50,50,100,50,100,100,0,100)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+            assert!(rgn.Shapes[0].shape == ShapeType::Poly);
+            assert!(rgn.Shapes[0].polyParams.nPts == 12);
+
+            assert!(fits_in_region(25.0, 75.0, &mut rgn) == 1); // inside L
+            assert!(fits_in_region(75.0, 25.0, &mut rgn) == 0); // corner outside L
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_fk5_format() {
+        with_temp_file(|filename| {
+            // FK5 format line alone; behavior depends on implementation
+            let path = write_region_file(filename, "fk5\n");
+            let _ = read_ascii(&path);
+        });
+    }
+
+    #[test]
+    fn test_fk4_format() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "fk4\n");
+            let _ = read_ascii(&path);
+        });
+    }
+
+    #[test]
+    fn test_icrs_format() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "icrs\n");
+            let _ = read_ascii(&path);
+        });
+    }
+
+    #[test]
+    fn test_fk5_with_circle() {
+        with_temp_file(|filename| {
+            // FK5 format with circle - without WCS, may fail with WCS error
+            let path = write_region_file(filename, "fk5\ncircle(12.5,45.0,0.1)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_icrs_with_circle() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "icrs\ncircle(180.0,30.0,0.5)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_j2000_format() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "j2000\ncircle(90.0,45.0,0.1)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_hhmmss_coords() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "image\ncircle(12:30:00,+45:00:00,10)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_hhmmss_negative_dec() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "image\ncircle(6:15:30,-30:45:15,10)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_colon_in_param() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "image\ncircle(1:00:00,45.0,10)\n");
+            let (rgn, _status) = read_ascii(&path);
+            if let Some(rgn) = rgn {
+                fits_free_region(rgn);
+            }
+        });
+    }
+
+    #[test]
+    fn test_very_long_line() {
+        with_temp_file(|filename| {
+            // Create a polygon with many vertices to make a long line
+            let mut longline = String::from("polygon(");
+            for i in 0..50 {
+                let buf = format!(
+                    "{:.1},{:.1}",
+                    100.0 + (i as f64) * 2.0,
+                    100.0 + ((i % 5) as f64) * 10.0
+                );
+                if i > 0 {
+                    longline.push(',');
+                }
+                longline.push_str(&buf);
+            }
+            longline.push_str(")\n");
+
+            let path = write_region_file(filename, &longline);
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 1);
+            assert!(rgn.Shapes[0].shape == ShapeType::Poly);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_format_after_shapes_error() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(100,100,50)\n# format: pixel\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_unknown_format_error() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "# format: unknown\ncircle(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_galactic_not_supported() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "galactic;circle(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail - galactic not supported
+        });
+    }
+
+    #[test]
+    fn test_ecliptic_not_supported() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ecliptic;circle(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail - ecliptic not supported
+        });
+    }
+
+    #[test]
+    fn test_fits_read_rgnfile() {
+        with_temp_file(|filename| {
+            // fits_read_rgnfile tries FITS first, then ASCII
+            let path = write_region_file(filename, "circle(100,100,50)\n");
+            let mut status = 0;
+            let mut wcs = WCSdata::default();
+            let mut rgn: Option<Box<SAORegion>> = None;
+            fits_read_rgnfile(&path, &mut wcs, &mut rgn, &mut status);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+
+            fits_free_region(rgn.unwrap());
+        });
+    }
+
+    #[test]
+    fn test_fits_in_region_center() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "circle(0,0,10)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_excluded_polygon() {
+        with_temp_file(|filename| {
+            let path = write_region_file(
+                filename,
+                "polygon(0,0,100,0,100,100,0,100)\n-polygon(25,25,75,25,75,75,25,75)\n",
+            );
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            // Point in outer polygon but outside inner (excluded)
+            assert!(fits_in_region(10.0, 10.0, &mut rgn) == 1);
+            // Point in inner excluded polygon
+            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 0);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_multiple_excluded_regions() {
+        with_temp_file(|filename| {
+            let path = write_region_file(
+                filename,
+                "circle(100,100,50)\n-circle(100,100,10)\n-circle(120,100,10)\n",
+            );
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // excluded center
+            assert!(fits_in_region(120.0, 100.0, &mut rgn) == 0); // excluded offset
+            assert!(fits_in_region(80.0, 100.0, &mut rgn) == 1); // included area
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_panda_center_excluded() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "panda(100,100,0,360,1,20,60,1)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
+            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // in panda ring
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_bpanda_in_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "bpanda(100,100,-45,45,1,20,20,60,60,1,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
+            assert!(fits_in_region(125.0, 100.0, &mut rgn) == 1); // in correct angle/radius
+            assert!(fits_in_region(100.0, 125.0, &mut rgn) == 0); // outside angle range
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_epanda_in_region() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "epanda(100,100,-45,45,1,10,5,30,15,1,0)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
+            assert!(fits_in_region(120.0, 100.0, &mut rgn) == 1); // in correct angle/radius
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_many_regions_realloc() {
+        with_temp_file(|filename| {
+            // 11 regions to trigger realloc of Shapes array (initial alloc is 10)
+            let path = write_region_file(
+                filename,
+                "circle(10,10,5)\n\
+                 circle(20,10,5)\n\
+                 circle(30,10,5)\n\
+                 circle(40,10,5)\n\
+                 circle(50,10,5)\n\
+                 circle(60,10,5)\n\
+                 circle(70,10,5)\n\
+                 circle(80,10,5)\n\
+                 circle(90,10,5)\n\
+                 circle(100,10,5)\n\
+                 circle(110,10,5)\n",
+            );
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let rgn = rgn.unwrap();
+            assert!(rgn.nShapes == 11);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_sector() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "sector(100,100,45)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_point() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "point(100)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_line() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "line(100,100,200)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_panda() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "panda(100,100,0,90,2,20,60)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_epanda() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "epanda(100,100,0,90,2,20,10,40)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_bpanda() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "bpanda(100,100,0,90,2,30,20,60)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_rectangle() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rectangle(50,50,150)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_wrong_param_count_diamond() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "diamond(100,100,60)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_polygon_odd_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "polygon(100,100,200,100,150)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_polygon_on_edge() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "polygon(0,0,100,0,100,100,0,100)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            // Points exactly on edges should be included
+            assert!(fits_in_region(50.0, 0.0, &mut rgn) == 1); // bottom edge
+            assert!(fits_in_region(0.0, 50.0, &mut rgn) == 1); // left edge
+            assert!(fits_in_region(100.0, 50.0, &mut rgn) == 1); // right edge
+            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1); // top edge
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_polygon_vertex() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "polygon(0,0,100,0,50,100)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            // Points at vertices should be included
+            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 1);
+            assert!(fits_in_region(100.0, 0.0, &mut rgn) == 1);
+            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1);
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_ellipse_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,50,30,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_box_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,40,60,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_diamond_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "diamond(100,100,60,40,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_rectangle_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "rectangle(50,50,150,150,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_elliptannulus_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "elliptannulus(100,100,20,10,40,20,30,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded (hole)
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_boxannulus_rotated() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,20,20,40,40,30,45)\n");
+            let (rgn, status) = read_ascii(&path);
+            assert!(status == 0);
+            assert!(rgn.is_some());
+            let mut rgn = rgn.unwrap();
+
+            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded (hole)
+
+            fits_free_region(rgn);
+        });
+    }
+
+    #[test]
+    fn test_ellipse_wrong_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_box_wrong_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,50)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_ellipse_too_many_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "ellipse(100,100,20,10,40,20,30,45,99)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
+
+    #[test]
+    fn test_box_too_many_params() {
+        with_temp_file(|filename| {
+            let path = write_region_file(filename, "box(100,100,20,20,40,40,30,45,99)\n");
+            let (_rgn, status) = read_ascii(&path);
+            assert!(status != 0); // should fail
+        });
+    }
 }

@@ -1971,3 +1971,559 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
         0
     }
 }
+
+// The whole C file is inside `#ifdef HAVE_SHMEM_SERVICES`.  In Rust the module
+// `src/drvrsmem.rs` is gated `#[cfg(all(feature = "shared_mem", not(target_os =
+// "windows")))]`, so this entire test module is gated the same way.  Without the
+// feature this file compiles to nothing and is harmless.
+//
+// IMPORTANT: shared-memory segments are PROCESS-GLOBAL and persist for the life
+// of the process.  The tests use fixed segment names h0..h14, so this test MUST
+// be run single-threaded to avoid cross-test interference:
+//
+//     cargo test --features shared_mem --test test_drvrsmem -- --test-threads=1
+//
+// Each test deletes its own segment(s) at the end, mirroring the C exactly.
+#[cfg(test)]
+#[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BYTE_IMG, FLEN_COMMENT, FLEN_FILENAME, FLEN_VALUE, LONGLONG, READONLY, READWRITE,
+        SHARED_BADARG, SHORT_IMG, TBYTE, TLONG, TSHORT, fitsfile,
+    };
+    use bytemuck::{cast_slice, cast_slice_mut};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Build a NUL-terminated fixed-size `[c_char; FLEN_FILENAME]` from a `&str`.
+    fn cc_fixed(s: &str) -> [c_char; FLEN_FILENAME] {
+        let mut buf = [0 as c_char; FLEN_FILENAME];
+        for (i, b) in s.bytes().enumerate() {
+            buf[i] = b as c_char;
+        }
+        buf
+    }
+
+    /// Read a NUL-terminated `[c_char]` into a Rust `String`.
+    fn from_buf(buf: &[c_char]) -> String {
+        let bytes: Vec<u8> = buf
+            .iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as u8)
+            .collect();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    /// Create and populate the `shmem://h0` segment exactly as
+    /// `test_create_shmem_file` does in the C source.
+    ///
+    /// In C these tests run sequentially from `main()` and share the single h0
+    /// segment (create -> read -> keywords -> delete).  Rust runs each `#[test]`
+    /// independently (and, even single-threaded, in alphabetical rather than
+    /// source order), so the create/read/keywords/delete tests cannot rely on a
+    /// previous test having left h0 in place.  Each h0-using test therefore sets
+    /// up its own copy with this helper and tears it down at the end.
+    fn setup_h0() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 2] = [10, 10];
+        let mut data = [0i16; 100];
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = i as i16;
+        }
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h0"), &mut status);
+        assert_eq!(status, 0, "setup ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+        assert_eq!(status, 0, "setup ffphps failed");
+        fits_write_img(
+            f.as_deref_mut().unwrap(),
+            TSHORT,
+            1,
+            100,
+            cast_slice(&data),
+            &mut status,
+        );
+        assert_eq!(status, 0, "setup ffppr failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "setup ffclos failed");
+    }
+
+    /// Delete the `shmem://h0` segment (open RW then ffdelt).
+    fn cleanup_h0() {
+        let mut status: c_int = 0;
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut f, &cc("shmem://h0"), READWRITE, &mut status);
+        assert_eq!(status, 0, "cleanup ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "cleanup ffdelt failed");
+    }
+
+    #[test]
+    fn test_create_shmem_file() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 2] = [10, 10];
+        let mut data = [0i16; 100];
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = i as i16;
+        }
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h0"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_write_img(
+            f.as_deref_mut().unwrap(),
+            TSHORT,
+            1,
+            100,
+            cast_slice(&data),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffppr failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        // Tear down h0 so this test is self-contained (see setup_h0 comment).
+        cleanup_h0();
+    }
+
+    #[test]
+    fn test_open_and_read_shmem() {
+        setup_h0();
+
+        let mut status: c_int = 0;
+        let mut data = [0i16; 100];
+        let mut anynull: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut f, &cc("shmem://h0"), READONLY, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_read_img(
+            f.as_deref_mut().unwrap(),
+            TSHORT,
+            1,
+            100,
+            None,
+            cast_slice_mut(&mut data),
+            Some(&mut anynull),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffgpv failed");
+        assert!(!(data[0] != 0));
+        assert!(!(data[50] != 50));
+        assert!(!(data[99] != 99));
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        cleanup_h0();
+    }
+
+    #[test]
+    fn test_shmem_keywords() {
+        setup_h0();
+
+        let mut status: c_int = 0;
+        let mut strval = [0 as c_char; FLEN_VALUE];
+        let mut comment = [0 as c_char; FLEN_COMMENT];
+        let mut longval: c_long = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut f, &cc("shmem://h0"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_write_key_str(
+            f.as_deref_mut().unwrap(),
+            &cc("TESTKEY"),
+            &cc("testval"),
+            Some(&cc("test comment")),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffpkys failed");
+        fits_write_key_lng(
+            f.as_deref_mut().unwrap(),
+            &cc("INTKEY"),
+            12345,
+            Some(&cc("integer key")),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffpkyj failed");
+        fits_read_key_str(
+            f.as_deref_mut().unwrap(),
+            &cc("TESTKEY"),
+            &mut strval,
+            Some(&mut comment),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffgkys failed");
+        assert!(!(from_buf(&strval) != "testval"));
+        fits_read_key(
+            f.as_deref_mut().unwrap(),
+            crate::KeywordDatatypeMut::TLONG(&mut longval),
+            &cc("INTKEY"),
+            Some(&mut comment),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffgky failed");
+        assert!(!(longval != 12345));
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        // ensure TLONG datatype constant is referenced (mirrors C's TLONG usage)
+        let _ = TLONG;
+
+        cleanup_h0();
+    }
+
+    #[test]
+    fn test_delete_shmem() {
+        setup_h0();
+
+        let mut status: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut f, &cc("shmem://h0"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_create_second_segment() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h1"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_smem_option_functions() {
+        let mut options: c_int = 0;
+        let mut version: c_int = 0;
+
+        assert!(!(smem_setoptions(42) != 0));
+        assert!(!(smem_getoptions(&mut options) != 0));
+        assert!(!(options != 0));
+        // C also asserts smem_getoptions(NULL) == SHARED_NULPTR, but the Rust
+        // signature takes `&mut c_int` (no NULL possible), so that case cannot
+        // be exercised through this API.
+        assert!(!(smem_getversion(&mut version) != 0));
+        assert!(!(version != 10));
+        // Likewise smem_getversion(NULL) == SHARED_NULPTR is not testable here.
+    }
+
+    #[test]
+    fn test_shared_utility_functions() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h6"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        unsafe {
+            assert!(!(shared_list(-1) != 0));
+            assert!(!(shared_list(6) != 0));
+            let mut addr: *mut c_char = std::ptr::null_mut();
+            assert!(!(shared_getaddr(6, &mut addr) != 0));
+            assert!(!(addr.is_null()));
+            assert!(!(shared_recover(-1) != 0));
+            assert!(!(shared_recover(6) != 0));
+            assert!(!(shared_uncond_delete(6) != 0));
+        }
+    }
+
+    #[test]
+    fn test_read_beyond_eof() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [2];
+        let mut data = [0u8; 1000];
+        let mut anynull: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h3"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        fits_open_file(&mut f, &cc("shmem://h3"), READONLY, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        let rc = fits_read_img(
+            f.as_deref_mut().unwrap(),
+            TBYTE,
+            1,
+            1000,
+            None,
+            &mut data,
+            Some(&mut anynull),
+            &mut status,
+        );
+        assert!(!(rc == 0));
+
+        status = 0;
+        fits_close_file(f.take().unwrap(), &mut status);
+
+        status = 0;
+        fits_open_file(&mut f, &cc("shmem://h3"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_smem_read_beyond_eof() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [2];
+        let mut data = [0u8; 1000];
+        let mut handle: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h4"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        let mut name = cc("h4");
+        assert!(!(smem_open(&mut name, READONLY, &mut handle) != 0));
+        assert!(!(smem_seek(handle, 99999) != 0));
+        assert!(!(smem_read(handle, &mut data, 1000) != SHARED_BADARG));
+        assert!(!(smem_close(handle) != 0));
+
+        fits_open_file(&mut f, &cc("shmem://h4"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_cleanup_locked_segment() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [3];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h2"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        smem_shutdown();
+        // C deliberately leaks the open fitsfile here (cleanup deletes the
+        // segment underneath it); we do the same by forgetting the handle so we
+        // don't attempt to close a segment that has been torn down.
+        std::mem::forget(f.take());
+    }
+
+    #[test]
+    fn test_cleanup_with_debug() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [3];
+
+        unsafe {
+            shared_set_debug(1);
+        }
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h5"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        assert!(!(smem_shutdown() != 0));
+        // restore debug mode and avoid closing a torn-down segment
+        unsafe {
+            shared_set_debug(0);
+        }
+        std::mem::forget(f.take());
+    }
+
+    #[test]
+    fn test_smem_size() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 2] = [10, 10];
+        let mut handle: c_int = 0;
+        let mut size: usize = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h7"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        let mut name = cc("h7");
+        assert!(!(smem_open(&mut name, READONLY, &mut handle) != 0));
+        assert!(!(smem_size(handle, &mut size) != 0));
+        assert!(!((size as LONGLONG) < 2880));
+        assert!(!(smem_close(handle) != 0));
+
+        fits_open_file(&mut f, &cc("shmem://h7"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_smem_flush() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+        let mut handle: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h8"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        let mut name = cc("h8");
+        assert!(!(smem_open(&mut name, READWRITE, &mut handle) != 0));
+        assert!(!(smem_flush(handle) != 0));
+        assert!(!(smem_close(handle) != 0));
+
+        fits_open_file(&mut f, &cc("shmem://h8"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_smem_write() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [10];
+        let mut handle: c_int = 0;
+        let data: [u8; 4] = [0xFF, 0xFE, 0xFD, 0xFC];
+        let mut readbuf = [0u8; 4];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h9"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        let mut name = cc("h9");
+        assert!(!(smem_open(&mut name, READWRITE, &mut handle) != 0));
+        assert!(!(smem_seek(handle, 2880) != 0));
+        assert!(!(smem_write(handle, &data, 4) != 0));
+        assert!(!(smem_seek(handle, 2880) != 0));
+        assert!(!(smem_read(handle, &mut readbuf, 4) != 0));
+        assert!(!(readbuf[0] != 0xFF));
+        assert!(!(readbuf[1] != 0xFE));
+        assert!(!(smem_close(handle) != 0));
+
+        fits_open_file(&mut f, &cc("shmem://h9"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_smem_remove() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [3];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h10"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        // smem_remove should fail on open segment or work on closed
+        assert!(!(smem_remove(&cc("h10")) != 0));
+    }
+
+    #[test]
+    fn test_shared_set_createmode() {
+        unsafe {
+            let oldmode = shared_set_createmode(0o666);
+            shared_set_createmode(oldmode);
+        }
+    }
+
+    #[test]
+    fn test_smem_open_nonexistent() {
+        let mut handle: c_int = 0;
+        // Opening non-existent segment should fail
+        let mut name = cc("nonexistent_segment_xyz");
+        assert!(!(smem_open(&mut name, READONLY, &mut handle) == 0));
+    }
+
+    #[test]
+    fn test_smem_create_and_delete() {
+        let mut handle: c_int = 0;
+        let mut name = cc_fixed("h11");
+        assert!(!(smem_create(&mut name, &mut handle) != 0));
+        assert!(!(smem_close(handle) != 0));
+        let mut openname = cc("h11");
+        assert!(!(smem_open(&mut openname, READWRITE, &mut handle) != 0));
+        assert!(!(smem_close(handle) != 0));
+        assert!(!(smem_remove(&cc("h11")) != 0));
+    }
+
+    #[test]
+    fn test_shared_attr() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [10];
+        let mut handle: c_int = 0;
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h13"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        let mut name = cc("h13");
+        assert!(!(smem_open(&mut name, READONLY, &mut handle) != 0));
+        let _attr = unsafe { shared_attr(handle as usize) };
+        assert!(!(smem_close(handle) != 0));
+
+        fits_open_file(&mut f, &cc("shmem://h13"), READWRITE, &mut status);
+        assert_eq!(status, 0, "ffopen failed");
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    #[test]
+    fn test_list_with_segments() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+
+        // Create a segment and list it
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, &cc("shmem://h14"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        assert_eq!(status, 0, "ffphps failed");
+        unsafe {
+            assert!(!(shared_list(-1) != 0));
+        }
+        fits_delete_file(&mut f, &mut status);
+        assert_eq!(status, 0, "ffdelt failed");
+    }
+}

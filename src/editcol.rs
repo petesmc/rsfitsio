@@ -82,7 +82,9 @@ pub fn ffrsim_safe(
         return *status;
     }
 
-    let _to = cmp::min(naxis, 99) as usize;
+    // C loop: for (ii = 0; (ii < naxis) && (ii < 99); ii++)
+    // naxis may be negative (caller error), so clamp the upper bound at 0.
+    let _to = cmp::min(naxis, 99).max(0) as usize;
 
     for ii in 0.._to {
         tnaxes[ii] = naxes[ii] as LONGLONG;
@@ -1154,7 +1156,7 @@ pub fn ffrwrg_safe(
             // minval = strtol_safe(&rowlist[ni..], &mut ni, 10);
             let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
             minval = r;
-            ni = n;
+            ni += n;
         } else {
             *status = RANGE_PARSE_ERROR;
             ffpmsg_str("Syntax error in this row range list:");
@@ -1177,7 +1179,7 @@ pub fn ffrwrg_safe(
                 //maxval = strtol_safe(&rowlist[ni..], &mut ni, 10);
                 let (r, n) = strtol_safe(&rowlist[ni..]).unwrap();
                 maxval = r;
-                ni = n;
+                ni += n;
             } else if rowlist[ni] == bb(b',') || rowlist[ni] == 0 {
                 maxval = maxrows as c_long; /* implied max value */
             } else {
@@ -1349,7 +1351,9 @@ pub fn ffrwrgll_safe(
             /* read as a double, because the string to LONGLONG function */
             /* is platform dependent (strtoll, strtol, _atoI64)          */
 
-            dvalue = strtod_safe(&rowlist[ni..], &mut ni);
+            let mut nn = 0;
+            dvalue = strtod_safe(&rowlist[ni..], &mut nn);
+            ni += nn;
             minval = (dvalue + 0.1) as LONGLONG;
         } else {
             *status = RANGE_PARSE_ERROR;
@@ -1373,7 +1377,9 @@ pub fn ffrwrgll_safe(
                 /* read as a double, because the string to LONGLONG function */
                 /* is platform dependent (strtoll, strtol, _atoI64)          */
 
-                dvalue = strtod_safe(&rowlist[ni..], &mut ni);
+                let mut nn = 0;
+                dvalue = strtod_safe(&rowlist[ni..], &mut nn);
+                ni += nn;
                 maxval = (dvalue + 0.1) as LONGLONG;
             } else if rowlist[ni] == bb(b',') || rowlist[ni] == 0 {
                 maxval = maxrows; /* implied max value */
@@ -3410,8 +3416,10 @@ pub fn ffcpsr_safe(
         }
 
         ffirow_safe(outfptr, outnaxis2, n_good_rows, status);
-        let mut ii = firstrow;
+        /* C: for (ii = firstrow, i0 = 0; i0 < nrows; i0++, ii++) - ii advances
+        every iteration, including skipped rows */
         for i0 in 0..(nrows as usize) {
+            let ii = firstrow + i0 as LONGLONG;
             /* Ignore rows with row_status[] == 0 */
             if let Some(row_status) = row_status
                 && row_status[i0] == 0
@@ -3516,13 +3524,14 @@ pub fn ffcpsr_safe(
                 }
             }
             jj += 1;
-            ii += 1;
         }
     } else {
         /* copy the rows, 1 at a time */
         n_good_rows = 0;
-        let mut ii = firstrow;
+        /* C: for (ii = firstrow, i0 = 0; i0 < nrows; i0++, ii++) - ii advances
+        every iteration, including skipped rows */
         for i0 in 0..(nrows as usize) {
+            let ii = firstrow + i0 as LONGLONG;
             /* Ignore rows with row_status[] == 0 */
             if let Some(row_status) = row_status
                 && row_status[i0] == 0
@@ -3534,7 +3543,6 @@ pub fn ffcpsr_safe(
             ffptbb_safe(outfptr, jj, 1, innaxis1, &buffer, status);
             n_good_rows += 1;
             jj += 1;
-            ii += 1;
         }
     }
     outnaxis2 += n_good_rows;
@@ -4384,4 +4392,1399 @@ pub fn ffshft_safe(
         ntodo -= ntomov;
     }
     *status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aliases::rust_api::*;
+    use crate::fitsio::{
+        BAD_BITPIX, BAD_NAXES, BAD_NAXIS, BINARY_TBL, BYTE_IMG, LONGLONG, LONGLONG_IMG, READONLY,
+        READWRITE, SHORT_IMG, ULONG_IMG, USHORT_IMG, fitsfile,
+    };
+    use crate::helpers::testhelpers::{from_buf, to_buf, with_temp_file};
+    use libc::{c_char, c_int, c_long};
+
+    /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Create a binary table with the given columns and return the open file.
+    fn make_table(
+        name: &[c_char],
+        ttype: &[&str],
+        tform: &[&str],
+        nrows: LONGLONG,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype_v: Vec<Option<Vec<c_char>>> = ttype.iter().map(|s| Some(cc(s))).collect();
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype_v.iter().map(|o| o.as_deref()).collect();
+        let tform_v: Vec<Vec<c_char>> = tform.iter().map(|s| cc(s)).collect();
+        let tform_ref: Vec<&[c_char]> = tform_v.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            nrows,
+            ttype.len() as c_int,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        f
+    }
+
+    #[test]
+    fn test_resize_image() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes_orig: [c_long; 2] = [10, 10];
+            let naxes_new: [c_long; 2] = [20, 20];
+            let mut data = [0i16; 400];
+            for (i, d) in data.iter_mut().enumerate().take(100) {
+                *d = i as i16;
+            }
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxes_orig,
+                &mut status,
+            );
+            fits_write_img_sht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                100,
+                &data[..100],
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            // Resize from 10x10 to 20x20.
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxes_new,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "resize");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut simple = 0;
+            let mut bitpix = 0;
+            let mut naxis = 0;
+            let mut naxes_out = [0 as c_long; 2];
+            let mut pcount = 0;
+            let mut gcount = 0;
+            let mut extend = 0;
+            fits_read_imghdr(
+                f.as_deref_mut().unwrap(),
+                2,
+                &mut simple,
+                &mut bitpix,
+                Some(&mut naxis),
+                naxes_out.as_mut_ptr(),
+                &mut pcount,
+                &mut gcount,
+                &mut extend,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(naxis, 2);
+            assert_eq!(naxes_out[0], 20);
+            assert_eq!(naxes_out[1], 20);
+            // Read back data - original data should still be at the start.
+            let mut result = [0i16; 400];
+            let mut anynull = 0;
+            fits_read_img_sht(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                100,
+                0,
+                &mut result[..100],
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(result[0], 0);
+            assert_eq!(result[50], 50);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_smaller() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes_orig: [c_long; 2] = [20, 20];
+            let naxes_new: [c_long; 2] = [5, 5];
+            let data: [i16; 400] = std::array::from_fn(|i| i as i16);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxes_orig,
+                &mut status,
+            );
+            fits_write_img_sht(f.as_deref_mut().unwrap(), 1, 1, 400, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            // Resize from 20x20 to 5x5.
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxes_new,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "resize");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut simple = 0;
+            let mut bitpix = 0;
+            let mut naxis = 0;
+            let mut naxes_out = [0 as c_long; 2];
+            let mut pcount = 0;
+            let mut gcount = 0;
+            let mut extend = 0;
+            fits_read_imghdr(
+                f.as_deref_mut().unwrap(),
+                2,
+                &mut simple,
+                &mut bitpix,
+                Some(&mut naxis),
+                naxes_out.as_mut_ptr(),
+                &mut pcount,
+                &mut gcount,
+                &mut extend,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(naxis, 2);
+            assert_eq!(naxes_out[0], 5);
+            assert_eq!(naxes_out[1], 5);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_rows() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 3] = [100, 200, 300];
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 3, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Insert 2 rows after row 1.
+            fits_insert_rows(f.as_deref_mut().unwrap(), 1, 2, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 5);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 5];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Row 1 = 100, rows 2-3 = 0 (inserted), rows 4-5 = 200, 300.
+            assert_eq!(result, [100, 0, 0, 200, 300]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_rows() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 5] = [100, 200, 300, 400, 500];
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 5, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Delete 2 rows starting at row 2.
+            fits_delete_rows(f.as_deref_mut().unwrap(), 2, 2, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Rows 2-3 deleted: 100, 400, 500.
+            assert_eq!(result, [100, 400, 500]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_row_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 10] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+            let rowrange = cc("2-4, 8"); // Delete rows 2, 3, 4, 8.
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 10, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 10, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_delete_rowrange(f.as_deref_mut().unwrap(), &rowrange, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 6);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 6];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                6,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Remaining: 10, 50, 60, 70, 90, 100.
+            assert_eq!(result, [10, 50, 60, 70, 90, 100]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_row_range_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 5] = [10, 20, 30, 40, 50];
+            let rowlist: [LONGLONG; 2] = [2, 3]; // Delete rows 2 and 3.
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 5, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Delete rows 2-3 using LONGLONG coordinates.
+            fits_delete_rowlistll(f.as_deref_mut().unwrap(), &rowlist, 2, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(result[0], 10); // Row 1 preserved.
+            assert_eq!(result[1], 40); // Original row 4, now row 2.
+            assert_eq!(result[2], 50); // Original row 5, now row 3.
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_delete_rows_by_list() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 5] = [10, 20, 30, 40, 50];
+            let rowlist: [c_long; 2] = [2, 4]; // Delete rows 2 and 4.
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 5, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            fits_delete_rowlist(f.as_deref_mut().unwrap(), &rowlist, 2, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Remaining: 10, 30, 50.
+            assert_eq!(result, [10, 30, 50]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data1: [c_long; 3] = [10, 20, 30];
+            let data3: [c_long; 3] = [100, 200, 300];
+
+            let mut f = make_table(&name, &["COL1", "COL3"], &["1J", "1J"], 3, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 2, 1, 1, 3, &data3, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Insert a column at position 2.
+            fits_insert_col(
+                f.as_deref_mut().unwrap(),
+                2,
+                &cc("COL2"),
+                &cc("1E"),
+                &mut status,
+            );
+            let mut ncols = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Column 3 now has the old COL3 data.
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                3,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(result, [100, 200, 300]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_insert_columns() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 3, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Insert 2 columns at position 1.
+            let newttype_v = [cc("COLA"), cc("COLB")];
+            let newttype: Vec<&[c_char]> = newttype_v.iter().map(|v| v.as_slice()).collect();
+            let newtform_v = [cc("1E"), cc("1D")];
+            let newtform: Vec<&[c_char]> = newtform_v.iter().map(|v| v.as_slice()).collect();
+            fits_insert_cols(
+                f.as_deref_mut().unwrap(),
+                1,
+                2,
+                &newttype,
+                &newtform,
+                &mut status,
+            );
+            let mut ncols = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_delete_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data1: [c_long; 3] = [10, 20, 30];
+            let data2: [c_long; 3] = [40, 50, 60];
+            let data3: [c_long; 3] = [70, 80, 90];
+
+            let mut f = make_table(
+                &name,
+                &["COL1", "COL2", "COL3"],
+                &["1J", "1J", "1J"],
+                3,
+                &mut status,
+            );
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data1, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 2, 1, 1, 3, &data2, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 3, 1, 1, 3, &data3, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Delete column 2.
+            fits_delete_col(f.as_deref_mut().unwrap(), 2, &mut status);
+            let mut ncols = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 2);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Column 2 now has the old COL3 data.
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                2,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(result, [70, 80, 90]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_column() {
+        with_temp_file(|f1name| {
+            with_temp_file(|f2name| {
+                let mut status = 0;
+                let name1 = to_buf(f1name);
+                let name2 = to_buf(f2name);
+                let data: [c_long; 3] = [100, 200, 300];
+
+                let mut f1 = make_table(&name1, &["COL1"], &["1J"], 3, &mut status);
+                fits_write_col_lng(f1.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+                fits_close_file(f1.take().unwrap(), &mut status);
+
+                let mut f2 = make_table(&name2, &[], &[], 3, &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                fits_open_file(&mut f1, &name1, READONLY, &mut status);
+                fits_open_file(&mut f2, &name2, READWRITE, &mut status);
+                fits_movabs_hdu(f1.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                // Copy column 1 from f1 to column 1 of f2 (create_col=1 to insert).
+                fits_copy_col(
+                    f1.as_deref_mut().unwrap(),
+                    f2.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    &mut status,
+                );
+                fits_close_file(f1.take().unwrap(), &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                fits_open_file(&mut f2, &name2, READONLY, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                let mut result = [0 as c_long; 3];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    f2.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    3,
+                    0,
+                    &mut result,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(result, [100, 200, 300]);
+                fits_close_file(f2.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_rows() {
+        with_temp_file(|f1name| {
+            with_temp_file(|f2name| {
+                let mut status = 0;
+                let name1 = to_buf(f1name);
+                let name2 = to_buf(f2name);
+                let data: [c_long; 5] = [10, 20, 30, 40, 50];
+
+                let mut f1 = make_table(&name1, &["COL1"], &["1J"], 5, &mut status);
+                fits_write_col_lng(f1.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+                fits_close_file(f1.take().unwrap(), &mut status);
+
+                let mut f2 = make_table(&name2, &["COL1"], &["1J"], 0, &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                fits_open_file(&mut f1, &name1, READONLY, &mut status);
+                fits_open_file(&mut f2, &name2, READWRITE, &mut status);
+                fits_movabs_hdu(f1.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                // Copy 3 rows starting at row 2 (rows 2, 3, 4).
+                fits_copy_rows(
+                    f1.as_deref_mut().unwrap(),
+                    f2.as_deref_mut().unwrap(),
+                    2,
+                    3,
+                    &mut status,
+                );
+                fits_close_file(f1.take().unwrap(), &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                fits_open_file(&mut f2, &name2, READONLY, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                let mut nrows: LONGLONG = 0;
+                fits_get_num_rowsll(f2.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 3);
+                let mut result = [0 as c_long; 3];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    f2.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    3,
+                    0,
+                    &mut result,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(result, [20, 30, 40]);
+                fits_close_file(f2.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_selected_rows() {
+        with_temp_file(|f1name| {
+            with_temp_file(|f2name| {
+                let mut status = 0;
+                let name1 = to_buf(f1name);
+                let name2 = to_buf(f2name);
+                let data: [c_long; 5] = [10, 25, 30, 45, 50];
+                let expr = cc("VALUE > 20");
+
+                let mut f1 = make_table(&name1, &["VALUE"], &["1J"], 5, &mut status);
+                fits_write_col_lng(f1.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
+                fits_close_file(f1.take().unwrap(), &mut status);
+
+                let mut f2 = make_table(&name2, &["VALUE"], &["1J"], 0, &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                fits_open_file(&mut f1, &name1, READONLY, &mut status);
+                fits_open_file(&mut f2, &name2, READWRITE, &mut status);
+                fits_movabs_hdu(f1.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                // Copy rows where VALUE > 20.
+                fits_select_rows(
+                    f1.as_deref_mut().unwrap(),
+                    f2.as_deref_mut().unwrap(),
+                    &expr,
+                    &mut status,
+                );
+                fits_close_file(f1.take().unwrap(), &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                fits_open_file(&mut f2, &name2, READONLY, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                let mut nrows: LONGLONG = 0;
+                fits_get_num_rowsll(f2.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 4); // 25, 30, 45, 50 all > 20.
+                let mut result = [0 as c_long; 4];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    f2.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    4,
+                    0,
+                    &mut result,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(result, [25, 30, 45, 50]);
+                fits_close_file(f2.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_modify_vector_column() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 6] = [1, 2, 3, 4, 5, 6];
+
+            let mut f = make_table(&name, &["VECTOR"], &["3J"], 2, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 6, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Expand vector from 3 to 4 elements.
+            fits_modify_vector_len(f.as_deref_mut().unwrap(), 1, 4, &mut status);
+            let mut typecode = 0;
+            let mut repeat: c_long = 0;
+            let mut width: c_long = 0;
+            fits_get_coltype(
+                f.as_deref_mut().unwrap(),
+                1,
+                Some(&mut typecode),
+                Some(&mut repeat),
+                Some(&mut width),
+                &mut status,
+            );
+            assert_eq!(repeat, 4);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 8];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                8,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Original data preserved, new element is 0.
+            assert_eq!(result, [1, 2, 3, 0, 4, 5, 6, 0]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_bad_bitpix() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            status = 0;
+            fits_resize_img(f.as_deref_mut().unwrap(), 99, 1, &naxes, &mut status); // Invalid BITPIX.
+            assert_eq!(status, BAD_BITPIX);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_bad_naxis() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            status = 0;
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                -1,
+                &naxes,
+                &mut status,
+            ); // Negative NAXIS.
+            assert_eq!(status, BAD_NAXIS);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_bad_naxes() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes_orig: [c_long; 1] = [10];
+            let naxes_new: [LONGLONG; 1] = [-5]; // Negative dimension.
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                1,
+                &naxes_orig,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            status = 0;
+            fits_resize_imgll(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                1,
+                &naxes_new,
+                &mut status,
+            );
+            assert_eq!(status, BAD_NAXES);
+            status = 0;
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_indexed_keyword() {
+        with_temp_file(|f1name| {
+            with_temp_file(|f2name| {
+                let mut status = 0;
+                let name1 = to_buf(f1name);
+                let name2 = to_buf(f2name);
+
+                let mut f1 = make_table(&name1, &["SRCNAME"], &["1J"], 3, &mut status);
+                // Add a custom indexed keyword MYKEY1.
+                fits_write_key_str(
+                    f1.as_deref_mut().unwrap(),
+                    &cc("MYKEY1"),
+                    &cc("VALUE1"),
+                    None,
+                    &mut status,
+                );
+                fits_close_file(f1.take().unwrap(), &mut status);
+
+                let mut f2 = make_table(&name2, &["DESTCOL"], &["1J"], 3, &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                fits_open_file(&mut f1, &name1, READONLY, &mut status);
+                fits_open_file(&mut f2, &name2, READWRITE, &mut status);
+                fits_movabs_hdu(f1.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                // Copy MYKEY1 from f1 to MYKEY2 in f2.
+                fits_copy_key(
+                    f1.as_deref_mut().unwrap(),
+                    f2.as_deref_mut().unwrap(),
+                    1,
+                    2,
+                    &cc("MYKEY"),
+                    &mut status,
+                );
+                fits_close_file(f1.take().unwrap(), &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                fits_open_file(&mut f2, &name2, READONLY, &mut status);
+                fits_movabs_hdu(f2.as_deref_mut().unwrap(), 2, None, &mut status);
+                // MYKEY2 should be created with value from MYKEY1.
+                let mut value = [0 as c_char; crate::fitsio::FLEN_VALUE];
+                fits_read_key_str(
+                    f2.as_deref_mut().unwrap(),
+                    &cc("MYKEY2"),
+                    &mut value,
+                    None,
+                    &mut status,
+                );
+                assert_eq!(from_buf(&value), "VALUE1");
+                fits_close_file(f2.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_insert_rows_at_start() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 2] = [100, 200];
+
+            let mut f = make_table(&name, &["COL1"], &["1J"], 2, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 2, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Insert 2 rows at the beginning (after row 0).
+            fits_insert_rows(f.as_deref_mut().unwrap(), 0, 2, &mut status);
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 4);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 4];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                4,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            // Rows 1-2 = 0 (inserted), rows 3-4 = 100, 200.
+            assert_eq!(result, [0, 0, 100, 200]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_to_zero_dimensions() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes_orig: [c_long; 2] = [10, 10];
+            let naxes_new: [c_long; 1] = [0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                2,
+                &naxes_orig,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                SHORT_IMG,
+                0,
+                &naxes_new,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "resize");
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut simple = 0;
+            let mut bitpix = 0;
+            let mut naxis = 0;
+            let mut pcount = 0;
+            let mut gcount = 0;
+            let mut extend = 0;
+            fits_read_imghdr(
+                f.as_deref_mut().unwrap(),
+                2,
+                &mut simple,
+                &mut bitpix,
+                Some(&mut naxis),
+                std::ptr::null_mut(),
+                &mut pcount,
+                &mut gcount,
+                &mut extend,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(naxis, 0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_copy_column_same_file() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let data: [c_long; 3] = [10, 20, 30];
+
+            let mut f = make_table(&name, &["COL1", "COL2"], &["1J", "1J"], 3, &mut status);
+            fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &data, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            // Copy column 1 to column 3 (insert new column). Same handle copies to itself.
+            {
+                let fp = f.as_deref_mut().unwrap();
+                // SAFETY: ffcpcl is called with the same input/output file in C
+                // (ffcpcl(f, f, ...)); replicate that aliasing here.
+                let fp2: &mut fitsfile = unsafe { &mut *(fp as *mut fitsfile) };
+                fits_copy_col(fp, fp2, 1, 3, 1, &mut status);
+            }
+            let mut ncols = 0;
+            fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
+            assert_eq!(ncols, 3);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut result = [0 as c_long; 3];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                3,
+                1,
+                1,
+                3,
+                0,
+                &mut result,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(result, [10, 20, 30]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffrwrgll() {
+        let mut status = 0;
+        let mut numranges = 0;
+        let mut minrow = [0 as LONGLONG; 10];
+        let mut maxrow = [0 as LONGLONG; 10];
+
+        // Parse simple range list.
+        fits_parse_rangell(
+            &cc("1-5,10-20,30"),
+            50,
+            10,
+            &mut numranges,
+            &mut minrow,
+            &mut maxrow,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(numranges, 3);
+        assert_eq!((minrow[0], maxrow[0]), (1, 5));
+        assert_eq!((minrow[1], maxrow[1]), (10, 20));
+        assert_eq!((minrow[2], maxrow[2]), (30, 30));
+
+        // Parse single row list.
+        fits_parse_rangell(
+            &cc("5,10,15"),
+            20,
+            10,
+            &mut numranges,
+            &mut minrow,
+            &mut maxrow,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(numranges, 3);
+        assert_eq!((minrow[0], maxrow[0]), (5, 5));
+        assert_eq!((minrow[1], maxrow[1]), (10, 10));
+        assert_eq!((minrow[2], maxrow[2]), (15, 15));
+    }
+
+    #[test]
+    fn test_ffccls() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let name_in = to_buf(inname);
+                let name_out = to_buf(outname);
+                let data: [c_long; 5] = [10, 20, 30, 40, 50];
+
+                // Create input table with 3 columns, 5 rows.
+                let mut input = make_table(
+                    &name_in,
+                    &["COL1", "COL2", "COL3"],
+                    &["1J", "1E", "10A"],
+                    5,
+                    &mut status,
+                );
+                fits_write_col_lng(
+                    input.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    5,
+                    &data,
+                    &mut status,
+                );
+                fits_close_file(input.take().unwrap(), &mut status);
+
+                // Create output table with 1 column.
+                let mut output = make_table(&name_out, &["COL1"], &["1J"], 5, &mut status);
+                fits_close_file(output.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                // Reopen both.
+                fits_open_file(&mut input, &name_in, READONLY, &mut status);
+                fits_open_file(&mut output, &name_out, READWRITE, &mut status);
+                fits_movabs_hdu(input.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(output.as_deref_mut().unwrap(), 2, None, &mut status);
+
+                // Copy columns 1-2 from input to output (create new cols).
+                fits_copy_cols(
+                    input.as_deref_mut().unwrap(),
+                    output.as_deref_mut().unwrap(),
+                    1,
+                    2,
+                    2,
+                    1,
+                    &mut status,
+                );
+
+                fits_close_file(input.take().unwrap(), &mut status);
+                fits_close_file(output.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                // Verify the copied columns.
+                fits_open_file(&mut output, &name_out, READONLY, &mut status);
+                fits_movabs_hdu(output.as_deref_mut().unwrap(), 2, None, &mut status);
+                let mut ncols = 0;
+                fits_get_num_cols(output.as_deref_mut().unwrap(), &mut ncols, &mut status);
+                assert_eq!(ncols, 3); // Original 1 + 2 copied = 3
+                let mut result = [0 as c_long; 5];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    output.as_deref_mut().unwrap(),
+                    2,
+                    1,
+                    1,
+                    5,
+                    0,
+                    &mut result,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(result[0], 10);
+                assert_eq!(result[4], 50);
+                fits_close_file(output.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_ffcpsr() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status = 0;
+                let name_in = to_buf(inname);
+                let name_out = to_buf(outname);
+                let data: [c_long; 5] = [100, 200, 300, 400, 500];
+                let row_status: [c_char; 5] = [1, 0, 1, 0, 1]; // Keep rows 1, 3, 5.
+
+                // Create input table.
+                let mut input = make_table(&name_in, &["DATA"], &["1J"], 5, &mut status);
+                fits_write_col_lng(
+                    input.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    5,
+                    &data,
+                    &mut status,
+                );
+                fits_close_file(input.take().unwrap(), &mut status);
+
+                // Create output table with 0 rows.
+                let mut output = make_table(&name_out, &["DATA"], &["1J"], 0, &mut status);
+                fits_close_file(output.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup");
+
+                // Reopen both.
+                fits_open_file(&mut input, &name_in, READONLY, &mut status);
+                fits_open_file(&mut output, &name_out, READWRITE, &mut status);
+                fits_movabs_hdu(input.as_deref_mut().unwrap(), 2, None, &mut status);
+                fits_movabs_hdu(output.as_deref_mut().unwrap(), 2, None, &mut status);
+
+                // Copy selected rows.
+                fits_copy_selrows(
+                    input.as_deref_mut().unwrap(),
+                    output.as_deref_mut().unwrap(),
+                    1,
+                    5,
+                    Some(&row_status),
+                    &mut status,
+                );
+
+                fits_close_file(input.take().unwrap(), &mut status);
+                fits_close_file(output.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+
+                // Verify the copied rows.
+                fits_open_file(&mut output, &name_out, READONLY, &mut status);
+                fits_movabs_hdu(output.as_deref_mut().unwrap(), 2, None, &mut status);
+                let mut nrows: LONGLONG = 0;
+                fits_get_num_rowsll(output.as_deref_mut().unwrap(), &mut nrows, &mut status);
+                assert_eq!(nrows, 3); // Only 3 rows should be copied.
+                let mut result = [0 as c_long; 3];
+                let mut anynull = 0;
+                fits_read_col_lng(
+                    output.as_deref_mut().unwrap(),
+                    1,
+                    1,
+                    1,
+                    3,
+                    0,
+                    &mut result,
+                    Some(&mut anynull),
+                    &mut status,
+                );
+                assert_eq!(result, [100, 300, 500]); // Rows 1, 3, 5.
+                fits_close_file(output.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_resize_image_byte() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let naxes_new: [c_long; 1] = [20];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                1,
+                &naxes_new,
+                &mut status,
+            );
+            let mut bitpix = 0;
+            fits_get_img_equivtype(f.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            assert_eq!(bitpix, BYTE_IMG);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_longlong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let naxes_new: [c_long; 1] = [20];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                1,
+                &naxes_new,
+                &mut status,
+            );
+            let mut bitpix = 0;
+            fits_get_img_equivtype(f.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            assert_eq!(bitpix, LONGLONG_IMG);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_ushort() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let naxes_new: [c_long; 1] = [20];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(
+                f.as_deref_mut().unwrap(),
+                USHORT_IMG,
+                1,
+                &naxes,
+                &mut status,
+            );
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                USHORT_IMG,
+                1,
+                &naxes_new,
+                &mut status,
+            );
+            let mut bzero = 0.0;
+            fits_read_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("BZERO"),
+                &mut bzero,
+                None,
+                &mut status,
+            );
+            assert_eq!(bzero, 32768.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_resize_image_ulong() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
+            let naxes_new: [c_long; 1] = [20];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), ULONG_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup");
+
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_resize_img(
+                f.as_deref_mut().unwrap(),
+                ULONG_IMG,
+                1,
+                &naxes_new,
+                &mut status,
+            );
+            let mut bzero = 0.0;
+            fits_read_key_dbl(
+                f.as_deref_mut().unwrap(),
+                &cc("BZERO"),
+                &mut bzero,
+                None,
+                &mut status,
+            );
+            assert_eq!(bzero, 2147483648.0);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
 }

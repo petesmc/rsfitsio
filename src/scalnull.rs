@@ -413,3 +413,257 @@ pub fn ffsnul_safe(
     strncat_safe(&mut c[colptr].strnull, nulstring, 19); /* limit string to 19 chars */
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cfileio::{ffclos_safe, ffinit_safe};
+    use crate::putkey::ffcrtb_safe as ffcrtb;
+    use crate::putkey::ffphps_safe;
+
+    /* Ported from test_scalnull.c - scaling and null value functions.
+    Each test uses an in-memory file (no reopen by name). */
+
+    /// Create a fresh mem:// file with no primary HDU written yet.
+    fn new_file() -> (Option<Box<fitsfile>>, c_int) {
+        let mut status = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut fptr, cs!(c"mem://"), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        (fptr, status)
+    }
+
+    fn make_btable(f: &mut fitsfile, tform0: &[c_char], status: &mut c_int) {
+        ffphps_safe(f, BYTE_IMG, 0, &[], status);
+        let ttype = [Some(cs!(c"COL1"))];
+        let tform = [tform0];
+        ffcrtb(f, BINARY_TBL, 1, 1, &ttype, &tform, None, None, status);
+        assert_eq!(*status, 0, "ffcrtb failed");
+    }
+
+    #[test]
+    fn test_ffpthp_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1PA"), &mut status);
+        ffpthp_safe(f, 100, &mut status);
+        assert_eq!(status, 0, "ffpthp failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpthp_bad_theap() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        /* theap < 1 should return early */
+        ffpthp_safe(f, 0, &mut status);
+        assert_eq!(status, 0);
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpscl_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 2] = [10, 10];
+        ffphps_safe(f, SHORT_IMG, 2, &naxes, &mut status);
+        ffpscl_safe(f, 2.0, 100.0, &mut status);
+        assert_eq!(status, 0, "ffpscl failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpscl_zero_scale() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 1] = [10];
+        ffphps_safe(f, SHORT_IMG, 1, &naxes, &mut status);
+        ffpscl_safe(f, 0.0, 0.0, &mut status);
+        assert_eq!(status, ZERO_SCALE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpscl_not_image() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        ffpscl_safe(f, 1.0, 0.0, &mut status);
+        assert_eq!(status, NOT_IMAGE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpscl_error_status() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 1] = [10];
+        ffphps_safe(f, SHORT_IMG, 1, &naxes, &mut status);
+        status = 1;
+        ffpscl_safe(f, 1.0, 0.0, &mut status);
+        assert_eq!(status, 1);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpnul_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 2] = [10, 10];
+        ffphps_safe(f, SHORT_IMG, 2, &naxes, &mut status);
+        ffpnul_safe(f, -999, &mut status);
+        assert_eq!(status, 0, "ffpnul failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpnul_not_image() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        ffpnul_safe(f, -999, &mut status);
+        assert_eq!(status, NOT_IMAGE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffpnul_error_status() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 1] = [10];
+        ffphps_safe(f, SHORT_IMG, 1, &naxes, &mut status);
+        status = 1;
+        ffpnul_safe(f, -999, &mut status);
+        assert_eq!(status, 1);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftscl_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        fftscl_safe(f, 1, 2.0, 100.0, &mut status);
+        assert_eq!(status, 0, "fftscl failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftscl_zero_scale() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        fftscl_safe(f, 1, 0.0, 0.0, &mut status);
+        assert_eq!(status, ZERO_SCALE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftscl_not_table() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        let naxes: [c_long; 1] = [10];
+        ffphps_safe(f, SHORT_IMG, 1, &naxes, &mut status);
+        fftscl_safe(f, 1, 1.0, 0.0, &mut status);
+        assert_eq!(status, NOT_TABLE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftscl_error_status() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        status = 1;
+        fftscl_safe(f, 1, 1.0, 0.0, &mut status);
+        assert_eq!(status, 1);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftnul_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        fftnul_safe(f, 1, -999, &mut status);
+        assert_eq!(status, 0, "fftnul failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftnul_not_btable() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        ffphps_safe(f, BYTE_IMG, 0, &[], &mut status);
+        let ttype = [Some(cs!(c"COL1"))];
+        let tform = [cs!(c"A10")];
+        ffcrtb(f, ASCII_TBL, 1, 1, &ttype, &tform, None, None, &mut status);
+        assert_eq!(status, 0, "ffcrtb failed");
+        fftnul_safe(f, 1, -999, &mut status);
+        assert_eq!(status, NOT_BTABLE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_fftnul_error_status() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        status = 1;
+        fftnul_safe(f, 1, -999, &mut status);
+        assert_eq!(status, 1);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffsnul_basic() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        ffphps_safe(f, BYTE_IMG, 0, &[], &mut status);
+        let ttype = [Some(cs!(c"COL1"))];
+        let tform = [cs!(c"A10")];
+        ffcrtb(f, ASCII_TBL, 1, 1, &ttype, &tform, None, None, &mut status);
+        assert_eq!(status, 0, "ffcrtb failed");
+        ffsnul_safe(f, 1, cs!(c"N/A"), &mut status);
+        assert_eq!(status, 0, "ffsnul failed");
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffsnul_not_atable() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        make_btable(f, cs!(c"1J"), &mut status);
+        ffsnul_safe(f, 1, cs!(c"N/A"), &mut status);
+        assert_eq!(status, NOT_ATABLE);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+
+    #[test]
+    fn test_ffsnul_error_status() {
+        let (mut fptr, mut status) = new_file();
+        let f = fptr.as_deref_mut().unwrap();
+        ffphps_safe(f, BYTE_IMG, 0, &[], &mut status);
+        let ttype = [Some(cs!(c"COL1"))];
+        let tform = [cs!(c"A10")];
+        ffcrtb(f, ASCII_TBL, 1, 1, &ttype, &tform, None, None, &mut status);
+        assert_eq!(status, 0, "ffcrtb failed");
+        status = 1;
+        ffsnul_safe(f, 1, cs!(c"N/A"), &mut status);
+        assert_eq!(status, 1);
+        status = 0;
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+    }
+}

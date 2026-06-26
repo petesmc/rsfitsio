@@ -72,13 +72,21 @@ pub(crate) fn fgets(buf: &mut [u8], size: usize, file: &mut File) -> Result<(), 
     buf[buf.len() - 1] = 0; // Null-terminate the string
 
     for i in 0..(size - 1) {
-        let read_result = file.read(&mut byte);
+        let n = file.read(&mut byte)?;
 
-        if read_result.is_err() {
-            return Err(read_result.unwrap_err());
+        if n == 0 {
+            /* EOF. C's fgets returns NULL only when end-of-file is reached and
+            no characters were read; if some chars were already read it returns
+            them. Mirror that so `while fgets(...).is_ok()` loops terminate. */
+            buf[i] = 0;
+            if i == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "fgets: end of file",
+                ));
+            }
+            return Ok(());
         }
-
-        let read_result = read_result.unwrap();
 
         buf[i] = byte[0];
 

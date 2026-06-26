@@ -6,8 +6,8 @@ mod tests {
     };
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::fitsio::{
-        DOUBLE_IMG, LONGLONG, READWRITE, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG, TSBYTE, TSHORT,
-        TULONG, TULONGLONG, TUSHORT, fitsfile,
+        DOUBLE_IMG, LONGLONG, NUM_OVERFLOW, READWRITE, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG,
+        TSBYTE, TSHORT, TULONG, TULONGLONG, TUSHORT, fitsfile,
     };
     use rsfitsio::helpers::testhelpers::{floats_close_f32, floats_close_f64, with_temp_file};
     use std::ffi::CString;
@@ -259,9 +259,21 @@ mod tests {
                     &mut status,
                 );
 
-                // CFITSIO appears to handle DOUBLE → LONG differently than other conversions
-                // It doesn't report overflow (status = 0) and may not clamp values
-                assert_eq!(status, 0, "DOUBLE → LONG conversion should succeed");
+                // The DOUBLE → LONG overflow check uses the range of a C `long`,
+                // whose width is platform-dependent: 64 bits on LP64 (most Unix)
+                // and 32 bits on LLP64 (Windows).  write_data[0]/[7]/[8]
+                // (-2^31-1.5, 2^31, 5e9) fit in a 64-bit long but overflow a
+                // 32-bit one, so CFITSIO reports NUM_OVERFLOW on Windows and
+                // status 0 elsewhere.  Either way the in-range elements below
+                // still convert by truncation.
+                if std::mem::size_of::<c_long>() == 4 {
+                    assert_eq!(
+                        status, NUM_OVERFLOW,
+                        "DOUBLE → LONG should overflow a 32-bit long"
+                    );
+                } else {
+                    assert_eq!(status, 0, "DOUBLE → LONG conversion should succeed");
+                }
 
                 // Verify actual conversion behavior (truncation without overflow checking)
                 println!("Actual conversion values:");

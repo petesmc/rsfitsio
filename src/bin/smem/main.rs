@@ -1,8 +1,8 @@
 #![allow(deprecated)]
 
-#[cfg(linux)]
+#[cfg(not(windows))]
 use libc::{c_char, c_int, sscanf, strcmp};
-#[cfg(linux)]
+#[cfg(not(windows))]
 use rsfitsio::drvrsmem::{
     shared_getaddr, shared_init, shared_list, shared_recover, shared_uncond_delete,
 };

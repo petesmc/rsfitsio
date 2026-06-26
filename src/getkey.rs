@@ -6128,3 +6128,488 @@ pub fn ffcnvthdr2str_safer(
 
     *status
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::c_types::c_double;
+    use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
+    use crate::edithdu::ffitab_safe;
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use crate::putkey::{
+        ffcrtb_safe, ffdt2s_safe, ffgsdt_safe, ffphps_safe, ffpknjj_safe, ffpkys_safe, ffs2dt_safe,
+        ffs2tm_safe, ffverifydate_safe,
+    };
+
+    /* Ported from test_getkey.c - keyword reading functions. */
+
+    #[test]
+    fn test_ffgknjj_basic() {
+        /* Test ffgknjj - get indexed keywords as LONGLONG values. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [100, 200, 300];
+
+            /* Create image with NAXIS1, NAXIS2, NAXIS3 keywords. */
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            ffphps_safe(
+                fptr.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                3,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphps failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffclos failed");
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut values: [LONGLONG; 3] = [0; 3];
+            let mut nfound: c_int = -1;
+            ffgknjj_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"NAXIS"),
+                1,
+                3,
+                &mut values,
+                &mut nfound,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgknjj failed");
+            assert_eq!(nfound, 3);
+            assert_eq!(values[0], 100);
+            assert_eq!(values[1], 200);
+            assert_eq!(values[2], 300);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    /* test_ffgknjj_large_values: skipped - ffphpsll_safe is still todo!() */
+
+    #[test]
+    fn test_ffgtdmll_basic() {
+        /* Test ffgtdmll - decode TDIM keyword as LONGLONG. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype = [Some(cs!(c"DATA"))];
+            let tform = [cs!(c"12I")];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffcrtb_safe(
+                fptr.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                5,
+                1,
+                &ttype,
+                &tform,
+                None,
+                None,
+                &mut status,
+            );
+            /* Set TDIM1 to (3,4) - 12 element array as 3x4 2D array. */
+            ffpkys_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"TDIM1"),
+                cs!(c"(3,4)"),
+                Some(cs!(c"Column dimensions")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut naxis: c_int = -1;
+            let mut naxes: [LONGLONG; 2] = [0; 2];
+            ffgtdmll_safer(
+                fptr.as_deref_mut().unwrap(),
+                1,
+                2,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgtdmll failed");
+            assert_eq!(naxis, 2);
+            assert_eq!(naxes[0], 3);
+            assert_eq!(naxes[1], 4);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffdtdmll_basic() {
+        /* Test ffdtdmll - decode TDIM string as LONGLONG. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype = [Some(cs!(c"DATA"))];
+            let tform = [cs!(c"60I")];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffcrtb_safe(
+                fptr.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                5,
+                1,
+                &ttype,
+                &tform,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut naxis: c_int = -1;
+            let mut naxes: [LONGLONG; 3] = [0; 3];
+            ffdtdmll_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"(3,4,5)"),
+                1,
+                3,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffdtdmll failed");
+            assert_eq!(naxis, 3);
+            assert_eq!(naxes[0], 3);
+            assert_eq!(naxes[1], 4);
+            assert_eq!(naxes[2], 5);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghbnll_basic() {
+        /* Test ffghbnll - get binary table header info as LONGLONG. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype = [Some(cs!(c"COL1")), Some(cs!(c"COL2"))];
+            let tform = [cs!(c"1J"), cs!(c"1E")];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffcrtb_safe(
+                fptr.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                100,
+                2,
+                &ttype,
+                &tform,
+                None,
+                Some(cs!(c"DATA")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut nrows: LONGLONG = 0;
+            let mut tfields: c_int = 0;
+            let mut pcount: LONGLONG = 0;
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            unsafe {
+                ffghbnll_safer(
+                    fptr.as_deref_mut().unwrap(),
+                    99,
+                    &mut nrows,
+                    &mut tfields,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    extname.as_mut_ptr(),
+                    &mut pcount,
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0, "ffghbnll failed");
+            assert_eq!(nrows, 100);
+            assert_eq!(tfields, 2);
+            assert_eq!(strcmp_safe(&extname, cs!(c"DATA")), 0);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghtbll_basic() {
+        /* Test ffghtbll - get ASCII table header info as LONGLONG. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype = [Some(cs!(c"VALUE"))];
+            let tform = [cs!(c"I10")];
+            let tbcol: [c_long; 1] = [1];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            /* Use ffitab for ASCII tables: naxis1=10 (row length), naxis2=20 (rows). */
+            ffitab_safe(
+                fptr.as_deref_mut().unwrap(),
+                10,
+                20,
+                1,
+                &ttype,
+                Some(&tbcol),
+                &tform,
+                None,
+                Some(cs!(c"ATABLE")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut rowlen: LONGLONG = 0;
+            let mut nrows: LONGLONG = 0;
+            let mut tfields: c_int = 0;
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            unsafe {
+                ffghtbll_safer(
+                    fptr.as_deref_mut().unwrap(),
+                    99,
+                    &mut rowlen,
+                    &mut nrows,
+                    &mut tfields,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    extname.as_mut_ptr(),
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0, "ffghtbll failed");
+            assert_eq!(nrows, 20);
+            assert_eq!(tfields, 1);
+            assert_eq!(strcmp_safe(&extname, cs!(c"ATABLE")), 0);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffhdr2str_basic() {
+        /* Test ffhdr2str - copy header to string. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(
+                fptr.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                2,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            let mut header: *mut c_char = ptr::null_mut();
+            let mut nkeys: c_int = 0;
+            ffhdr2str_safe(
+                fptr.as_deref_mut().unwrap(),
+                0,
+                &[],
+                0,
+                &mut header,
+                &mut nkeys,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffhdr2str failed");
+            assert!(nkeys >= 5); /* SIMPLE, BITPIX, NAXIS, NAXIS1, NAXIS2, END */
+            let hdr = unsafe { CStr::from_ptr(header) };
+            assert!(hdr.to_bytes().starts_with(b"SIMPLE"));
+            fffree_safe(header as *mut c_void, &mut status);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffverifydate() {
+        /* Test ffverifydate - validate date values. */
+        let mut status = 0;
+
+        /* Valid date. */
+        ffverifydate_safe(2024, 6, 15, &mut status);
+        assert_eq!(status, 0, "valid date should pass");
+
+        /* Invalid month - should set status. */
+        status = 0;
+        ffverifydate_safe(2024, 13, 15, &mut status);
+        assert_ne!(status, 0, "invalid month should fail");
+
+        /* Invalid day - should set status. */
+        status = 0;
+        ffverifydate_safe(2024, 2, 30, &mut status);
+        assert_ne!(status, 0, "invalid day should fail");
+    }
+
+    #[test]
+    fn test_ffdt2s() {
+        /* Test ffdt2s - convert date to string. */
+        let mut status = 0;
+        let mut datestr = [0 as c_char; 11];
+
+        ffdt2s_safe(2024, 6, 15, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(strcmp_safe(&datestr, cs!(c"2024-06-15")), 0);
+
+        ffdt2s_safe(1999, 12, 31, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(strcmp_safe(&datestr, cs!(c"1999-12-31")), 0);
+    }
+
+    #[test]
+    fn test_ffs2dt() {
+        /* Test ffs2dt - convert string to date. */
+        let mut status = 0;
+        let mut year: c_int = 0;
+        let mut month: c_int = 0;
+        let mut day: c_int = 0;
+
+        ffs2dt_safe(
+            Some(cs!(c"2024-06-15")),
+            Some(&mut year),
+            Some(&mut month),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 6);
+        assert_eq!(day, 15);
+
+        /* Old format dd/mm/yy. */
+        ffs2dt_safe(
+            Some(cs!(c"31/12/99")),
+            Some(&mut year),
+            Some(&mut month),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 1999);
+        assert_eq!(month, 12);
+        assert_eq!(day, 31);
+    }
+
+    /* test_fftm2s: skipped - fftm2s_safe is still todo!() */
+
+    #[test]
+    fn test_ffs2tm() {
+        /* Test ffs2tm - convert string to date/time. */
+        let mut status = 0;
+        let mut year: c_int = 0;
+        let mut month: c_int = 0;
+        let mut day: c_int = 0;
+        let mut hour: c_int = 0;
+        let mut minute: c_int = 0;
+        let mut second: c_double = 0.0;
+
+        ffs2tm_safe(
+            Some(cs!(c"2024-06-15T10:30:45.5")),
+            Some(&mut year),
+            Some(&mut month),
+            Some(&mut day),
+            Some(&mut hour),
+            Some(&mut minute),
+            Some(&mut second),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(year, 2024);
+        assert_eq!(month, 6);
+        assert_eq!(day, 15);
+        assert_eq!(hour, 10);
+        assert_eq!(minute, 30);
+        assert!((45.4..=45.6).contains(&second));
+    }
+
+    #[test]
+    fn test_ffgsdt() {
+        /* Test ffgsdt - get system date. */
+        let mut status = 0;
+        let mut day: c_int = 0;
+        let mut month: c_int = 0;
+        let mut year: c_int = 0;
+
+        ffgsdt_safe(&mut day, &mut month, &mut year, &mut status);
+        assert_eq!(status, 0);
+        assert!((2020..=2100).contains(&year));
+        assert!((1..=12).contains(&month));
+        assert!((1..=31).contains(&day));
+    }
+
+    #[test]
+    fn test_ffpknjj() {
+        /* Test ffpknjj - write indexed LONGLONG keywords. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [10, 10];
+            let values: [LONGLONG; 3] = [100, 200, 300];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(
+                fptr.as_deref_mut().unwrap(),
+                BYTE_IMG,
+                2,
+                &naxes,
+                &mut status,
+            );
+            /* Write TEST1, TEST2, TEST3 keywords. */
+            ffpknjj_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"TEST"),
+                1,
+                3,
+                &values,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffpknjj failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            let mut result: [LONGLONG; 3] = [0; 3];
+            let mut nfound: c_int = -1;
+            ffgknjj_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"TEST"),
+                1,
+                3,
+                &mut result,
+                &mut nfound,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(nfound, 3);
+            assert_eq!(result[0], 100);
+            assert_eq!(result[1], 200);
+            assert_eq!(result[2], 300);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+}

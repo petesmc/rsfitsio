@@ -1,4 +1,5 @@
 use std::ffi::c_char;
+use std::mem;
 
 use crate::c_types::{c_int, c_long, c_short, size_t};
 
@@ -117,9 +118,25 @@ pub const DUSHRT_MIN: f64 = -0.49; /* min double value that fits in an unsigned 
 pub const DSHRT_MAX: f64 = 32767.49; /* max double value that fits in a short */
 pub const DSHRT_MIN: f64 = -32768.49; /* min double value that fits in a short */
 
-pub const DLONG_MAX: f64 = 9.223_372_036_854_775E18; /* max double value  long */
-pub const DLONG_MIN: f64 = -9.223_372_036_854_775E18; /* min double value  long */
-pub const DULONG_MAX: f64 = 1.844_674_407_370_955E19; /* max double value  ulong */
+/* These bounds depend on the width of a C `long`, which is 32 bits on Windows
+ * (LLP64) and 64 bits on most Unix targets (LP64).  CFITSIO selects them via
+ * `#if LONGSIZE == 32` in fitsio2.h; we mirror that by branching on the size of
+ * `c_long` at const-eval time so the overflow checks stay correct on Windows. */
+pub const DLONG_MAX: f64 = if mem::size_of::<c_long>() == 4 {
+    2147483647.49 /* max double value that fits in a long */
+} else {
+    9.223_372_036_854_775E18 /* max double value  long */
+};
+pub const DLONG_MIN: f64 = if mem::size_of::<c_long>() == 4 {
+    -2147483648.49 /* min double value that fits in a long */
+} else {
+    -9.223_372_036_854_775E18 /* min double value  long */
+};
+pub const DULONG_MAX: f64 = if mem::size_of::<c_long>() == 4 {
+    4294967295.49 /* max double that fits in a unsigned long */
+} else {
+    1.844_674_407_370_955E19 /* max double value  ulong */
+};
 
 pub const DULONG_MIN: f64 = -0.49; /* min double value that fits in an unsigned long */
 pub const DULONGLONG_MAX: f64 = 18446744073709551615.; /* max unsigned  longlong */
