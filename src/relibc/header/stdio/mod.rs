@@ -1,7 +1,7 @@
 use crate::c_types::{c_char, c_double, c_int, c_long, c_uint, size_t};
 use bytemuck::cast_slice;
+use core::ffi::{CStr, c_void};
 use printf::{CustomVaList, VaArg};
-use std::ffi::{CStr, c_void};
 
 use crate::relibc::platform;
 

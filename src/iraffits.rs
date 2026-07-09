@@ -48,14 +48,12 @@ use crate::c_types::{c_char, c_int};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use std::ffi::CStr;
+use core::ffi::CStr;
+use core::ptr;
 use std::fs::File;
+use std::io::Error;
 use std::io::{Read, Seek};
 use std::sync::Mutex;
-use std::{
-    io::{Error, ErrorKind},
-    ptr,
-};
 
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::NULL_MSG;
@@ -260,10 +258,14 @@ pub(crate) fn iraf2mem(
 /// irafrdhead  (was irafrhead in D. Mink's original code)
 /// Open and read the iraf .imh file.
 /// The imhdr format is defined in iraf/lib/imhdr.h, some of which defines or mimicked, above.
+// `std::io::ErrorKind` is retained deliberately: the `core::io` equivalent is still unstable.
+#[allow(clippy::std_instead_of_core)]
 fn irafrdhead(
     filename: &[c_char], /* Name of IRAF header file */
     lihead: &mut usize,  /* Length of IRAF image header in bytes (returned) */
 ) -> Result<Vec<c_char>, Error> {
+    use std::io::ErrorKind;
+
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     *lihead = 0;
@@ -2247,10 +2249,10 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
 
         /* strncpy (c0, "/ ",2);  - c0 is an index into hstring, not line */
         /* A long quoted value (e.g. a long IMHFILE/PIXFILE path on Windows,
-           where temp paths easily exceed the column at which the closing quote
-           sits) can push c0 to the very end of this 80-char card.  The C code
-           writes "/ " unconditionally, running past the card end; only do so
-           while it still fits inside the card. */
+        where temp paths easily exceed the column at which the closing quote
+        sits) can push c0 to the very end of this 80-char card.  The C code
+        writes "/ " unconditionally, running past the card end; only do so
+        while it still fits inside the card. */
         if c0 + 2 <= v2 {
             strncpy_safe(&mut hstring[c0..], cs!(c"/ "), 2);
         }
@@ -2262,9 +2264,9 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
     if lcom > 0 {
         c1 = c0 + 2;
         /* Clamp the comment to whatever room is left in the card.  C computes
-           `lcom = v2 - c1` as a signed int, which goes negative when the value
-           already fills the card (c1 > v2) and then overruns in strncpy; guard
-           against that so we never underflow or write past the card. */
+        `lcom = v2 - c1` as a signed int, which goes negative when the value
+        already fills the card (c1 > v2) and then overruns in strncpy; guard
+        against that so we never underflow or write past the card. */
         if c1 >= v2 {
             lcom = 0;
         } else if c1 + lcom > v2 {
@@ -2279,7 +2281,7 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
 #[cfg(test)]
 mod tests {
 
-    use std::ffi::CString;
+    use alloc::ffi::CString;
 
     use super::*;
 

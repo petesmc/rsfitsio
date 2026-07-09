@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::imcompress::{fits_write_compressed_img, fits_write_compressed_pixels};
 use crate::{NullCheckType, NullValue, c_types::*};
@@ -4103,7 +4103,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [2, 2, 2];
             // Array with ncols=3, nrows=3, naxis3=2 = 18 elements
-            let data: [c_long; 18] = std::array::from_fn(|i| (i + 1) as c_long);
+            let data: [c_long; 18] = core::array::from_fn(|i| (i + 1) as c_long);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -4453,7 +4453,7 @@ mod tests {
             let naxes: [c_long; 3] = [4, 4, 2];
             let fpixel: [c_long; 3] = [2, 2, 1];
             let lpixel: [c_long; 3] = [3, 3, 2];
-            let data: [c_long; 8] = std::array::from_fn(|i| (i + 100) as c_long);
+            let data: [c_long; 8] = core::array::from_fn(|i| (i + 100) as c_long);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -4497,7 +4497,7 @@ mod tests {
             let naxes: [c_long; 4] = [3, 3, 2, 2];
             let fpixel: [c_long; 4] = [1, 1, 1, 1];
             let lpixel: [c_long; 4] = [2, 2, 2, 2];
-            let data: [c_long; 16] = std::array::from_fn(|i| (i + 1) as c_long);
+            let data: [c_long; 16] = core::array::from_fn(|i| (i + 1) as c_long);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -4541,7 +4541,7 @@ mod tests {
             let naxes: [c_long; 5] = [2, 2, 2, 2, 2];
             let fpixel: [c_long; 5] = [1, 1, 1, 1, 1];
             let lpixel: [c_long; 5] = [2, 2, 2, 2, 2];
-            let data: [c_long; 32] = std::array::from_fn(|i| (i + 1) as c_long);
+            let data: [c_long; 32] = core::array::from_fn(|i| (i + 1) as c_long);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -5182,7 +5182,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [2, 2, 2];
-            let data: [LONGLONG; 18] = std::array::from_fn(|i| (i + 1) as LONGLONG);
+            let data: [LONGLONG; 18] = core::array::from_fn(|i| (i + 1) as LONGLONG);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -5683,7 +5683,7 @@ mod tests {
             let naxes: [c_long; 3] = [4, 4, 2];
             let fpixel: [c_long; 3] = [2, 2, 1];
             let lpixel: [c_long; 3] = [3, 3, 2];
-            let data: [LONGLONG; 8] = std::array::from_fn(|i| (i + 100) as LONGLONG);
+            let data: [LONGLONG; 8] = core::array::from_fn(|i| (i + 100) as LONGLONG);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -5733,7 +5733,7 @@ mod tests {
             let naxes: [c_long; 4] = [3, 3, 2, 2];
             let fpixel: [c_long; 4] = [1, 1, 1, 1];
             let lpixel: [c_long; 4] = [2, 2, 2, 2];
-            let data: [LONGLONG; 16] = std::array::from_fn(|i| (i + 1) as LONGLONG);
+            let data: [LONGLONG; 16] = core::array::from_fn(|i| (i + 1) as LONGLONG);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -5783,7 +5783,7 @@ mod tests {
             let naxes: [c_long; 5] = [2, 2, 2, 2, 2];
             let fpixel: [c_long; 5] = [1, 1, 1, 1, 1];
             let lpixel: [c_long; 5] = [2, 2, 2, 2, 2];
-            let data: [LONGLONG; 32] = std::array::from_fn(|i| (i + 1) as LONGLONG);
+            let data: [LONGLONG; 32] = core::array::from_fn(|i| (i + 1) as LONGLONG);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);

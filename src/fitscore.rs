@@ -33,13 +33,14 @@ SERVICES PROVIDED HEREUNDER."
 
 */
 
+use alloc::collections::VecDeque;
+use core::borrow::BorrowMut;
+use core::ffi::CStr;
+use core::num::{ParseFloatError, ParseIntError};
+use core::{cmp, ptr};
 use core::{slice, str};
-use std::borrow::BorrowMut;
-use std::collections::{HashMap, VecDeque};
-use std::ffi::CStr;
-use std::num::{ParseFloatError, ParseIntError};
+use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
-use std::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -242,7 +243,7 @@ pub unsafe extern "C" fn ffflnm(
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
-        let filename = std::slice::from_raw_parts_mut(filename, FLEN_FILENAME);
+        let filename = core::slice::from_raw_parts_mut(filename, FLEN_FILENAME);
 
         ffflnm_safe(&mut *fptr, filename, &mut *status)
     }
@@ -481,7 +482,7 @@ impl ErrorStack {
         let mut remaining = message;
 
         while !remaining.is_empty() {
-            let chunk_size = std::cmp::min(80, remaining.len());
+            let chunk_size = core::cmp::min(80, remaining.len());
             let chunk = &remaining[..chunk_size];
 
             if self.messages.len() >= ERRMSGSIZ {
@@ -614,7 +615,7 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
     if let Some(message) = stack.pop_message() {
         // Copy message to buffer
         let message_bytes = message.as_bytes();
-        let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
+        let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
         for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
             err_message[i] = byte as c_char;
@@ -690,7 +691,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
                 if let Some(message) = stack.pop_message() {
                     // Copy message to buffer
                     let message_bytes = message.as_bytes();
-                    let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
+                    let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
                         err_message[i] = byte as c_char;
@@ -739,7 +740,7 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
                 // Safely copy to the provided buffer
                 if !errmsg.is_null() {
                     let message_bytes = message.as_bytes();
-                    let copy_len = std::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
+                    let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     unsafe {
                         ptr::copy_nonoverlapping(
@@ -778,25 +779,25 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
 /// return the number of bytes per pixel associated with the datatype
 pub(crate) fn ffpxsz(datatype: c_int) -> usize {
     if datatype == TBYTE {
-        std::mem::size_of::<i8>()
+        core::mem::size_of::<i8>()
     } else if datatype == TUSHORT {
-        std::mem::size_of::<c_ushort>()
+        core::mem::size_of::<c_ushort>()
     } else if datatype == TSHORT {
-        std::mem::size_of::<c_short>()
+        core::mem::size_of::<c_short>()
     } else if datatype == TULONG {
-        std::mem::size_of::<c_ulong>()
+        core::mem::size_of::<c_ulong>()
     } else if datatype == TLONG {
-        std::mem::size_of::<c_long>()
+        core::mem::size_of::<c_long>()
     } else if datatype == TINT {
-        std::mem::size_of::<c_int>()
+        core::mem::size_of::<c_int>()
     } else if datatype == TUINT {
-        std::mem::size_of::<c_uint>()
+        core::mem::size_of::<c_uint>()
     } else if datatype == TFLOAT {
-        std::mem::size_of::<f32>()
+        core::mem::size_of::<f32>()
     } else if datatype == TDOUBLE {
-        std::mem::size_of::<f64>()
+        core::mem::size_of::<f64>()
     } else if datatype == TLOGICAL {
-        std::mem::size_of::<i8>()
+        core::mem::size_of::<i8>()
     } else {
         0
     }
@@ -6728,7 +6729,7 @@ pub(crate) fn ffgtbp(
         // Can't do this because of borrow checker
         // fptr.Fptr.get_tableptr_as_mut_slice()
         // So instead do..
-        unsafe { std::slice::from_raw_parts_mut(fptr.Fptr.tableptr, fptr.Fptr.tfield as usize) }
+        unsafe { core::slice::from_raw_parts_mut(fptr.Fptr.tableptr, fptr.Fptr.tfield as usize) }
     /* get pointer to columns */
     } else {
         &mut []
@@ -7266,9 +7267,9 @@ pub(crate) fn ffgcprll(
     /* calculate no. of pixels that fit in buffer */
     /* allow for case where floats are 8 bytes long */
     if (*tcode).abs() == TFLOAT {
-        *maxelem = (DBUFFSIZE as usize / std::mem::size_of::<f32>()) as c_int;
+        *maxelem = (DBUFFSIZE as usize / core::mem::size_of::<f32>()) as c_int;
     } else if (*tcode).abs() == TDOUBLE {
-        *maxelem = (DBUFFSIZE as usize / std::mem::size_of::<f64>()) as c_int;
+        *maxelem = (DBUFFSIZE as usize / core::mem::size_of::<f64>()) as c_int;
     } else if (*tcode).abs() == TSTRING {
         if *twidth != 0 {
             *maxelem = ((DBUFFSIZE - 1) / *twidth as ULONGLONG) as c_int; /* leave room for final \0 */
@@ -10562,7 +10563,7 @@ pub(crate) fn ffiblk(
                 return *status;
             }
 
-            std::mem::swap(&mut inbuff, &mut outbuff);
+            core::mem::swap(&mut inbuff, &mut outbuff);
             insertpt += BL!(); /* increment insert point by 1 block */
 
             ffmbyt_safe(fptr, insertpt, REPORT_EOF, status); /* move to next block */
@@ -11924,13 +11925,13 @@ pub(crate) fn ffc2ii(
             *ival = val;
         }
         Err(err) => match err.kind() {
-            std::num::IntErrorKind::Empty => {
+            core::num::IntErrorKind::Empty => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::InvalidDigit => {
+            core::num::IntErrorKind::InvalidDigit => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+            core::num::IntErrorKind::PosOverflow | core::num::IntErrorKind::NegOverflow => {
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
@@ -11974,13 +11975,13 @@ pub(crate) fn ffc2jj(
             *ival = val;
         }
         Err(err) => match err.kind() {
-            std::num::IntErrorKind::Empty => {
+            core::num::IntErrorKind::Empty => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::InvalidDigit => {
+            core::num::IntErrorKind::InvalidDigit => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+            core::num::IntErrorKind::PosOverflow | core::num::IntErrorKind::NegOverflow => {
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
@@ -12024,13 +12025,13 @@ pub(crate) fn ffc2ujj(
             *ival = val;
         }
         Err(err) => match err.kind() {
-            std::num::IntErrorKind::Empty => {
+            core::num::IntErrorKind::Empty => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::InvalidDigit => {
+            core::num::IntErrorKind::InvalidDigit => {
                 *status = BAD_C2I;
             }
-            std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow => {
+            core::num::IntErrorKind::PosOverflow | core::num::IntErrorKind::NegOverflow => {
                 let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
                 strcpy_safe(
                     &mut msg,
@@ -12421,8 +12422,9 @@ pub(crate) unsafe fn fits_recalloc(
     size: usize,
 ) -> *mut c_void {
     unsafe {
-        use std::alloc::{Layout, alloc_zeroed, dealloc, realloc};
-        use std::ptr;
+        use alloc::alloc::{alloc_zeroed, dealloc, realloc};
+        use core::alloc::Layout;
+        use core::ptr;
 
         if ptr.is_null() || old_num == 0 {
             /* Starting from nothing */
@@ -12487,7 +12489,7 @@ pub(crate) unsafe fn fits_recalloc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use alloc::ffi::CString;
     use std::sync::{LazyLock, Mutex};
 
     // Serialize tests that touch the global ERROR_STACK to avoid cross-test interference on parallel runs.

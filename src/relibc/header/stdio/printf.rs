@@ -9,12 +9,9 @@ use crate::relibc::io::{self, Write};
 //     string::{String, ToString},
 //     vec::Vec,
 // };
+use alloc::collections::{BTreeMap, VecDeque};
+use core::ffi::{CStr, c_void};
 use core::{cmp, fmt, num::FpCategory, ops::Range, slice};
-use std::collections::VecDeque;
-use std::{
-    collections::BTreeMap,
-    ffi::{CStr, c_void},
-};
 
 use crate::relibc::{
     header::errno::EILSEQ,

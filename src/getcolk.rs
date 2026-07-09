@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short};
 use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
@@ -757,7 +757,7 @@ pub fn ffgsfk_safe(
     let mut str: [c_long; 9] = [0; 9];
     let mut stp: [c_long; 9] = [0; 9];
     let mut incr: [c_long; 9] = [0; 9];
-    let mut dir: [c_long; 9] = [0; 9];
+    let dir: [c_long; 9] = [0; 9];
     let mut nelem: c_long = 0;
     let mut nultyp = NullCheckType::None;
     let mut ninc: c_long = 0;

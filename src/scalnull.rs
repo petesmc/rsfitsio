@@ -5,7 +5,7 @@
 /*  Goddard Space Flight Center.                                           */
 /*--------------------------------------------------------------------------*/
 
-use std::ffi::CStr;
+use core::ffi::CStr;
 
 use crate::c_types::*;
 

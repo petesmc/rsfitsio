@@ -26,7 +26,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use core::slice;
 use std::io::Write;
 
-use std::{cmp, ffi::CStr};
+use core::{cmp, ffi::CStr};
 
 /*--------------------------------------------------------------------------*/
 /// copy the CHDU from infptr to the CHDU of outfptr.
@@ -45,7 +45,7 @@ pub unsafe extern "C" fn ffcopy(
             return *status;
         }
 
-        if std::ptr::eq(infptr, outfptr) {
+        if core::ptr::eq(infptr, outfptr) {
             *status = SAME_FILE;
             return *status;
         }
@@ -121,7 +121,7 @@ pub unsafe extern "C" fn ffcpfl(
             return *status;
         }
 
-        if std::ptr::eq(infptr, outfptr) {
+        if core::ptr::eq(infptr, outfptr) {
             *status = SAME_FILE;
             return *status;
         }
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn ffcphd(
             return *status;
         }
 
-        if std::ptr::eq(infptr, outfptr) {
+        if core::ptr::eq(infptr, outfptr) {
             *status = SAME_FILE;
             return *status;
         }
@@ -472,7 +472,7 @@ pub unsafe extern "C" fn ffcpdt(
             return *status;
         }
 
-        if std::ptr::eq(infptr, outfptr) {
+        if core::ptr::eq(infptr, outfptr) {
             *status = SAME_FILE;
             return *status;
         }
@@ -516,7 +516,7 @@ pub fn ffcpdt_safe(
     nb = ((indataend - indatastart) / IOBUFLEN) as c_long;
 
     if nb > 0 {
-        if std::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut()) {
+        if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut()) {
             /* copying between 2 HDUs in the SAME file */
             unreachable!(
                 "Above ptr comparison prevents us from landing here. Matching original code"
@@ -1856,8 +1856,8 @@ mod tests {
 
             // Open and write HDU to a stream (file).
             fits_open_file(&mut f, &path, READONLY, &mut status);
-            let cpath = std::ffi::CString::new(path2_str.as_str()).unwrap();
-            let mode = std::ffi::CString::new("wb").unwrap();
+            let cpath = alloc::ffi::CString::new(path2_str.as_str()).unwrap();
+            let mode = alloc::ffi::CString::new("wb").unwrap();
             let stream = unsafe { libc::fopen(cpath.as_ptr(), mode.as_ptr()) };
             assert!(!stream.is_null());
             ffwrhdu_safe(
@@ -1929,7 +1929,11 @@ mod tests {
             }
             assert_eq!(status, 1);
 
-            fits_write_hdu(f.as_deref_mut().unwrap(), std::ptr::null_mut(), &mut status);
+            fits_write_hdu(
+                f.as_deref_mut().unwrap(),
+                core::ptr::null_mut(),
+                &mut status,
+            );
             assert_eq!(status, 1);
 
             fits_insert_img(f.as_deref_mut().unwrap(), 16, 1, &naxes, &mut status);

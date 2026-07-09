@@ -5,12 +5,13 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use alloc::ffi::CString;
+use core::ffi::CStr;
+use core::num::ParseIntError;
+use core::{cmp, mem};
 use core::{slice, str};
-use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::BufRead;
-use std::num::ParseIntError;
-use std::{cmp, mem};
 
 use chrono::{DateTime, Datelike, Utc};
 
@@ -6715,7 +6716,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
 
             fits_open_file(&mut f, &name, READONLY, &mut status);
-            let mut result: *mut c_char = std::ptr::null_mut();
+            let mut result: *mut c_char = core::ptr::null_mut();
             fits_read_key_longstr(
                 f.as_deref_mut().unwrap(),
                 &cc("LONGSTR"),
@@ -6725,7 +6726,7 @@ mod tests {
             );
             assert_eq!(status, 0, "ffgkls failed");
             assert!(!result.is_null());
-            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+            let got = unsafe { core::ffi::CStr::from_ptr(result) }
                 .to_str()
                 .unwrap()
                 .to_string();
@@ -7614,7 +7615,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
 
             fits_open_file(&mut f, &name, READONLY, &mut status);
-            let mut result: *mut c_char = std::ptr::null_mut();
+            let mut result: *mut c_char = core::ptr::null_mut();
             fits_read_key_longstr(
                 f.as_deref_mut().unwrap(),
                 &cc("VERYLONG"),
@@ -7624,7 +7625,7 @@ mod tests {
             );
             assert_eq!(status, 0, "ffgkls failed");
             assert!(!result.is_null());
-            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+            let got = unsafe { core::ffi::CStr::from_ptr(result) }
                 .to_str()
                 .unwrap()
                 .to_string();
@@ -7657,7 +7658,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
 
             fits_open_file(&mut f, &name, READONLY, &mut status);
-            let mut result: *mut c_char = std::ptr::null_mut();
+            let mut result: *mut c_char = core::ptr::null_mut();
             fits_read_key_longstr(
                 f.as_deref_mut().unwrap(),
                 &cc("QUOTSTR"),
@@ -7667,7 +7668,7 @@ mod tests {
             );
             assert_eq!(status, 0, "ffgkls failed");
             assert!(!result.is_null());
-            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+            let got = unsafe { core::ffi::CStr::from_ptr(result) }
                 .to_str()
                 .unwrap()
                 .to_string();
@@ -8049,7 +8050,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
 
             fits_open_file(&mut f, &name, READONLY, &mut status);
-            let mut result: *mut c_char = std::ptr::null_mut();
+            let mut result: *mut c_char = core::ptr::null_mut();
             fits_read_key_longstr(
                 f.as_deref_mut().unwrap(),
                 &cc("LSNULL"),
@@ -8059,7 +8060,7 @@ mod tests {
             );
             assert_eq!(status, 0, "ffgkls failed");
             assert!(!result.is_null());
-            let got = unsafe { std::ffi::CStr::from_ptr(result) }
+            let got = unsafe { core::ffi::CStr::from_ptr(result) }
                 .to_str()
                 .unwrap()
                 .to_string();

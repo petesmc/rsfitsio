@@ -14,13 +14,13 @@
 /*  by Jennings, Pence, Folk and Schlesinger. The development of the       */
 /*  grouping structure was partially funded under the NASA AISRP Program.  */
 
-use std::collections::VecDeque;
+use alloc::collections::VecDeque;
 
 use crate::aliases::rust_api::*;
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
 use bytemuck::{cast_slice, cast_slice_mut};
 
-use std::ffi::CStr;
+use core::ffi::CStr;
 
 use crate::{
     aliases::rust_api::{fits_read_key_lng, fits_read_keyword},
@@ -58,9 +58,9 @@ impl Default for HDUtracker {
         HDUtracker {
             nHDU: 0,
             // `Option<Box<_>>` is not Copy, so build the all-None arrays with from_fn.
-            filename: std::array::from_fn(|_| None),
+            filename: core::array::from_fn(|_| None),
             position: [0; MAX_HDU_TRACKER],
-            newFilename: std::array::from_fn(|_| None),
+            newFilename: core::array::from_fn(|_| None),
             newPosition: [0; MAX_HDU_TRACKER],
         }
     }
@@ -929,7 +929,7 @@ pub fn ffgtcp_safe(
     // (In safe Rust two `&mut fitsfile` are guaranteed not to alias, so this can only
     // be true if the FFI wrapper was handed the same raw pointer twice.)
 
-    if std::ptr::eq(infptr, outfptr) {
+    if core::ptr::eq(infptr, outfptr) {
         *status = IDENTICAL_POINTERS;
     } else {
         /* initialize the HDUtracker struct */
@@ -1341,7 +1341,7 @@ pub unsafe extern "C" fn ffgtop(
         // Bridge the C `fitsfile**` output to the safe `Option<Box<fitsfile>>` interface.
         let mut group_fptr: Option<Box<fitsfile>> = None;
         let r = ffgtop_safe(mfptr, grpid, &mut group_fptr, status);
-        *gfptr = group_fptr.map_or(std::ptr::null_mut(), Box::into_raw);
+        *gfptr = group_fptr.map_or(core::ptr::null_mut(), Box::into_raw);
         r
     }
 }
@@ -1443,7 +1443,7 @@ pub fn ffgtop_safe(
 
                 // SAFETY: ffreopen_safer outputs a raw *mut fitsfile (it is not yet
                 // ported to the Box interface); take ownership of it here.
-                let mut raw: *mut fitsfile = std::ptr::null_mut();
+                let mut raw: *mut fitsfile = core::ptr::null_mut();
                 *status = fits_reopen_file(mfptr, &mut raw, status);
                 *gfptr = if raw.is_null() {
                     None
@@ -1483,7 +1483,7 @@ pub fn ffgtop_safe(
             // SAFETY: ffgkls_safe sets tkeyvalue to a heap-allocated C string tracked in
             // the ALLOCATIONS table (it is not yet ported to an owned String); copy it out
             // and release it through the same mechanism.
-            let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+            let mut tkeyvalue: *mut c_char = core::ptr::null_mut();
             *status =
                 fits_read_key_longstr(mfptr, &keyword, &mut tkeyvalue, Some(&mut comment), status);
             if 0 == *status {
@@ -1775,7 +1775,7 @@ pub fn ffgtam_safe(
             fits_parse_rootname(gfn, &mut grootname, status);
         }
 
-        let same_fptr = std::ptr::eq(tmpfptr.Fptr.as_ref(), gfptr.Fptr.as_ref());
+        let same_fptr = core::ptr::eq(tmpfptr.Fptr.as_ref(), gfptr.Fptr.as_ref());
         !same_fptr && strncmp_safe(&tmprootname, &grootname, FLEN_FILENAME) != 0
     }
 
@@ -1866,7 +1866,7 @@ pub fn ffgtam_safe(
         */
 
         if mfptr_is_null {
-            let mut raw: *mut fitsfile = std::ptr::null_mut();
+            let mut raw: *mut fitsfile = core::ptr::null_mut();
             *status = fits_reopen_file(gfptr, &mut raw, status);
             // SAFETY: ffreopen_safer outputs an owned, heap-allocated fitsfile.
             reopened = if raw.is_null() {
@@ -2381,7 +2381,7 @@ pub fn ffgtam_safe(
                         here; when supplied by pointer that is the same as
                         tmpfptr, and the hdupos path does not reach this
                         negative-GRPID branch (it implies a different file). */
-                        let mut tgrplc: *mut c_char = std::ptr::null_mut();
+                        let mut tgrplc: *mut c_char = core::ptr::null_mut();
                         *status = fits_read_key_longstr(
                             tmpfptr,
                             &keyword,
@@ -2784,7 +2784,7 @@ pub fn ffgmng_safe(
                 int_snprintf!(&mut newKeyword, FLEN_KEYWORD, "GRPLC{}", newIndex);
                 /* SPR 1738 */
                 // ffgkls_safe still outputs a raw, heap-allocated C string.
-                let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+                let mut tkeyvalue: *mut c_char = core::ptr::null_mut();
                 *status = fits_read_key_longstr(
                     mfptr,
                     &keyword,
@@ -2849,7 +2849,7 @@ pub unsafe extern "C" fn ffgmop(
         // Bridge the C `fitsfile**` output to the safe `Option<Box<fitsfile>>` interface.
         let mut member_fptr: Option<Box<fitsfile>> = None;
         let r = ffgmop_safe(gfptr, member, &mut member_fptr, status);
-        *mfptr = member_fptr.map_or(std::ptr::null_mut(), Box::into_raw);
+        *mfptr = member_fptr.map_or(core::ptr::null_mut(), Box::into_raw);
         r
     }
 }
@@ -2997,7 +2997,7 @@ pub fn ffgmop_safe(
                 1,
                 1,
                 0,
-                std::slice::from_mut(&mut extver),
+                core::slice::from_mut(&mut extver),
                 Some(&mut dummy),
                 status,
             );
@@ -3011,7 +3011,7 @@ pub fn ffgmop_safe(
                 1,
                 1,
                 0,
-                std::slice::from_mut(&mut hdupos),
+                core::slice::from_mut(&mut hdupos),
                 Some(&mut dummy),
                 status,
             );
@@ -3064,7 +3064,7 @@ pub fn ffgmop_safe(
                   */
 
                 // SAFETY: ffreopen_safer still outputs a raw *mut fitsfile.
-                let mut raw: *mut fitsfile = std::ptr::null_mut();
+                let mut raw: *mut fitsfile = core::ptr::null_mut();
                 *status = fits_reopen_file(gfptr, &mut raw, status);
                 *mfptr = if raw.is_null() {
                     None
@@ -3087,7 +3087,7 @@ pub fn ffgmop_safe(
                     table
                      */
                     // SAFETY: ffreopen_safer still outputs a raw *mut fitsfile.
-                    let mut raw: *mut fitsfile = std::ptr::null_mut();
+                    let mut raw: *mut fitsfile = core::ptr::null_mut();
                     *status = fits_reopen_file(gfptr, &mut raw, status);
                     *mfptr = if raw.is_null() {
                         None
@@ -4115,7 +4115,7 @@ pub fn ffgmrm_safe(
                 Fptr pointers are never equal even for the same physical file; the
                 rootname comparison is the effective test (matches the C's combined
                 condition). */
-                let same_fptr = std::ptr::eq(
+                let same_fptr = core::ptr::eq(
                     mfptr.as_deref().expect(NULL_MSG).Fptr.as_ref(),
                     gfptr.Fptr.as_ref(),
                 );
@@ -4256,7 +4256,7 @@ pub fn ffgmrm_safe(
 
                         /* SPR 1738 */
                         // ffgkls_safe still outputs a raw, heap-allocated C string.
-                        let mut tgrplc: *mut c_char = std::ptr::null_mut();
+                        let mut tgrplc: *mut c_char = core::ptr::null_mut();
                         *status = fits_read_key_longstr(
                             mfptr.as_deref_mut().expect(NULL_MSG),
                             &keyword,
@@ -5389,7 +5389,7 @@ pub(crate) fn ffgmf(
                 1,
                 1,
                 0,
-                std::slice::from_mut(&mut mextver),
+                core::slice::from_mut(&mut mextver),
                 Some(&mut dummy),
                 status,
             );
@@ -5408,7 +5408,7 @@ pub(crate) fn ffgmf(
                 1,
                 1,
                 0,
-                std::slice::from_mut(&mut mposition),
+                core::slice::from_mut(&mut mposition),
                 Some(&mut dummy),
                 status,
             );
@@ -6035,7 +6035,7 @@ pub(crate) fn ffgtcpr(
                 /* We could have a long string */
                 *status = fits_read_record(infptr, startSearch, Some(&mut card), status);
                 card[9] = b'\0' as c_char;
-                let mut tkeyvalue: *mut c_char = std::ptr::null_mut();
+                let mut tkeyvalue: *mut c_char = core::ptr::null_mut();
                 *status = fits_read_key_longstr(
                     infptr,
                     &card,

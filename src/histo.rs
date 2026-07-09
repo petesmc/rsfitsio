@@ -1,8 +1,8 @@
 /*   Globally defined histogram parameters */
 
+use core::ffi::{CStr, c_void};
 use core::slice;
-use std::ffi::{CStr, c_void};
-use std::{array, ptr};
+use core::{array, ptr};
 
 use crate::bb;
 use crate::c_types::{c_char, c_int, c_long, c_short};
@@ -172,10 +172,10 @@ pub(crate) fn ffbinse(
     let mut slen: c_int;
     let mut defaulttype: c_int;
     let mut tmpname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let file_expr: *mut c_char = std::ptr::null_mut();
+    let file_expr: *mut c_char = core::ptr::null_mut();
     let mut dummy: f64 = 0.0;
-    let mut exprbeg: [*mut c_char; 5] = [std::ptr::null_mut(); 5];
-    let mut exprend: [*mut c_char; 5] = [std::ptr::null_mut(); 5];
+    let mut exprbeg: [*mut c_char; 5] = [core::ptr::null_mut(); 5];
+    let mut exprend: [*mut c_char; 5] = [core::ptr::null_mut(); 5];
     let mut has_exprs = false;
 
     if *status > 0 {
@@ -286,7 +286,7 @@ pub(crate) fn ffbinse(
                 }
 
                 let slen = strcspn_safe(ptr, cs!(c" ,)"));
-                if (slen >= FLEN_VALUE) {
+                if slen >= FLEN_VALUE {
                     ffpmsg_str("column name too long in binning specification");
                     ffpmsg_slice(binspec);
                     *status = URL_PARSE_ERROR;
@@ -405,8 +405,8 @@ pub(crate) fn ffbinse(
         let mut ii: usize = 0;
         while ii < 4 {
             /* allow up to 4 histogram dimensions */
-            exprend[ii] = std::ptr::null_mut();
-            exprbeg[ii] = std::ptr::null_mut();
+            exprend[ii] = core::ptr::null_mut();
+            exprbeg[ii] = core::ptr::null_mut();
             let mut exprbeg_idx: usize = 0;
             let mut exprend_idx: usize = 0;
 
@@ -529,8 +529,8 @@ pub(crate) fn ffbinse(
 
         /* parse the weight as though it were a binrange. */
         /* either a column name or a numerical value will be returned */
-        exprend[4] = std::ptr::null_mut();
-        exprbeg[4] = std::ptr::null_mut();
+        exprend[4] = core::ptr::null_mut();
+        exprbeg[4] = core::ptr::null_mut();
         let mut exprbeg_idx: usize = 0;
         let mut exprend_idx: usize = 0;
         let mut dummy2: f64 = 0.0;
@@ -599,7 +599,7 @@ pub(crate) fn ffbinse(
             if exprbeg[ii].is_null() || exprend[ii].is_null() {
                 // No expression for this dimension
                 expr_len = 0;
-                expr_ptr = std::ptr::null();
+                expr_ptr = core::ptr::null();
             } else {
                 // exprbeg and exprend are pointers into the original binspec string
                 unsafe {
@@ -613,7 +613,7 @@ pub(crate) fn ffbinse(
             if expr_len > 0 {
                 let mut expr_vec = vec![0 as c_char; expr_len + 1]; // +1 for null terminator
                 unsafe {
-                    std::ptr::copy_nonoverlapping(expr_ptr, expr_vec.as_mut_ptr(), expr_len);
+                    core::ptr::copy_nonoverlapping(expr_ptr, expr_vec.as_mut_ptr(), expr_len);
                 }
                 expr_vec[expr_len] = 0; // Null terminator
 
@@ -1080,7 +1080,7 @@ pub(crate) fn ffhist2e(
     let numIterCols: c_int = 0;
     let mut datatypes: [c_int; 4] = [0; 4];
     let mut wtdatatype: c_int = 0;
-    let repeat: *mut c_long = std::ptr::null_mut();
+    let repeat: *mut c_long = core::ptr::null_mut();
     let mut wtrepeat: c_long = 0;
     let errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut vectorRepeat: c_long = 0;
@@ -1469,7 +1469,7 @@ pub unsafe extern "C" fn ffhist3(
 
         match res {
             Some(boxed) => Box::into_raw(boxed),
-            None => std::ptr::null_mut(),
+            None => core::ptr::null_mut(),
         }
     }
 }
@@ -3342,7 +3342,7 @@ pub(crate) fn fits_calc_binningde(
             binsize[ii] = -binsize[ii]; /* reverse the sign of binsize */
         }
 
-        if (binsize[ii] == 0.0) {
+        if binsize[ii] == 0.0 {
             ffpmsg_str("error: computed histogram binsize = 0");
 
             let cond = colexpr.is_some()
@@ -3351,7 +3351,7 @@ pub(crate) fn fits_calc_binningde(
             if cond {
                 ffpmsg_str("binning expression:");
                 ffpmsg_slice(colexpr.unwrap()[ii].as_ref().unwrap());
-            } else if (colname[ii][0] != 0) {
+            } else if colname[ii][0] != 0 {
                 ffpmsg_str("binning column:");
                 ffpmsg_slice(&colname[ii]);
             }
@@ -3987,7 +3987,7 @@ pub(crate) fn fits_make_histde(
     let mut numAllocCols: c_int = 0;
     let mut startCol: c_int = -1;
     let mut numIterCols: c_int = 0;
-    let mut iterCols: *mut iteratorCol = std::ptr::null_mut::<iteratorCol>();
+    let mut iterCols: *mut iteratorCol = core::ptr::null_mut::<iteratorCol>();
     let mut double_nulval: f64 = DOUBLENULLVALUE;
     let mut repeat: c_long = 0;
     let mut wtrepeat: c_long = 0;
@@ -4049,7 +4049,7 @@ pub(crate) fn fits_make_histde(
                 ptr::null_mut(),
                 0,
                 numAllocCols as usize,
-                std::mem::size_of::<iteratorCol>(),
+                core::mem::size_of::<iteratorCol>(),
             )
             .cast::<iteratorCol>()
         };
@@ -4187,7 +4187,7 @@ pub(crate) fn fits_make_histde(
                         iterCols.cast::<c_void>(),
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
-                        std::mem::size_of::<iteratorCol>(),
+                        core::mem::size_of::<iteratorCol>(),
                     ) as *mut iteratorCol
                 };
                 if iterCols.is_null() {
@@ -4269,7 +4269,7 @@ pub(crate) fn fits_make_histde(
                     iterCols.cast::<c_void>(),
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
-                    std::mem::size_of::<iteratorCol>(),
+                    core::mem::size_of::<iteratorCol>(),
                 ) as *mut iteratorCol
             };
             if iterCols.is_null() {
@@ -4927,7 +4927,7 @@ extern "C" fn ffcalchist(
         let startCol: c_int = histData.startCols[ii];
         let mut outcol: Option<&mut iteratorCol> = None;
         /* Call calculator work function.  Result is put in final column of colData as a TemporaryCol */
-        colptr[ii] = std::ptr::null_mut();
+        colptr[ii] = core::ptr::null_mut();
 
         /* Do not process unspecified axes (but do process weight column) */
         if (ii >= histData.haxis as usize && ii != 4) || histData.startCols[ii] < 0 {
@@ -5132,7 +5132,7 @@ mod tests {
         let slice = &c_arr[..len];
 
         // Convert to bytes for comparison
-        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<u8>(), len) };
+        let bytes: &[u8] = unsafe { core::slice::from_raw_parts(slice.as_ptr().cast::<u8>(), len) };
 
         expected.as_bytes() == bytes
     }

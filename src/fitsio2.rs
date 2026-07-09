@@ -1,5 +1,5 @@
-use std::ffi::c_char;
-use std::mem;
+use core::ffi::c_char;
+use core::mem;
 
 use crate::c_types::{c_int, c_long, c_short, size_t};
 

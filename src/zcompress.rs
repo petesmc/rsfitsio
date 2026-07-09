@@ -1,7 +1,5 @@
-use std::{
-    io::{Read, Write},
-    ptr,
-};
+use core::ptr;
+use std::io::{Read, Write};
 
 use crate::c_types::{c_char, c_int, c_uint, c_ulong, c_void};
 
@@ -22,7 +20,7 @@ pub(crate) unsafe fn inflateInit2(strm: z_streamp, windowBits: c_int) -> c_int {
             strm,
             windowBits,
             zlibVersion(),
-            std::mem::size_of::<z_stream>() as c_int,
+            core::mem::size_of::<z_stream>() as c_int,
         )
     }
 }
@@ -44,7 +42,7 @@ pub(crate) unsafe fn deflateInit2(
             memLevel,
             strategy,
             zlibVersion(),
-            std::mem::size_of::<z_stream>() as c_int,
+            core::mem::size_of::<z_stream>() as c_int,
         )
     }
 }
@@ -101,14 +99,14 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: std::mem::transmute::<
+            zalloc: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(std::ptr::null_mut()),
-            zfree: std::mem::transmute::<
+            >(core::ptr::null_mut()),
+            zfree: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(std::ptr::null_mut()),
+            >(core::ptr::null_mut()),
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -255,14 +253,14 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: std::mem::transmute::<
+            zalloc: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(std::ptr::null_mut()),
-            zfree: std::mem::transmute::<
+            >(core::ptr::null_mut()),
+            zfree: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(std::ptr::null_mut()),
+            >(core::ptr::null_mut()),
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -378,14 +376,14 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: std::mem::transmute::<
+            zalloc: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(std::ptr::null_mut()),
-            zfree: std::mem::transmute::<
+            >(core::ptr::null_mut()),
+            zfree: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(std::ptr::null_mut()),
+            >(core::ptr::null_mut()),
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -530,14 +528,14 @@ pub(crate) unsafe fn compress2mem_from_mem(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: std::mem::transmute::<
+            zalloc: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(std::ptr::null_mut()),
-            zfree: std::mem::transmute::<
+            >(core::ptr::null_mut()),
+            zfree: core::mem::transmute::<
                 *mut u32,
                 Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(std::ptr::null_mut()),
+            >(core::ptr::null_mut()),
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -660,14 +658,14 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: std::mem::transmute::<
+            zalloc: core::mem::transmute::<
                 *mut u32,
-                std::option::Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(std::ptr::null_mut()),
-            zfree: std::mem::transmute::<
+                core::option::Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
+            >(core::ptr::null_mut()),
+            zfree: core::mem::transmute::<
                 *mut u32,
-                std::option::Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(std::ptr::null_mut()),
+                core::option::Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
+            >(core::ptr::null_mut()),
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),

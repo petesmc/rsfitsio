@@ -38,7 +38,7 @@ pub mod c_api {
         unsafe {
             use crate::fitsio::NULL_MSG;
             use bytemuck::cast_slice;
-            use std::ffi::CStr;
+            use core::ffi::CStr;
 
             let A = A.as_mut().expect(NULL_MSG);
             let D = D.as_mut().expect(NULL_MSG);

@@ -5,8 +5,8 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
 
 use crate::buffers::ffgrsz_safe;
 use crate::c_types::*;
@@ -28,8 +28,8 @@ use crate::getkey::ffgkyj_safe;
 use crate::getkey::ffgkys_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
+use core::mem::size_of;
 use libc::{calloc, free, memcmp, memcpy, memset};
-use std::mem::size_of;
 use std::os::raw::{c_char, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 
 // Import numeric constants
@@ -2582,8 +2582,8 @@ pub fn ffiter_safe(
         None,
     }
 
-    let mut dataptr: *mut std::ffi::c_void = std::ptr::null_mut();
-    let mut defaultnull: *mut std::ffi::c_void = std::ptr::null_mut();
+    let mut dataptr: *mut core::ffi::c_void = core::ptr::null_mut();
+    let mut defaultnull: *mut core::ffi::c_void = core::ptr::null_mut();
     let mut col: Vec<ColNulls> = Vec::new();
 
     let mut tstatus: c_int = 0;
@@ -2613,8 +2613,8 @@ pub fn ffiter_safe(
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut nullstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-    let mut stringptr: *mut *mut std::os::raw::c_char = std::ptr::null_mut();
-    let mut nullpointer: *mut std::os::raw::c_char = std::ptr::null_mut();
+    let mut stringptr: *mut *mut std::os::raw::c_char = core::ptr::null_mut();
+    let mut nullpointer: *mut std::os::raw::c_char = core::ptr::null_mut();
 
     if *status > 0 {
         return *status;
@@ -2638,7 +2638,7 @@ pub fn ffiter_safe(
      3) IMAGE_HDU must not have a TemporaryCol.
     Check the first 2 here. */
     for jj in 0..n_cols as usize {
-        if ((jj == 0 || cols[jj].iotype != TEMPORARY_COL) && cols[jj].fptr.is_null()) {
+        if (jj == 0 || cols[jj].iotype != TEMPORARY_COL) && cols[jj].fptr.is_null() {
             ffpmsg_str("Iterator column is missing FITS file pointer (ffiter)");
             *status = NULL_INPUT_PTR;
             return *status;
@@ -3010,7 +3010,7 @@ pub fn ffiter_safe(
                 }
                 let mut ii = 0;
                 while ii < jj {
-                    if std::ptr::eq(cols[ii].fptr, cols[jj].fptr) {
+                    if core::ptr::eq(cols[ii].fptr, cols[jj].fptr) {
                         break;
                     }
                     ii += 1;
@@ -3225,7 +3225,7 @@ pub fn ffiter_safe(
                         || typecode.abs() == TINT
                         || typecode.abs() == TLONGLONG
                     {
-                        if (cols[jj].fptr.is_null()) {
+                        if cols[jj].fptr.is_null() {
                             ffpmsg_str(
                                 "Iterator column for table is missing FITS file pointer (ffiter)",
                             );
@@ -3610,7 +3610,7 @@ pub fn ffiter_safe(
                             dataptr = stringptr.add(1).cast::<c_void>();
                             defaultnull = match col[jj].null {
                                 ColNullValue::StringNull(ptr) => ptr.cast::<c_void>(),
-                                _ => std::ptr::null_mut(),
+                                _ => core::ptr::null_mut(),
                             }; /* ptr to the null value */
                         } else {
                             dataptr = cols[jj].array.add(col[jj].nullsize);
@@ -3965,9 +3965,9 @@ mod tests {
         USHORT_IMG, fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use alloc::ffi::CString;
     use bytemuck::{cast_slice, cast_slice_mut};
     use libc::{c_char, c_int, c_long};
-    use std::ffi::CString;
 
     /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
     fn cc(s: &str) -> Vec<c_char> {
@@ -5995,9 +5995,9 @@ mod tests {
                 .collect();
             let ptrs: Vec<*const c_char> = str_bufs.iter().map(|v| v.as_ptr()).collect();
             let ptr_bytes: &[u8] = unsafe {
-                std::slice::from_raw_parts(
+                core::slice::from_raw_parts(
                     ptrs.as_ptr() as *const u8,
-                    std::mem::size_of_val(&ptrs[..]),
+                    core::mem::size_of_val(&ptrs[..]),
                 )
             };
             let nulval = CString::new("NULL").unwrap();
@@ -6018,11 +6018,11 @@ mod tests {
             fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
 
             let mut buf: [[c_char; 11]; 5] = [[0; 11]; 5];
-            let mut read_ptrs: [*mut c_char; 5] = std::array::from_fn(|i| buf[i].as_mut_ptr());
+            let mut read_ptrs: [*mut c_char; 5] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let read_ptr_bytes: &mut [u8] = unsafe {
-                std::slice::from_raw_parts_mut(
+                core::slice::from_raw_parts_mut(
                     read_ptrs.as_mut_ptr() as *mut u8,
-                    std::mem::size_of_val(&read_ptrs),
+                    core::mem::size_of_val(&read_ptrs),
                 )
             };
             let readnul = CString::new("UNDEF").unwrap();

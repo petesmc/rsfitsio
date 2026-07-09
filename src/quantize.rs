@@ -4415,7 +4415,7 @@ fn FnNoise1_short(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * core::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4578,7 +4578,7 @@ fn FnNoise1_int(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * core::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4741,7 +4741,7 @@ fn FnNoise1_float(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * core::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -4904,7 +4904,7 @@ fn FnNoise1_double(
         xnoise = (diffs[(nrows - 1) / 2] + diffs[nrows / 2]) / 2.;
     }
 
-    *noise = xnoise * std::f64::consts::FRAC_1_SQRT_2;
+    *noise = xnoise * core::f64::consts::FRAC_1_SQRT_2;
 
     *status
 }
@@ -5306,7 +5306,6 @@ mod tests {
     use super::*;
     use crate::fitsio::{NO_DITHER, SUBTRACTIVE_DITHER_1, SUBTRACTIVE_DITHER_2};
     use libc::{c_int, c_long, c_short};
-
 
     fn dither(v: c_int) -> DitherType {
         match v {

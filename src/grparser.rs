@@ -1,10 +1,10 @@
+use core::ffi::CStr;
+use core::ptr;
 use core::slice;
 use std::env;
-use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::ptr;
 
 use crate::aliases::rust_api::*;
 use crate::c_types::{c_char, c_int, c_long, c_uint, size_t};
@@ -1632,7 +1632,7 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"BINTABLE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(token.value.s as *const c_char, 9),
+                            core::slice::from_raw_parts(token.value.s as *const c_char, 9),
                             8,
                         ) == 0
                         {
@@ -1640,7 +1640,7 @@ fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"TABLE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(token.value.s as *const c_char, 6),
+                            core::slice::from_raw_parts(token.value.s as *const c_char, 6),
                             5,
                         ) == 0
                         {
@@ -1648,7 +1648,7 @@ fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"IMAGE".to_bytes_with_nul()),
-                            std::slice::from_raw_parts(token.value.s as *const c_char, 6),
+                            core::slice::from_raw_parts(token.value.s as *const c_char, 6),
                             5,
                         ) == 0
                         {
@@ -2172,7 +2172,7 @@ pub unsafe extern "C" fn fits_execute_template(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
+    use alloc::ffi::CString;
 
     // Helper function to create a C string
     fn to_cstring(s: &str) -> CString {
@@ -2212,7 +2212,7 @@ mod tests {
                     }
                 };
                 let ptr = Box::into_raw(str_boxed).cast::<c_char>();
-                std::ptr::copy_nonoverlapping(
+                core::ptr::copy_nonoverlapping(
                     str_bytes.as_ptr().cast::<c_char>(),
                     ptr,
                     str_bytes.len(),
@@ -2750,7 +2750,7 @@ mod tests {
     fn cstr_prefix(slice: &[c_char]) -> &str {
         let bytes: &[u8] = cast_slice(slice);
         let nul = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-        std::str::from_utf8(&bytes[..nul]).unwrap()
+        core::str::from_utf8(&bytes[..nul]).unwrap()
     }
 
     // Helper to compare a NUL-terminated `[c_char]` slice against an expected &str

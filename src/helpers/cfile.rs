@@ -66,6 +66,8 @@ impl Write for CFile {
     }
 }
 
+// `std::io::ErrorKind` is retained deliberately: the `core::io` equivalent is still unstable.
+#[allow(clippy::std_instead_of_core)]
 pub(crate) fn fgets(buf: &mut [u8], size: usize, file: &mut File) -> Result<(), std::io::Error> {
     let mut byte = [0; 1];
 

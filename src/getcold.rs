@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short};
 use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
@@ -2841,7 +2841,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 3]; // 4 cols x 3 rows.
-            let data: [f64; 12] = std::array::from_fn(|i| (i as f64) * 100.5);
+            let data: [f64; 12] = core::array::from_fn(|i| (i as f64) * 100.5);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2883,7 +2883,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [2, 2, 2]; // 2x2x2 = 8 elements.
-            let data: [f64; 8] = std::array::from_fn(|i| ((i + 1) as f64) * 0.5);
+            let data: [f64; 8] = core::array::from_fn(|i| ((i + 1) as f64) * 0.5);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2926,7 +2926,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let data: [f64; 16] = std::array::from_fn(|i| i as f64);
+            let data: [f64; 16] = core::array::from_fn(|i| i as f64);
             let fpixel: [c_long; 2] = [2, 2];
             let lpixel: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -2974,7 +2974,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let data: [f64; 16] = std::array::from_fn(|i| i as f64);
+            let data: [f64; 16] = core::array::from_fn(|i| i as f64);
             let fpixel: [c_long; 2] = [1, 1];
             let lpixel: [c_long; 2] = [2, 2];
             let inc: [c_long; 2] = [1, 1];
@@ -3023,7 +3023,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [6, 6];
-            let data: [f64; 36] = std::array::from_fn(|i| i as f64);
+            let data: [f64; 36] = core::array::from_fn(|i| i as f64);
             let fpixel: [c_long; 2] = [1, 1];
             let lpixel: [c_long; 2] = [5, 5];
             let inc: [c_long; 2] = [2, 2]; // Skip every other pixel.
@@ -3927,7 +3927,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [10, 10];
-            let data: [f64; 100] = std::array::from_fn(|i| i as f64);
+            let data: [f64; 100] = core::array::from_fn(|i| i as f64);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -3970,7 +3970,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [5, 5];
-            let data: [f64; 25] = std::array::from_fn(|i| i as f64);
+            let data: [f64; 25] = core::array::from_fn(|i| i as f64);
             let fpixel: [c_long; 2] = [4, 4]; // Start at (4,4).
             let lpixel: [c_long; 2] = [2, 2]; // End at (2,2) - reverse!
             let inc: [c_long; 2] = [1, 1];
@@ -4975,7 +4975,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [3, 3, 2]; // 3x3x2 = 18 elements.
-            let data: [f64; 18] = std::array::from_fn(|i| (i + 1) as f64);
+            let data: [f64; 18] = core::array::from_fn(|i| (i + 1) as f64);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);

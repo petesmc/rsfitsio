@@ -4,8 +4,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use alloc::ffi::CString;
+use core::ffi::CStr;
 use std::env;
-use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::Mutex;
@@ -233,9 +234,9 @@ pub(crate) fn file_openfile(
 
                 user[ii] = 0;
 
-                if (filename[ci] != 0
+                if filename[ci] != 0
                     && filename[ci] != bb(b'/')
-                    && ii >= core::mem::size_of_val(&user) - 1)
+                    && ii >= core::mem::size_of_val(&user) - 1
                 {
                     return FILE_NOT_OPENED; /* username too long to expand safely */
                 }
@@ -248,8 +249,8 @@ pub(crate) fn file_openfile(
                         .unwrap(),
                 );
 
-                if (pwd.is_err() || pwd.as_ref().unwrap().is_none()) {
-                    return (FILE_NOT_OPENED); /* unknown user or missing home dir */
+                if pwd.is_err() || pwd.as_ref().unwrap().is_none() {
+                    return FILE_NOT_OPENED; /* unknown user or missing home dir */
                 }
 
                 let pwd = pwd.unwrap().unwrap();

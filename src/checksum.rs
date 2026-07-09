@@ -768,7 +768,7 @@ mod tests {
 
         ffesum_safe(sum, complm, &mut ascii);
 
-        let result = std::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
+        let result = core::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
             .unwrap()
             .to_str()
             .unwrap();
@@ -783,7 +783,7 @@ mod tests {
 
         ffesum_safe(sum, complm, &mut ascii);
 
-        let result = std::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
+        let result = core::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
             .unwrap()
             .to_str()
             .unwrap();
@@ -798,7 +798,7 @@ mod tests {
 
         ffesum_safe(sum, complm, &mut ascii);
 
-        let result = std::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
+        let result = core::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
             .unwrap()
             .to_str()
             .unwrap();
@@ -813,7 +813,7 @@ mod tests {
 
         ffesum_safe(sum, complm, &mut ascii);
 
-        let result = std::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
+        let result = core::ffi::CStr::from_bytes_until_nul(cast_slice(&ascii))
             .unwrap()
             .to_str()
             .unwrap();

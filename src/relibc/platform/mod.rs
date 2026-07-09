@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cell::Cell, ptr};
+use core::{cell::Cell, ptr};
 
 use crate::c_types::c_int;
 

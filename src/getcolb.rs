@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_void};
 use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
@@ -2939,7 +2939,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 3];
-            let data: [u8; 12] = std::array::from_fn(|i| (i * 10) as u8);
+            let data: [u8; 12] = core::array::from_fn(|i| (i * 10) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2975,7 +2975,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [2, 2, 2];
-            let data: [u8; 8] = std::array::from_fn(|i| (i + 1) as u8);
+            let data: [u8; 8] = core::array::from_fn(|i| (i + 1) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -3012,7 +3012,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [5, 5];
-            let data: [u8; 25] = std::array::from_fn(|i| i as u8);
+            let data: [u8; 25] = core::array::from_fn(|i| i as u8);
             let fpixel: [c_long; 2] = [2, 2];
             let lpixel: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -3052,7 +3052,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let data: [u8; 16] = std::array::from_fn(|i| i as u8);
+            let data: [u8; 16] = core::array::from_fn(|i| i as u8);
             let fpixel: [c_long; 2] = [1, 1];
             let lpixel: [c_long; 2] = [2, 2];
             let inc: [c_long; 2] = [1, 1];
