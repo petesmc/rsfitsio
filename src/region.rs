@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use core::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 

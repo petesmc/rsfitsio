@@ -1,5 +1,5 @@
+use core::cmp;
 use core::slice;
-use std::cmp;
 
 use crate::{
     cfileio::{ffflushx, ffread, ffread_int, ffseek, ffwrite, ffwrite_int},
@@ -2032,7 +2032,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<f32>() + 100) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<f32>() + 100) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<f32> = (0..nvals).map(|i| (i + 1) as f32).collect();
 
@@ -2068,7 +2068,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<f64>() + 100) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<f64>() + 100) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<f64> = (0..nvals).map(|i| (i + 1) as f64).collect();
 
@@ -2110,7 +2110,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let data: [u8; 100] = std::array::from_fn(|i| i as u8);
+            let data: [u8; 100] = core::array::from_fn(|i| i as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2470,7 +2470,7 @@ mod tests {
             let mut status: c_int = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [200];
-            let data: [u8; 200] = std::array::from_fn(|i| (i % 256) as u8);
+            let data: [u8; 200] = core::array::from_fn(|i| (i % 256) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2887,7 +2887,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let bdata: [u8; 100] = std::array::from_fn(|i| (i % 256) as u8);
+            let bdata: [u8; 100] = core::array::from_fn(|i| (i % 256) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -3323,7 +3323,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<f32>() + 1000) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<f32>() + 1000) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<f32> = (0..nvals).map(|i| (i + 1) as f32).collect();
 
@@ -3359,7 +3359,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<i16>() + 1000) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<i16>() + 1000) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<i16> = (0..nvals).map(|i| ((i + 1) % 30000) as i16).collect();
 
@@ -3395,7 +3395,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<c_int>() + 1000) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<c_int>() + 1000) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<c_int> = (0..nvals).map(|i| (i + 1) as c_int).collect();
 
@@ -3431,7 +3431,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<f64>() + 1000) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<f64>() + 1000) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let data: Vec<f64> = (0..nvals).map(|i| (i + 1) as f64).collect();
 
@@ -3473,7 +3473,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let nvals = (MINDIRECT_SIZE / std::mem::size_of::<f32>() + 1000) as LONGLONG;
+            let nvals = (MINDIRECT_SIZE / core::mem::size_of::<f32>() + 1000) as LONGLONG;
             let naxes: [c_long; 1] = [nvals as c_long];
             let mut data: Vec<f32> = (0..nvals).map(|i| (i + 1) as f32).collect();
 
@@ -3743,7 +3743,7 @@ mod tests {
             let mut status: c_int = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [10];
-            let data: [u8; 100] = std::array::from_fn(|i| (i % 256) as u8);
+            let data: [u8; 100] = core::array::from_fn(|i| (i % 256) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -3792,7 +3792,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
             let name = to_buf(filename);
-            let data: [u8; 100] = std::array::from_fn(|i| (i % 256) as u8);
+            let data: [u8; 100] = core::array::from_fn(|i| (i % 256) as u8);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);

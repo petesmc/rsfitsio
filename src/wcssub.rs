@@ -1,5 +1,5 @@
+use core::ptr;
 use core::slice;
-use std::ptr;
 
 use crate::c_types::*;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -1539,9 +1539,9 @@ mod tests {
     use crate::aliases::rust_api::*;
     use crate::fitsio::{BINARY_TBL, BYTE_IMG, READONLY, SHORT_IMG, fitsfile};
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use core::ffi::CStr;
+    use core::ptr;
     use libc::{c_char, c_int, c_long, c_void};
-    use std::ffi::CStr;
-    use std::ptr;
 
     /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
     fn cc(s: &str) -> Vec<c_char> {

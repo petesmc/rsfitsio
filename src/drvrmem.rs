@@ -4,8 +4,8 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
 use std::io::{Read, Seek, SeekFrom, stdin};
 
 #[cfg(windows)]
@@ -14,8 +14,8 @@ use std::os::windows::io::AsRawHandle;
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 
+use core::{cmp, mem, ptr};
 use std::sync::Mutex;
-use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
 use crate::helpers::cfile::CFile;
@@ -894,7 +894,7 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
         IRAF conversion (and any error cleanup, e.g. mem_close_free) can safely
         re-lock MEM_TABLE without deadlocking */
         let (memaddrptr, memsizeptr) = {
-            let mut m = MEM_TABLE.lock().unwrap();
+            let m = MEM_TABLE.lock().unwrap();
             (
                 m[*hdl as usize].memaddrptr,
                 m[*hdl as usize].memsizeptr.as_mut().unwrap() as *mut usize,
@@ -1385,7 +1385,7 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         m[handle as usize].memaddr = ptr::null_mut();
 
         /* close the compressed disk file (except if it is 'stdout' */
-        if !std::ptr::eq(m[handle as usize].fileptr, STDOUT!()) {
+        if !core::ptr::eq(m[handle as usize].fileptr, STDOUT!()) {
             fclose(m[handle as usize].fileptr);
         }
 

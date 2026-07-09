@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::imcompress::{fits_write_compressed_img, fits_write_compressed_pixels};
 use crate::{NullCheckType, NullValue, c_types::*};
@@ -2262,7 +2262,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 3] = [3, 3, 2];
-            let data: [c_int; 32] = std::array::from_fn(|i| (i + 1) as c_int);
+            let data: [c_int; 32] = core::array::from_fn(|i| (i + 1) as c_int);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2651,7 +2651,7 @@ mod tests {
             let naxes: [c_long; 3] = [4, 4, 2];
             let fpixel: [c_long; 3] = [2, 2, 1];
             let lpixel: [c_long; 3] = [3, 3, 2];
-            let data: [c_int; 8] = std::array::from_fn(|i| (i + 100) as c_int);
+            let data: [c_int; 8] = core::array::from_fn(|i| (i + 100) as c_int);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2695,7 +2695,7 @@ mod tests {
             let naxes: [c_long; 4] = [3, 3, 2, 2];
             let fpixel: [c_long; 4] = [1, 1, 1, 1];
             let lpixel: [c_long; 4] = [2, 2, 2, 2];
-            let data: [c_int; 16] = std::array::from_fn(|i| (i + 1) as c_int);
+            let data: [c_int; 16] = core::array::from_fn(|i| (i + 1) as c_int);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -2739,7 +2739,7 @@ mod tests {
             let naxes: [c_long; 5] = [2, 2, 2, 2, 2];
             let fpixel: [c_long; 5] = [1, 1, 1, 1, 1];
             let lpixel: [c_long; 5] = [2, 2, 2, 2, 2];
-            let data: [c_int; 32] = std::array::from_fn(|i| (i + 1) as c_int);
+            let data: [c_int; 32] = core::array::from_fn(|i| (i + 1) as c_int);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);

@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use core::ffi::CStr;
 use std::{f32, f64};
 
 use bytemuck::cast_slice;

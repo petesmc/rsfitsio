@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::c_types::{c_char, c_int, c_long, c_longlong, c_ulonglong};
 
@@ -2311,7 +2311,7 @@ pub fn ffcpcl_safe(
             return *status;
         }
 
-        if std::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
+        if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
             && (infptr.HDUposition == outfptr.HDUposition)
             && (colnum <= incol)
         {
@@ -2809,7 +2809,7 @@ pub fn ffccls_safe(
 
     /* Do not allow copying multiple columns in the same HDU because the
     permutations of possible overlapping copies is mind-bending */
-    if std::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
+    if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
         && (infptr.HDUposition == outfptr.HDUposition)
     {
         ffpmsg_str("Copying multiple columns in same HDU is not supported (ffccls)");
@@ -4536,7 +4536,7 @@ mod tests {
             let name = to_buf(filename);
             let naxes_orig: [c_long; 2] = [20, 20];
             let naxes_new: [c_long; 2] = [5, 5];
-            let data: [i16; 400] = std::array::from_fn(|i| i as i16);
+            let data: [i16; 400] = core::array::from_fn(|i| i as i16);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);
@@ -5395,7 +5395,7 @@ mod tests {
                 &mut simple,
                 &mut bitpix,
                 Some(&mut naxis),
-                std::ptr::null_mut(),
+                core::ptr::null_mut(),
                 &mut pcount,
                 &mut gcount,
                 &mut extend,

@@ -5,8 +5,8 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::mem;
 use core::slice;
-use std::mem;
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 use crate::imcompress::{fits_read_compressed_img, fits_read_compressed_pixels};
@@ -4146,7 +4146,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [10];
-            let wdata: [i16; 10] = std::array::from_fn(|i| (i * 10) as i16);
+            let wdata: [i16; 10] = core::array::from_fn(|i| (i * 10) as i16);
             let firstpix: [c_long; 1] = [3];
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -4180,7 +4180,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [i16; 16] = std::array::from_fn(|i| (i + 1) as i16);
+            let wdata: [i16; 16] = core::array::from_fn(|i| (i + 1) as i16);
             let firstpix: [c_long; 2] = [2, 2];
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -4215,7 +4215,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [10];
-            let wdata: [i16; 10] = std::array::from_fn(|i| (i * 100) as i16);
+            let wdata: [i16; 10] = core::array::from_fn(|i| (i * 100) as i16);
             let firstpix: [LONGLONG; 1] = [5];
 
             let mut f: Option<Box<fitsfile>> = None;
@@ -4346,7 +4346,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [i16; 16] = std::array::from_fn(|i| (i + 1) as i16);
+            let wdata: [i16; 16] = core::array::from_fn(|i| (i + 1) as i16);
             let blc: [c_long; 2] = [1, 1];
             let trc: [c_long; 2] = [4, 4];
             let inc: [c_long; 2] = [1, 1];
@@ -4384,7 +4384,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [i16; 16] = std::array::from_fn(|i| (i + 1) as i16);
+            let wdata: [i16; 16] = core::array::from_fn(|i| (i + 1) as i16);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -4422,7 +4422,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [6, 6];
-            let wdata: [i16; 36] = std::array::from_fn(|i| (i + 1) as i16);
+            let wdata: [i16; 36] = core::array::from_fn(|i| (i + 1) as i16);
             let blc: [c_long; 2] = [1, 1];
             let trc: [c_long; 2] = [6, 6];
             let inc: [c_long; 2] = [2, 2];
@@ -4463,7 +4463,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [f32; 16] = std::array::from_fn(|i| (i + 1) as f32 * 0.5);
+            let wdata: [f32; 16] = core::array::from_fn(|i| (i + 1) as f32 * 0.5);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -4501,7 +4501,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [f64; 16] = std::array::from_fn(|i| (i + 1) as f64 * 0.1);
+            let wdata: [f64; 16] = core::array::from_fn(|i| (i + 1) as f64 * 0.1);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -4545,7 +4545,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [u8; 16] = std::array::from_fn(|i| ((i + 1) * 10) as u8);
+            let wdata: [u8; 16] = core::array::from_fn(|i| ((i + 1) * 10) as u8);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -4583,7 +4583,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [c_long; 16] = std::array::from_fn(|i| ((i + 1) * 1000) as c_long);
+            let wdata: [c_long; 16] = core::array::from_fn(|i| ((i + 1) * 1000) as c_long);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -4621,7 +4621,8 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 2] = [4, 4];
-            let wdata: [LONGLONG; 16] = std::array::from_fn(|i| ((i + 1) as LONGLONG) * 1000000000);
+            let wdata: [LONGLONG; 16] =
+                core::array::from_fn(|i| ((i + 1) as LONGLONG) * 1000000000);
             let blc: [c_long; 2] = [2, 2];
             let trc: [c_long; 2] = [3, 3];
             let inc: [c_long; 2] = [1, 1];
@@ -5083,11 +5084,11 @@ mod tests {
             // Generic ffgcv with TSTRING: the byte buffer holds an array of
             // `*mut c_char` pointers to per-element string buffers.
             let mut buf: [[c_char; 11]; 3] = [[0; 11]; 3];
-            let mut ptrs: [*mut c_char; 3] = std::array::from_fn(|i| buf[i].as_mut_ptr());
+            let mut ptrs: [*mut c_char; 3] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let ptr_bytes: &mut [u8] = unsafe {
-                std::slice::from_raw_parts_mut(
+                core::slice::from_raw_parts_mut(
                     ptrs.as_mut_ptr() as *mut u8,
-                    std::mem::size_of_val(&ptrs),
+                    core::mem::size_of_val(&ptrs),
                 )
             };
             let mut anynull = -1;
@@ -5555,11 +5556,11 @@ mod tests {
             fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
 
             let mut buf: [[c_char; 11]; 3] = [[0; 11]; 3];
-            let mut ptrs: [*mut c_char; 3] = std::array::from_fn(|i| buf[i].as_mut_ptr());
+            let mut ptrs: [*mut c_char; 3] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let ptr_bytes: &mut [u8] = unsafe {
-                std::slice::from_raw_parts_mut(
+                core::slice::from_raw_parts_mut(
                     ptrs.as_mut_ptr() as *mut u8,
-                    std::mem::size_of_val(&ptrs),
+                    core::mem::size_of_val(&ptrs),
                 )
             };
             let mut nullarray = [0 as c_char; 3];

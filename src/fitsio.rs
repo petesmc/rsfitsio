@@ -3,11 +3,11 @@ use crate::{
     helpers::{boxed::box_try_new, vec_raw_parts::vec_into_raw_parts},
 };
 use bytemuck::{cast_slice, cast_slice_mut};
-use std::{
+use core::{
     cmp,
     ffi::{CStr, c_char, c_int, c_long, c_longlong},
-    os::raw::c_void,
 };
+use std::os::raw::c_void;
 
 use crate::{
     fitscore::{ALLOCATIONS, ffpmsg_slice},
@@ -589,7 +589,7 @@ impl Default for FITSfile {
             filehandle: Default::default(),
             driver: Default::default(),
             open_count: Default::default(),
-            filename: std::ptr::null_mut(),
+            filename: core::ptr::null_mut(),
             validcode: Default::default(),
             only_one: Default::default(),
             noextsyntax: Default::default(),
@@ -604,7 +604,7 @@ impl Default for FITSfile {
             writemode: Default::default(),
             maxhdu: Default::default(),
             MAXHDU: Default::default(),
-            headstart: std::ptr::null_mut(),
+            headstart: core::ptr::null_mut(),
             headend: Default::default(),
             ENDpos: Default::default(),
             nextkey: Default::default(),
@@ -616,7 +616,7 @@ impl Default for FITSfile {
             origrows: Default::default(),
             numrows: Default::default(),
             rowlength: Default::default(),
-            tableptr: std::ptr::null_mut(),
+            tableptr: core::ptr::null_mut(),
             heapstart: Default::default(),
             heapsize: Default::default(),
             request_compress_type: Default::default(),
@@ -656,12 +656,12 @@ impl Default for FITSfile {
             rice_bytepix: Default::default(),
             hcomp_scale: Default::default(),
             hcomp_smooth: Default::default(),
-            tilerow: std::ptr::null_mut(),
-            tiledatasize: std::ptr::null_mut(),
-            tiletype: std::ptr::null_mut(),
-            tiledata: std::ptr::null_mut(),
-            tilenullarray: std::ptr::null_mut(),
-            tileanynull: std::ptr::null_mut(),
+            tilerow: core::ptr::null_mut(),
+            tiledatasize: core::ptr::null_mut(),
+            tiletype: core::ptr::null_mut(),
+            tiledata: core::ptr::null_mut(),
+            tilenullarray: core::ptr::null_mut(),
+            tileanynull: core::ptr::null_mut(),
             iobuffer: Box::new([0; (NIOBUF as usize * IOBUFLEN as usize)]),
             bufrecnum: [0; 40],
             dirty: [0; 40],
@@ -781,34 +781,34 @@ impl FITSfile {
     }
 
     pub fn get_headstart_as_slice(&self) -> &[LONGLONG] {
-        unsafe { std::slice::from_raw_parts(self.headstart, self.MAXHDU as usize + 1) }
+        unsafe { core::slice::from_raw_parts(self.headstart, self.MAXHDU as usize + 1) }
     }
 
     pub fn get_headstart_as_mut_slice(&mut self) -> &mut [LONGLONG] {
-        unsafe { std::slice::from_raw_parts_mut(self.headstart, self.MAXHDU as usize + 1) }
+        unsafe { core::slice::from_raw_parts_mut(self.headstart, self.MAXHDU as usize + 1) }
     }
 
     pub fn get_iobuffer(iobuffer: &mut *mut c_char) -> &[c_char] {
-        unsafe { std::slice::from_raw_parts(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
+        unsafe { core::slice::from_raw_parts(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
     }
 
     pub fn get_iobuffer_mut(iobuffer: &mut *mut c_char) -> &mut [c_char] {
-        unsafe { std::slice::from_raw_parts_mut(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
+        unsafe { core::slice::from_raw_parts_mut(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
     }
 
     pub fn get_tableptr_as_slice(&self) -> &[tcolumn] {
-        unsafe { std::slice::from_raw_parts(self.tableptr, self.tfield as usize) }
+        unsafe { core::slice::from_raw_parts(self.tableptr, self.tfield as usize) }
     }
 
     pub fn get_tableptr_as_slice_unlinked<'a>(
         tableptr: &*mut tcolumn,
         len: usize,
     ) -> &'a [tcolumn] {
-        unsafe { std::slice::from_raw_parts(*tableptr, len) }
+        unsafe { core::slice::from_raw_parts(*tableptr, len) }
     }
 
     pub fn get_tableptr_as_mut_slice(&mut self) -> &mut [tcolumn] {
-        unsafe { std::slice::from_raw_parts_mut(self.tableptr, self.tfield as usize) }
+        unsafe { core::slice::from_raw_parts_mut(self.tableptr, self.tfield as usize) }
     }
 
     pub fn get_tile_alloc_len(&self) -> usize {
@@ -816,43 +816,43 @@ impl FITSfile {
     }
 
     pub fn get_tilerow_as_slice(&self) -> &[c_int] {
-        unsafe { std::slice::from_raw_parts(self.tilerow, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tilerow, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tilerow_as_mut_slice(&mut self) -> &mut [c_int] {
-        unsafe { std::slice::from_raw_parts_mut(self.tilerow, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tilerow, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiledatasize_as_slice(&self) -> &[c_long] {
-        unsafe { std::slice::from_raw_parts(self.tiledatasize, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tiledatasize, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiledatasize_as_mut_slice(&mut self) -> &mut [c_long] {
-        unsafe { std::slice::from_raw_parts_mut(self.tiledatasize, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tiledatasize, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiletype_as_slice(&self) -> &[c_int] {
-        unsafe { std::slice::from_raw_parts(self.tiletype, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tiletype, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiletype_as_mut_slice(&mut self) -> &mut [c_int] {
-        unsafe { std::slice::from_raw_parts_mut(self.tiletype, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tiletype, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiledata_as_slice(&self) -> &[*mut c_void] {
-        unsafe { std::slice::from_raw_parts(self.tiledata, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tiledata, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tiledata_as_mut_slice(&mut self) -> &mut [*mut c_void] {
-        unsafe { std::slice::from_raw_parts_mut(self.tiledata, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tiledata, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tilenullarray_as_slice(&self) -> &[*mut c_void] {
-        unsafe { std::slice::from_raw_parts(self.tilenullarray, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tilenullarray, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tilenullarray_as_mut_slice(&mut self) -> &mut [*mut c_void] {
-        unsafe { std::slice::from_raw_parts_mut(self.tilenullarray, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tilenullarray, self.get_tile_alloc_len()) }
     }
 
     /*
@@ -904,11 +904,11 @@ impl FITSfile {
     */
 
     pub fn get_tileanynull_as_slice(&self) -> &[c_int] {
-        unsafe { std::slice::from_raw_parts(self.tileanynull, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts(self.tileanynull, self.get_tile_alloc_len()) }
     }
 
     pub fn get_tileanynull_as_mut_slice(&mut self) -> &mut [c_int] {
-        unsafe { std::slice::from_raw_parts_mut(self.tileanynull, self.get_tile_alloc_len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.tileanynull, self.get_tile_alloc_len()) }
     }
 
     pub fn get_filename_as_cstr(&self) -> &CStr {

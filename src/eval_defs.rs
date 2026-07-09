@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use core::ffi::c_void;
 
 use crate::c_types::{c_char, c_int, c_long};
 
@@ -36,7 +36,7 @@ impl Default for DataInfo {
             naxis: 0,
             naxes: [0; MAXDIMS as usize],
             undef: None,
-            data: std::ptr::null_mut(),
+            data: core::ptr::null_mut(),
         }
     }
 }
@@ -54,8 +54,8 @@ pub union data_union {
     pub ptr: *mut c_void,
 }
 
-impl std::fmt::Debug for data_union {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for data_union {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng })
     }
 }
@@ -63,7 +63,7 @@ impl std::fmt::Debug for data_union {
 impl Default for data_union {
     fn default() -> Self {
         data_union {
-            ptr: std::ptr::null_mut(),
+            ptr: core::ptr::null_mut(),
         }
     }
 }

@@ -2,9 +2,9 @@
 
 use errno::{Errno, errno, set_errno};
 
-use std::ffi::CStr;
+use core::ffi::CStr;
+use core::ptr;
 use std::process::exit;
-use std::ptr;
 
 use bytemuck::cast_slice;
 use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
@@ -19,7 +19,7 @@ use crate::wrappers::{isdigit_safe, strcat_safe, strcpy_safe, strncat_safe};
 use crate::{STDIN, STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
-    wrappers::{strcat, strcpy, strlen, strncat, strncpy, toupper},
+    wrappers::{strcpy, strlen, strncat, strncpy, toupper},
 };
 
 const OCT_0: &str = "000";
@@ -332,8 +332,8 @@ pub(crate) fn fits_parser_yylex(
         let mut yy_next_state: yy_state_type = 0;
         let mut current_block: u64;
         let mut yy_current_state: yy_state_type = 0;
-        let mut yy_cp: *mut c_char = std::ptr::null_mut::<c_char>();
-        let mut yy_bp: *mut c_char = std::ptr::null_mut::<c_char>();
+        let mut yy_cp: *mut c_char = core::ptr::null_mut::<c_char>();
+        let mut yy_bp: *mut c_char = core::ptr::null_mut::<c_char>();
         let mut yy_act: c_int = 0;
 
         yyscanner.yylval_r = yylval_param;
@@ -472,7 +472,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_0 = 0;
 
                                 let mut bitlen: usize = 0;
-                                let mut bitcap: usize = core::mem::size_of_val(&bitstring) - 1;
+                                let bitcap: usize = core::mem::size_of_val(&bitstring) - 1;
                                 let mut overflow: i32 = 0;
 
                                 while c_int::from(tmpstring[len_0 as usize]) != 0 {
@@ -518,8 +518,8 @@ pub(crate) fn fits_parser_yylex(
                                         _ => {}
                                     }
 
-                                    if (!chunk.is_empty()) {
-                                        if (bitlen + chunk_len > bitcap) {
+                                    if !chunk.is_empty() {
+                                        if bitlen + chunk_len > bitcap {
                                             let mut errMsg: [c_char; 100] = [0; 100];
                                             (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
@@ -544,7 +544,7 @@ pub(crate) fn fits_parser_yylex(
 
                                     len_0 += 1;
                                 }
-                                if (overflow != 0) {
+                                if overflow != 0 {
                                     (*yyscanner.yylval_r).astr[0] = 0;
                                 } else {
                                     strcpy(
@@ -592,7 +592,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_1 = 0;
 
                                 let mut bitlen: usize = 0;
-                                let mut bitcap: usize = core::mem::size_of_val(&bitstring_0) - 1;
+                                let bitcap: usize = core::mem::size_of_val(&bitstring_0) - 1;
                                 let mut overflow: i32 = 0;
                                 while c_int::from(tmpstring_0[len_1 as usize]) != 0 {
                                     let mut chunk: &[c_char] = &[];
@@ -669,8 +669,8 @@ pub(crate) fn fits_parser_yylex(
                                         _ => {}
                                     }
 
-                                    if (!chunk.is_empty()) {
-                                        if (bitlen + chunk_len > bitcap) {
+                                    if !chunk.is_empty() {
+                                        if bitlen + chunk_len > bitcap {
                                             let mut errMsg: [c_char; 100] = [0; 100];
                                             (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
@@ -695,7 +695,7 @@ pub(crate) fn fits_parser_yylex(
 
                                     len_1 += 1;
                                 }
-                                if (overflow != 0) {
+                                if overflow != 0 {
                                     (*yyscanner.yylval_r).astr[0] = 0;
                                 } else {
                                     strcpy(
@@ -708,7 +708,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             5 => {
                                 let mut constval: c_long = 0;
-                                let mut p: *mut c_char = std::ptr::null_mut::<c_char>();
+                                let mut p: *mut c_char = core::ptr::null_mut::<c_char>();
                                 p = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
                                 while *p != 0 {
@@ -721,7 +721,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             6 => {
                                 let mut constval_0: c_long = 0;
-                                let mut p_0: *mut c_char = std::ptr::null_mut::<c_char>();
+                                let mut p_0: *mut c_char = core::ptr::null_mut::<c_char>();
                                 p_0 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
                                 while *p_0 != 0 {
@@ -734,7 +734,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             7 => {
                                 let mut constval_1: c_long = 0;
-                                let mut p_1: *mut c_char = std::ptr::null_mut::<c_char>();
+                                let mut p_1: *mut c_char = core::ptr::null_mut::<c_char>();
                                 p_1 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
                                     as *mut c_char;
                                 while *p_1 != 0 {
@@ -769,7 +769,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             11 => {
                                 if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -779,7 +779,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan();
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -789,7 +789,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yylval_r).dbl = (1.0_f64).exp();
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -799,7 +799,7 @@ pub(crate) fn fits_parser_yylex(
                                     (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan() / 180.0;
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -808,7 +808,7 @@ pub(crate) fn fits_parser_yylex(
                                 {
                                     return fits_parser_yytokentype::ROWREF as c_int;
                                 } else if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -817,7 +817,7 @@ pub(crate) fn fits_parser_yylex(
                                 {
                                     return fits_parser_yytokentype::NULLREF as c_int;
                                 } else if {
-                                    let s1 = std::slice::from_raw_parts(
+                                    let s1 = core::slice::from_raw_parts(
                                         yyscanner.yytext_r,
                                         strlen(yyscanner.yytext_r) as usize + 1,
                                     );
@@ -1226,7 +1226,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
 fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
     unsafe {
         let mut yy_current_state: yy_state_type = 0;
-        let mut yy_cp: *mut c_char = std::ptr::null_mut::<c_char>();
+        let mut yy_cp: *mut c_char = core::ptr::null_mut::<c_char>();
 
         yy_current_state = yyscanner.yy_start;
         yy_cp = yyscanner.yytext_r;
@@ -1585,14 +1585,14 @@ pub(crate) fn fits_parser_yylex_init_extra(
 }
 
 fn yy_init_globals(yyscanner: &mut yyguts_t) -> c_int {
-    yyscanner.yy_buffer_stack = std::ptr::null_mut();
+    yyscanner.yy_buffer_stack = core::ptr::null_mut();
     yyscanner.yy_buffer_stack_top = 0;
     yyscanner.yy_buffer_stack_max = 0;
-    yyscanner.yy_c_buf_p = std::ptr::null_mut::<c_char>();
+    yyscanner.yy_c_buf_p = core::ptr::null_mut::<c_char>();
     yyscanner.yy_init = 0;
     yyscanner.yy_start = 0;
-    yyscanner.yyin_r = std::ptr::null_mut::<FILE>();
-    yyscanner.yyout_r = std::ptr::null_mut::<FILE>();
+    yyscanner.yyin_r = core::ptr::null_mut::<FILE>();
+    yyscanner.yyout_r = core::ptr::null_mut::<FILE>();
     0
 }
 
@@ -1609,7 +1609,7 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
         free(yyscanner.yy_buffer_stack.cast::<c_void>());
-        yyscanner.yy_buffer_stack = std::ptr::null_mut();
+        yyscanner.yy_buffer_stack = core::ptr::null_mut();
         yy_init_globals(&mut yyscanner);
 
         0

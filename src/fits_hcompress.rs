@@ -33,8 +33,8 @@ pub unsafe extern "C" fn fits_hcompress(
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        let a = std::slice::from_raw_parts(a, nx as usize * ny as usize);
-        let output = std::slice::from_raw_parts_mut(output, *nbytes as usize);
+        let a = core::slice::from_raw_parts(a, nx as usize * ny as usize);
+        let output = core::slice::from_raw_parts_mut(output, *nbytes as usize);
 
         fits_hcompress_safe(a, ny, nx, scale, output, nbytes, status)
     }
@@ -95,8 +95,8 @@ pub unsafe extern "C" fn fits_hcompress64(
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        let a = std::slice::from_raw_parts(a, nx as usize * ny as usize);
-        let output = std::slice::from_raw_parts_mut(output, *nbytes as usize);
+        let a = core::slice::from_raw_parts(a, nx as usize * ny as usize);
+        let output = core::slice::from_raw_parts_mut(output, *nbytes as usize);
 
         fits_hcompress64_safe(a, ny, nx, scale, output, nbytes, status)
     }

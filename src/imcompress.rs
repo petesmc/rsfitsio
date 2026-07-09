@@ -1,9 +1,9 @@
+use core::ffi::CStr;
 use core::slice;
+use core::{cmp, mem, ptr};
 use std::collections::HashMap;
-use std::ffi::CStr;
 use std::os::raw::c_schar;
 use std::sync::{LazyLock, Mutex, OnceLock};
-use std::{cmp, mem, ptr};
 
 use hcompress::read::HCDecoder;
 use hcompress::write::HCEncoder;
@@ -42,15 +42,15 @@ use crate::getcold::{
     fffi1r8, fffi2r8, fffi4r8, fffr4r8, fffr8r8, fffr8r8_inplace, ffgcvd_safe, ffgsvd_safe,
 };
 use crate::getcole::{fffi1r4, fffi2r4, fffi4r4, fffr4r4, fffr4r4_inplace, fffr8r4, ffgsve_safe};
-use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffi8i2, fffr4i2, fffr8i2, ffgsvi_safe};
-use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffi8i4, fffr4i4, fffr8i4};
+use crate::getcoli::{fffi1i2, fffi2i2, fffi4i2, fffi8i2, ffgsvi_safe};
+use crate::getcolj::{fffi1i4, fffi2i4, fffi4i4, fffi8i4};
 use crate::getcolk::{
-    fffi1int, fffi2int, fffi4int, fffi8int, fffr4int, fffr8int, ffgcvk_safe, ffgsvk_safe,
+    fffi1int, fffi2int, fffi4int, fffi8int, ffgcvk_safe, ffgsvk_safe,
 };
 use crate::getcolsb::{fffi1s1, fffi2s1, fffi4s1};
-use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffi8u2, fffr4u2, fffr8u2};
-use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffi8u4, fffr4u4, fffr8u4};
-use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffi8uint, fffr4uint, fffr8uint};
+use crate::getcolui::{fffi1u2, fffi2u2, fffi4u2, fffi8u2};
+use crate::getcoluj::{fffi1u4, fffi2u4, fffi4u4, fffi8u4};
+use crate::getcoluk::{fffi1uint, fffi2uint, fffi4uint, fffi8uint};
 use crate::putcolb::ffpclb_safe;
 use crate::putcold::ffpcld_safe;
 use crate::putcoli::ffpcli_safe;
@@ -3218,7 +3218,7 @@ unsafe fn imcomp_compress_tile(
                 Some(&mut _test_offset),
                 status,
             );
-            if (_test_nelemll != 0) {
+            if _test_nelemll != 0  {
                 ffpclb_safe(
                     outfptr,
                     (outfptr.Fptr).cn_compressed,
@@ -10916,7 +10916,7 @@ pub unsafe fn fits_compress_table_safer(
             return *status;
         }
 
-        if std::ptr::eq(infptr, outfptr) {
+        if core::ptr::eq(infptr, outfptr) {
             ffpmsg_str("Cannot compress table 'in place' (fits_compress_table)");
             ffpmsg_str(" outfptr cannot be the same as infptr.");
             *status = DATA_COMPRESSION_ERR;
@@ -11971,7 +11971,7 @@ pub fn fits_uncompress_table_safe(
 
         if fits_read_key_log(infptr, cs!(c"ZTABLE"), &mut tstatus, None, status) != 0 {
             /* just copy the HDU if the table is not compressed */
-            if !std::ptr::eq(infptr, outfptr) {
+            if !core::ptr::eq(infptr, outfptr) {
                 fits_copy_hdu(infptr, outfptr, 0, status);
             }
             return *status;
@@ -11982,7 +11982,7 @@ pub fn fits_uncompress_table_safe(
 
         if ncols < 1 {
             /* just copy the HDU if the table does not have  more than 0 columns */
-            if !std::ptr::eq(infptr, outfptr) {
+            if !core::ptr::eq(infptr, outfptr) {
                 fits_copy_hdu(infptr, outfptr, 0, status);
             }
             return *status;

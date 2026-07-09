@@ -4,12 +4,12 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
+use core::{cmp, mem, ptr};
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
-use std::{cmp, mem, ptr};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
@@ -1843,7 +1843,7 @@ pub unsafe extern "C" fn fits_clear_Fptr(
     unsafe {
         let lock = FFLOCK();
         for ii in 0..NMAXFILES {
-            if std::ptr::eq(FPTR_TABLE[ii], Fptr) {
+            if core::ptr::eq(FPTR_TABLE[ii], Fptr) {
                 FPTR_TABLE[ii] = ptr::null_mut();
                 break;
             };
@@ -4451,10 +4451,10 @@ pub fn fits_init_cfitsio_safer() -> c_int {
     }
 
     /*  test that LONGLONG is an 8 byte integer */
-    if std::mem::size_of::<LONGLONG>() != 8 {
+    if core::mem::size_of::<LONGLONG>() != 8 {
         println!("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         println!(" CFITSIO did not find an 8-byte long integer data type.");
-        println!("   sizeof(LONGLONG) = {}", std::mem::size_of::<LONGLONG>());
+        println!("   sizeof(LONGLONG) = {}", core::mem::size_of::<LONGLONG>());
         println!(" Please report this problem to the CFITSIO developers.");
         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         FFUNLOCK(lock);
@@ -4975,25 +4975,25 @@ pub unsafe extern "C" fn ffiurl(
 
         let urltype = urltype
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let infilex = infilex
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let outfile = outfile
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let extspec = extspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let rowfilterx = rowfilterx
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let binspec = binspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let colspec = colspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
 
         ffiurl_safe(
             url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, status,
@@ -5044,28 +5044,28 @@ pub unsafe extern "C" fn ffifile(
 
         let urltype = urltype
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let infilex = infilex
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let outfile = outfile
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let extspec = extspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let rowfilterx = rowfilterx
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let binspec = binspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let colspec = colspec
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
         let pixfilter = pixfilter
             .as_mut()
-            .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME));
+            .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME));
 
         ffifile_safe(
             url, urltype, infilex, outfile, extspec, rowfilterx, binspec, colspec, pixfilter,
@@ -5119,31 +5119,31 @@ pub unsafe extern "C" fn ffifile2(
             url,
             urltype
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             infilex
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             outfile
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             extspec
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             rowfilterx
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             binspec
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             colspec
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             pixfilter
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             compspec
                 .as_mut()
-                .map(|p| std::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
+                .map(|p| core::slice::from_raw_parts_mut(p, FLEN_FILENAME)),
             status,
         )
     }
@@ -6434,7 +6434,7 @@ pub unsafe extern "C" fn ffrtnm(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(url);
 
-        let rootname = std::slice::from_raw_parts_mut(rootname, FLEN_FILENAME);
+        let rootname = core::slice::from_raw_parts_mut(rootname, FLEN_FILENAME);
 
         ffrtnm_safe(url, rootname, status)
     }
@@ -10349,7 +10349,7 @@ mod tests {
             assert_eq!(status, 0, "setup");
 
             // Reopen the file - ffreopen outputs a raw *mut fitsfile
-            let mut newptr: *mut fitsfile = std::ptr::null_mut();
+            let mut newptr: *mut fitsfile = core::ptr::null_mut();
             ffreopen_safer(f1.as_deref_mut().unwrap(), &mut newptr, &mut status);
             assert_eq!(status, 0, "ffreopen failed");
             assert!(!newptr.is_null());
@@ -10892,7 +10892,7 @@ mod tests {
 
         // Call ffrprt - pass null stream (function returns immediately, just
         // verify it doesn't panic). The C version writes to stdout.
-        fits_report_error(std::ptr::null_mut(), 1);
+        fits_report_error(core::ptr::null_mut(), 1);
 
         // Clear error stack.
         fits_clear_errmsg();

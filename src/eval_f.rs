@@ -51,8 +51,8 @@
 /************************************************************************/
 
 use core::slice;
+use core::{cmp, ptr};
 use libc::{c_float, memcpy, memset};
-use std::{cmp, ptr};
 
 use crate::buffers::{ffgbyt, ffgtbb_safe, ffmbyt_safe, ffpbyt, ffptbb_safe};
 use crate::c_types::{c_char, c_double, c_int, c_long, c_short, c_uchar, c_void};
@@ -107,7 +107,7 @@ const SHRT_MIN: LONGLONG = c_short::MIN as LONGLONG;
 const SHRT_MAX: LONGLONG = c_short::MAX as LONGLONG;
 const INT_MIN: LONGLONG = c_int::MIN as LONGLONG;
 const LONG_MIN: LONGLONG = c_long::MIN as LONGLONG;
-use std::mem::size_of;
+use core::mem::size_of;
 
 pub(crate) struct ffffrw_workdata {
     prownum: *mut c_long,
@@ -123,7 +123,7 @@ macro_rules! FREE {
             unsafe {
                 libc::free($x as *mut libc::c_void);
             }
-            $x = std::ptr::null_mut();
+            $x = core::ptr::null_mut();
         } else {
             println!("invalid free at {}:{}", file!(), line!());
         }
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn fffrow(
         let status = status.as_mut().expect(NULL_MSG);
         let n_good_rows = n_good_rows.as_mut().expect(NULL_MSG);
 
-        let row_status = std::slice::from_raw_parts_mut(row_status, nrows as usize);
+        let row_status = core::slice::from_raw_parts_mut(row_status, nrows as usize);
 
         raw_to_slice!(expr);
 
@@ -489,7 +489,7 @@ pub fn ffsrow_safe(
             maxrows = cmp::max(500000 / rdlen, 1);
             nbuff = 0;
             inloc = 1;
-            if std::ptr::eq(infptr, outfptr) {
+            if core::ptr::eq(infptr, outfptr) {
                 /* Skip initial good rows if input==output file */
                 while *Info.dataPtr.cast::<c_char>().add((inloc - 1) as usize) != 0 {
                     inloc += 1;
@@ -546,7 +546,7 @@ pub fn ffsrow_safe(
                 outloc += nbuff;
             }
 
-            if std::ptr::eq(infptr, outfptr) {
+            if core::ptr::eq(infptr, outfptr) {
                 if (outloc as LONGLONG) <= inExt.numRows {
                     ffdrow_safe(
                         infptr,
@@ -688,7 +688,7 @@ pub unsafe extern "C" fn ffcrow(
         let status = status.as_mut().expect(NULL_MSG);
         let anynul = anynul.as_mut().expect(NULL_MSG);
 
-        let array = std::slice::from_raw_parts_mut(array.cast::<u8>(), nelements as usize);
+        let array = core::slice::from_raw_parts_mut(array.cast::<u8>(), nelements as usize);
 
         raw_to_slice!(expr);
 
@@ -1055,7 +1055,7 @@ pub fn ffcalc_rng_safe(
                     16,
                     "{}{}",
                     nelem,
-                    std::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
+                    core::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
                 );
                 parInfo = &tform;
             }
@@ -1086,7 +1086,8 @@ pub fn ffcalc_rng_safe(
                     } else if typecode == TINT {
                         nullVal = INT_MIN;
                     } else if typecode == TLONG {
-                        if std::mem::size_of::<c_long>() == 8 && std::mem::size_of::<c_int>() == 4 {
+                        if core::mem::size_of::<c_long>() == 8 && core::mem::size_of::<c_int>() == 4
+                        {
                             nullVal = INT_MIN;
                         } else {
                             nullVal = LONG_MIN;
@@ -1174,7 +1175,7 @@ pub fn ffcalc_rng_safe(
         lParse.nCols += 1;
 
         for i in 0..nRngs {
-            Info.dataPtr = std::ptr::null_mut();
+            Info.dataPtr = core::ptr::null_mut();
             Info.maxRows = end[i as usize] - start[i as usize] + 1;
 
             /*
@@ -1290,7 +1291,7 @@ pub unsafe extern "C" fn fftexp(
         let datatype = datatype.as_mut().expect(NULL_MSG);
         let nelem = nelem.as_mut().expect(NULL_MSG);
         let naxis = naxis.as_mut().expect(NULL_MSG);
-        let naxes = std::slice::from_raw_parts_mut(naxes, maxdim as usize);
+        let naxes = core::slice::from_raw_parts_mut(naxes, maxdim as usize);
 
         raw_to_slice!(expr);
 
@@ -1593,7 +1594,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
         lParse.Nodes = Vec::new(); // Frees
 
         lParse.hdutype = ANY_HDU;
-        lParse.pixFilter = std::ptr::null_mut();
+        lParse.pixFilter = core::ptr::null_mut();
         lParse.nDataRows = 0;
         lParse.nPrevDataRows = 0;
     }
@@ -1612,7 +1613,7 @@ pub(crate) extern "C" fn fits_parser_workfn(
     colData: *mut iteratorCol, /* IO- Column information/data        */
     userPtr: *mut c_void,      /* I - Data handling instructions     */
 ) -> c_int {
-    let colData = unsafe { std::slice::from_raw_parts_mut(colData, nCols as usize) };
+    let colData = unsafe { core::slice::from_raw_parts_mut(colData, nCols as usize) };
 
     fits_parser_workfn_safe(totalrows, offset, firstrow, nrows, nCols, colData, userPtr)
 }
@@ -2307,11 +2308,11 @@ fn Setup_DataArrays(
         let mut row: c_long = 0;
         let mut idx: c_long = 0;
 
-        let mut bitStrs: *mut *mut c_char = std::ptr::null_mut();
-        let mut sptr: *mut *mut c_char = std::ptr::null_mut();
-        let mut barray: *mut c_char = std::ptr::null_mut();
-        let mut iarray: *mut c_long = std::ptr::null_mut();
-        let mut rarray: *mut c_double = std::ptr::null_mut();
+        let mut bitStrs: *mut *mut c_char = core::ptr::null_mut();
+        let mut sptr: *mut *mut c_char = core::ptr::null_mut();
+        let mut barray: *mut c_char = core::ptr::null_mut();
+        let mut iarray: *mut c_long = core::ptr::null_mut();
+        let mut rarray: *mut c_double = core::ptr::null_mut();
         let mut msg: [c_char; 80] = [0; 80];
         let mut do_realloc: c_int = 0;
 
@@ -2620,14 +2621,14 @@ fn ffcvtn(
                     }
                     TSHORT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2671,14 +2672,14 @@ fn ffcvtn(
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2699,14 +2700,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_uchar>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2780,14 +2781,14 @@ fn ffcvtn(
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2808,14 +2809,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_short>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2868,14 +2869,14 @@ fn ffcvtn(
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_int>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2896,14 +2897,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_int>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2956,14 +2957,14 @@ fn ffcvtn(
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_long>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -2984,14 +2985,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<c_long>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -3048,14 +3049,14 @@ fn ffcvtn(
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<LONGLONG>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -3076,14 +3077,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<LONGLONG>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -3144,14 +3145,14 @@ fn ffcvtn(
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
-                            std::slice::from_raw_parts(
+                            core::slice::from_raw_parts(
                                 input.cast::<f64>(),
                                 ntodo.try_into().unwrap(),
                             )
                         };
 
                         let output_slice = unsafe {
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 output.cast::<f32>(),
                                 ntodo.try_into().unwrap(),
                             )
@@ -3260,8 +3261,8 @@ pub unsafe extern "C" fn fffrwc(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        let times = std::slice::from_raw_parts_mut(times, ntimes as usize);
-        let time_status = std::slice::from_raw_parts_mut(time_status, ntimes as usize);
+        let times = core::slice::from_raw_parts_mut(times, ntimes as usize);
+        let time_status = core::slice::from_raw_parts_mut(time_status, ntimes as usize);
 
         raw_to_slice!(expr);
         raw_to_slice!(timeCol);
@@ -3698,7 +3699,7 @@ fn fits_uncompress_hkdata(
                 1,
                 1,
                 0.0,
-                std::slice::from_mut(&mut newtime),
+                core::slice::from_mut(&mut newtime),
                 Some(&mut anynul),
                 status,
             ) != 0
@@ -3752,7 +3753,7 @@ fn fits_uncompress_hkdata(
                 1,
                 1,
                 Some(cs!(c"")),
-                &mut [std::slice::from_raw_parts_mut(sPtr[0], 256)],
+                &mut [core::slice::from_raw_parts_mut(sPtr[0], 256)],
                 Some(&mut anynul),
                 status,
             ) != 0
@@ -3765,8 +3766,8 @@ fn fits_uncompress_hkdata(
                 parNo -= 1;
                 let var_data = &lParse.varData[parNo as usize];
                 if fits_strcasecmp(
-                    std::slice::from_raw_parts(parName.as_ptr(), strlen_safe(&parName)),
-                    std::slice::from_raw_parts(
+                    core::slice::from_raw_parts(parName.as_ptr(), strlen_safe(&parName)),
+                    core::slice::from_raw_parts(
                         (var_data).name.as_ptr(),
                         strlen_safe(&(var_data).name),
                     ),
@@ -3789,7 +3790,7 @@ fn fits_uncompress_hkdata(
                             1,
                             1,
                             *array.wrapping_add(0),
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 array.wrapping_add(currelem as usize),
                                 1,
                             ),
@@ -3806,7 +3807,7 @@ fn fits_uncompress_hkdata(
                             1,
                             1,
                             *array.wrapping_add(0),
-                            std::slice::from_raw_parts_mut(
+                            core::slice::from_raw_parts_mut(
                                 array.wrapping_add(currelem as usize),
                                 1,
                             ),
@@ -3822,11 +3823,11 @@ fn fits_uncompress_hkdata(
                             row as LONGLONG,
                             1,
                             1,
-                            Some(std::slice::from_raw_parts(
+                            Some(core::slice::from_raw_parts(
                                 *str_array.wrapping_add(0),
                                 strlen(*str_array.wrapping_add(0)) as usize,
                             )),
-                            &mut [std::slice::from_raw_parts_mut(
+                            &mut [core::slice::from_raw_parts_mut(
                                 *str_array.wrapping_add(currelem as usize),
                                 256,
                             )],
@@ -3955,7 +3956,7 @@ pub fn fits_pixel_filter_safer(
         let mut nelem: c_long = 0;
         let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
         let mut col_cnt: c_int = 0;
-        let result: *mut Node = std::ptr::null_mut();
+        let result: *mut Node = core::ptr::null_mut();
         let mut datatype: c_int = 0;
 
         let default_tags: [c_char; 2] = [b'X' as c_char, 0];
@@ -4211,7 +4212,8 @@ pub fn fits_pixel_filter_safer(
                     } else if bitpix == SHORT_IMG {
                         null_val = SHRT_MIN as c_long;
                     } else if bitpix == LONG_IMG {
-                        if std::mem::size_of::<c_long>() == 8 && std::mem::size_of::<c_int>() == 4 {
+                        if core::mem::size_of::<c_long>() == 8 && core::mem::size_of::<c_int>() == 4
+                        {
                             null_val = INT_MIN as c_long;
                         } else {
                             null_val = LONG_MIN as c_long;
@@ -4344,7 +4346,7 @@ pub fn fits_pixel_filter_safer(
                 }
                 TBIT | TSTRING => {
                     let str_val = unsafe {
-                        std::slice::from_raw_parts(
+                        core::slice::from_raw_parts(
                             result.value.data.astr.as_ptr(),
                             strlen_safe(&result.value.data.astr),
                         )
@@ -4492,7 +4494,7 @@ fn find_column(
             for i in 0..(*lParse.pixFilter).count {
                 if fits_strcasecmp(
                     colName,
-                    std::slice::from_raw_parts(
+                    core::slice::from_raw_parts(
                         (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
                         strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
                     ),
@@ -4879,8 +4881,8 @@ fn load_column(
                 var.datatype,
                 fRow as LONGLONG,
                 nRows as LONGLONG,
-                unsafe { std::slice::from_raw_parts_mut(data.cast::<u8>(), (nRows * 8) as usize) }, // Assuming 8 bytes per element
-                unsafe { std::slice::from_raw_parts_mut(undef, nRows as usize) },
+                unsafe { core::slice::from_raw_parts_mut(data.cast::<u8>(), (nRows * 8) as usize) }, // Assuming 8 bytes per element
+                unsafe { core::slice::from_raw_parts_mut(undef, nRows as usize) },
                 Some(&mut anynul),
                 &mut status,
             );
@@ -4943,11 +4945,11 @@ fn load_column(
                         let str_ptr = unsafe { *data_ptr_array.wrapping_add(i as usize) };
                         let str_len = strlen(str_ptr as *const c_char);
                         let str_slice =
-                            unsafe { std::slice::from_raw_parts_mut(str_ptr, str_len + 1) };
+                            unsafe { core::slice::from_raw_parts_mut(str_ptr, str_len + 1) };
                         string_vec.push(str_slice);
                     }
                     let undef_slice =
-                        unsafe { std::slice::from_raw_parts_mut(undef, nRows as usize) };
+                        unsafe { core::slice::from_raw_parts_mut(undef, nRows as usize) };
 
                     ffgcfs_safe(
                         unsafe { &mut *var.fptr },
@@ -4963,10 +4965,10 @@ fn load_column(
                 }
                 TLOGICAL => {
                     let data_slice = unsafe {
-                        std::slice::from_raw_parts_mut(data.cast::<c_char>(), nelem as usize)
+                        core::slice::from_raw_parts_mut(data.cast::<c_char>(), nelem as usize)
                     };
                     let undef_slice =
-                        unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
+                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) };
 
                     ffgcfl_safe(
                         unsafe { &mut *var.fptr },
@@ -4988,19 +4990,19 @@ fn load_column(
                         1,
                         nelem as LONGLONG,
                         unsafe {
-                            std::slice::from_raw_parts_mut(data.cast::<c_long>(), nelem as usize)
+                            core::slice::from_raw_parts_mut(data.cast::<c_long>(), nelem as usize)
                         },
-                        unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) },
+                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) },
                         Some(&mut anynul),
                         &mut status,
                     );
                 }
                 TDOUBLE => {
                     let data_slice = unsafe {
-                        std::slice::from_raw_parts_mut(data.cast::<f64>(), nelem as usize)
+                        core::slice::from_raw_parts_mut(data.cast::<f64>(), nelem as usize)
                     };
                     let undef_slice =
-                        unsafe { std::slice::from_raw_parts_mut(undef, nelem as usize) };
+                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) };
 
                     ffgcfd_safe(
                         unsafe { &mut *var.fptr },
@@ -5057,7 +5059,7 @@ mod tests {
     /// the C `void *array` argument of ffcrow is interpreted.
     fn as_bytes_mut<T>(s: &mut [T]) -> &mut [u8] {
         unsafe {
-            std::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), std::mem::size_of_val(s))
+            core::slice::from_raw_parts_mut(s.as_mut_ptr().cast::<u8>(), core::mem::size_of_val(s))
         }
     }
 
@@ -5630,7 +5632,7 @@ mod tests {
                 &cc("INTCOL * 2"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5658,7 +5660,7 @@ mod tests {
                 &cc("INTCOL + FLOATCOL"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5686,7 +5688,7 @@ mod tests {
                 &cc("ABS(INTCOL - 5)"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5713,7 +5715,7 @@ mod tests {
                 &cc("MIN(INTCOL, 3)"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5728,7 +5730,7 @@ mod tests {
                 &cc("MAX(INTCOL, 3)"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5755,7 +5757,7 @@ mod tests {
                 &cc("SQRT(FLOATCOL)"),
                 1,
                 4,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5782,7 +5784,7 @@ mod tests {
                 &cc("INTCOL ** 2"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5811,7 +5813,7 @@ mod tests {
                 &cc("LOG(INTCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5826,7 +5828,7 @@ mod tests {
                 &cc("LOG10(INTCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5853,7 +5855,7 @@ mod tests {
                 &cc("SIN(FLOATCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5867,7 +5869,7 @@ mod tests {
                 &cc("COS(FLOATCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5893,7 +5895,7 @@ mod tests {
                 &cc("(INTCOL > 5) ? 100 : 0"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5921,7 +5923,7 @@ mod tests {
                 &cc("FLOATCOL / INTCOL"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5948,7 +5950,7 @@ mod tests {
                 &cc("FLOATCOL - INTCOL"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -5975,7 +5977,7 @@ mod tests {
                 &cc("#row"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6002,7 +6004,7 @@ mod tests {
                 &cc("-INTCOL"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6029,7 +6031,7 @@ mod tests {
                 &cc("FLOOR(FLOATCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6044,7 +6046,7 @@ mod tests {
                 &cc("CEIL(FLOATCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6071,7 +6073,7 @@ mod tests {
                 &cc("ROUND(FLOATCOL)"),
                 1,
                 3,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6098,7 +6100,7 @@ mod tests {
                 &cc("EXP(0)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6124,7 +6126,7 @@ mod tests {
                 &cc("ATAN(0)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6138,7 +6140,7 @@ mod tests {
                 &cc("ARCTAN2(1, 1)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6164,7 +6166,7 @@ mod tests {
                 &cc("TAN(0)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6190,7 +6192,7 @@ mod tests {
                 &cc("ASIN(0)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6204,7 +6206,7 @@ mod tests {
                 &cc("ACOS(1)"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6230,7 +6232,7 @@ mod tests {
                 &cc("INTCOL * 2"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6257,7 +6259,7 @@ mod tests {
                 &cc("FLOATCOL + 1.0"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6284,7 +6286,7 @@ mod tests {
                 &cc("INTCOL + 100"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6311,7 +6313,7 @@ mod tests {
                 &cc("INTCOL > 5"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6386,7 +6388,7 @@ mod tests {
                 &cc("VECCOL * 2"),
                 1,
                 5,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6413,7 +6415,7 @@ mod tests {
                 &cc("DEFNULL(INTCOL, 0)"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6440,7 +6442,7 @@ mod tests {
                 &cc("INTCOL"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 &mut results,
                 &mut anynul,
                 &mut status,
@@ -6468,7 +6470,7 @@ mod tests {
                 &cc("INTCOL * 1000000000"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6495,7 +6497,7 @@ mod tests {
                 &cc("INTCOL + 1000"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6522,7 +6524,7 @@ mod tests {
                 &cc("FLOATCOL * 2.5"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6549,7 +6551,7 @@ mod tests {
                 &cc("INTCOL & 1"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6564,7 +6566,7 @@ mod tests {
                 &cc("INTCOL | 16"),
                 1,
                 10,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -8266,13 +8268,13 @@ mod tests {
                 &cc("MINCOL / NEGCOL"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut div_result),
                 &mut anynul,
                 &mut status,
             );
             assert_eq!(status, 0);
-            if std::mem::size_of::<c_long>() == 4 {
+            if core::mem::size_of::<c_long>() == 4 {
                 assert_eq!(div_result[0], c_long::MAX);
             } else {
                 assert_eq!(div_result[0], -(i32::MIN as i64) as c_long);
@@ -8284,7 +8286,7 @@ mod tests {
                 &cc("MINCOL % NEGCOL"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut mod_result),
                 &mut anynul,
                 &mut status,
@@ -8343,7 +8345,7 @@ mod tests {
                 &cc("NUMCOL / DENCOL"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut div_result),
                 &mut anynul,
                 &mut status,
@@ -8358,7 +8360,7 @@ mod tests {
                 &cc("NUMCOL % DENCOL"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut mod_result),
                 &mut anynul,
                 &mut status,
@@ -8475,7 +8477,7 @@ mod tests {
                 &cc("DCOL1 / DCOL2"),
                 1,
                 1,
-                std::ptr::null(),
+                core::ptr::null(),
                 as_bytes_mut(&mut result),
                 &mut anynul,
                 &mut status,
@@ -8489,6 +8491,6 @@ mod tests {
 
     /// View a typed const slice as a byte slice for fits_write_col(TLONG, ...).
     fn as_bytes_const<T>(s: &[T]) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(s.as_ptr().cast::<u8>(), std::mem::size_of_val(s)) }
+        unsafe { core::slice::from_raw_parts(s.as_ptr().cast::<u8>(), core::mem::size_of_val(s)) }
     }
 }

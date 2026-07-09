@@ -1,8 +1,8 @@
-use std::alloc::Layout;
-use std::alloc::alloc;
-use std::error::Error;
-use std::mem;
-use std::ptr::NonNull;
+use alloc::alloc::alloc;
+use core::alloc::Layout;
+use core::error::Error;
+use core::mem;
+use core::ptr::NonNull;
 
 /// The `AllocError` error indicates an allocation failure
 /// that may be due to resource exhaustion or to

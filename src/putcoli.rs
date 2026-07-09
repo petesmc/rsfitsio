@@ -5,9 +5,9 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::{cmp, mem};
+use core::{cmp, mem};
 
 use crate::imcompress::{fits_write_compressed_img, fits_write_compressed_pixels};
 use crate::{NullCheckType, NullValue, c_types::*};
@@ -2979,7 +2979,7 @@ mod tests {
             let mut status = 0;
             let name = to_buf(filename);
             let naxes: [c_long; 1] = [100];
-            let data: [c_short; 100] = std::array::from_fn(|i| (i as i32 - 50) as c_short);
+            let data: [c_short; 100] = core::array::from_fn(|i| (i as i32 - 50) as c_short);
 
             let mut f: Option<Box<fitsfile>> = None;
             fits_create_file(&mut f, &name, &mut status);

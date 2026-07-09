@@ -1,4 +1,4 @@
-use std::mem::ManuallyDrop;
+use core::mem::ManuallyDrop;
 
 /// Decomposes a `Vec<T>` into its raw components: `(pointer, length, capacity)`.
 ///

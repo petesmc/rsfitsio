@@ -30,6 +30,9 @@
 )]
 */
 #![allow(deprecated)]
+#![deny(clippy::std_instead_of_core, clippy::std_instead_of_alloc)]
+
+extern crate alloc;
 
 pub mod c_types;
 pub mod helpers;
@@ -109,12 +112,9 @@ pub mod wrappers;
 pub mod zcompress;
 pub mod zuncompress;
 
-use std::{
-    ffi::{CStr, CString},
-    marker::PhantomData,
-    str::FromStr,
-    sync::{Mutex, MutexGuard},
-};
+use alloc::ffi::CString;
+use core::{ffi::CStr, marker::PhantomData, str::FromStr};
+use std::sync::{Mutex, MutexGuard};
 
 use bytemuck::cast_slice;
 use fitsio::{
@@ -132,7 +132,9 @@ pub(crate) fn FFLOCK<'a>() -> MutexGuard<'a, bool> {
     // meaningfully corrupted if a thread (e.g. a panicking unit test) unwinds
     // while holding the lock. Without this, one panicking test poisons the
     // process-wide lock and cascades PoisonError into every later FFLOCK caller.
-    MUTEX_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    MUTEX_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub(crate) fn FFUNLOCK(p: MutexGuard<'_, bool>) {
@@ -151,7 +153,7 @@ impl<T> AsMutPtr<T> for Option<&mut [T]> {
     fn as_mut_ptr(&self) -> *mut T {
         match self {
             Some(v) => v.as_ptr() as *mut T, // UNSAFE
-            None => std::ptr::null_mut(),
+            None => core::ptr::null_mut(),
         }
     }
 }
@@ -169,7 +171,7 @@ macro_rules! int_snprintf {
             let s_bytes = s.as_bytes();
             let mut s_len = s_bytes.len();
 
-            s_len = std::cmp::min($len-1, s_len);
+            s_len = core::cmp::min($len-1, s_len);
 
             let w = cast_slice_mut::<c_char, u8>(&mut $dst[..s_len]);
             w.copy_from_slice(&s_bytes[..s_len]);
@@ -574,15 +576,15 @@ pub(crate) fn bytes_per_datatype(datatype: c_int) -> Option<usize> {
         TSHORT => Some(2),
         TUINT => Some(4),
         TINT => Some(4),
-        TULONG => Some(std::mem::size_of::<c_ulong>()),
-        TLONG => Some(std::mem::size_of::<c_long>()),
+        TULONG => Some(core::mem::size_of::<c_ulong>()),
+        TLONG => Some(core::mem::size_of::<c_long>()),
         TULONGLONG => Some(8),
         TLONGLONG => Some(8),
         TFLOAT => Some(4),
         TDOUBLE => Some(8),
         TCOMPLEX => Some(8),
         TDBLCOMPLEX => Some(16),
-        TSTRING => Some(std::mem::size_of::<usize>()), // pointer size
+        TSTRING => Some(core::mem::size_of::<usize>()), // pointer size
         _ => None,
     }
 }
@@ -708,7 +710,7 @@ macro_rules! STDERR {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::CString, slice};
+    use alloc::{ffi::CString, slice};
 
     use bytemuck::cast_slice;
     use cfileio::{ffclos_safe, ffinit_safe};

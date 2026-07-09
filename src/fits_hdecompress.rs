@@ -29,8 +29,8 @@ pub unsafe extern "C" fn fits_hdecompress(
         let ny = ny.as_mut().expect(NULL_MSG);
         let scale = scale.as_mut().expect(NULL_MSG);
 
-        let a = std::slice::from_raw_parts_mut(a, 42);
-        let input = std::slice::from_raw_parts(input, 42);
+        let a = core::slice::from_raw_parts_mut(a, 42);
+        let input = core::slice::from_raw_parts(input, 42);
 
         fits_hdecompress_safe(input, smooth, a, ny, nx, scale, status)
     }
@@ -87,8 +87,8 @@ pub unsafe extern "C" fn fits_hdecompress64(
         let ny = ny.as_mut().expect(NULL_MSG);
         let scale = scale.as_mut().expect(NULL_MSG);
 
-        let a = std::slice::from_raw_parts_mut(a, 42);
-        let input = std::slice::from_raw_parts(input, 42);
+        let a = core::slice::from_raw_parts_mut(a, 42);
+        let input = core::slice::from_raw_parts(input, 42);
 
         fits_hdecompress64_safe(input, smooth, a, ny, nx, scale, status)
     }

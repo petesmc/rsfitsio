@@ -9,7 +9,8 @@ mod tests {
         },
     };
 
-    use std::ffi::{CStr, CString, c_void};
+    use alloc::ffi::CString;
+    use core::ffi::{CStr, c_void};
 
     // Helper to create null-terminated string from &str
     fn to_c_string(s: &str) -> Vec<c_char> {

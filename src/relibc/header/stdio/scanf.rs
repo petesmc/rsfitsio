@@ -5,8 +5,8 @@ use crate::c_types::{
     c_ulonglong, c_ushort, intmax_t, ptrdiff_t, size_t, ssize_t, uintmax_t,
 };
 
-use std::string::String;
-use std::vec::Vec;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[derive(PartialEq, Eq)]
 enum IntKind {

@@ -5,7 +5,7 @@
 /*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
 /*  Goddard Space Flight Center.                                           */
 
-use std::ffi::CStr;
+use core::ffi::CStr;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -2996,7 +2996,7 @@ pub fn ffikey_safe(
         ffmbyt_safe(fptr, bytepos, REPORT_EOF, status); /* move back */
         ffpbyt(fptr, 80, cast_slice_mut(&mut outbuff), status); /* overwrite with other buffer */
 
-        std::mem::swap(&mut inbuff, &mut outbuff);
+        core::mem::swap(&mut inbuff, &mut outbuff);
 
         bytepos += 80;
     }
@@ -3272,7 +3272,7 @@ pub fn ffdrec_safe(
         ffmbyt_safe(fptr, bytepos, REPORT_EOF, status);
         ffpbyt(fptr, 80, cast_slice_mut(&mut outbuff), status); /* overwrite with next keyword */
 
-        std::mem::swap(&mut inbuff, &mut outbuff);
+        core::mem::swap(&mut inbuff, &mut outbuff);
 
         bytepos -= 80;
     }
@@ -3284,8 +3284,8 @@ pub fn ffdrec_safe(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CStr;
-    use std::ptr;
+    use core::ffi::CStr;
+    use core::ptr;
 
     use crate::KeywordDatatype;
     use crate::aliases::rust_api::*;
@@ -3311,7 +3311,7 @@ mod tests {
         // `with_temp_file` requires an `Fn` closure, but `body` is `FnOnce`,
         // so stash it in a `RefCell<Option<_>>` and take it out on the single
         // invocation.
-        let body = std::cell::RefCell::new(Some(body));
+        let body = core::cell::RefCell::new(Some(body));
         with_temp_file(|filename| {
             let body = body.borrow_mut().take().unwrap();
             let mut status: c_int = 0;

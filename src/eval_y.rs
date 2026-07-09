@@ -1,8 +1,7 @@
+use alloc::rc::Rc;
+use core::ffi::CStr;
 use core::slice;
-use std::ffi::CStr;
-use std::ptr::addr_of;
-use std::rc::Rc;
-use std::{cmp, ptr};
+use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 use libc::{calloc, free, malloc, memcpy, time, time_t};
@@ -7093,7 +7092,7 @@ fn New_GTI(
     stop: *mut c_char,
 ) -> c_int {
     unsafe {
-        let mut fptr: *mut fitsfile = std::ptr::null_mut();
+        let mut fptr: *mut fitsfile = core::ptr::null_mut();
         let this_node_idx: usize;
         let mut type_0: c_int = 0;
         let mut i: c_int = 0;
@@ -7193,7 +7192,7 @@ fn New_GTI(
                     fname = fname.offset(1);
                     let fname_str = CStr::from_ptr(fname).to_bytes();
                     ffexts_safe(
-                        std::slice::from_raw_parts(
+                        core::slice::from_raw_parts(
                             fname_str.as_ptr().cast::<c_char>(),
                             fname_str.len(),
                         ),
@@ -7226,7 +7225,7 @@ fn New_GTI(
             b'+' => {
                 samefile = 1;
                 hdunum =
-                    atoi(std::ffi::CStr::from_ptr(fname).to_str().unwrap_or("0")).unwrap_or(0) + 1;
+                    atoi(core::ffi::CStr::from_ptr(fname).to_str().unwrap_or("0")).unwrap_or(0) + 1;
                 if hdunum > 1 {
                     ffmahd_safe(fptr, hdunum, Some(&mut hdutype), &mut lParse.status);
                 } else {
@@ -7243,7 +7242,7 @@ fn New_GTI(
                 let fname_str = CStr::from_ptr(fname).to_bytes();
                 if ffopen_safe(
                     &mut fptr_tmp,
-                    std::slice::from_raw_parts(
+                    core::slice::from_raw_parts(
                         fname_str.as_ptr().cast::<c_char>(),
                         fname_str.len(),
                     ),
@@ -7294,14 +7293,14 @@ fn New_GTI(
         ffgcno_safe(
             fptr,
             0,
-            std::slice::from_raw_parts(start_str.as_ptr().cast::<c_char>(), start_str.len()),
+            core::slice::from_raw_parts(start_str.as_ptr().cast::<c_char>(), start_str.len()),
             &mut startCol,
             &mut lParse.status,
         );
         ffgcno_safe(
             fptr,
             0,
-            std::slice::from_raw_parts(stop_str.as_ptr().cast::<c_char>(), stop_str.len()),
+            core::slice::from_raw_parts(stop_str.as_ptr().cast::<c_char>(), stop_str.len()),
             &mut stopCol,
             &mut lParse.status,
         );
@@ -7370,7 +7369,7 @@ fn New_GTI(
             let that0_idx = Node0 as usize;
             (lParse.Nodes[that0_idx]).operation = CONST_OP;
             (lParse.Nodes[that0_idx]).DoOp = None;
-            (lParse.Nodes[that0_idx]).value.data.ptr = std::ptr::null_mut::<c_void>();
+            (lParse.Nodes[that0_idx]).value.data.ptr = core::ptr::null_mut::<c_void>();
 
             /*  Read in START/STOP times  */
 
@@ -7380,8 +7379,8 @@ fn New_GTI(
 
             (lParse.Nodes[that0_idx]).value.nelem = nrows;
             if nrows != 0 {
-                let mut startptr: *mut c_double = std::ptr::null_mut::<c_double>();
-                let mut stopptr: *mut c_double = std::ptr::null_mut::<c_double>();
+                let mut startptr: *mut c_double = core::ptr::null_mut::<c_double>();
+                let mut stopptr: *mut c_double = core::ptr::null_mut::<c_double>();
 
                 /* We are allocating storage for both START and STOP with one pointer
                 and stop is stored at dblptr+nrows, we will use aliases below to
@@ -7406,7 +7405,7 @@ fn New_GTI(
                     1,
                     nrows as LONGLONG,
                     0.0,
-                    std::slice::from_raw_parts_mut(startptr, nrows as usize),
+                    core::slice::from_raw_parts_mut(startptr, nrows as usize),
                     Some(&mut i),
                     &mut lParse.status,
                 );
@@ -7417,7 +7416,7 @@ fn New_GTI(
                     1,
                     nrows as LONGLONG,
                     0.0,
-                    std::slice::from_raw_parts_mut(stopptr, nrows as usize),
+                    core::slice::from_raw_parts_mut(stopptr, nrows as usize),
                     Some(&mut i),
                     &mut lParse.status,
                 );
@@ -7623,14 +7622,14 @@ fn New_REG(
                 ffgcno_safe(
                     fptr,
                     0,
-                    std::slice::from_raw_parts(cX_str.as_ptr().cast::<c_char>(), cX_str.len()),
+                    core::slice::from_raw_parts(cX_str.as_ptr().cast::<c_char>(), cX_str.len()),
                     &mut Xcol,
                     &mut lParse.status,
                 );
                 ffgcno_safe(
                     fptr,
                     0,
-                    std::slice::from_raw_parts(cY_str.as_ptr().cast::<c_char>(), cY_str.len()),
+                    core::slice::from_raw_parts(cY_str.as_ptr().cast::<c_char>(), cY_str.len()),
                     &mut Ycol,
                     &mut lParse.status,
                 );
@@ -7992,7 +7991,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
         let mut rowOffset: c_long = 0;
         static mut RAND_INITIALIZED: c_int = 0;
         if RAND_INITIALIZED == 0 {
-            simplerng_srand(time(std::ptr::null_mut::<time_t>()) as c_uint);
+            simplerng_srand(time(core::ptr::null_mut::<time_t>()) as c_uint);
             RAND_INITIALIZED = 1;
         }
         lParse.firstRow = firstRow;
@@ -8696,12 +8695,12 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
         sptr1 = if const1 != 0 {
             ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
         } else {
-            std::ptr::null_mut::<c_char>()
+            core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
             ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
         } else {
-            std::ptr::null_mut::<c_char>()
+            core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
             match (lParse.Nodes[this_node_idx]).operation {
@@ -8892,12 +8891,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         sptr1 = if const1 != 0 {
             ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
         } else {
-            std::ptr::null_mut::<c_char>()
+            core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
             ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
         } else {
-            std::ptr::null_mut::<c_char>()
+            core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
             match (lParse.Nodes[this_node_idx]).operation {
@@ -9491,7 +9490,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 37 => {
                     if val2 != 0 {
-                        if (val1 == LONG_MIN && val2 == -1) {
+                        if val1 == LONG_MIN && val2 == -1  {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
@@ -9506,7 +9505,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 47 => {
                     if val2 != 0 {
-                        if (val1 == LONG_MIN && val2 == -1) {
+                        if val1 == LONG_MIN && val2 == -1  {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
@@ -9721,13 +9720,13 @@ fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
     let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
     let undef = unsafe { (lParse.Nodes[node_idx]).value.undef };
 
-    if (data.is_null()
+    if data.is_null()
         || (data.addr()) < PARSER_VECTOR_MIN_ADDR
         || undef.is_null()
-        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR)
+        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR 
     {
         fits_parser_yyerror(lParse, cs!(c"parser column data unavailable"));
-        if (lParse.status == 0) {
+        if lParse.status == 0  {
             lParse.status = PARSE_SYNTAX_ERR;
         }
         return 0;
@@ -9767,11 +9766,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
 
-        if (vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0) {
+        if vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0  {
             return;
         }
 
-        if (vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0) {
+        if vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0  {
             return;
         }
 
@@ -10209,7 +10208,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             nelem: 0,
             naxis: 0,
             naxes: [0; 5],
-            undef: std::ptr::null_mut::<c_char>(),
+            undef: core::ptr::null_mut::<c_char>(),
             data: data_union { dbl: 0. },
         }; 10];
         let mut pNull: [c_char; 10] = [0; 10];
@@ -13884,9 +13883,9 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut theExpr: &mut Node;
         let mut theTimes: &mut Node;
-        let mut start: *mut c_double = std::ptr::null_mut::<c_double>();
-        let mut stop: *mut c_double = std::ptr::null_mut::<c_double>();
-        let mut times: *mut c_double = std::ptr::null_mut::<c_double>();
+        let mut start: *mut c_double = core::ptr::null_mut::<c_double>();
+        let mut stop: *mut c_double = core::ptr::null_mut::<c_double>();
+        let mut times: *mut c_double = core::ptr::null_mut::<c_double>();
         let mut elem: c_long = 0;
         let mut nGTI: c_long = 0;
         let mut gti: c_long = 0;
@@ -13908,7 +13907,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                 start,
                 stop,
                 ordered,
-                std::ptr::null_mut::<c_long>(),
+                core::ptr::null_mut::<c_long>(),
             );
             if dorow != 0 {
                 (lParse.Nodes[this_node_idx]).value.data.lng =
@@ -13946,7 +13945,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                                 start,
                                 stop,
                                 ordered,
-                                std::ptr::null_mut::<c_long>(),
+                                core::ptr::null_mut::<c_long>(),
                             );
                         }
                         if dorow != 0 {
@@ -13994,10 +13993,10 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         let mut theTimes: &mut Node;
         let mut theStart: &mut Node;
         let mut theStop: &mut Node;
-        let mut gtiStart: *mut c_double = std::ptr::null_mut::<c_double>();
-        let mut gtiStop: *mut c_double = std::ptr::null_mut::<c_double>();
-        let mut evtStart: *mut c_double = std::ptr::null_mut::<c_double>();
-        let mut evtStop: *mut c_double = std::ptr::null_mut::<c_double>();
+        let mut gtiStart: *mut c_double = core::ptr::null_mut::<c_double>();
+        let mut gtiStop: *mut c_double = core::ptr::null_mut::<c_double>();
+        let mut evtStart: *mut c_double = core::ptr::null_mut::<c_double>();
+        let mut evtStop: *mut c_double = core::ptr::null_mut::<c_double>();
         let mut elem: c_long = 0;
         let mut nGTI: c_long = 0;
         let mut gti: c_long = 0;
@@ -15016,8 +15015,8 @@ fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
         let mut l1 = strlen(bitstrm1) as c_int;
         let mut l2 = strlen(bitstrm2) as c_int;
 
-        let mut bitstrm1 = std::slice::from_raw_parts_mut(bitstrm1, l1 as usize + 1);
-        let mut bitstrm2 = std::slice::from_raw_parts_mut(bitstrm2, l2 as usize + 1);
+        let mut bitstrm1 = core::slice::from_raw_parts_mut(bitstrm1, l1 as usize + 1);
+        let mut bitstrm2 = core::slice::from_raw_parts_mut(bitstrm2, l2 as usize + 1);
 
         largestStream = cmp::max(l1, l2);
 
@@ -15177,7 +15176,7 @@ fn cstrmid(
     src_len: c_int,
     pos: c_int,
 ) -> c_int {
-    let dest_str = unsafe { std::slice::from_raw_parts_mut(dest_str, (dest_len) as usize + 1) }; // +1 for null terminate
+    let dest_str = unsafe { core::slice::from_raw_parts_mut(dest_str, (dest_len) as usize + 1) }; // +1 for null terminate
     let dest_len = dest_len as usize;
     let mut src_len = src_len as usize;
 
@@ -15188,7 +15187,7 @@ fn cstrmid(
         src_len = unsafe { strlen(src_str) };
     } /* .. if constant */
 
-    let src_str = unsafe { std::slice::from_raw_parts(src_str, src_len + 1) };
+    let src_str = unsafe { core::slice::from_raw_parts(src_str, src_len + 1) };
 
     /* Fill destination with blanks */
     if pos < 0 {

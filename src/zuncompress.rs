@@ -206,7 +206,7 @@ pub(crate) unsafe fn zuncompress2mem(
         bytes_out: 0,
         ifname: fn_buffer,
         ifd: indiskfile,
-        ofd: std::ptr::null_mut(),
+        ofd: core::ptr::null_mut(),
         memptr: buffptr.cast::<*mut c_void>(),
         memsize: buffsize,
         realloc_fn: mem_realloc,
@@ -224,7 +224,7 @@ pub(crate) unsafe fn zuncompress2mem(
         return ERROR;
     }
 
-    if unlzw(&mut lzw, indiskfile, std::ptr::null_mut()) != OK {
+    if unlzw(&mut lzw, indiskfile, core::ptr::null_mut()) != OK {
         *status = DATA_DECOMPRESSION_ERR;
     }
 
@@ -392,8 +392,8 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
             incode = code;
 
             let stack: &mut [char_type] = cast_slice_mut(&mut lzw.d_buf);
-            stackp = (DIST_BUFSIZE - 1) * std::mem::size_of::<c_ushort>()
-                / std::mem::size_of::<char_type>();
+            stackp = (DIST_BUFSIZE - 1) * core::mem::size_of::<c_ushort>()
+                / core::mem::size_of::<char_type>();
 
             if code >= free_ent {
                 /* Special case for KwKwK string. */
@@ -429,8 +429,8 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
             {
                 /*	REG1 int	i;   already defined above (WDP) */
 
-                i = ((DIST_BUFSIZE - 1) * std::mem::size_of::<c_ushort>()
-                    / std::mem::size_of::<char_type>()
+                i = ((DIST_BUFSIZE - 1) * core::mem::size_of::<c_ushort>()
+                    / core::mem::size_of::<char_type>()
                     - stackp) as c_int;
 
                 if outpos + (i) >= OUTBUFSIZ as c_int {
@@ -456,8 +456,8 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
                         }
                         stackp += i as usize;
 
-                        i = ((DIST_BUFSIZE - 1) * std::mem::size_of::<c_ushort>()
-                            / std::mem::size_of::<char_type>()
+                        i = ((DIST_BUFSIZE - 1) * core::mem::size_of::<c_ushort>()
+                            / core::mem::size_of::<char_type>()
                             - stackp) as c_int;
 
                         if i <= 0 {
@@ -498,7 +498,8 @@ fn unlzw(lzw: &mut LZW_Compress, in_file: *mut FILE, out_file: *mut FILE) -> c_i
 #[cfg(test)]
 mod tests {
 
-    use std::{ffi::CString, fs::File, io::Read};
+    use alloc::ffi::CString;
+    use std::{fs::File, io::Read};
 
     use crate::c_types::{c_char, c_int};
     use bytemuck::cast_slice;
