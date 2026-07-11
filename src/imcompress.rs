@@ -58,7 +58,7 @@ use libc::realloc;
 
 use bytemuck::{cast, cast_slice, cast_slice_mut};
 
-use pliocomp::{pl_l2pi, pl_p2li};
+use crate::pliocomp::{pl_l2pi, pl_p2li};
 
 use crate::fitscore::{
     ffcmrk_safe, ffcrhd_safe, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
@@ -547,7 +547,7 @@ pub fn fits_set_noise_bits_safe(
         return *status;
     }
 
-    let qlevel = (2 ^ noisebits) as f32;
+    let qlevel = 2.0_f32.powi(noisebits);
     fits_set_quantize_level_safe(fptr, qlevel, status)
 }
 
@@ -13578,4 +13578,895 @@ fn fits_calc_tile_rows(
     }
 
     *status
+}
+
+/// Tests ported from cfitsio's test_ricecomp.c
+///
+/// rsfitsio delegates Rice compression to the external `ricecomp` crate
+/// (`RCEncoder`/`RCDecoder`), which is what `imcompress` drives internally. The
+/// original C test exercised `fits_rcomp`/`fits_rdecomp` directly; here we drive
+/// the same encode/decode round-trips through the crate API.
+#[cfg(test)]
+mod ricecomp_tests {
+    use ricecomp::read::RCDecoder;
+    use ricecomp::write::RCEncoder;
+
+    /// Encode `input` (int), decode it back, and check the exact round-trip.
+    fn rt_int(input: &[i32], nblock: usize) {
+        let nx = input.len();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode(input, nx, nblock)
+            .expect("encode failed");
+        assert!(nbytes > 0);
+
+        let mut out = vec![0u32; nx];
+        RCDecoder::new()
+            .decode(&compressed, nx, nblock, &mut out)
+            .expect("decode failed");
+
+        for i in 0..nx {
+            assert_eq!(out[i] as i32, input[i], "mismatch at {i}");
+        }
+    }
+
+    /// Encode `input` (short), decode it back, and check the exact round-trip.
+    fn rt_short(input: &[i16], nblock: usize) {
+        let nx = input.len();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode_short(input, nx, nblock)
+            .expect("encode_short failed");
+        assert!(nbytes > 0);
+
+        let mut out = vec![0u16; nx];
+        RCDecoder::new()
+            .decode_short(&compressed, nx, nblock, &mut out)
+            .expect("decode_short failed");
+
+        for i in 0..nx {
+            assert_eq!(out[i] as i16, input[i], "mismatch at {i}");
+        }
+    }
+
+    /// Encode `input` (byte), decode it back, and check the exact round-trip.
+    fn rt_byte(input: &[i8], nblock: usize) {
+        let nx = input.len();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode_byte(input, nx, nblock)
+            .expect("encode_byte failed");
+        assert!(nbytes > 0);
+
+        let mut out = vec![0u8; nx];
+        RCDecoder::new()
+            .decode_byte(&compressed, nx, nblock, &mut out)
+            .expect("decode_byte failed");
+
+        for i in 0..nx {
+            assert_eq!(out[i] as i8, input[i], "mismatch at {i}");
+        }
+    }
+
+    #[test]
+    fn test_rcomp_roundtrip() {
+        let original: Vec<i32> = (0..64).map(|i| i * 10).collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_short_roundtrip() {
+        let original: Vec<i16> = (0..64).map(|i| (i * 100) as i16).collect();
+        rt_short(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_byte_roundtrip() {
+        let original: Vec<i8> = (0..64).map(|i| i as i8).collect();
+        rt_byte(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_uniform() {
+        let original = [42i32; 64];
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode(&original, 64, 32)
+            .unwrap();
+        assert!(nbytes > 0);
+        assert!(nbytes <= 50, "uniform data should compress very small");
+
+        let mut out = vec![0u32; 64];
+        RCDecoder::new()
+            .decode(&compressed, 64, 32, &mut out)
+            .unwrap();
+        assert!(out.iter().all(|&v| v == 42));
+    }
+
+    #[test]
+    fn test_rcomp_block_sizes() {
+        let original: Vec<i32> = (0..128).map(|i| i * 5).collect();
+        for &nblock in &[16, 32, 64] {
+            rt_int(&original, nblock);
+        }
+    }
+
+    #[test]
+    fn test_rcomp_large_values() {
+        let original: Vec<i32> = (0..32).map(|i| 1_000_000 + i).collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_zeros() {
+        rt_int(&[0i32; 64], 32);
+    }
+
+    #[test]
+    fn test_rcomp_alternating() {
+        let original: Vec<i32> = (0..64)
+            .map(|i| if i % 2 != 0 { 100 } else { 200 })
+            .collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_short_large_array() {
+        let original: Vec<i16> = (0..256).map(|i| (i * 10) as i16).collect();
+        rt_short(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_byte_range() {
+        let original: Vec<i8> = (0..128).map(|i| i as i8).collect();
+        rt_byte(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_negative_values() {
+        let original: Vec<i32> = (0..32)
+            .map(|i| if i % 2 != 0 { -i * 10 } else { i * 10 })
+            .collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_high_entropy() {
+        let original: Vec<i32> = (0..64)
+            .map(|i| {
+                (((i as u32).wrapping_mul(1103515245).wrapping_add(12345)) >> 16 & 0x7FFF) as i32
+            })
+            .collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_short_negative() {
+        let original: Vec<i16> = (0..64)
+            .map(|i| (if i % 2 != 0 { -i * 100 } else { i * 100 }) as i16)
+            .collect();
+        rt_short(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_byte_negative() {
+        let original: Vec<i8> = (0..64)
+            .map(|i| (if i % 2 != 0 { -(i % 128) } else { i % 128 }) as i8)
+            .collect();
+        rt_byte(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_small_block() {
+        let original: Vec<i32> = (0..64).map(|i| i * 3).collect();
+        rt_int(&original, 8);
+    }
+
+    #[test]
+    fn test_rcomp_extreme_values() {
+        let original: Vec<i32> = (0..16).map(|i| 2_000_000_000 + i).collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_short_extreme() {
+        let original: Vec<i16> = (0..16).map(|i| (32000 + i) as i16).collect();
+        rt_short(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_high_fs() {
+        let original: Vec<i32> = (0..32)
+            .map(|i| if i % 2 != 0 { 1_000_000 } else { 0 })
+            .collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_single_element() {
+        rt_int(&[12345], 32);
+    }
+
+    #[test]
+    fn test_rcomp_decreasing() {
+        let original: Vec<i32> = (0..64).map(|i| 1000 - i * 10).collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rdecomp_buffer_too_small() {
+        // Fewer than 4 bytes cannot hold the first pixel; decode must fail.
+        let compressed = [0u8, 0, 0];
+        let mut out = vec![0u32; 64];
+        assert!(
+            RCDecoder::new()
+                .decode(&compressed, 64, 32, &mut out)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rdecomp_short_small_nx() {
+        rt_short(&[12345], 32);
+    }
+
+    #[test]
+    fn test_rdecomp_byte_small_nx() {
+        rt_byte(&[42], 32);
+    }
+
+    #[test]
+    fn test_rcomp_fsmax_path() {
+        let original: Vec<i32> = (0..32)
+            .map(|i| if i % 2 != 0 { 0x7FFFFFFF } else { 0 })
+            .collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_short_fsmax_path() {
+        let original: Vec<i16> = (0..32)
+            .map(|i| if i % 2 != 0 { 32767 } else { -32768 })
+            .collect();
+        rt_short(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_byte_fsmax_path() {
+        let original: Vec<i8> = (0..32)
+            .map(|i| if i % 2 != 0 { 127 } else { -128 })
+            .collect();
+        rt_byte(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_varying_fs() {
+        let mut original = vec![0i32; 128];
+        for i in 0..32 {
+            original[i] = i as i32;
+        }
+        for i in 32..64 {
+            original[i] = ((i * 7919) % 10000) as i32;
+        }
+        for i in 64..96 {
+            original[i] = ((i * 104729) % 1000000) as i32;
+        }
+        for i in 96..128 {
+            original[i] = 42;
+        }
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_partial_block() {
+        // 100 is not divisible by the block size of 32.
+        let original: Vec<i32> = (0..100).map(|i| i * 7).collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_multi_block_zeros() {
+        let original = [0i32; 128];
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode(&original, 128, 32)
+            .unwrap();
+        assert!(nbytes > 0);
+        assert!(nbytes <= 40, "all-zero data should compress tiny");
+
+        let mut out = vec![0u32; 128];
+        RCDecoder::new()
+            .decode(&compressed, 128, 32, &mut out)
+            .unwrap();
+        assert!(out.iter().all(|&v| v == 0));
+    }
+
+    #[test]
+    fn test_rcomp_constant_multi_block() {
+        rt_int(&[999999i32; 128], 32);
+    }
+
+    #[test]
+    fn test_rdecomp_truncated() {
+        let original: Vec<i32> = (0..64).map(|i| i * 100).collect();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode(&original, 64, 32)
+            .unwrap();
+        assert!(nbytes > 0);
+
+        // Half the bytes is not a complete stream; decode must fail.
+        let mut out = vec![0u32; 64];
+        assert!(
+            RCDecoder::new()
+                .decode(&compressed[..nbytes / 2], 64, 32, &mut out)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rdecomp_short_truncated() {
+        let original: Vec<i16> = (0..64).map(|i| (i * 50) as i16).collect();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode_short(&original, 64, 32)
+            .unwrap();
+
+        let mut out = vec![0u16; 64];
+        assert!(
+            RCDecoder::new()
+                .decode_short(&compressed[..nbytes / 2], 64, 32, &mut out)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rdecomp_byte_truncated() {
+        let original: Vec<i8> = (0..64).map(|i| (i % 100) as i8).collect();
+        let mut compressed = Vec::new();
+        let nbytes = RCEncoder::new(&mut compressed)
+            .encode_byte(&original, 64, 32)
+            .unwrap();
+
+        let mut out = vec![0u8; 64];
+        assert!(
+            RCDecoder::new()
+                .decode_byte(&compressed[..nbytes / 2], 64, 32, &mut out)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rdecomp_nx_mismatch() {
+        // Compress 32 values, but ask the decoder for 64: must fail.
+        let original: Vec<i32> = (0..32).map(|i| i * 10).collect();
+        let mut compressed = Vec::new();
+        RCEncoder::new(&mut compressed)
+            .encode(&original, 32, 16)
+            .unwrap();
+
+        let mut out = vec![0u32; 64];
+        assert!(
+            RCDecoder::new()
+                .decode(&compressed, 64, 16, &mut out)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rcomp_nblock_larger_than_nx() {
+        // nblock=32 but only 16 elements.
+        let original: Vec<i32> = (0..16).map(|i| i * 5).collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_nbits_edge() {
+        let original: Vec<i32> = (0..32)
+            .map(|i| match i % 4 {
+                0 => 0,
+                1 => 0x7F,
+                2 => 0x7FFF,
+                _ => 0x7FFFFF,
+            })
+            .collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rdecomp_extra_bytes() {
+        let original: Vec<i32> = (0..32).map(|i| i * 10).collect();
+        let mut compressed = Vec::new();
+        RCEncoder::new(&mut compressed)
+            .encode(&original, 32, 16)
+            .unwrap();
+
+        // Trailing junk bytes should be tolerated by the decoder.
+        compressed.push(0xFF);
+        compressed.push(0xFF);
+
+        let mut out = vec![0u32; 32];
+        RCDecoder::new()
+            .decode(&compressed, 32, 16, &mut out)
+            .unwrap();
+        for i in 0..32 {
+            assert_eq!(out[i] as i32, original[i]);
+        }
+    }
+
+    #[test]
+    fn test_rdecomp_short_extra_bytes() {
+        let original: Vec<i16> = (0..32).map(|i| (i * 100) as i16).collect();
+        let mut compressed = Vec::new();
+        RCEncoder::new(&mut compressed)
+            .encode_short(&original, 32, 16)
+            .unwrap();
+        compressed.push(0xFF);
+        compressed.push(0xFF);
+
+        let mut out = vec![0u16; 32];
+        RCDecoder::new()
+            .decode_short(&compressed, 32, 16, &mut out)
+            .unwrap();
+        for i in 0..32 {
+            assert_eq!(out[i] as i16, original[i]);
+        }
+    }
+
+    #[test]
+    fn test_rdecomp_byte_extra_bytes() {
+        let original: Vec<i8> = (0..32).map(|i| (i * 2) as i8).collect();
+        let mut compressed = Vec::new();
+        RCEncoder::new(&mut compressed)
+            .encode_byte(&original, 32, 16)
+            .unwrap();
+        compressed.push(0xFF);
+        compressed.push(0xFF);
+
+        let mut out = vec![0u8; 32];
+        RCDecoder::new()
+            .decode_byte(&compressed, 32, 16, &mut out)
+            .unwrap();
+        for i in 0..32 {
+            assert_eq!(out[i] as i8, original[i]);
+        }
+    }
+
+    #[test]
+    fn test_rcomp_fsmax_nbits_path() {
+        let original: Vec<i32> = (0..64)
+            .map(|i| {
+                if i % 2 != 0 {
+                    0x7FFFFFFFi32
+                } else {
+                    0x80000001u32 as i32
+                }
+            })
+            .collect();
+        rt_int(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_bit_alignment() {
+        let original: Vec<i32> = (0..48)
+            .map(|i| ((i * 0x1234567) ^ (i << 16)) & 0x7FFFFFFF)
+            .collect();
+        rt_int(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_short_nbits_path() {
+        let original: Vec<i16> = (0..64)
+            .map(|i| if i % 2 != 0 { 32767 } else { -32768 })
+            .collect();
+        rt_short(&original, 8);
+    }
+
+    #[test]
+    fn test_rcomp_byte_nbits_path() {
+        let original: Vec<i8> = (0..64)
+            .map(|i| if i % 2 != 0 { 127 } else { -128 })
+            .collect();
+        rt_byte(&original, 8);
+    }
+
+    #[test]
+    fn test_rcomp_various_block_sizes() {
+        let original: Vec<i32> = (0..96)
+            .map(|i| {
+                if i % 3 != 0 {
+                    ((i * 999983) % 10000000) as i32
+                } else {
+                    0
+                }
+            })
+            .collect();
+        for &nblock in &[8, 12, 20, 24] {
+            rt_int(&original, nblock);
+        }
+    }
+
+    #[test]
+    fn test_rcomp_prime_sequence() {
+        let primes: [i32; 32] = [
+            2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 1009, 1013, 1019, 1021,
+            1031, 1033, 1039, 1049, 1051, 1061, 10007, 10009, 10037, 10039, 10061, 10067,
+        ];
+        rt_int(&primes, 8);
+    }
+
+    #[test]
+    fn test_rcomp_short_mixed_blocks() {
+        let mut original = vec![0i16; 128];
+        for i in 0..32 {
+            original[i] = 1000;
+        }
+        for i in 32..64 {
+            original[i] = (i * 10) as i16;
+        }
+        for i in 64..96 {
+            original[i] = if i % 2 != 0 { 32000 } else { -32000 };
+        }
+        for i in 96..128 {
+            original[i] = ((i * 7919) % 30000) as i16;
+        }
+        rt_short(&original, 32);
+    }
+
+    #[test]
+    fn test_rcomp_byte_boundaries() {
+        let original: Vec<i8> = (0..64)
+            .map(|i| {
+                let mut val = (i * 5) % 256;
+                if val > 127 {
+                    val -= 256;
+                }
+                val as i8
+            })
+            .collect();
+        rt_byte(&original, 16);
+    }
+
+    #[test]
+    fn test_rcomp_byte_fsmax_extreme() {
+        let original: Vec<i8> = (0..128)
+            .map(|i| if i % 2 != 0 { 127 } else { -128 })
+            .collect();
+        for &nblock in &[4, 8, 16] {
+            rt_byte(&original, nblock);
+        }
+    }
+
+    #[test]
+    fn test_rcomp_int_fsmax_extreme() {
+        let original: Vec<i32> = (0..64)
+            .map(|i| if i % 2 != 0 { 0xFFFFFFFFu32 as i32 } else { 0 })
+            .collect();
+        rt_int(&original, 8);
+    }
+}
+
+/// Tests ported from cfitsio's test_imcompress.c
+///
+/// These drive the high-level tiled-image compression API end to end
+/// (`fits_set_compression_type`, `fits_img_compress`, transparent decompression
+/// on read, etc.) against on-disk FITS files.
+#[cfg(test)]
+mod tests {
+    use super::{
+        fits_get_compression_type_safe, fits_get_dither_seed_safe, fits_get_noise_bits_safe,
+        fits_get_quantize_level_safe, fits_get_tile_dim_safer, fits_img_compress_safe,
+        fits_set_compression_type_safe, fits_set_dither_seed_safe, fits_set_noise_bits_safe,
+        fits_set_quantize_level_safe, fits_set_tile_dim_safe,
+    };
+    use crate::c_types::c_long;
+    use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
+    use crate::fitscore::{ffmahd_safe, fits_is_compressed_image_safe};
+    use crate::fitsio::{
+        BYTE_IMG, GZIP_1, GZIP_2, HCOMPRESS_1, LONG_IMG, LONGLONG, PLIO_1, READONLY, RICE_1,
+        SHORT_IMG, TBYTE, TINT, TSHORT, fitsfile,
+    };
+    use crate::getcol::ffgpv_safe;
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use crate::putcol::ffppr_safe;
+    use crate::putkey::ffcrim_safe;
+    use bytemuck::cast_slice;
+
+    /// Create a fresh FITS file with a single empty image HDU of the given type.
+    fn create_test_image(filename: &str, bitpix: i32, nx: c_long, ny: c_long) -> Box<fitsfile> {
+        let mut status = 0;
+        let name = to_buf(filename);
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut fptr, &name, &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        {
+            let f = fptr.as_deref_mut().unwrap();
+            let naxes = [nx, ny];
+            ffcrim_safe(f, bitpix, 2, &naxes, &mut status);
+            assert_eq!(status, 0, "ffcrim failed");
+        }
+        fptr.take().unwrap()
+    }
+
+    /// Full compression round-trip: write `original_bytes` as an image, compress
+    /// it with `ctype` into a second file, then read it back (transparently
+    /// decompressed) and return the decompressed bytes.
+    fn compress_roundtrip(
+        filename: &str,
+        bitpix: i32,
+        datatype: i32,
+        ctype: i32,
+        nx: c_long,
+        ny: c_long,
+        original_bytes: &[u8],
+    ) -> Vec<u8> {
+        let n = (nx * ny) as LONGLONG;
+        let mut status = 0;
+        let in_name = to_buf(filename);
+        let out_name = to_buf(&format!("{filename}.compressed"));
+
+        // Create the uncompressed input image.
+        let mut infptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut infptr, &in_name, &mut status);
+        assert_eq!(status, 0, "create input");
+        {
+            let f = infptr.as_deref_mut().unwrap();
+            let naxes = [nx, ny];
+            ffcrim_safe(f, bitpix, 2, &naxes, &mut status);
+            assert_eq!(status, 0, "create img");
+            ffppr_safe(f, datatype, 1, n, original_bytes, &mut status);
+            assert_eq!(status, 0, "write img");
+        }
+        ffclos_safe(infptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "close input");
+
+        // Reopen the input read-only and compress it into a new file.
+        let mut infptr: Option<Box<fitsfile>> = None;
+        ffopen_safe(&mut infptr, &in_name, READONLY, &mut status);
+        assert_eq!(status, 0, "open input");
+        let mut outfptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut outfptr, &out_name, &mut status);
+        assert_eq!(status, 0, "create output");
+        {
+            let of = outfptr.as_deref_mut().unwrap();
+            fits_set_compression_type_safe(of, ctype, &mut status);
+            assert_eq!(status, 0, "set compression type");
+        }
+        {
+            let inf = infptr.as_deref_mut().unwrap();
+            let of = outfptr.as_deref_mut().unwrap();
+            fits_img_compress_safe(inf, of, &mut status);
+            assert_eq!(status, 0, "img compress");
+        }
+        ffclos_safe(infptr.take().unwrap(), &mut status);
+        ffclos_safe(outfptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "close after compress");
+
+        // Reopen the compressed file; the compressed image lives in HDU 2.
+        let mut outfptr: Option<Box<fitsfile>> = None;
+        ffopen_safe(&mut outfptr, &out_name, READONLY, &mut status);
+        assert_eq!(status, 0, "reopen output");
+        let of = outfptr.as_deref_mut().unwrap();
+        ffmahd_safe(of, 2, None, &mut status);
+        assert_eq!(status, 0, "movabs hdu 2");
+
+        let is_comp = fits_is_compressed_image_safe(of, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(is_comp, 1, "expected a compressed image in HDU 2");
+
+        let mut decompressed = vec![0u8; original_bytes.len()];
+        ffgpv_safe(
+            of,
+            datatype,
+            1,
+            n,
+            None,
+            &mut decompressed,
+            None,
+            &mut status,
+        );
+        assert_eq!(status, 0, "read (decompress) img");
+
+        ffclos_safe(outfptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "close final");
+
+        decompressed
+    }
+
+    #[test]
+    fn test_compression_type() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 64, 64);
+            let mut status = 0;
+            let mut ctype = 0;
+
+            for &want in &[RICE_1, GZIP_1, GZIP_2, PLIO_1, HCOMPRESS_1] {
+                fits_set_compression_type_safe(&mut fptr, want, &mut status);
+                assert_eq!(status, 0);
+                fits_get_compression_type_safe(&mut fptr, &mut ctype, &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(ctype, want);
+            }
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_tile_dimensions() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 64, 64);
+            let mut status = 0;
+
+            let dims_in: [c_long; 2] = [32, 32];
+            fits_set_tile_dim_safe(&mut fptr, 2, &dims_in, &mut status);
+            assert_eq!(status, 0);
+
+            let mut dims_out: [c_long; 2] = [0, 0];
+            unsafe {
+                fits_get_tile_dim_safer(&mut fptr, 2, &mut dims_out, &mut status);
+            }
+            assert_eq!(status, 0);
+            assert_eq!(dims_out[0], 32);
+            assert_eq!(dims_out[1], 32);
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_quantize_level() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 64, 64);
+            let mut status = 0;
+
+            fits_set_quantize_level_safe(&mut fptr, 16.0, &mut status);
+            assert_eq!(status, 0);
+
+            let mut qlevel = 0.0f32;
+            fits_get_quantize_level_safe(&mut fptr, &mut qlevel, &mut status);
+            assert_eq!(status, 0);
+            assert!((qlevel - 16.0).abs() < 0.001);
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_noise_bits() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 64, 64);
+            let mut status = 0;
+
+            fits_set_noise_bits_safe(&mut fptr, 4, &mut status);
+            assert_eq!(status, 0);
+
+            let mut noisebits = 0;
+            fits_get_noise_bits_safe(&mut fptr, &mut noisebits, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(noisebits, 4);
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_dither_seed() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 32, 32);
+            let mut status = 0;
+
+            fits_set_dither_seed_safe(&mut fptr, 1234, &mut status);
+            assert_eq!(status, 0);
+
+            let mut seed = 0;
+            fits_get_dither_seed_safe(&mut fptr, &mut seed, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(seed, 1234);
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_is_compressed_uncompressed() {
+        with_temp_file(|filename| {
+            let mut fptr = create_test_image(filename, SHORT_IMG, 32, 32);
+            let mut status = 0;
+
+            let is_comp = fits_is_compressed_image_safe(&mut fptr, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(is_comp, 0, "plain image must not report as compressed");
+
+            ffclos_safe(fptr, &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    #[test]
+    fn test_rice_compress_short() {
+        with_temp_file(|filename| {
+            let original: Vec<i16> = (0..64 * 64).map(|i| (i % 1000) as i16).collect();
+            let decompressed = compress_roundtrip(
+                filename,
+                SHORT_IMG,
+                TSHORT,
+                RICE_1,
+                64,
+                64,
+                cast_slice(&original),
+            );
+            assert_eq!(decompressed, cast_slice::<i16, u8>(&original));
+        });
+    }
+
+    #[test]
+    fn test_gzip_compress() {
+        with_temp_file(|filename| {
+            let original: Vec<i32> = (0..32 * 32).map(|i| i * 100).collect();
+            let decompressed = compress_roundtrip(
+                filename,
+                LONG_IMG,
+                TINT,
+                GZIP_1,
+                32,
+                32,
+                cast_slice(&original),
+            );
+            assert_eq!(decompressed, cast_slice::<i32, u8>(&original));
+        });
+    }
+
+    #[test]
+    fn test_plio_compress() {
+        with_temp_file(|filename| {
+            // Mask-like data: mostly zeros with occasional ones.
+            let original: Vec<i16> = (0..64 * 64)
+                .map(|i| if i % 10 == 0 { 1 } else { 0 })
+                .collect();
+            let decompressed = compress_roundtrip(
+                filename,
+                SHORT_IMG,
+                TSHORT,
+                PLIO_1,
+                64,
+                64,
+                cast_slice(&original),
+            );
+            assert_eq!(decompressed, cast_slice::<i16, u8>(&original));
+        });
+    }
+
+    #[test]
+    fn test_hcompress_compress() {
+        with_temp_file(|filename| {
+            let original: Vec<i32> = (0..64 * 64).map(|i| (i % 64) + (i / 64) * 100).collect();
+            let decompressed = compress_roundtrip(
+                filename,
+                LONG_IMG,
+                TINT,
+                HCOMPRESS_1,
+                64,
+                64,
+                cast_slice(&original),
+            );
+            // Lossless with default settings for integer data.
+            assert_eq!(decompressed, cast_slice::<i32, u8>(&original));
+        });
+    }
+
+    #[test]
+    fn test_compress_byte_image() {
+        with_temp_file(|filename| {
+            let original: Vec<u8> = (0..32 * 32).map(|i| (i % 256) as u8).collect();
+            let decompressed =
+                compress_roundtrip(filename, BYTE_IMG, TBYTE, RICE_1, 32, 32, &original);
+            assert_eq!(decompressed, original);
+        });
+    }
 }

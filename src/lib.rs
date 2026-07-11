@@ -86,6 +86,7 @@ pub mod histo;
 pub mod imcompress;
 pub mod iraffits;
 pub mod modkey;
+pub mod pliocomp;
 pub mod putcol;
 pub mod putcolb;
 pub mod putcold;
