@@ -4492,13 +4492,14 @@ fn find_column(
 
             colnum = -1;
             for i in 0..(*lParse.pixFilter).count {
-                if fits_strcasecmp(
-                    colName,
-                    core::slice::from_raw_parts(
-                        (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
-                        strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
-                    ),
-                ) == 0
+                if !(*lParse.pixFilter).tag.add(i as usize).is_null()
+                    && fits_strcasecmp(
+                        colName,
+                        core::slice::from_raw_parts(
+                            (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
+                            strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
+                        ),
+                    ) == 0
                 {
                     colnum = i;
                 }
@@ -4524,6 +4525,12 @@ fn find_column(
 
             varInfo = &mut lParse.varData[col_cnt as usize];
             colIter = &mut lParse.colData[col_cnt as usize];
+
+            if (*lParse.pixFilter).ifptr.add(colnum as usize).is_null() {
+                ffpmsg_str("find_column: PixelFilter missing image pointer");
+                lParse.status = COL_NOT_FOUND;
+                return P_ERROR;
+            }
 
             fptr = (*lParse.pixFilter)
                 .ifptr
