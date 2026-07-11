@@ -949,9 +949,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     if float.is_finite() {
                         let precision = precision.unwrap_or(6);
 
-                        fmt_float_exp(
-                            w, fmt, false, precision, float, left, pad_space, pad_zero,
-                        )?;
+                        fmt_float_exp(w, fmt, false, precision, float, left, pad_space, pad_zero)?;
                     } else {
                         fmt_float_nonfinite(w, float, fmtcase.unwrap())?;
                     }

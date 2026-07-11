@@ -2,6 +2,7 @@ mod common;
 
 #[cfg(test)]
 mod tests {
+    use crate::common::{floats_close_f32, floats_close_f64, with_temp_file};
     use bytemuck::{cast_slice, cast_slice_mut};
     use libc::{
         c_double, c_float, c_int, c_long, c_longlong, c_short, c_uchar, c_ulong, c_ulonglong,
@@ -11,7 +12,6 @@ mod tests {
         LONGLONG, READWRITE, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG, TSBYTE, TSHORT, TULONG,
         TULONGLONG, TUSHORT, ULONG_IMG, fitsfile,
     };
-    use crate::common::{floats_close_f32, floats_close_f64, with_temp_file};
     use std::ffi::CString;
 
     const IMAGE_WIDTH: c_long = 50;
