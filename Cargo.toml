@@ -52,7 +52,7 @@ fastrand = "2.4"
 pwd = "1.4"
 ricecomp = "0.5"
 pliocomp = "0.4"
-hcompress = "0.3"
+hcompress = "0.4"
 chrono = ">=0.4.20"
 cbitset = "0.2"
 memchr = { version = "2.8.3", default-features = false }
