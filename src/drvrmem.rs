@@ -1217,7 +1217,13 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                     fdopen(fd, c"rb".as_ptr().cast::<c_char>())
                 };
 
+                /* bzip2uncompress2mem writes into the memory file through
+                mem_write_unsafe, which locks MEM_TABLE itself. The std Mutex is
+                not reentrant, so we must release our guard first to avoid a
+                self-deadlock, then re-acquire it for the bookkeeping below. */
+                drop(m);
                 bzip2uncompress2mem(filename, raw_file_handle, hdl, &mut finalsize, &mut status);
+                m = MEM_TABLE.lock().unwrap();
             }
         } else {
             uncompress2mem(

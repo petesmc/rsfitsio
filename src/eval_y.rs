@@ -9490,7 +9490,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 37 => {
                     if val2 != 0 {
-                        if val1 == LONG_MIN && val2 == -1  {
+                        if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
@@ -9505,7 +9505,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 47 => {
                     if val2 != 0 {
-                        if val1 == LONG_MIN && val2 == -1  {
+                        if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
@@ -9723,10 +9723,10 @@ fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
     if data.is_null()
         || (data.addr()) < PARSER_VECTOR_MIN_ADDR
         || undef.is_null()
-        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR 
+        || (undef.addr()) < PARSER_VECTOR_MIN_ADDR
     {
         fits_parser_yyerror(lParse, cs!(c"parser column data unavailable"));
-        if lParse.status == 0  {
+        if lParse.status == 0 {
             lParse.status = PARSE_SYNTAX_ERR;
         }
         return 0;
@@ -9766,11 +9766,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
         }
 
-        if vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0  {
+        if vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0 {
             return;
         }
 
-        if vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0  {
+        if vector2 != 0 && validate_double_vector(lParse, that2_idx) == 0 {
             return;
         }
 

@@ -1,3 +1,5 @@
+mod common;
+
 /*
  * Integration tests for histogram public API functions in histo.c
  * Tests real end-to-end histogram creation with actual FITS files
@@ -9,12 +11,12 @@ use libc::{c_char, c_double, c_int, c_long};
 use std::ffi::CString;
 use tempfile::Builder;
 
+use crate::common::with_temp_file;
 use rsfitsio::aliases::rust_api::*;
 use rsfitsio::fitsio::{
     BINARY_TBL, FLEN_VALUE, LONG_IMG, LONGLONG, READONLY, READWRITE, SHORT_IMG, TDOUBLE, TINT,
     TLONG, fitsfile,
 };
-use rsfitsio::helpers::testhelpers::with_temp_file;
 use rsfitsio::histo::{
     ffhist2_safe, ffhist3_safe, fits_calc_binning_safe, fits_calc_binningd_safe,
     fits_make_hist_safe, fits_make_histd_safe, fits_rebin_wcs_safe, fits_rebin_wcsd_safe,
