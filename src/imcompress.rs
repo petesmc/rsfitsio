@@ -1,6 +1,6 @@
 use core::ffi::CStr;
 use core::slice;
-use core::{cmp, mem, ptr};
+use core::{cmp, mem};
 use std::collections::HashMap;
 use std::os::raw::c_schar;
 use std::sync::{LazyLock, Mutex, OnceLock};
@@ -2443,34 +2443,26 @@ unsafe fn imcomp_compress_tile(
                 % (((((outfptr.Fptr).znaxis[0] - 1) / ((outfptr.Fptr).tilesize[0])) as c_long) + 1))
                 as c_int;
 
-            let out_tilerow = (outfptr.Fptr).get_tilerow_as_slice();
-            let out_tiledata = (outfptr.Fptr).get_tiledata_as_slice();
-
-            if c_long::from(out_tilerow[tilecol as usize]) == row {
-                if !out_tiledata[tilecol as usize].is_null() {
-                    // HEAP DEALLOCATION
-                    let len_cap =
-                        (outfptr.Fptr).get_tiledatasize_as_slice()[tilecol as usize] as usize;
-                    let _ = Vec::from_raw_parts(out_tiledata[tilecol as usize], len_cap, len_cap);
+            /* The cached tiles are owned by the TileStruct stored in the global
+            TILE_STRUCTS map (see the decompress path, which reads and writes the
+            cache exclusively through this map). If the cached tile is for this
+            same row it is about to become stale, so invalidate it by clearing the
+            owned buffers and resetting the metadata. The previous code
+            reinterpreted the TileStruct's `Vec<Vec<u8>>` storage as a raw
+            `*mut c_void` array and freed the entries with Vec::from_raw_parts,
+            which double-freed memory still owned by the TileStruct (and, for
+            columns other than the first, used the wrong element stride). */
+            let key = &raw const outfptr.Fptr as usize;
+            let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+            if let Some(tilestruct) = tilestruct_lock.get_mut(&key) {
+                if c_long::from(tilestruct.tilerow[tilecol as usize]) == row {
+                    tilestruct.tiledata[tilecol as usize] = Vec::new();
+                    tilestruct.tilenullarray[tilecol as usize] = Vec::new();
+                    tilestruct.tilerow[tilecol as usize] = 0;
+                    tilestruct.tiledatasize[tilecol as usize] = 0;
+                    tilestruct.tiletype[tilecol as usize] = 0;
+                    tilestruct.tileanynull[tilecol as usize] = 0;
                 }
-
-                let out_tilenullarray = (outfptr.Fptr).get_tilenullarray_as_slice();
-                if !out_tilenullarray[tilecol as usize].is_null() {
-                    // HEAP DEALLOCATION
-                    let len_cap = out_tilenullarray[tilecol as usize] as usize; // WARNING: This is incorrect, it should be `tilelen`
-                    let _ = Vec::from_raw_parts(
-                        (outfptr.Fptr).get_tilenullarray_as_slice()[tilecol as usize],
-                        len_cap,
-                        len_cap,
-                    );
-                }
-
-                outfptr.Fptr.get_tiledata_as_mut_slice()[tilecol as usize] = ptr::null_mut();
-                outfptr.Fptr.get_tilenullarray_as_mut_slice()[tilecol as usize] = ptr::null_mut();
-                outfptr.Fptr.get_tilerow_as_mut_slice()[tilecol as usize] = 0;
-                outfptr.Fptr.get_tiledatasize_as_mut_slice()[tilecol as usize] = 0;
-                outfptr.Fptr.get_tiletype_as_mut_slice()[tilecol as usize] = 0;
-                outfptr.Fptr.get_tileanynull_as_mut_slice()[tilecol as usize] = 0;
             }
         }
 
@@ -2752,7 +2744,7 @@ unsafe fn imcomp_compress_tile(
                     }
                 }
 
-                nelem = pl_p2li(idata, 1, &mut cbuf, tilelen.try_into().unwrap()) as c_int;
+                nelem = pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) as c_int;
 
                 if nelem < 0 {
                     /* data compression error condition */
@@ -2776,6 +2768,7 @@ unsafe fn imcomp_compress_tile(
             else if ((outfptr.Fptr).compress_type == GZIP_1)
                 || ((outfptr.Fptr).compress_type == GZIP_2)
             {
+                let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
                 if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TFLOAT {
                     /* Special case of losslessly compressing floating point pixels  with GZIP */
                     /* In this case we compress the input tile array directly */
@@ -2791,9 +2784,7 @@ unsafe fn imcomp_compress_tile(
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f32>(),
-                        &mut cbuf.as_mut_ptr().cast::<u8>(),
-                        &mut clen,
-                        Some(realloc),
+                        &mut gzip_buf,
                         Some(&mut gzip_nelem),
                         status,
                     );
@@ -2811,9 +2802,7 @@ unsafe fn imcomp_compress_tile(
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f64>(),
-                        &mut cbuf.as_mut_ptr().cast::<u8>(),
-                        &mut clen,
-                        Some(realloc),
+                        &mut gzip_buf,
                         Some(&mut gzip_nelem),
                         status,
                     );
@@ -2844,9 +2833,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_short>(),
-                            &mut cbuf.as_mut_ptr().cast::<u8>(),
-                            &mut clen,
-                            Some(realloc),
+                            &mut gzip_buf,
                             Some(&mut gzip_nelem),
                             status,
                         );
@@ -2855,9 +2842,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice(idata),
                             tilelen as usize * mem::size_of::<c_uchar>(),
-                            &mut cbuf.as_mut_ptr().cast::<u8>(),
-                            &mut clen,
-                            Some(realloc),
+                            &mut gzip_buf,
                             Some(&mut gzip_nelem),
                             status,
                         );
@@ -2875,9 +2860,7 @@ unsafe fn imcomp_compress_tile(
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_int>(),
-                            &mut cbuf.as_mut_ptr().cast::<u8>(),
-                            &mut clen,
-                            Some(realloc),
+                            &mut gzip_buf,
                             Some(&mut gzip_nelem),
                             status,
                         );
@@ -2893,7 +2876,7 @@ unsafe fn imcomp_compress_tile(
                     row as LONGLONG,
                     1,
                     gzip_nelem as LONGLONG,
-                    cast_slice(&cbuf),
+                    &gzip_buf,
                     status,
                 );
 
@@ -3110,6 +3093,7 @@ unsafe fn imcomp_compress_tile(
                 }
             }
 
+            let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
             if datatype == TFLOAT {
                 /* allocate buffer for the compressed tile bytes */
                 /* make it 10% larger than the original uncompressed data */
@@ -3146,9 +3130,7 @@ unsafe fn imcomp_compress_tile(
                 compress2mem_from_mem(
                     cast_slice(tiledata),
                     tilelen as usize * mem::size_of::<f32>(),
-                    &mut cbuf.as_mut_ptr().cast::<u8>(),
-                    &mut clen,
-                    Some(realloc),
+                    &mut gzip_buf,
                     Some(&mut gzip_nelem),
                     status,
                 );
@@ -3186,9 +3168,7 @@ unsafe fn imcomp_compress_tile(
                 compress2mem_from_mem(
                     cast_slice_mut(tiledata),
                     tilelen as usize * mem::size_of::<f64>(),
-                    &mut cbuf.as_mut_ptr().cast::<u8>(),
-                    &mut clen,
-                    Some(realloc),
+                    &mut gzip_buf,
                     Some(&mut gzip_nelem),
                     status,
                 );
@@ -3201,7 +3181,7 @@ unsafe fn imcomp_compress_tile(
                 row as LONGLONG,
                 1,
                 gzip_nelem.try_into().unwrap(),
-                cast_slice(&cbuf),
+                &gzip_buf,
                 status,
             );
 
@@ -4073,12 +4053,14 @@ fn imcomp_convert_tile_tdouble(
         {
             /* see if the dithering offset value needs to be initialized (see above) */
 
-            let dither_seed = (outfptr.Fptr).dither_seed;
-
             if (outfptr.Fptr).request_dither_seed == 0 && (outfptr.Fptr).dither_seed == 0 {
                 (outfptr.Fptr).dither_seed = fastrand::i32(1..=10000);
 
-                /* update the header keyword with this new value */
+                /* update the header keyword with this new value. Capture the
+                seed AFTER it is assigned; otherwise ZDITHER0 is written as 0,
+                which makes the reader compute a negative random-sequence index
+                (row = nrow + 0 - 1) and panic. */
+                let dither_seed = (outfptr.Fptr).dither_seed;
                 fits_update_key(
                     outfptr,
                     KeywordDatatype::TINT(&dither_seed),
@@ -4095,6 +4077,7 @@ fn imcomp_convert_tile_tdouble(
                 (outfptr.Fptr).dither_seed = ((dithersum % 10000) as c_int) + 1;
 
                 /* update the header keyword with this new value */
+                let dither_seed = (outfptr.Fptr).dither_seed;
                 fits_update_key(
                     outfptr,
                     KeywordDatatype::TINT(&dither_seed),
@@ -7779,12 +7762,11 @@ fn imcomp_decompress_tile(
             (infptr.Fptr).tiletype = tile_struct.tiletype.as_mut_ptr();
             (infptr.Fptr).tileanynull = tile_struct.tileanynull.as_mut_ptr();
 
-            // Insert into the static hashmap
-            TILE_STRUCTS
-                .lock()
-                .unwrap()
-                .insert(ptr_addr, tile_struct)
-                .expect("Failed to insert tile struct into hashmap");
+            // Insert into the static hashmap. `HashMap::insert` returns `None`
+            // for a fresh key (the normal case) and `Some(old)` only when it
+            // replaces a stale entry left over from a previously-freed fptr that
+            // happened to reuse this address; both are fine, so ignore the result.
+            TILE_STRUCTS.lock().unwrap().insert(ptr_addr, tile_struct);
         }
     }
 
@@ -8450,7 +8432,7 @@ fn imcomp_decompress_tile(
     } else if (infptr.Fptr).compress_type == PLIO_1 {
         pl_l2pi(
             cast_slice(&cbuf),
-            1,
+            0,
             cast_slice_mut(idata),
             tilelen as usize,
         ); /* uncompress the data */
@@ -9482,21 +9464,26 @@ fn imcomp_decompress_tile(
                 (tilestruct.tiledatasize)[tilecol as usize] = 0;
                 (tilestruct.tiletype)[tilecol as usize] = 0;
 
-                /* allocate new array(s) */
+                /* allocate new array(s). Note tiledata holds `tilesize` bytes
+                (pixlen * tilelen), and must be resized to that length (not just
+                have capacity reserved) because the tile is copied in by slice
+                below. */
                 let mut v = Vec::new();
-                if v.try_reserve_exact(tilelen as usize).is_err() {
+                if v.try_reserve_exact(tilesize as usize).is_err() {
                     return *status;
                 } else {
+                    v.resize(tilesize as usize, 0);
                     tilestruct.tiledata[tilecol as usize] = v;
                 }
 
                 if nullcheck == NullCheckType::SetNullArray {
-                    /* also need array of null pixel flags */
+                    /* also need array of null pixel flags (one per pixel) */
 
                     let mut v = Vec::new();
                     if v.try_reserve_exact(tilelen as usize).is_err() {
                         return *status;
                     } else {
+                        v.resize(tilelen as usize, 0);
                         tilestruct.tilenullarray[tilecol as usize] = v;
                     }
                 }
@@ -11520,9 +11507,7 @@ pub unsafe fn fits_compress_table_safer(
                                     compress2mem_from_mem(
                                         cast_slice(&vlamem),
                                         vlamemlen as usize,
-                                        &mut (cvlamem.as_mut_ptr()),
-                                        &mut compmemlen,
-                                        Some(realloc),
+                                        &mut cvlamem,
                                         Some(&mut dlen),
                                         status,
                                     );
@@ -11649,9 +11634,7 @@ pub unsafe fn fits_compress_table_safer(
                         compress2mem_from_mem(
                             &cdescript,
                             datasize + (rowspertile * 16) as usize,
-                            &mut (cvlamem.as_mut_ptr()),
-                            &mut datasize,
-                            Some(realloc),
+                            &mut cvlamem,
                             Some(&mut dlen),
                             status,
                         );
@@ -11788,9 +11771,7 @@ pub unsafe fn fits_compress_table_safer(
                         compress2mem_from_mem(
                             cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
                             datasize,
-                            &mut (cvlamem.as_mut_ptr()),
-                            &mut datasize,
-                            Some(realloc),
+                            &mut cvlamem,
                             Some(&mut dlen),
                             status,
                         );
@@ -12943,11 +12924,11 @@ fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     let heap = cast_slice_mut(heap);
 
     let mut p: Vec<u8> = Vec::new();
-    if p.try_reserve_exact(2).is_err() {
+    if p.try_reserve_exact(length * 2).is_err() {
         ffpmsg_str("malloc failed\n");
         return *status;
     } else {
-        p.resize(2, 0);
+        p.resize(length * 2, 0);
     }
 
     let mut heapptr: usize = 0;
@@ -12972,11 +12953,11 @@ fn fits_shuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     let heap = cast_slice_mut(heap);
 
     let mut p: Vec<u8> = Vec::new();
-    if p.try_reserve_exact(4).is_err() {
+    if p.try_reserve_exact(length * 4).is_err() {
         ffpmsg_str("malloc failed\n");
         return *status;
     } else {
-        p.resize(4, 0);
+        p.resize(length * 4, 0);
     }
 
     let mut heapptr: usize = 0;
@@ -13007,11 +12988,11 @@ fn fits_shuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     let heap = cast_slice_mut(heap);
 
     let mut p: Vec<u8> = Vec::new();
-    if p.try_reserve_exact(8).is_err() {
+    if p.try_reserve_exact(length * 8).is_err() {
         ffpmsg_str("malloc failed\n");
         return *status;
     } else {
-        p.resize(8, 0);
+        p.resize(length * 8, 0);
     }
 
     let ptr: usize = 0; // index into p
@@ -13091,16 +13072,22 @@ fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let length = length as usize;
     let heap = cast_slice_mut(heap);
 
-    let mut p: Vec<u8> = vec![0; 2];
+    let mut p: Vec<u8> = vec![0; length * 2];
 
     let ptr: usize = 0;
     let mut heapptr: usize = (2 * length) - 1;
     let mut cptr: usize = ptr + (2 * length) - 1;
 
-    for _ii in 0..length {
+    for ii in 0..length {
         p[cptr] = heap[heapptr];
         cptr -= 1;
         p[cptr] = heap[heapptr - length];
+        /* advance cptr past the second byte too (matches the 4-/8-byte
+        variants); guard the final decrement so the last iteration does not
+        underflow the usize index. */
+        if ii + 1 < length {
+            cptr -= 1;
+        }
         heapptr -= 1;
     }
 
@@ -13115,7 +13102,7 @@ fn fits_unshuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let length = length as usize;
     let heap = cast_slice_mut(heap);
 
-    let mut p: Vec<u8> = vec![0; 4];
+    let mut p: Vec<u8> = vec![0; length * 4];
 
     let ptr: usize = 0;
     let mut heapptr: usize = (4 * length) - 1;
@@ -13144,7 +13131,7 @@ fn fits_unshuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
     let length = length as usize;
     let heap = cast_slice_mut(heap);
 
-    let mut p: Vec<u8> = vec![0; 8];
+    let mut p: Vec<u8> = vec![0; length * 8];
 
     let ptr: usize = 0;
     let mut heapptr: usize = (8 * length) - 1;
@@ -13229,8 +13216,8 @@ fn fits_int_to_longlong_inplace(
 
         /* copy temp array back to alias */
         let aliasarray: &mut [LONGLONG] = cast_slice_mut(intarray); /* alias pointer to the input array */
-        aliasarray[firstelem..(firstelem + ntodo as usize * 8)]
-            .copy_from_slice(&longlongarray[..(ntodo * 8) as usize]);
+        aliasarray[firstelem..(firstelem + ntodo as usize)]
+            .copy_from_slice(&longlongarray[..(ntodo as usize)]);
 
         if firstelem == 0 {
             /* we are all done */
@@ -13304,8 +13291,8 @@ fn fits_short_to_int_inplace(
 
         /* copy temp array back to alias */
         let aliasarray: &mut [c_int] = cast_slice_mut(shortarray); /* alias pointer to the input array */
-        aliasarray[firstelem..(firstelem + ntodo as usize * 4)]
-            .copy_from_slice(&intarray[..(ntodo * 4) as usize]);
+        aliasarray[firstelem..(firstelem + ntodo as usize)]
+            .copy_from_slice(&intarray[..(ntodo as usize)]);
 
         if firstelem == 0 {
             /* we are all done */
@@ -13379,8 +13366,8 @@ fn fits_ushort_to_int_inplace(
 
         /* copy temp array back to alias */
         let aliasarray: &mut [c_int] = cast_slice_mut(ushortarray); /* alias pointer to the input array */
-        aliasarray[firstelem..(firstelem + ntodo as usize * 4)]
-            .copy_from_slice(&intarray[..(ntodo * 4) as usize]);
+        aliasarray[firstelem..(firstelem + ntodo as usize)]
+            .copy_from_slice(&intarray[..(ntodo as usize)]);
 
         if firstelem == 0 {
             /* we are all done */
@@ -13453,8 +13440,8 @@ fn fits_ubyte_to_int_inplace(
 
         /* copy temp array back to alias */
         let aliasarray: &mut [c_int] = cast_slice_mut(ubytearray); /* alias pointer to the input array */
-        aliasarray[firstelem..(firstelem + ntodo as usize * 4)]
-            .copy_from_slice(&intarray[..(ntodo * 4) as usize]);
+        aliasarray[firstelem..(firstelem + ntodo as usize)]
+            .copy_from_slice(&intarray[..(ntodo as usize)]);
 
         if firstelem == 0 {
             /* we are all done */
@@ -13527,13 +13514,13 @@ fn fits_sbyte_to_int_inplace(
     while ntodo > 0 {
         /* do datatype conversion into temp array */
         for ii in 0..(ntodo as usize) {
-            intarray[ii] = c_int::from(sbytearray[ii + firstelem].overflowing_add_unsigned(128).0); /* !! Note the offset !! */
+            intarray[ii] = c_int::from(sbytearray[ii + firstelem]) + 128; /* !! Note the offset !! Convert to int before adding so the offset does not overflow the i8. */
         }
 
         /* copy temp array back to alias */
         let aliasarray: &mut [c_int] = cast_slice_mut(sbytearray); /* alias pointer to the input array */
-        aliasarray[firstelem..(firstelem + ntodo as usize * 4)]
-            .copy_from_slice(&intarray[..(ntodo * 4) as usize]);
+        aliasarray[firstelem..(firstelem + ntodo as usize)]
+            .copy_from_slice(&intarray[..(ntodo as usize)]);
 
         if firstelem == 0 {
             /* we are all done */

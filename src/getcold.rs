@@ -2528,6 +2528,8 @@ pub(crate) fn fffstrr8(
             /* value is not the null value, so decode it */
             /* remove any embedded blank characters from the string */
 
+            let field_start = cptr; /* start of this fixed-width field */
+
             decpt = 0;
             sign = 1;
             val = 0.0;
@@ -2648,7 +2650,26 @@ pub(crate) fn fffstrr8(
                 /* if no explicit decimal, use implied */
                 power = implipower;
             }
-            dvalue = (f64::from(sign) * val / power) * 10.0_f64.powi(esign * exponent);
+
+            /* The manual walk above validates the field format and advances
+            cptr, but computing the value as `val / power * 10^exp` is not
+            correctly rounded (val itself loses precision past ~15 digits). Build
+            a clean numeric string from the field -- dropping embedded blanks and
+            mapping FITS 'D' exponents and ',' decimal separators -- and convert
+            it with Rust's correctly-rounded parser so an ASCII round-trip is
+            exact. Fall back to the manual result if parsing somehow fails. */
+            let mut numstr = String::with_capacity(twidth as usize);
+            for &c in &input[field_start..tpos] {
+                match c as u8 {
+                    b' ' => {}
+                    b',' => numstr.push('.'),
+                    b'D' | b'd' => numstr.push('E'),
+                    other => numstr.push(other as char),
+                }
+            }
+            dvalue = numstr
+                .parse::<f64>()
+                .unwrap_or((f64::from(sign) * val / power) * 10.0_f64.powi(esign * exponent));
 
             output[ii] = dvalue * scale + zero; /* apply the scaling */
         }

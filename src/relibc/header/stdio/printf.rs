@@ -492,19 +492,42 @@ fn fmt_float_exp<W: Write>(
     trim: bool,
     precision: usize,
     float: c_double,
-    exp: isize,
     left: bool,
     pad_space: usize,
     pad_zero: usize,
 ) -> io::Result<()> {
-    let mut exp2 = exp;
+    // Derive the mantissa and exponent from Rust's exponential formatting, which
+    // is correctly rounded. The previous approach normalized the mantissa by
+    // repeatedly dividing/multiplying by 10 (see `float_exp`); for large or small
+    // magnitudes that accumulates rounding error and corrupts the last decimal
+    // digits, so a round-trip through an ASCII FITS table was not exact.
+    let formatted = format!("{:.*e}", precision, float);
+    let epos = formatted
+        .find('e')
+        .expect("exponential formatting always contains 'e'");
+    let exp: isize = formatted[(epos + 1)..]
+        .parse()
+        .expect("exponential formatting has a valid exponent");
+    let mut string = formatted[..epos].to_string();
+    if trim && string.contains('.') {
+        let truncate = {
+            let slice = string.trim_end_matches('0');
+            let mut truncate = slice.len();
+            if slice.ends_with('.') {
+                truncate -= 1;
+            }
+            truncate
+        };
+        string.truncate(truncate);
+    }
+
+    let mut exp2 = exp.abs();
     let mut exp_len = 1;
     while exp2 >= 10 {
         exp2 /= 10;
         exp_len += 1;
     }
 
-    let string = float_string(float, precision, trim);
     let len = string.len() + 2 + 2.max(exp_len);
 
     pad(w, !left, b' ', len..pad_space)?;
@@ -924,11 +947,10 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                         _ => panic!("this should not be possible"),
                     };
                     if float.is_finite() {
-                        let (float, exp) = float_exp(float);
                         let precision = precision.unwrap_or(6);
 
                         fmt_float_exp(
-                            w, fmt, false, precision, float, exp, left, pad_space, pad_zero,
+                            w, fmt, false, precision, float, left, pad_space, pad_zero,
                         )?;
                     } else {
                         fmt_float_nonfinite(w, float, fmtcase.unwrap())?;
@@ -955,7 +977,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                         _ => panic!("this should not be possible"),
                     };
                     if float.is_finite() {
-                        let (log, exp) = float_exp(float);
+                        let (_log, exp) = float_exp(float);
                         let exp_fmt = b'E' | (fmt & 32);
                         let precision = precision.unwrap_or(6);
                         let use_exp_format = exp < -4 || exp >= precision as isize;
@@ -965,7 +987,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                             // because that's how x/floor(log10(x)) works
                             let precision = precision.saturating_sub(1);
                             fmt_float_exp(
-                                w, exp_fmt, true, precision, log, exp, left, pad_space, pad_zero,
+                                w, exp_fmt, true, precision, float, left, pad_space, pad_zero,
                             )?;
                         } else {
                             // Length of integral part will be the exponent of

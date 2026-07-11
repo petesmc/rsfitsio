@@ -503,20 +503,26 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
 pub(crate) unsafe fn compress2mem_from_mem(
-    inmemptr: &[c_char],   /* I - memory pointer to uncompressed bytes */
-    inmemsize: usize,      /* I - size of input uncompressed file      */
-    buffptr: *mut *mut u8, /* IO - memory pointer for compressed file    */
-    buffsize: &mut usize,  /* IO - size of buffer, in bytes           */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function     */
-    filesize: Option<&mut usize>, /* O - size of file, in bytes              */
-    status: &mut c_int,           /* IO - error status                       */
+    inmemptr: &[c_char],          /* I - memory pointer to uncompressed bytes */
+    inmemsize: usize,             /* I - size of input uncompressed file      */
+    outbuf: &mut Vec<u8>,         /* IO - buffer for compressed file; grown as needed */
+    filesize: Option<&mut usize>, /* O - size of compressed file, in bytes    */
+    status: &mut c_int,           /* IO - error status                        */
 ) -> c_int {
     unsafe {
-        let mut err: c_int = 0;
+        let mut err: c_int;
         let mut c_stream: z_stream; /* compression stream */
 
         if *status > 0 {
             return *status;
+        }
+
+        /* make sure there is some output space to start with. If the caller
+        pre-sized the buffer we honor that; otherwise start with one chunk.
+        The buffer is owned by a Rust Vec and grown with the Rust allocator,
+        so there is no dangling pointer or allocator mismatch (see issue #60). */
+        if outbuf.is_empty() {
+            outbuf.resize(BUFFINCR, 0);
         }
 
         c_stream = z_stream {
@@ -563,8 +569,8 @@ pub(crate) unsafe fn compress2mem_from_mem(
         c_stream.next_in = inmemptr.as_ptr() as *mut u8; // WARNING: Yes convert const to mut....
         c_stream.avail_in = inmemsize as uInt;
 
-        c_stream.next_out = *buffptr;
-        c_stream.avail_out = *buffsize as uInt;
+        c_stream.next_out = outbuf.as_mut_ptr();
+        c_stream.avail_out = outbuf.len() as uInt;
 
         loop {
             /* compress as much of the input as will fit in the output */
@@ -574,25 +580,14 @@ pub(crate) unsafe fn compress2mem_from_mem(
                 /* We reached the end of the input */
                 break;
             } else if err == Z_OK {
-                /* need more space in output buffer */
-                if let Some(mem_realloc) = mem_realloc {
-                    *buffptr =
-                        mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
-                    if (*buffptr).is_null() {
-                        deflateEnd(&mut c_stream);
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status; /* memory allocation failed */
-                    }
-
-                    c_stream.avail_out = BUFFINCR as uInt;
-                    c_stream.next_out = (*buffptr).add(*buffsize);
-                    *buffsize += BUFFINCR;
-                } else {
-                    /* error: no realloc function available */
-                    deflateEnd(&mut c_stream);
-                    *status = DATA_COMPRESSION_ERR;
-                    return *status;
-                }
+                /* need more space in output buffer: grow the Vec and re-point
+                the zlib stream at the (possibly moved) buffer. total_out is the
+                number of bytes already written from the start of the buffer. */
+                let written = c_stream.total_out as usize;
+                let newlen = outbuf.len() + BUFFINCR;
+                outbuf.resize(newlen, 0);
+                c_stream.next_out = outbuf.as_mut_ptr().add(written);
+                c_stream.avail_out = (outbuf.len() - written) as uInt;
             } else {
                 /* some other error */
                 deflateEnd(&mut c_stream);

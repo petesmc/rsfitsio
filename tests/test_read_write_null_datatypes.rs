@@ -1,3 +1,5 @@
+mod common;
+
 #[cfg(test)]
 mod tests {
     use bytemuck::{cast_slice, cast_slice_mut};
@@ -11,7 +13,7 @@ mod tests {
         SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG, TSBYTE, TSHORT, TULONG, TULONGLONG,
         TUSHORT, ULONG_IMG, ULONGLONG_IMG, USHORT_IMG, fitsfile,
     };
-    use rsfitsio::helpers::testhelpers::{floats_close_f32, floats_close_f64, with_temp_file};
+    use crate::common::{floats_close_f32, floats_close_f64, with_temp_file};
     use rsfitsio::{NullValue, cs};
     use std::ffi::CString;
 
