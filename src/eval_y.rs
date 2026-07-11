@@ -70,6 +70,7 @@ use crate::c_types::{
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
+use crate::eval_tab::fits_parser_yytokentype::BITSTR;
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe};
@@ -8195,6 +8196,25 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
+unsafe fn free_node_buffer(node: &mut Node) {
+    if (node.ntype == fits_parser_yytokentype::BITSTR as c_int
+        || node.ntype == fits_parser_yytokentype::STRING as c_int)
+    {
+        if (!node.value.data.strptr.is_null()) {
+            if (!(*node.value.data.strptr).is_null()) {
+                free((*node.value.data.strptr) as *mut c_void);
+            }
+            free(node.value.data.strptr as *mut c_void);
+            node.value.data.strptr = ptr::null_mut();
+        }
+    } else if (!node.value.data.ptr.is_null()) {
+        free(node.value.data.ptr);
+        node.value.data.ptr = ptr::null_mut();
+    }
+
+    node.value.undef = ptr::null_mut();
+}
+
 fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut that: &mut Node;
@@ -8473,7 +8493,23 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         } else {
             nRealElem = (lParse.Nodes[this_node_idx]).value.nelem;
         }
+
         nelem = nRealElem;
+
+        if ((fRow >= 0 && (LONG_MAX - lParse.nRows < fRow))
+            || (fRow < 0 && (LONG_MIN + lParse.firstDataRow + 1 > fRow)))
+        {
+            fits_parser_yyerror(
+                lParse,
+                cs!(c"numerical underflow or overflow for row offset value"),
+            );
+            if (lParse.status == 0) {
+                lParse.status = PARSE_SYNTAX_ERR;
+            }
+            free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+            return;
+        }
+
         if fRow < lParse.firstDataRow {
             nRowReload = lParse.firstDataRow - fRow;
             if nRowReload > lParse.nRows {
@@ -8520,6 +8556,33 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             } else {
                 fRow = lParse.firstDataRow + lParse.nDataRows;
             }
+
+            if (rowOffset > 0) {
+                if (rowOffset > LONG_MAX / nelem) {
+                    fits_parser_yyerror(
+                        lParse,
+                        cs!(c"numerical overflow for row offset * nelem value"),
+                    );
+                    if (lParse.status == 0) {
+                        lParse.status = PARSE_SYNTAX_ERR;
+                    }
+                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                    return;
+                }
+            } else if (rowOffset < 0) {
+                if (rowOffset < LONG_MIN / nelem) {
+                    fits_parser_yyerror(
+                        lParse,
+                        cs!(c"numerical underflow for row offset * nelem value"),
+                    );
+                    if (lParse.status == 0) {
+                        lParse.status = PARSE_SYNTAX_ERR;
+                    }
+                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                    return;
+                }
+            }
+
             nRowOverlap = lParse.nRows - nRowReload;
             offset = nRowOverlap * nelem;
             elem = lParse.nRows * nelem;

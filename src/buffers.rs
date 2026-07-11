@@ -2977,6 +2977,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // This test is too slow to run in CI
     fn test_ascii_large_direct_write() {
         with_temp_file(|filename| {
             let mut status: c_int = 0;
