@@ -30,10 +30,10 @@ pub const NULL_MSG: &str = "Null Pointer";
 
 pub const BLOCK_LEN: usize = 2880;
 
-pub const CFITSIO_VERSION: [u8; 6] = *b"4.6.3\0";
+pub const CFITSIO_VERSION: [u8; 6] = *b"4.6.4\0";
 
 /* Minor and micro numbers must not exceed 99 under current method of version representataion in ffvers(). */
-pub const CFITSIO_MICRO: u64 = 3;
+pub const CFITSIO_MICRO: u64 = 4;
 pub const CFITSIO_MINOR: u64 = 6;
 pub const CFITSIO_MAJOR: u64 = 4;
 pub const CFITSIO_SONAME: u64 = 10;
