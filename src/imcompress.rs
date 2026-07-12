@@ -27,7 +27,15 @@ use crate::c_types::{
     c_char, c_int, c_long, c_short, c_uchar, c_uint, c_ulong, c_ushort, c_void, size_t,
 };
 use crate::fitsio::{
-    BAD_DATATYPE, BAD_DIMEN, BAD_NAXIS, BAD_PIX_NUM, BINARY_TBL, BYTE_IMG, BZIP2_1, CASEINSEN, COL_NOT_FOUND, DATA_COMPRESSION_ERR, DATA_DECOMPRESSION_ERR, DOUBLE_IMG, DOUBLENULLVALUE, END_OF_FILE, FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE, FLOAT_IMG, FLOATNULLVALUE, GZIP_1, GZIP_2, HCOMPRESS_1, INT32BIT, LONG_IMG, LONG_MAX, LONGLONG, MAX_COMPRESS_DIM, MEMORY_ALLOCATION, NEG_AXIS, NO_COMPRESSED_TILE, NO_DITHER, NOCOMPRESS, NOT_BTABLE, NULL_MSG, NUM_OVERFLOW, OVERFLOW_ERR, PLIO_1, RICE_1, SBYTE_IMG, SHORT_IMG, SUBTRACTIVE_DITHER_1, SUBTRACTIVE_DITHER_2, TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG, TLONGLONG, TSBYTE, TSHORT, TSTRING, TUINT, TULONG, TUSHORT, TYP_CKSUM_KEY, TYP_CMPRS_KEY, ULONG_IMG, USHORT_IMG, fitsfile,
+    BAD_DATATYPE, BAD_DIMEN, BAD_NAXIS, BAD_PIX_NUM, BINARY_TBL, BYTE_IMG, BZIP2_1, CASEINSEN,
+    COL_NOT_FOUND, DATA_COMPRESSION_ERR, DATA_DECOMPRESSION_ERR, DOUBLE_IMG, DOUBLENULLVALUE,
+    END_OF_FILE, FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE, FLOAT_IMG, FLOATNULLVALUE,
+    GZIP_1, GZIP_2, HCOMPRESS_1, INT32BIT, LONG_IMG, LONG_MAX, LONG_MIN, LONGLONG,
+    MAX_COMPRESS_DIM, MEMORY_ALLOCATION, NEG_AXIS, NO_COMPRESSED_TILE, NO_DITHER, NOCOMPRESS,
+    NOT_BTABLE, NULL_MSG, NUM_OVERFLOW, OVERFLOW_ERR, PLIO_1, RICE_1, SBYTE_IMG, SHORT_IMG,
+    SUBTRACTIVE_DITHER_1, SUBTRACTIVE_DITHER_2, TBIT, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE,
+    TFLOAT, TINT, TLOGICAL, TLONG, TLONGLONG, TSBYTE, TSHORT, TSTRING, TUINT, TULONG, TUSHORT,
+    TYP_CKSUM_KEY, TYP_CMPRS_KEY, ULONG_IMG, USHORT_IMG, fitsfile,
 };
 use crate::getcolb::{fffi1i1, fffi2i1, fffi4i1, ffgsvb_safe};
 use crate::getcold::{
@@ -6833,6 +6841,7 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
     let mut colNum: c_int = 0;
     let mut expect_nrows: c_long = 0;
     let mut maxtilelen: c_long = 0;
+    let mut rowFactor: c_long = 0;
 
     if *status > 0 {
         return *status;
@@ -7032,7 +7041,20 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             return *status;
         }
 
-        expect_nrows *= ((infptr.Fptr).znaxis[ii] - 1) / (infptr.Fptr).tilesize[ii] + 1;
+        if ((infptr.Fptr).znaxis[ii] == LONG_MIN)
+        /* cannot subtract 1 from this */
+        {
+            ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
+        }
+        rowFactor = ((infptr.Fptr).znaxis[ii] - 1) / (infptr.Fptr).tilesize[ii] + 1;
+        if (expect_nrows > LONG_MAX / rowFactor) {
+            ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
+        }
+        expect_nrows *= rowFactor;
 
         if (maxtilelen > LONG_MAX / ((infptr.Fptr).tilesize[ii])) {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");

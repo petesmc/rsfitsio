@@ -223,7 +223,7 @@ pub(crate) fn ffgcls(
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut cform: [c_char; 20] = [0; 20];
-    let mut dispfmt: [c_char; 20] = [0; 20];
+    let mut dispfmt: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstr: [c_char; 400] = [0; 400];
     let mut tmpnull: [c_char; 80] = [0; 80];
     let mut byteval: c_uchar = 0;
@@ -813,7 +813,7 @@ pub fn ffgcdw_safe(
 ) -> c_int {
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-    let mut dispfmt: [c_char; 20] = [0; 20];
+    let mut dispfmt: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tcode: c_int = 0;
     let mut hdutype: c_int = 0;
     let mut tstatus: c_int = 0;
