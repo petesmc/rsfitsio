@@ -4914,6 +4914,7 @@ extern "C" fn ffcalchist(
     let mut colptr: [*mut f64; 5] = [ptr::null_mut(); 5];
     let mut status: c_int = 0;
     let irow: c_long = 0;
+    let mut adjustedRepeat: c_long = 0;
 
     let histData = userPointer;
 
@@ -4967,10 +4968,20 @@ extern "C" fn ffcalchist(
         }
     }
 
-    /*  Main loop over rows */
-    /* irow = row counter (1 .. nrows) */
-    /* elem = counter of element (1 .. histData.repeat) for each row */
-    /* ii = counts up from 1 (see note below) used to index colptr[]'s */
+    /* Main loop over rows
+        For tables:
+         irow = row counter (1 .. nrows)
+         elem = counter of element (1 .. histData->repeat) for each row
+         ii = counts up from 1 (see note below) used to index colptr[]'s
+        For images:
+         irow = pixel counter (1 .. totalnpix)
+         elem = 1  (not applicable)
+    */
+    if (!histData.tblptr.is_null() && (unsafe { &*histData.tblptr }.Fptr.hdutype != IMAGE_HDU)) {
+        adjustedRepeat = histData.repeat;
+    } else {
+        adjustedRepeat = 1;
+    }
 
     /* Note that ii starts at 1 because position [0] in the
     column data arrays is for the "null" value! */
@@ -4986,13 +4997,13 @@ extern "C" fn ffcalchist(
             } else {
                 rowselect = unsafe { rowselect.add(1) }; /* this row is excluded from the histogram */
 
-                ii += histData.repeat as usize; /* skip this portion of data */
+                ii += adjustedRepeat as usize; /* skip this portion of data */
                 continue;
             }
         }
 
         /* Loop over elements in each row, increment ii after each element */
-        for elem in 1..=histData.repeat {
+        for elem in 1..=adjustedRepeat {
             // for (elem = 1; elem <= histData.repeat; elem++, ii++) {
             if unsafe { *colptr[0].add(ii) } == DOUBLENULLVALUE {
                 /* test for null value */
