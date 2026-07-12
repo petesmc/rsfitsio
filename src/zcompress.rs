@@ -306,6 +306,9 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
             } else {
                 /* error: no realloc function available */
                 inflateEnd(&mut d_stream);
+                if let Some(filesize) = filesize {
+                    *filesize = d_stream.total_out as usize;
+                }
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
