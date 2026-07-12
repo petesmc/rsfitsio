@@ -320,10 +320,11 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
 
             *(m[handle].memaddrptr) = ptr.cast::<c_char>();
             *(m[handle].memsizeptr) = filesize;
+
+            m[handle].currentpos = filesize as LONGLONG;
+            m[handle].fitsfilesize = filesize as LONGLONG;
         }
 
-        m[handle].currentpos = filesize as LONGLONG;
-        m[handle].fitsfilesize = filesize as LONGLONG;
         0
     }
 }
