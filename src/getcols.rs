@@ -222,7 +222,7 @@ pub(crate) fn ffgcls(
     let mut jj: usize = 0;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-    let mut cform: [c_char; 20] = [0; 20];
+    let mut cform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut dispfmt: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstr: [c_char; 400] = [0; 400];
     let mut tmpnull: [c_char; 80] = [0; 80];
@@ -818,6 +818,7 @@ pub fn ffgcdw_safe(
     let mut hdutype: c_int = 0;
     let mut tstatus: c_int = 0;
     let mut scaled: c_int = 0;
+    let mut testwidth: c_long = 0;
     let mut tscale: f64 = 0.0;
 
     if *status > 0 {
@@ -879,9 +880,12 @@ pub fn ffgcdw_safe(
                 /* find 1st digit */
                 cp += 1;
             }
-            *width = parse_c_int(&dispfmt[cp..]);
-            if tcode >= TCOMPLEX {
-                *width = (2 * (*width)) + 3;
+            testwidth = strtol_safe::<c_long>(&dispfmt[cp..]).unwrap().0;
+            if (testwidth >= (c_int::MIN as c_long) && testwidth <= (c_int::MAX as c_long)) {
+                *width = testwidth as c_int;
+                if (tcode >= TCOMPLEX) {
+                    *width = (2 * (*width)) + 3;
+                }
             }
         }
     }
