@@ -8,7 +8,7 @@ use core::ffi::CStr;
 use core::slice;
 use core::{cmp, mem, ptr};
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Seek, Write};
 use std::sync::{Mutex, OnceLock};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
@@ -66,6 +66,7 @@ use crate::putkey::ffcrimll_safe;
 use crate::putkey::{ffphis_safe, ffprec_safe};
 use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
 use crate::wrappers::*;
+use crate::zcompress::uncompress2mem_from_mem;
 use crate::{FFLOCK, FFUNLOCK};
 use crate::{bb, cs};
 use crate::{buffers::*, raw_to_slice};
@@ -815,6 +816,7 @@ pub fn ffopen_safe(
         let mut colspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut pixfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut histfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+        let mut testpath: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut filtfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut wtcol: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -951,6 +953,37 @@ pub fn ffopen_safe(
                 Some(&mut compspec[..]),
                 status,
             );
+            let tstEnv = std::env::var("CFITSIO_DISABLE_COPY_RESTRICT").ok();
+            if !tstEnv.as_deref().is_some_and(|s| s.starts_with('1')) {
+                if strlen_safe(&infile) != 0 && strlen_safe(&outfile) != 0 {
+                    let pathstart: &[c_char] = if strncmp_safe(&urltype, cs!(c"file"), 4) != 0 {
+                        skip_host_string(&infile)
+                    } else {
+                        &infile
+                    };
+                    strcpy_safe(&mut testpath, pathstart);
+                    if normalize_path(&mut testpath, status) != 0 {
+                        ffpmsg_str("Unable to normalize input file path (ffopen)");
+                        ffpmsg_slice(&testpath);
+                        return *status;
+                    }
+                    if exclude_path(&testpath) != 0 {
+                        ffpmsg_str("Attempting to access an invalid directory (ffopen)");
+                        ffpmsg_slice(&testpath);
+                        *status = FILE_NOT_OPENED;
+                        return *status;
+                    }
+                }
+                if strncmp_safe(&urltype, cs!(c"rawfile"), 7) == 0
+                    && strncmp_safe(&outfile, cs!(c"root:"), 5) == 0
+                {
+                    ffpmsg_str(
+                        "The copying of a raw binary file to the root driver has been disabled.",
+                    );
+                    *status = FILE_NOT_OPENED;
+                    return *status;
+                }
+            }
         }
 
         if *status > 0 {
@@ -2102,6 +2135,70 @@ pub(crate) fn fits_already_open(
 }
 
 /*--------------------------------------------------------------------------*/
+pub(crate) fn check_is_file_fits(fp: &mut File) -> c_int {
+    const NBYTES: usize = 1000;
+    let mut buf: [c_char; NBYTES] = [0; NBYTES];
+    let mut nread: usize = 0;
+
+    /* read up to NBYTES bytes, matching C fread semantics */
+    {
+        let bytes: &mut [u8] = cast_slice_mut(&mut buf);
+        while nread < NBYTES {
+            match fp.read(&mut bytes[nread..]) {
+                Ok(0) => break,
+                Ok(n) => nread += n,
+                Err(_) => break,
+            }
+        }
+    }
+    let _ = fp.rewind();
+    if nread == 0 {
+        return 0;
+    }
+
+    check_is_mem_fits(&buf, nread)
+}
+/*--------------------------------------------------------------------------*/
+pub(crate) fn check_is_mem_fits(inputmem: &[c_char], len: usize) -> c_int {
+    let mut isFits = 0;
+
+    /* Check for gzip magic number */
+    if len >= 2 && (inputmem[0] as u8) == 0x1f && (inputmem[1] as u8) == 0x8b {
+        /* Just need to uncompress the beginning portion of the
+        file to test for FITS.  So just pass a small buffer
+        that won't be reallocated by uncompress2mem_from_mem.*/
+        let mut nBuff: usize = 100;
+        let mut nUncomp: usize = 0;
+        let mut status = 0;
+        let mut tstFits: Vec<u8> = vec![0; nBuff + 1];
+        let mut tstFits_ptr: *mut u8 = tstFits.as_mut_ptr();
+        /* This will return a bad status if all of inputmem buffer
+        can't be uncompressed into tstFits, but we don't care. */
+        unsafe {
+            uncompress2mem_from_mem(
+                inputmem,
+                len,
+                &mut tstFits_ptr,
+                &mut nBuff,
+                None,
+                Some(&mut nUncomp),
+                &mut status,
+            );
+        }
+        tstFits[nUncomp] = 0;
+        if strlen_safe(cast_slice(&tstFits)) >= 6
+            && strncmp_safe(cast_slice(&tstFits), cs!(c"SIMPLE"), 6) == 0
+        {
+            isFits = 1;
+        }
+    } else if len >= 6 && strncmp_safe(inputmem, cs!(c"SIMPLE"), 6) == 0 {
+        isFits = 1;
+    }
+
+    isFits
+}
+
+/*--------------------------------------------------------------------------*/
 /// Utility function for common operation in fits_already_open
 /// fullpath:  I/O string to be standardized. Assume len = FLEN_FILENAME
 fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
@@ -2127,6 +2224,105 @@ fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
     strcpy_safe(fullpath, &tmpPath);
 
     *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// This differs from the standardize_path utility function in that this is
+/// intended to perform '/./' and '/../' conversion for both absolute and relative
+/// input paths. standardize_path only operates on relative input paths.
+fn normalize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
+    let mut tmpPath: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut cwd: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+
+    /* Not handling '~' in here */
+    if fullpath[0] == bb(b'~') {
+        return *status;
+    }
+
+    if fullpath[0] != bb(b'/') {
+        fits_get_cwd(&mut cwd, status);
+        if strlen_safe(&cwd) + strlen_safe(fullpath) + 1 > FLEN_FILENAME - 1 {
+            ffpmsg_str("File name is too long. (normalize_path)");
+            *status = FILE_NOT_OPENED;
+            return *status;
+        }
+        strcat_safe(&mut cwd, cs!(c"/"));
+        strcat_safe(&mut cwd, fullpath);
+        fits_clean_url(&cwd, fullpath, status);
+    } else {
+        fits_clean_url(fullpath, &mut tmpPath, status);
+        strcpy_safe(fullpath, &tmpPath);
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+fn exclude_path(testpath: &[c_char]) -> c_int {
+    const NEXCLUDE: usize = 2;
+    let excludeStrs: [&[c_char]; NEXCLUDE] = [cs!(c"/etc/"), cs!(c"/var/")];
+    let updir = cs!(c"..");
+    let mut exclude = 0;
+
+    if testpath[0] == bb(b'~') {
+        /* For home directory '~' paths, will forbid a combination
+        of '..' and an appearance of the excludeStrs anywhere in
+        the testpath.  */
+        if strstr_safe(testpath, updir).is_some() {
+            let mut i = 0;
+            while i < NEXCLUDE && exclude == 0 {
+                if strstr_safe(testpath, excludeStrs[i]).is_some() {
+                    exclude = 1;
+                }
+                i += 1;
+            }
+        }
+    } else {
+        let mut i = 0;
+        while i < NEXCLUDE && exclude == 0 {
+            exclude =
+                (strncmp_safe(testpath, excludeStrs[i], strlen_safe(excludeStrs[i])) == 0) as c_int;
+            i += 1;
+        }
+    }
+    exclude
+}
+/*--------------------------------------------------------------------------*/
+fn skip_host_string(testpath: &[c_char]) -> &[c_char] {
+    if strlen_safe(testpath) < 2 || testpath[0] == bb(b'~') || testpath[0] == bb(b'/') {
+        return testpath;
+    }
+
+    let pslash = match strchr_safe(testpath, bb(b'/')) {
+        None => return testpath,
+        Some(x) => x,
+    };
+
+    /* don't treat ./ or ../ as a host string */
+    if strncmp_safe(testpath, cs!(c"./"), 2) == 0 || strncmp_safe(testpath, cs!(c"../"), 3) == 0 {
+        return testpath;
+    }
+
+    /* any ':' assume is part of host */
+    let p = strchr_safe(testpath, bb(b':'));
+    if let Some(p) = p
+        && p < pslash
+    {
+        return &testpath[pslash..];
+    }
+
+    let mut p = strchr_safe(testpath, bb(b'.'));
+    /* If testpath starts with a '.', look for a second '.' before the '/'. */
+    if p == Some(0) {
+        p = strchr_safe(&testpath[1..], bb(b'.')).map(|x| x + 1);
+    }
+
+    match p {
+        None => testpath,
+        Some(p) if pslash < p => testpath,
+        /* assume everything before the first slash is a host name.*/
+        Some(_) => &testpath[pslash..],
+    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -12067,5 +12263,208 @@ mod tests {
 
             fits_close_file(fptr.take().unwrap(), &mut status);
         });
+    }
+
+    // ------------------------------------------------------------------
+    // check_is_mem_fits / check_is_file_fits tests
+    // ------------------------------------------------------------------
+
+    /// gzip a byte buffer using the library's own compressor (gzip format,
+    /// so the output starts with the 0x1f 0x8b magic number).
+    fn gzip_bytes(bytes: &[u8]) -> Vec<u8> {
+        use crate::zcompress::compress2mem_from_mem;
+        let mut status: c_int = 0;
+        let mut out: Vec<u8> = Vec::new();
+        let mut fsize: usize = 0;
+        unsafe {
+            compress2mem_from_mem(
+                cast_slice(bytes),
+                bytes.len(),
+                &mut out,
+                Some(&mut fsize),
+                &mut status,
+            );
+        }
+        assert_eq!(status, 0, "compress2mem_from_mem failed");
+        out.truncate(fsize);
+        out
+    }
+
+    /// Create a temporary on-disk file containing `bytes`, positioned at the
+    /// start so it can be read from the beginning.
+    fn temp_file_with(bytes: &[u8]) -> File {
+        let mut f = tempfile::tempfile().unwrap();
+        f.write_all(bytes).unwrap();
+        f.rewind().unwrap();
+        f
+    }
+
+    #[test]
+    fn test_check_is_mem_fits_plain() {
+        // A plain buffer that begins with the SIMPLE keyword is FITS.
+        let simple = b"SIMPLE  =                    T / file conforms to FITS standard";
+        let buf = cast_slice::<u8, c_char>(simple);
+        assert_eq!(check_is_mem_fits(buf, simple.len()), 1);
+
+        // Exactly the 6-char keyword is enough.
+        let just = b"SIMPLE";
+        assert_eq!(check_is_mem_fits(cast_slice(just), just.len()), 1);
+    }
+
+    #[test]
+    fn test_check_is_mem_fits_not_fits() {
+        // Non-FITS content.
+        let other = b"RANDOM  =                    T";
+        assert_eq!(check_is_mem_fits(cast_slice(other), other.len()), 0);
+
+        // Fewer than 6 usable bytes is not FITS.
+        let short = b"SIMPL";
+        assert_eq!(check_is_mem_fits(cast_slice(short), short.len()), 0);
+
+        // A prefix of SIMPLE but too short a length is rejected.
+        let simple = b"SIMPLE";
+        assert_eq!(check_is_mem_fits(cast_slice(simple), 5), 0);
+    }
+
+    #[test]
+    fn test_check_is_mem_fits_gzip() {
+        // A gzip-compressed FITS header is detected via the magic number.
+        let simple = b"SIMPLE  =                    T / file conforms to FITS standard";
+        let gz = gzip_bytes(simple);
+        assert_eq!(gz[0] as u8, 0x1f);
+        assert_eq!(gz[1] as u8, 0x8b);
+        assert_eq!(check_is_mem_fits(cast_slice(&gz), gz.len()), 1);
+
+        // A gzip-compressed non-FITS buffer is not FITS.
+        let other = b"RANDOM DATA THAT IS NOT A FITS FILE AT ALL, JUST BYTES";
+        let gz = gzip_bytes(other);
+        assert_eq!(check_is_mem_fits(cast_slice(&gz), gz.len()), 0);
+    }
+
+    #[test]
+    fn test_check_is_file_fits_plain() {
+        let simple = b"SIMPLE  =                    T / file conforms to FITS standard";
+        let mut f = temp_file_with(simple);
+        assert_eq!(check_is_file_fits(&mut f), 1);
+
+        // The file must be rewound by check_is_file_fits so a subsequent read
+        // starts at the beginning again.
+        let mut first = [0u8; 6];
+        f.read_exact(&mut first).unwrap();
+        assert_eq!(&first, b"SIMPLE");
+    }
+
+    #[test]
+    fn test_check_is_file_fits_not_fits() {
+        let other = b"RANDOM  =                    T";
+        let mut f = temp_file_with(other);
+        assert_eq!(check_is_file_fits(&mut f), 0);
+    }
+
+    #[test]
+    fn test_check_is_file_fits_empty() {
+        let mut f = temp_file_with(b"");
+        assert_eq!(check_is_file_fits(&mut f), 0);
+    }
+
+    #[test]
+    fn test_check_is_file_fits_gzip() {
+        let simple = b"SIMPLE  =                    T / file conforms to FITS standard";
+        let gz = gzip_bytes(simple);
+        let mut f = temp_file_with(&gz);
+        assert_eq!(check_is_file_fits(&mut f), 1);
+    }
+
+    // ------------------------------------------------------------------
+    // exclude_path tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_exclude_path_absolute() {
+        // Absolute paths into the restricted directories are excluded.
+        assert_eq!(exclude_path(&str_to_c_array("/etc/passwd")), 1);
+        assert_eq!(exclude_path(&str_to_c_array("/var/log/messages")), 1);
+
+        // Other absolute paths are allowed.
+        assert_eq!(exclude_path(&str_to_c_array("/home/user/data.fits")), 0);
+        assert_eq!(exclude_path(&str_to_c_array("/tmp/out.fits")), 0);
+
+        // The trailing slash matters: "/etcfoo" is not "/etc/".
+        assert_eq!(exclude_path(&str_to_c_array("/etcfoo/x")), 0);
+        assert_eq!(exclude_path(&str_to_c_array("/etc")), 0);
+    }
+
+    #[test]
+    fn test_exclude_path_home() {
+        // For '~' paths, both a '..' component and a restricted dir must appear.
+        assert_eq!(exclude_path(&str_to_c_array("~/../etc/passwd")), 1);
+        assert_eq!(exclude_path(&str_to_c_array("~/../var/log")), 1);
+
+        // '..' without a restricted dir is allowed.
+        assert_eq!(exclude_path(&str_to_c_array("~/../data/file.fits")), 0);
+
+        // A restricted dir without '..' is allowed for '~' paths.
+        assert_eq!(exclude_path(&str_to_c_array("~/etc/file.fits")), 0);
+    }
+
+    // ------------------------------------------------------------------
+    // skip_host_string tests
+    // ------------------------------------------------------------------
+
+    fn skip_host(s: &str) -> String {
+        let buf = str_to_c_array(s);
+        from_buf(skip_host_string(&buf)).to_string()
+    }
+
+    #[test]
+    fn test_skip_host_string_with_host() {
+        // A "host:port/path" style prefix is stripped down to the path.
+        assert_eq!(skip_host("host:8080/path/file.fits"), "/path/file.fits");
+        // A "host.domain/path" prefix (dot before the slash) is a host too.
+        assert_eq!(skip_host("host.com/path/file.fits"), "/path/file.fits");
+    }
+
+    #[test]
+    fn test_skip_host_string_no_host() {
+        // Absolute and home paths are returned unchanged.
+        assert_eq!(skip_host("/absolute/path"), "/absolute/path");
+        assert_eq!(skip_host("~/home/file"), "~/home/file");
+
+        // Relative './' and '../' prefixes are not treated as a host.
+        assert_eq!(skip_host("./rel/file"), "./rel/file");
+        assert_eq!(skip_host("../rel/file"), "../rel/file");
+
+        // No slash at all: returned unchanged.
+        assert_eq!(skip_host("file.fits"), "file.fits");
+
+        // A slash but no dot/colon before it: not a host.
+        assert_eq!(skip_host("myfiles/data.fits"), "myfiles/data.fits");
+
+        // Too short to hold a host name.
+        assert_eq!(skip_host("a"), "a");
+    }
+
+    // ------------------------------------------------------------------
+    // normalize_path tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_normalize_path_tilde_passthrough() {
+        // '~' paths are left untouched.
+        let mut status: c_int = 0;
+        let mut buf = to_buf("~/data/file.fits");
+        assert_eq!(normalize_path(&mut buf, &mut status), 0);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&buf), "~/data/file.fits");
+    }
+
+    #[test]
+    fn test_normalize_path_absolute() {
+        // Absolute paths have '/./' and '/../' segments collapsed.
+        let mut status: c_int = 0;
+        let mut buf = to_buf("/usr/local/../bin/./tool");
+        assert_eq!(normalize_path(&mut buf, &mut status), 0);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&buf), "/usr/bin/tool");
     }
 }

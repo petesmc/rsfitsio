@@ -19,7 +19,7 @@ use bytemuck::cast_slice;
 #[cfg(target_family = "unix")]
 use pwd::Passwd;
 
-use crate::cfileio::MAX_PREFIX_LEN;
+use crate::cfileio::{MAX_PREFIX_LEN, check_is_file_fits};
 use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
 
 use crate::fitsio::*;
@@ -106,6 +106,15 @@ pub(crate) fn file_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_i
         if status != 0 {
             ofile[0] = 0;
             return status;
+        }
+
+        let tstEnv = std::env::var("CFITSIO_DISABLE_COPY_RESTRICT").ok();
+        if !tstEnv.as_deref().is_some_and(|s| s.starts_with('1'))
+            && check_is_file_fits(diskfile.as_mut().unwrap()) == 0
+        {
+            ffpmsg_str("Input file is not a FITS file.  Cannot create output file.");
+            ffpmsg_slice(&*ofile);
+            return FILE_NOT_OPENED;
         }
 
         /* create the output file */
@@ -662,6 +671,15 @@ pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &m
         ffpmsg_str("failed to open compressed disk file (file_compress_open)");
         ffpmsg_slice(filename);
         return status;
+    }
+
+    let tstEnv = std::env::var("CFITSIO_DISABLE_COPY_RESTRICT").ok();
+    if !tstEnv.as_deref().is_some_and(|s| s.starts_with('1'))
+        && check_is_file_fits(indiskfile.as_mut().unwrap()) == 0
+    {
+        ffpmsg_str("Input file is not a FITS file.  Cannot create output file.");
+        ffpmsg_slice(&*FILE_OUTFILE.lock().unwrap());
+        return FILE_NOT_OPENED;
     }
 
     /* name of the output uncompressed file is stored in the */
