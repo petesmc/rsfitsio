@@ -888,7 +888,11 @@ pub(crate) fn file_checkfile(
 
 /*--------------------------------------------------------------------------*/
 /// read from stdin
-pub(crate) fn stream_open(_filename: &mut [c_char], _rwmode: c_int, handle: &mut c_int) -> c_int {
+pub(crate) fn fits_stream_open(
+    _filename: &mut [c_char],
+    _rwmode: c_int,
+    handle: &mut c_int,
+) -> c_int {
     *handle = 1; /*  1 = stdin */
 
     0
@@ -896,7 +900,10 @@ pub(crate) fn stream_open(_filename: &mut [c_char], _rwmode: c_int, handle: &mut
 
 /*--------------------------------------------------------------------------*/
 ///  write to stdout
-pub(crate) fn stream_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
+pub(crate) fn fits_stream_create(
+    _filename: &mut [c_char; FLEN_FILENAME],
+    handle: &mut c_int,
+) -> c_int {
     *handle = 2; /*  2 = stdout */
 
     0
@@ -904,7 +911,7 @@ pub(crate) fn stream_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mu
 
 /*--------------------------------------------------------------------------*/
 /// return the size of the file in bytes
-pub(crate) fn stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
+pub(crate) fn fits_stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
     /* this operation is not supported in a stream; return large value */
     *filesize = LONG_MAX as usize;
     0
@@ -912,13 +919,13 @@ pub(crate) fn stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// don't have to close stdin or stdout
-pub(crate) fn stream_close(_handle: c_int) -> c_int {
+pub(crate) fn fits_stream_close(_handle: c_int) -> c_int {
     0
 }
 
 /*--------------------------------------------------------------------------*/
 /// flush the file
-pub(crate) fn stream_flush(handle: c_int) -> c_int {
+pub(crate) fn fits_stream_flush(handle: c_int) -> c_int {
     if handle == 2 {
         let _ = std::io::stdout().flush();
     }
@@ -927,13 +934,13 @@ pub(crate) fn stream_flush(handle: c_int) -> c_int {
 }
 /*--------------------------------------------------------------------------*/
 /// seeking is not allowed in a stream
-pub(crate) fn stream_seek(_handle: c_int, _offset: LONGLONG) -> c_int {
+pub(crate) fn fits_stream_seek(_handle: c_int, _offset: LONGLONG) -> c_int {
     1
 }
 
 /*--------------------------------------------------------------------------*/
 /// reading from stdin stream
-pub(crate) fn stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
+pub(crate) fn fits_stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     if hdl != 1 {
         return 1; /* can only read from stdin */
     }
@@ -958,7 +965,7 @@ pub(crate) fn stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int
 
 /*--------------------------------------------------------------------------*/
 ///  write bytes at the current position in the file
-pub(crate) fn stream_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
+pub(crate) fn fits_stream_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     if hdl != 2 {
         return 1; /* can only write to stdout */
     }

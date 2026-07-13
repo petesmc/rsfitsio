@@ -26,8 +26,8 @@ use crate::drvrfile::{
     file_checkfile, file_close, file_compress_open, file_create, file_flush, file_getoptions,
     file_getversion, file_init, file_is_compressed, file_open, file_openfile, file_read,
     file_remove, file_seek, file_setoptions, file_shutdown, file_size, file_truncate, file_write,
-    stream_close, stream_create, stream_flush, stream_open, stream_read, stream_seek, stream_size,
-    stream_write,
+    fits_stream_close, fits_stream_create, fits_stream_flush, fits_stream_open, fits_stream_read,
+    fits_stream_seek, fits_stream_size, fits_stream_write,
 };
 use crate::drvrmem::{
     mem_close_comp_unsafe, mem_close_free_unsafe, mem_close_keep, mem_compress_open,
@@ -5042,16 +5042,16 @@ pub fn fits_init_cfitsio_safer() -> c_int {
         None,
         None,
         None,
-        Some(stream_open),
-        Some(stream_create),
+        Some(fits_stream_open),
+        Some(fits_stream_create),
         None, /* no stream truncate function */
-        stream_close,
+        fits_stream_close,
         None, /* no stream remove */
-        stream_size,
-        Some(stream_flush),
-        stream_seek,
-        stream_read,
-        stream_write,
+        fits_stream_size,
+        Some(fits_stream_flush),
+        fits_stream_seek,
+        fits_stream_read,
+        fits_stream_write,
     );
 
     if status != 0 {
