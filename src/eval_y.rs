@@ -6774,7 +6774,6 @@ fn New_REG(
             rot: 0.,
             dtype: [0; 5],
         };
-        let Rgn: *mut SAORegion = ptr::null_mut();
         let mut cX: *mut c_char = ptr::null_mut();
         let mut cY: *mut c_char = ptr::null_mut();
         let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
@@ -6930,18 +6929,32 @@ fn New_REG(
             }
 
             let fname_slice = CStr::from_ptr(fname);
-            let rgn_box = Box::from_raw(Rgn);
+            // fits_read_rgnfile allocates the region and stores it in this
+            // Option (replacing whatever was passed). The previous code passed a
+            // `Box::from_raw(null)` and then read back the still-null `Rgn`,
+            // which both dropped a null Box (UB) and left the node's region
+            // pointer null. Capture the real region and hand its ownership to
+            // the node as a raw pointer (ffcprs reclaims it via
+            // fits_free_region(Box::from_raw(...))).
+            let mut rgn_opt: Option<Box<SAORegion>> = None;
             fits_read_rgnfile(
                 cast_slice(fname_slice.to_bytes_with_nul()),
                 &mut wcs,
-                &mut Some(rgn_box),
+                &mut rgn_opt,
                 &mut lParse.status,
             );
             if lParse.status != 0 {
                 Free_Last_Node(lParse);
                 return -(1);
             }
-            (lParse.Nodes[that0_idx]).value.data.ptr = Rgn.cast::<c_void>();
+            let rgn_box = match rgn_opt {
+                Some(b) => b,
+                None => {
+                    Free_Last_Node(lParse);
+                    return -(1);
+                }
+            };
+            (lParse.Nodes[that0_idx]).value.data.ptr = Box::into_raw(rgn_box).cast::<c_void>();
             if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
                 && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
             {
