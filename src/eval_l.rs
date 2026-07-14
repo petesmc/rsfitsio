@@ -7,7 +7,7 @@ use core::ptr;
 use std::process::exit;
 
 use bytemuck::cast_slice;
-use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
+use libc::{ENOMEM, FILE, atof, atol, fileno, fwrite, isatty, size_t};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
 use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData};
@@ -1679,10 +1679,53 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
             (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)) = None;
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
-        free(yyscanner.yy_buffer_stack.cast::<c_void>());
+        // `yy_buffer_stack` is allocated with the Rust global allocator (a `Vec`
+        // via `vec_into_raw_parts` in `yyensure_buffer_stack`), so it must be
+        // reclaimed the same way. Freeing it with `libc::free` is an allocator
+        // mismatch and undefined behaviour. All elements were set to `None`
+        // above, so dropping the reconstituted `Vec` just frees the backing
+        // store. `yy_buffer_stack_max` is the exact capacity (see the grow path,
+        // which reconstitutes it identically).
+        if !yyscanner.yy_buffer_stack.is_null() {
+            drop(Vec::from_raw_parts(
+                yyscanner.yy_buffer_stack,
+                yyscanner.yy_buffer_stack_max,
+                yyscanner.yy_buffer_stack_max,
+            ));
+        }
         yyscanner.yy_buffer_stack = core::ptr::null_mut();
         yy_init_globals(&mut yyscanner);
 
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The scanner buffer stack is allocated with the Rust global allocator
+    /// (`Vec`), so `fits_parser_yylex_destroy` must reclaim it the same way.
+    /// This exercises the full init -> allocate -> destroy cycle with no file
+    /// I/O so it runs under Miri, which flags allocator mismatches (e.g. the
+    /// previous `libc::free` of `Vec`-allocated memory) and leaks.
+    #[test]
+    fn buffer_stack_alloc_destroy_uses_matching_allocator() {
+        let mut lparse = ParseData::default();
+        let mut globals: Option<Box<yyguts_t>> = None;
+        assert_eq!(fits_parser_yylex_init_extra(&mut lparse, &mut globals), 0);
+
+        {
+            let g = globals.as_deref_mut().unwrap();
+            assert!(g.yy_buffer_stack.is_null());
+            fits_parser_yyensure_buffer_stack(g);
+            assert!(!g.yy_buffer_stack.is_null());
+            assert_eq!(g.yy_buffer_stack_max, 1);
+            // The freshly allocated slot must be initialised to None.
+            assert!(unsafe { (*g.yy_buffer_stack.add(g.yy_buffer_stack_top)).is_none() });
+        }
+
+        let b = globals.take().unwrap();
+        assert_eq!(fits_parser_yylex_destroy(b), 0);
     }
 }
