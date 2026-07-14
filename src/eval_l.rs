@@ -848,7 +848,7 @@ pub(crate) fn fits_parser_yylex(
                                     if c_int::from(*(yyscanner.yytext_r).offset(1)) == '$' as i32 {
                                         len_2 =
                                             (strlen(yyscanner.yytext_r)).wrapping_sub(3) as c_int;
-                                        if len_2 >= MAX_STRLEN {
+                                        if len_2 >= MAX_STRLEN - 1 {
                                             let mut errMsg: [c_char; 100] = [0; 100];
                                             (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
