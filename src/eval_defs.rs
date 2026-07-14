@@ -41,6 +41,51 @@ impl Default for DataInfo {
     }
 }
 
+/// Owns a numeric node's result buffer as a raw heap allocation. The node's
+/// `value.data.ptr`/`value.undef` are raw *views* into this buffer; keeping the
+/// backing store as a raw allocation (rather than a `Box`/`Vec`, which are
+/// `noalias`) lets those views stay valid under Stacked Borrows. Freed on drop.
+pub struct NodeBuf {
+    ptr: *mut u8,
+    /// Number of `u64` words backing the allocation.
+    words: usize,
+}
+
+impl NodeBuf {
+    /// Allocate a zeroed buffer of at least `len` bytes, 8-byte aligned (the
+    /// buffer stores f64/c_long values, so it needs the same alignment the
+    /// former `calloc` provided), or `None` on allocation failure.
+    pub fn new(len: usize) -> Option<Self> {
+        let words = len.div_ceil(8).max(1);
+        let mut v: Vec<u64> = Vec::new();
+        v.try_reserve_exact(words).ok()?;
+        v.resize(words, 0);
+        let raw = Box::into_raw(v.into_boxed_slice());
+        Some(NodeBuf {
+            ptr: raw as *mut u8,
+            words,
+        })
+    }
+
+    /// Raw pointer to the start of the buffer (valid for the buffer's lifetime).
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.ptr
+    }
+}
+
+impl Drop for NodeBuf {
+    fn drop(&mut self) {
+        // Reconstitute the boxed [u64] slice from the raw parts and drop it,
+        // freeing via the same (Rust global) allocator it was created with.
+        unsafe {
+            drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+                self.ptr.cast::<u64>(),
+                self.words,
+            )));
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub union data_union {
     pub dbl: f64,
@@ -122,6 +167,14 @@ pub struct ParseData {
     pub nAxes: [c_long; MAXDIMS as usize],
     pub colData: Vec<iteratorCol>, // This is a list
     pub varData: Vec<DataInfo>,
+    /// Rust-owned backing store for the per-node result buffers of numeric
+    /// (DOUBLE/LONG/BOOLEAN) nodes, indexed by node number. When a slot is
+    /// `Some`, the node's `value.data.ptr`/`value.undef` are raw *views* into
+    /// this box (data followed by the undef flags), and the memory is owned and
+    /// freed here rather than via malloc/free. A `None` slot means the node's
+    /// pointer (if any) is owned elsewhere (legacy malloc, e.g. GTI data).
+    /// See `Allocate_Ptrs` / `free_node_data` in eval_y.
+    pub node_buffers: Vec<Option<NodeBuf>>,
     pub pixFilter: *mut PixelFilter,
     pub firstDataRow: c_long,
     pub nDataRows: c_long,
@@ -157,6 +210,7 @@ impl ParseData {
         self.nAxes = Default::default();
         self.colData = Default::default();
         self.varData = Default::default();
+        self.node_buffers = Default::default();
         self.pixFilter = Default::default();
         self.firstDataRow = Default::default();
         self.nDataRows = Default::default();

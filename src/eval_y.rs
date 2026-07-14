@@ -4,7 +4,7 @@ use core::slice;
 use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{calloc, free, malloc, memcpy, time, time_t};
+use libc::{free, malloc, memcpy, time, time_t};
 
 const APPROX: f64 = 1.0e-7;
 
@@ -68,7 +68,9 @@ use crate::c_types::{
     c_char, c_double, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_void,
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
-use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
+use crate::eval_defs::{
+    CONST_OP, MAXDIMS, MAXSUBS, Node, NodeBuf, ParseData, data_union, lval, yyscan_t,
+};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::fits_parser_yytokentype::BITSTR;
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
@@ -6666,7 +6668,7 @@ fn New_GTI(
                     &mut lParse.status,
                 );
                 if lParse.status != 0 {
-                    free((lParse.Nodes[that0_idx]).value.data.dblptr.cast::<c_void>());
+                    free_node_data(lParse, that0_idx);
                     return -(1);
                 }
 
@@ -7343,6 +7345,43 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
     }
 }
 
+/// Allocate the Rust-owned backing store for a numeric node's result buffer
+/// (`n_bytes`, covering the data array followed by its undef flags), retain it
+/// in `lParse.node_buffers[idx]`, and return a zeroed raw view of its start.
+/// Returns null on allocation failure (matching the previous `calloc`).
+fn alloc_node_data(lParse: &mut ParseData, idx: usize, n_bytes: usize) -> *mut c_void {
+    if lParse.node_buffers.len() <= idx {
+        lParse.node_buffers.resize_with(idx + 1, || None);
+    }
+    match NodeBuf::new(n_bytes) {
+        Some(buf) => {
+            let ptr = buf.as_ptr().cast::<c_void>();
+            lParse.node_buffers[idx] = Some(buf);
+            ptr
+        }
+        None => {
+            lParse.node_buffers[idx] = None;
+            core::ptr::null_mut()
+        }
+    }
+}
+
+/// Release a numeric node's result buffer. If it is Rust-owned (present in
+/// `node_buffers`) the box is dropped; otherwise the legacy malloc'd pointer is
+/// freed with `libc::free`. The node's data pointer is nulled either way, so a
+/// repeated call is a safe no-op. `undef` (a view into the same buffer) is left
+/// to the caller.
+pub(crate) fn free_node_data(lParse: &mut ParseData, idx: usize) {
+    let owned = idx < lParse.node_buffers.len() && lParse.node_buffers[idx].is_some();
+    if owned {
+        lParse.node_buffers[idx] = None; // drops the NodeBuf (frees the buffer)
+    } else {
+        // Legacy malloc'd pointer (e.g. GTI data); free with libc.
+        unsafe { free((lParse.Nodes[idx]).value.data.ptr) };
+    }
+    (lParse.Nodes[idx]).value.data.ptr = core::ptr::null_mut();
+}
+
 fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut elem: c_long = 0;
@@ -7422,41 +7461,42 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                     size = 1;
                 }
             }
-            (lParse.Nodes[this_node_idx]).value.data.ptr = calloc(
-                ((size + 1) as c_ulong).try_into().unwrap(),
-                (elem as c_ulong).try_into().unwrap(),
-            );
-            if ((lParse.Nodes[this_node_idx]).value.data.ptr).is_null() {
+            // Rust-owned buffer of (size + 1) * elem bytes (matching the former
+            // calloc): `elem * size` bytes of data followed by `elem` undef
+            // flags. Owned by lParse.node_buffers; data.ptr/undef are views.
+            let n_bytes = ((size + 1) * elem) as usize;
+            let p = alloc_node_data(lParse, this_node_idx, n_bytes);
+            (lParse.Nodes[this_node_idx]).value.data.ptr = p;
+            if p.is_null() {
                 lParse.status = MEMORY_ALLOCATION;
             } else {
-                (lParse.Nodes[this_node_idx]).value.undef = (lParse.Nodes[this_node_idx])
-                    .value
-                    .data
-                    .ptr
-                    .cast::<c_char>()
-                    .offset((elem * size) as isize);
+                (lParse.Nodes[this_node_idx]).value.undef =
+                    p.cast::<c_char>().offset((elem * size) as isize);
             }
         };
     }
 }
 
-unsafe fn free_node_buffer(node: &mut Node) {
-    if (node.ntype == fits_parser_yytokentype::BITSTR as c_int
-        || node.ntype == fits_parser_yytokentype::STRING as c_int)
+unsafe fn free_node_buffer(lParse: &mut ParseData, idx: usize) {
+    let ntype = lParse.Nodes[idx].ntype;
+    if ntype == fits_parser_yytokentype::BITSTR as c_int
+        || ntype == fits_parser_yytokentype::STRING as c_int
     {
-        if (!node.value.data.strptr.is_null()) {
-            if (!(*node.value.data.strptr).is_null()) {
-                free((*node.value.data.strptr) as *mut c_void);
+        // STRING/BITSTR nodes still use the legacy malloc'd 2-D strptr buffer.
+        let strptr = lParse.Nodes[idx].value.data.strptr;
+        if !strptr.is_null() {
+            if !(*strptr).is_null() {
+                free((*strptr) as *mut c_void);
             }
-            free(node.value.data.strptr as *mut c_void);
-            node.value.data.strptr = ptr::null_mut();
+            free(strptr as *mut c_void);
+            lParse.Nodes[idx].value.data.strptr = ptr::null_mut();
         }
-    } else if (!node.value.data.ptr.is_null()) {
-        free(node.value.data.ptr);
-        node.value.data.ptr = ptr::null_mut();
+    } else {
+        // Numeric nodes: Rust-owned buffer (or legacy malloc for GTI etc.).
+        free_node_data(lParse, idx);
     }
 
-    node.value.undef = ptr::null_mut();
+    lParse.Nodes[idx].value.undef = ptr::null_mut();
 }
 
 fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
@@ -7704,7 +7744,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
 
         if (lParse.Nodes[that_idx]).operation > 0 {
-            free((lParse.Nodes[that_idx]).value.data.ptr);
+            free_node_data(lParse, that_idx);
         }
     }
 }
@@ -7750,7 +7790,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             if (lParse.status == 0) {
                 lParse.status = PARSE_SYNTAX_ERR;
             }
-            free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+            free_node_buffer(lParse, this_node_idx);
             return;
         }
 
@@ -7810,7 +7850,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.status == 0) {
                         lParse.status = PARSE_SYNTAX_ERR;
                     }
-                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                    free_node_buffer(lParse, this_node_idx);
                     return;
                 }
             } else if (rowOffset < 0) {
@@ -7822,7 +7862,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.status == 0) {
                         lParse.status = PARSE_SYNTAX_ERR;
                     }
-                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                    free_node_buffer(lParse, this_node_idx);
                     return;
                 }
             }
@@ -8718,10 +8758,10 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free_node_data(lParse, that1_idx);
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free_node_data(lParse, that2_idx);
         }
     }
 }
@@ -9015,10 +9055,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free_node_data(lParse, that1_idx);
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free_node_data(lParse, that2_idx);
         }
     }
 }
@@ -9314,10 +9354,10 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free_node_data(lParse, that1_idx);
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free_node_data(lParse, that2_idx);
         }
     }
 }
@@ -10065,7 +10105,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 lParse,
                                 cs!(c"AXISELEM(V,n) n value exceeded maximum dimension"),
                             );
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            free_node_data(lParse, this_node_idx);
                         } else {
                             ielem = 0;
                             while ielem < elem {
@@ -10633,7 +10673,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free_node_data(lParse, this_node_idx);
                             } else {
                                 irow = 0;
                                 while c_long::from(irow) < row {
@@ -10687,7 +10727,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free_node_data(lParse, this_node_idx);
                             } else {
                                 irow_0 = 0;
                                 while c_long::from(irow_0) < row {
@@ -12745,7 +12785,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 break;
             }
             if (lParse.Nodes[theParams[i as usize]]).operation > 0 {
-                free((lParse.Nodes[theParams[i as usize]]).value.data.ptr);
+                free_node_data(lParse, theParams[i as usize]);
             }
         }
     }
@@ -12873,7 +12913,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    free_node_data(lParse, this_node_idx);
                     (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 }
             } else if allConst != 0 && nDims == 1 {
@@ -12885,7 +12925,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                    free_node_data(lParse, this_node_idx);
                     (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
@@ -12982,7 +13022,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Null encountered as vector index"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free_node_data(lParse, this_node_idx);
                                 (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                                 break;
                             } else {
@@ -13060,7 +13100,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        free_node_data(lParse, this_node_idx);
                         (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                     }
                     row += 1;
@@ -13072,7 +13112,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Index cannot be a constant */
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                        free_node_data(lParse, this_node_idx);
                         (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         break;
                     } else {
@@ -13084,7 +13124,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            free_node_data(lParse, this_node_idx);
                             (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BITSTR as c_int
@@ -13173,13 +13213,13 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             {
                 free((*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).cast::<c_void>());
             } else {
-                free((lParse.Nodes[theVar]).value.data.ptr);
+                free_node_data(lParse, theVar);
             }
         }
         i = 0;
         while i < nDims {
             if (lParse.Nodes[theDims[i as usize]]).operation > 0 {
-                free((lParse.Nodes[theDims[i as usize]]).value.data.ptr);
+                free_node_data(lParse, theDims[i as usize]);
             }
             i += 1;
         }
@@ -13290,7 +13330,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theExpr]).operation > 0 {
-            free((lParse.Nodes[theExpr]).value.data.ptr);
+            free_node_data(lParse, theExpr);
         }
     }
 }
@@ -13404,10 +13444,10 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theStart]).operation > 0 {
-            free((lParse.Nodes[theStart]).value.data.ptr);
+            free_node_data(lParse, theStart);
         }
         if (lParse.Nodes[theStop]).operation > 0 {
-            free((lParse.Nodes[theStop]).value.data.ptr);
+            free_node_data(lParse, theStop);
         }
     }
 }
@@ -13642,10 +13682,10 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theX]).operation > 0 {
-            free((lParse.Nodes[theX]).value.data.ptr);
+            free_node_data(lParse, theX);
         }
         if (lParse.Nodes[theY]).operation > 0 {
-            free((lParse.Nodes[theY]).value.data.ptr);
+            free_node_data(lParse, theY);
         }
     }
 }
@@ -14305,4 +14345,52 @@ fn fits_parser_yyerror(lParse: &mut ParseData, s: &[c_char]) {
     msg[79] = 0;
 
     ffpmsg_slice(&msg);
+}
+
+#[cfg(test)]
+mod node_buffer_tests {
+    use super::*;
+
+    /// Exercises the Rust-owned numeric node buffer end to end: Allocate_Ptrs
+    /// builds the backing store, data/undef are written and read back through
+    /// the raw union views, and free_node_data releases it. Runs with no file
+    /// I/O so it executes under Miri, which flags OOB access and allocator
+    /// mismatches (e.g. freeing this Vec-backed buffer with libc::free).
+    #[test]
+    fn numeric_node_buffer_alloc_access_free_roundtrip() {
+        let mut lparse = ParseData::default();
+        lparse.nRows = 4;
+
+        let mut node = Node::default();
+        node.ntype = fits_parser_yytokentype::DOUBLE as c_int;
+        node.value.nelem = 2;
+        node.operation = 1; // non-constant -> heap array
+        lparse.Nodes.push(node);
+        let idx = 0usize;
+
+        Allocate_Ptrs(&mut lparse, idx);
+        assert_eq!(lparse.status, 0);
+        assert!(lparse.node_buffers[idx].is_some());
+
+        let dptr = unsafe { lparse.Nodes[idx].value.data.dblptr };
+        let undef = lparse.Nodes[idx].value.undef;
+        assert!(!dptr.is_null());
+        assert!(!undef.is_null());
+
+        let elem = (lparse.Nodes[idx].value.nelem * lparse.nRows) as usize;
+        unsafe {
+            for i in 0..elem {
+                *dptr.add(i) = i as f64 * 1.5;
+                *undef.add(i) = (i % 2) as c_char;
+            }
+            for i in 0..elem {
+                assert_eq!(*dptr.add(i), i as f64 * 1.5);
+                assert_eq!(*undef.add(i), (i % 2) as c_char);
+            }
+        }
+
+        free_node_data(&mut lparse, idx);
+        assert!(lparse.node_buffers[idx].is_none());
+        assert!(unsafe { lparse.Nodes[idx].value.data.ptr }.is_null());
+    }
 }

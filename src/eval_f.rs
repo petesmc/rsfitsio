@@ -1592,6 +1592,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
         }
 
         lParse.Nodes = Vec::new(); // Frees
+        lParse.node_buffers = Vec::new(); // Frees Rust-owned numeric node buffers
 
         lParse.hdutype = ANY_HDU;
         lParse.pixFilter = core::ptr::null_mut();
@@ -2028,7 +2029,20 @@ pub(crate) fn fits_parser_workfn_safe(
                             }
                         }
                         if result.operation > 0 {
-                            FREE!(result.value.data.ptr);
+                            // Release the numeric result buffer. If it is
+                            // Rust-owned (side-table), drop the box; otherwise
+                            // fall back to the legacy free. Inlined (rather than
+                            // free_node_data) because `result` still borrows
+                            // lParse.Nodes here; node_buffers is a disjoint field.
+                            let ridx = lParse.resultNode as usize;
+                            if ridx < lParse.node_buffers.len()
+                                && lParse.node_buffers[ridx].is_some()
+                            {
+                                lParse.node_buffers[ridx] = None;
+                                result.value.data.ptr = core::ptr::null_mut();
+                            } else {
+                                FREE!(result.value.data.ptr);
+                            }
                         }
                     }
                     if lParse.status == OVERFLOW_ERR {
