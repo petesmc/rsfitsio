@@ -97,6 +97,12 @@ fn astr_eq(buf: &[c_char], s: &CStr) -> bool {
         && needle.iter().zip(buf.iter()).all(|(&n, &b)| n == b as u8)
 }
 
+/// Safe equivalent of `strlen(astr)` for the fixed `astr` buffer: the number of
+/// bytes before the first NUL, bounded by the buffer length (never reads OOB).
+fn astr_len(buf: &[c_char]) -> usize {
+    buf.iter().position(|&b| b == 0).unwrap_or(buf.len())
+}
+
 pub type yy_state_t = yytype_int16;
 pub type yytype_int16 = c_short;
 pub type yysymbol_kind_t = c_int;
@@ -1620,15 +1626,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (strlen((yyvs[yyvsp].astr).as_mut_ptr()))
-                                    .wrapping_add((1).try_into().unwrap())
+                                (astr_len(&yyvs[yyvsp].astr)).wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    strlen((yyvs[yyvsp].astr).as_mut_ptr()) as c_long;
+                                    astr_len(&yyvs[yyvsp].astr) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
@@ -5743,15 +5748,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
                                 (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (strlen((yyvs[yyvsp].astr).as_mut_ptr()))
-                                    .wrapping_add((1).try_into().unwrap())
+                                (astr_len(&yyvs[yyvsp].astr)).wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             );
                             if yyval.Node < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    strlen((yyvs[yyvsp].astr).as_mut_ptr()) as c_long;
+                                    astr_len(&yyvs[yyvsp].astr) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
