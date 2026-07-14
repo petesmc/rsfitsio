@@ -6634,14 +6634,12 @@ fn New_GTI(
                 /* We are allocating storage for both START and STOP with one pointer
                 and stop is stored at dblptr+nrows, we will use aliases below to
                 make this easier to read */
-                (lParse.Nodes[that0_idx]).value.data.dblptr = malloc(
-                    ((2 as c_long * nrows) as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                )
-                .cast::<c_double>();
-                if ((lParse.Nodes[that0_idx]).value.data.dblptr).is_null() {
+                // Rust-owned buffer for both START and STOP (STOP stored at
+                // dblptr + nrows); owned by lParse.node_buffers.
+                let n_bytes = (2 * nrows) as usize * size_of::<c_double>();
+                let p = alloc_node_data(lParse, that0_idx, n_bytes);
+                (lParse.Nodes[that0_idx]).value.data.ptr = p;
+                if p.is_null() {
                     lParse.status = 113 as c_int;
                     return -(1);
                 }
@@ -14522,5 +14520,39 @@ mod node_buffer_tests {
         assert!(lparse.node_buffers[1].is_none());
         // The remaining three are freed when node_buffers is cleared (ffcprs).
         lparse.node_buffers = Vec::new();
+    }
+
+    /// Mirrors New_GTI's buffer: one owned allocation holding START at [0, nrows)
+    /// and STOP at [nrows, 2*nrows) via aliased pointers. Confirms both halves
+    /// are writable/readable in bounds and freed cleanly (Miri-checked).
+    #[test]
+    fn gti_style_split_buffer_roundtrip() {
+        let mut lparse = ParseData::default();
+        let nrows = 3usize;
+        let mut node = Node::default();
+        node.operation = CONST_OP;
+        lparse.Nodes.push(node);
+        let idx = 0usize;
+
+        let n_bytes = 2 * nrows * core::mem::size_of::<f64>();
+        let p = alloc_node_data(&mut lparse, idx, n_bytes);
+        lparse.Nodes[idx].value.data.ptr = p;
+        assert!(!p.is_null());
+
+        unsafe {
+            let startptr = p.cast::<f64>();
+            let stopptr = startptr.add(nrows);
+            for r in 0..nrows {
+                *startptr.add(r) = r as f64;
+                *stopptr.add(r) = r as f64 + 0.5;
+            }
+            for r in 0..nrows {
+                assert_eq!(*startptr.add(r), r as f64);
+                assert_eq!(*stopptr.add(r), r as f64 + 0.5);
+            }
+        }
+
+        free_node_data(&mut lparse, idx);
+        assert!(lparse.node_buffers[idx].is_none());
     }
 }

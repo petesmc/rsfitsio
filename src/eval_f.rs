@@ -74,7 +74,9 @@ use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT, fits_parser_yyparse};
+use crate::eval_y::{
+    Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT, fits_parser_yyparse, free_node_data,
+};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -1576,11 +1578,11 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             while node != 0 {
                 node -= 1;
                 if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
+                    // The GTI START/STOP buffer is now Rust-owned; drop it via
+                    // the side-table rather than FREE! (which would be an
+                    // allocator mismatch).
                     i = lParse.Nodes[node as usize].SubNodes[0];
-                    if !(lParse.Nodes[i]).value.data.ptr.is_null() {
-                        let mut data_ptr = (lParse.Nodes[i]).value.data.ptr;
-                        FREE!(data_ptr);
-                    }
+                    free_node_data(lParse, i);
                 } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     fits_free_region(Box::from_raw(
