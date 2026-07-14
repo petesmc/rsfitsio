@@ -2553,60 +2553,47 @@ fn ffcvtn(
 
         match outputType {
             TLOGICAL => {
+                let n = ntodo as usize;
+                let output = core::slice::from_raw_parts_mut(output.cast::<c_uchar>(), n);
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            if (*(input.cast::<c_uchar>().add(i.try_into().unwrap()))) != 0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
-                            } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            }
+                        let input = core::slice::from_raw_parts(input.cast::<c_uchar>(), n);
+                        for i in 0..n {
+                            output[i] = (input[i] != 0) as c_uchar;
                         }
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            if (*(input.cast::<c_short>().add(i.try_into().unwrap()))) != 0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
-                            } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            }
+                        let input = core::slice::from_raw_parts(input.cast::<c_short>(), n);
+                        for i in 0..n {
+                            output[i] = (input[i] != 0) as c_uchar;
                         }
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            if (*(input.cast::<c_long>().add(i.try_into().unwrap()))) != 0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
-                            } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            }
+                        let input = core::slice::from_raw_parts(input.cast::<c_long>(), n);
+                        for i in 0..n {
+                            output[i] = (input[i] != 0) as c_uchar;
                         }
                     }
                     TFLOAT => {
-                        for i in 0..ntodo {
-                            if (*(input.cast::<c_float>().add(i.try_into().unwrap()))) != 0.0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
-                            } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            }
+                        let input = core::slice::from_raw_parts(input.cast::<c_float>(), n);
+                        for i in 0..n {
+                            output[i] = (input[i] != 0.0) as c_uchar;
                         }
                     }
                     TDOUBLE => {
-                        for i in 0..ntodo {
-                            if (*(input.cast::<c_double>().add(i.try_into().unwrap()))) != 0.0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 1;
-                            } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            }
+                        let input = core::slice::from_raw_parts(input.cast::<c_double>(), n);
+                        for i in 0..n {
+                            output[i] = (input[i] != 0.0) as c_uchar;
                         }
                     }
                     _ => {
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_uchar>();
+                let undef = core::slice::from_raw_parts(undef, n);
+                for i in 0..n {
+                    if undef[i] != 0 {
+                        output[i] = *nulval.cast::<c_uchar>();
                         *anynull = 1;
                     }
                 }
