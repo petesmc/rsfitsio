@@ -4971,7 +4971,7 @@ pub fn quick_select_float(arr: &mut [f32], n: usize) -> f32 {
             }
             loop {
                 hh -= 1;
-                if arr[hh] <= arr[ll] {
+                if arr[hh] <= arr[low] {
                     break;
                 }
             }
@@ -5047,7 +5047,7 @@ pub fn quick_select_short(arr: &mut [i16], n: usize) -> i16 {
             }
             loop {
                 hh -= 1;
-                if arr[hh] <= arr[ll] {
+                if arr[hh] <= arr[low] {
                     break;
                 }
             }
@@ -5123,7 +5123,7 @@ pub fn quick_select_int(arr: &mut [i32], n: usize) -> i32 {
             }
             loop {
                 hh -= 1;
-                if arr[hh] <= arr[ll] {
+                if arr[hh] <= arr[low] {
                     break;
                 }
             }
@@ -5199,7 +5199,7 @@ pub fn quick_select_longlong(arr: &mut [i64], n: usize) -> i64 {
             }
             loop {
                 hh -= 1;
-                if arr[hh] <= arr[ll] {
+                if arr[hh] <= arr[low] {
                     break;
                 }
             }
@@ -5276,7 +5276,7 @@ pub fn quick_select_double(arr: &mut [f64], n: usize) -> f64 {
             }
             loop {
                 hh -= 1;
-                if arr[hh] <= arr[ll] {
+                if arr[hh] <= arr[low] {
                     break;
                 }
             }
