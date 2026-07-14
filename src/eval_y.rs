@@ -103,6 +103,42 @@ fn astr_len(buf: &[c_char]) -> usize {
     buf.iter().position(|&b| b == 0).unwrap_or(buf.len())
 }
 
+/// Symbolic names for the `current_block` control-flow targets in the generated
+/// `fits_parser_yyparse` driver. These replace the opaque 19-digit block IDs
+/// emitted by the C-to-Rust goto translation; each constant keeps its original
+/// numeric value so the control flow is byte-for-byte unchanged, only readable.
+///
+/// The first group mirrors the standard bison skeleton labels (see the
+/// `yydefault`/`yyreduce`/`yynewstate` comments in the driver). The
+/// `REDUCE_JOIN_*` group are intra-reduction join points within grouped grammar
+/// rules; they have no bison name, so they are numbered by frequency.
+mod block {
+    pub const YYERRLAB: u64 = 4830776507462815627; // semantic error -> error recovery
+    pub const YYERRLAB1: u64 = 1774893048582444437; // error recovery loop
+    pub const YYNEWSTATE: u64 = 7872030484262409139; // push new state
+    pub const YYBACKUP: u64 = 1924505913685386279; // lookahead token handling
+    pub const YYDEFAULT: u64 = 5937473999264333383; // default action for state
+    pub const YYREDUCE: u64 = 670225253387957849; // do a reduction
+    pub const YYABORTLAB: u64 = 3964311021479492664; // parse failed (yyresult = 1)
+    pub const YYEXHAUSTEDLAB: u64 = 11794367917084412820; // memory exhausted (yyresult = 2)
+    pub const REDUCE_DONE: u64 = 17353983478346836848; // reduction action completed
+
+    pub const REDUCE_JOIN_1: u64 = 7600445499126923600;
+    pub const REDUCE_JOIN_2: u64 = 9966817879908499150;
+    pub const REDUCE_JOIN_3: u64 = 494012601817399562;
+    pub const REDUCE_JOIN_4: u64 = 13755523488868872559;
+    pub const REDUCE_JOIN_5: u64 = 10848699504537784535;
+    pub const REDUCE_JOIN_6: u64 = 12473999534294722905;
+    pub const REDUCE_JOIN_7: u64 = 1297461190301222800;
+    pub const REDUCE_JOIN_8: u64 = 15752106442776732052;
+    pub const REDUCE_JOIN_9: u64 = 17702298541784679949;
+    pub const REDUCE_JOIN_10: u64 = 2616667235040759262;
+    pub const REDUCE_JOIN_11: u64 = 2904036176499606090;
+    pub const REDUCE_JOIN_12: u64 = 3023179740610631044;
+    pub const REDUCE_JOIN_13: u64 = 1069630499025798221;
+    pub const REDUCE_JOIN_14: u64 = 15864720325503947191;
+}
+
 pub type yy_state_t = yytype_int16;
 pub type yytype_int16 = c_short;
 pub type yysymbol_kind_t = c_int;
@@ -1172,7 +1208,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 /* Get the current used size of the three stacks, in elements.  */
                 let yysize: c_long = (yyssp + 1) as c_long;
                 if YYMAXDEPTH as c_long <= yystacksize {
-                    current_block = 11794367917084412820; // goto yyexhaustedlab;
+                    current_block = block::YYEXHAUSTEDLAB; // goto yyexhaustedlab;
                     break;
                 }
                 yystacksize *= 2 as c_long;
@@ -1192,7 +1228,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 )
                 .cast::<yyalloc>();
                 if yyptr.is_null() {
-                    current_block = 11794367917084412820; // goto yyexhaustedlab;
+                    current_block = block::YYEXHAUSTEDLAB; // goto yyexhaustedlab;
                     break;
                 }
                 let mut yynewbytes: c_long = 0;
@@ -1232,13 +1268,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 yyssp = yysize as usize - 1;
                 yyvsp = yysize as usize - 1;
                 if (yystacksize - 1) as usize <= yyssp {
-                    current_block = 3964311021479492664; // goto yyabortlab;
+                    current_block = block::YYABORTLAB; // goto yyabortlab;
                     break;
                 }
             }
             if yystate == YYFINAL as c_int {
                 yyresult = 0;
-                current_block = 15864720325503947191; // goto yyacceptlab;
+                current_block = block::REDUCE_JOIN_14; // goto yyacceptlab;
                 break;
             } else {
                 /*-----------.
@@ -1250,7 +1286,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 /* First try to decide what to do without reference to lookahead token.  */
                 yyn = c_int::from(YYPACT[yystate as usize]);
                 if yyn == -41 {
-                    current_block = 5937473999264333383; // goto yydefault;
+                    current_block = block::YYDEFAULT; // goto yydefault;
                 } else {
                     /* Not known => get a lookahead token if don't already have one.  */
 
@@ -1269,7 +1305,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         if YYDEBUG {
                             eprintln!("Now at end of input.");
                         }
-                        current_block = 1924505913685386279;
+                        current_block = block::YYBACKUP;
                     } else if yychar == fits_parser_yytokentype::FITS_PARSER_YYerror as c_int {
                         /* The scanner already issued an error message, process directly
                         to error recovery.  But do not keep the error token as
@@ -1277,7 +1313,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         loop in error recovery. */
                         yychar = fits_parser_yytokentype::FITS_PARSER_YYUNDEF as c_int;
                         yytoken = YYSYMBOL_YYERROR;
-                        current_block = 1774893048582444437; // goto yyerrlab1;
+                        current_block = block::YYERRLAB1; // goto yyerrlab1;
                     } else {
                         yytoken = (if 0 <= yychar && yychar <= 292 as c_int {
                             yysymbol_kind_t::from(YYTRANSLATE[yychar as usize]) as c_int
@@ -1285,22 +1321,22 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             YYSYMBOL_YYUNDEF as c_int
                         }) as yysymbol_kind_t;
                         YY_SYMBOL_PRINT!("Next token is", yytoken, &yylval, scanner, lParse);
-                        current_block = 1924505913685386279;
+                        current_block = block::YYBACKUP;
                     }
                     match current_block {
-                        1774893048582444437 => {}
+                        block::YYERRLAB1 => {}
                         _ => {
                             yyn += yytoken as c_int;
                             if yyn < 0
                                 || (YYLAST as c_int) < yyn
                                 || c_int::from(YYCHECK[yyn as usize]) != yytoken as c_int
                             {
-                                current_block = 5937473999264333383;
+                                current_block = block::YYDEFAULT;
                             } else {
                                 yyn = c_int::from(YYTABLE[yyn as usize]);
                                 if yyn <= 0 {
                                     yyn = -yyn;
-                                    current_block = 670225253387957849;
+                                    current_block = block::YYREDUCE;
                                 } else {
                                     /* Count tokens shifted since error; after three, turn off error status.  */
                                     if yyerrstatus != 0 {
@@ -1311,14 +1347,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvsp += 1;
                                     yyvs[yyvsp] = yylval;
                                     yychar = fits_parser_yytokentype::FITS_PARSER_YYEMPTY as c_int; /* Discard the shifted token.  */
-                                    current_block = 7872030484262409139;
+                                    current_block = block::YYNEWSTATE;
                                 }
                             }
                         }
                     }
                 }
 
-                if current_block == 5937473999264333383 {
+                if current_block == block::YYDEFAULT {
                     /*-----------------------------------------------------------.
                     | yydefault -- do the default action for the current state.  |
                     `-----------------------------------------------------------*/
@@ -1341,7 +1377,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         if yyerrstatus == 3 as c_int {
                             if yychar <= fits_parser_yytokentype::FITS_PARSER_YYEOF as c_int {
                                 if yychar == fits_parser_yytokentype::FITS_PARSER_YYEOF as c_int {
-                                    current_block = 3964311021479492664;
+                                    current_block = block::YYABORTLAB;
                                     break;
                                 }
                             } else {
@@ -1355,12 +1391,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yychar = fits_parser_yytokentype::FITS_PARSER_YYEMPTY as c_int;
                             }
                         }
-                        current_block = 1774893048582444437;
+                        current_block = block::YYERRLAB1;
                     } else {
-                        current_block = 670225253387957849; // goto yyreduce;
+                        current_block = block::YYREDUCE; // goto yyreduce;
                     }
                 }
-                if current_block == 670225253387957849 {
+                if current_block == block::YYREDUCE {
                     /*-----------------------------.
                     | yyreduce -- do a reduction.  |
                     `-----------------------------*/
@@ -1385,7 +1421,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                     match yyn {
                         4 => {
                             /* line: '\n'  */
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         5 => {
                             /* line: expr '\n'  */
@@ -1394,10 +1430,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 lParse.resultNode = yyvs[yyvsp - 1].Node;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         6 => {
@@ -1407,10 +1443,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 lParse.resultNode = yyvs[yyvsp - 1].Node;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         7 => {
@@ -1420,10 +1456,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 lParse.resultNode = yyvs[yyvsp - 1].Node;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         8 => {
@@ -1433,24 +1469,24 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 lParse.resultNode = yyvs[yyvsp - 1].Node;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         9 => {
                             /* line: error '\n'  */
                             yyerrstatus = 0;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         10 => {
                             /* bvector: '{' bexpr  */
                             yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         11 => {
@@ -1460,21 +1496,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
                                 if yyvs[yyvsp - 2].Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 2616667235040759262;
+                                        current_block = block::REDUCE_JOIN_10;
                                     }
                                 }
                             } else {
                                 yyval.Node = yyvs[yyvsp - 2].Node;
-                                current_block = 2616667235040759262;
+                                current_block = block::REDUCE_JOIN_10;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     let fresh2 =
                                         &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
@@ -1482,7 +1518,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     *fresh2 += 1;
                                     ((lParse.Nodes)[yyval.Node as usize]).SubNodes
                                         [fresh3 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1490,9 +1526,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* vector: '{' expr  */
                             yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         13 => {
@@ -1508,21 +1544,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
                                 if yyvs[yyvsp - 2].Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 2904036176499606090;
+                                        current_block = block::REDUCE_JOIN_11;
                                     }
                                 }
                             } else {
                                 yyval.Node = yyvs[yyvsp - 2].Node;
-                                current_block = 2904036176499606090;
+                                current_block = block::REDUCE_JOIN_11;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     let fresh4 =
                                         &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
@@ -1530,7 +1566,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     *fresh4 += 1;
                                     ((lParse.Nodes)[yyval.Node as usize]).SubNodes
                                         [fresh5 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1541,21 +1577,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
                                 if yyvs[yyvsp - 2].Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17702298541784679949;
+                                        current_block = block::REDUCE_JOIN_9;
                                     }
                                 }
                             } else {
                                 yyval.Node = yyvs[yyvsp - 2].Node;
-                                current_block = 17702298541784679949;
+                                current_block = block::REDUCE_JOIN_9;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     let fresh6 =
                                         &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
@@ -1563,7 +1599,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     *fresh6 += 1;
                                     ((lParse.Nodes)[yyval.Node as usize]).SubNodes
                                         [fresh7 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1576,21 +1612,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
                                 if yyvs[yyvsp - 2].Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 1069630499025798221;
+                                        current_block = block::REDUCE_JOIN_13;
                                     }
                                 }
                             } else {
                                 yyval.Node = yyvs[yyvsp - 2].Node;
-                                current_block = 1069630499025798221;
+                                current_block = block::REDUCE_JOIN_13;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     let fresh8 =
                                         &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
@@ -1598,7 +1634,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     *fresh8 += 1;
                                     ((lParse.Nodes)[yyval.Node as usize]).SubNodes
                                         [fresh9 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1606,18 +1642,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: vector '}'  */
                             yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         17 => {
                             /* bexpr: bvector '}'  */
                             yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         18 => {
@@ -1630,20 +1666,20 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     as c_long,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                     astr_len(&yyvs[yyvsp].astr) as c_long;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         19 => {
                             /* bits: BITCOL  */
                             yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         20 => {
@@ -1657,7 +1693,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Offset argument must be a constant integer"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
@@ -1665,9 +1701,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp - 1].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1681,7 +1717,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                     if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
@@ -1691,7 +1727,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     } else {
                                         (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
                                     };
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         22 => {
@@ -1704,7 +1740,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                     if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
@@ -1714,7 +1750,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     } else {
                                         (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
                                     };
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         23 => {
@@ -1727,7 +1763,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Combined bit string size exceeds 255 bits"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
@@ -1737,14 +1773,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                         ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                             + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
                                                 .value
                                                 .nelem;
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1761,9 +1797,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         25 => {
@@ -1779,9 +1815,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         26 => {
@@ -1797,9 +1833,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         27 => {
@@ -1815,9 +1851,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         28 => {
@@ -1833,9 +1869,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 1].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         29 => {
@@ -1847,15 +1883,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         30 => {
                             /* bits: '(' bits ')'  */
                             yyval.Node = yyvs[yyvsp - 1].Node;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         31 => {
                             /* expr: LONG  */
@@ -1866,9 +1902,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         32 => {
@@ -1880,18 +1916,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         33 => {
                             /* expr: COLUMN  */
                             yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         34 => {
@@ -1905,7 +1941,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Offset argument must be a constant integer"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
@@ -1913,9 +1949,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp - 1].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -1934,7 +1970,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                             );
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         36 => {
                             /* expr: NULLREF  */
@@ -1951,7 +1987,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                             );
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         37 => {
                             /* expr: expr '%' expr  */
@@ -1982,9 +2018,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         38 => {
@@ -2016,9 +2052,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         39 => {
@@ -2050,9 +2086,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         40 => {
@@ -2084,9 +2120,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         41 => {
@@ -2118,9 +2154,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         42 => {
@@ -2131,7 +2167,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
@@ -2140,7 +2176,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     '&' as i32,
                                     yyvs[yyvsp].Node,
                                 );
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         43 => {
@@ -2151,7 +2187,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
@@ -2160,7 +2196,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     '|' as i32,
                                     yyvs[yyvsp].Node,
                                 );
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         44 => {
@@ -2171,7 +2207,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
@@ -2180,7 +2216,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     '^' as i32,
                                     yyvs[yyvsp].Node,
                                 );
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         45 => {
@@ -2212,15 +2248,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         46 => {
                             /* expr: '+' expr  */
                             yyval.Node = yyvs[yyvsp].Node;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         47 => {
                             /* expr: '-' expr  */
@@ -2231,15 +2267,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         48 => {
                             /* expr: '(' expr ')'  */
                             yyval.Node = yyvs[yyvsp - 1].Node;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         49 => {
                             /* expr: expr '*' bexpr  */
@@ -2257,9 +2293,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         50 => {
@@ -2278,9 +2314,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         51 => {
@@ -2309,7 +2345,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2325,7 +2361,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                         < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
@@ -2339,7 +2375,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
@@ -2350,7 +2386,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
                                         }
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2381,7 +2417,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2397,7 +2433,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                         < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
@@ -2411,7 +2447,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
@@ -2422,7 +2458,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
                                         }
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2453,7 +2489,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2469,7 +2505,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                         < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
@@ -2483,7 +2519,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
@@ -2494,7 +2530,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
                                         }
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2515,7 +2551,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 1297461190301222800;
+                                current_block = block::REDUCE_JOIN_7;
                             } else if astr_eq(&yyvs[yyvsp - 1].astr, c"RANDOMN(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2530,18 +2566,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 1297461190301222800;
+                                current_block = block::REDUCE_JOIN_7;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function() not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2562,7 +2598,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 10848699504537784535;
+                                current_block = block::REDUCE_JOIN_5;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
@@ -2572,7 +2608,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
-                                current_block = 10848699504537784535;
+                                current_block = block::REDUCE_JOIN_5;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
                                 let mut zero: c_long = 0;
                                 let new_node = New_Const(
@@ -2589,18 +2625,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
-                                current_block = 10848699504537784535;
+                                current_block = block::REDUCE_JOIN_5;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(bool) not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2617,7 +2653,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         lParse,
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -2628,7 +2664,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 13755523488868872559;
+                                    current_block = block::REDUCE_JOIN_4;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
@@ -2654,11 +2690,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
-                                        current_block = 13755523488868872559;
+                                        current_block = block::REDUCE_JOIN_4;
                                     }
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
@@ -2671,7 +2707,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         lParse,
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -2682,7 +2718,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 13755523488868872559;
+                                    current_block = block::REDUCE_JOIN_4;
                                 } else {
                                     let mut iaxis: c_long = 0;
                                     let mut naxis: c_int = 0;
@@ -2719,33 +2755,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 13755523488868872559;
+                                        current_block = block::REDUCE_JOIN_4;
                                     }
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 13755523488868872559;
+                                    current_block = block::REDUCE_JOIN_4;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Function(bool,expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2761,7 +2797,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
-                                current_block = 15752106442776732052;
+                                current_block = block::REDUCE_JOIN_8;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2776,18 +2812,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 15752106442776732052;
+                                current_block = block::REDUCE_JOIN_8;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(str) not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2803,7 +2839,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Const(
                                     lParse,
@@ -2813,7 +2849,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2828,7 +2864,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2844,7 +2880,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
                                 let mut zero_0: c_long = 0;
                                 let new_node = New_Const(
@@ -2861,7 +2897,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2877,18 +2913,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 494012601817399562;
+                                current_block = block::REDUCE_JOIN_3;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(bits) not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -2909,7 +2945,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"AVERAGE(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2924,7 +2960,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"STDDEV(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2939,7 +2975,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MEDIAN(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2954,7 +2990,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
@@ -2964,7 +3000,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -2979,7 +3015,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
@@ -3002,7 +3038,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
@@ -3022,7 +3058,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
@@ -3042,7 +3078,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
@@ -3062,7 +3098,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ABS(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -3077,7 +3113,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -3092,7 +3128,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -3107,7 +3143,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                current_block = 7600445499126923600;
+                                current_block = block::REDUCE_JOIN_1;
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOM(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -3123,11 +3159,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::DOUBLE as c_int;
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMN(") {
                                 yyval.Node = New_Func(
@@ -3144,11 +3180,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::DOUBLE as c_int;
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ELEMENTNUM(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
@@ -3161,7 +3197,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one_1 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3177,11 +3213,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
-                                        current_block = 7600445499126923600;
+                                        current_block = block::REDUCE_JOIN_1;
                                     }
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NAXIS(") {
@@ -3195,7 +3231,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one_2 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else {
                                     let mut naxis_0: c_long = c_long::from(
                                         ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.naxis,
@@ -3207,9 +3243,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 7600445499126923600;
+                                        current_block = block::REDUCE_JOIN_1;
                                     }
                                 }
                             } else {
@@ -3237,7 +3273,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COS(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3252,7 +3288,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TAN(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3267,7 +3303,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCSIN(")
                                     || astr_eq(&yyvs[yyvsp - 2].astr, c"ASIN(")
                                 {
@@ -3284,7 +3320,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCCOS(")
                                     || astr_eq(&yyvs[yyvsp - 2].astr, c"ACOS(")
                                 {
@@ -3301,7 +3337,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCTAN(")
                                     || astr_eq(&yyvs[yyvsp - 2].astr, c"ATAN(")
                                 {
@@ -3318,7 +3354,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SINH(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3333,7 +3369,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COSH(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3348,7 +3384,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TANH(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3363,7 +3399,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"EXP(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3378,7 +3414,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3393,7 +3429,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG10(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3408,7 +3444,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SQRT(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3423,7 +3459,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ROUND(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3438,7 +3474,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"FLOOR(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3453,7 +3489,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"CEIL(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3468,7 +3504,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMP(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3485,22 +3521,22 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::LONG as c_int;
-                                    current_block = 7600445499126923600;
+                                    current_block = block::REDUCE_JOIN_1;
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Function(expr) not supported"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -3522,17 +3558,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 12473999534294722905;
+                                    current_block = block::REDUCE_JOIN_6;
                                 }
                             } else {
-                                current_block = 12473999534294722905;
+                                current_block = block::REDUCE_JOIN_6;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -3577,16 +3613,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of DEFNULL arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARCTAN2(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
@@ -3626,7 +3662,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
                                             .value
@@ -3637,14 +3673,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                         }
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of arctan2 arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MIN(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
@@ -3683,7 +3719,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
                                             .value
@@ -3694,14 +3730,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                         }
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of min(a,b) arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MAX(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
@@ -3740,7 +3776,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
                                             .value
@@ -3751,14 +3787,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                         }
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of max(a,b) arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"SETNULL(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
@@ -3770,7 +3806,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         lParse,
                                         cs!(c"SETNULL first argument must be a scalar constant"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                         != ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
@@ -3795,7 +3831,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    current_block = 9966817879908499150;
+                                    current_block = block::REDUCE_JOIN_2;
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"AXISELEM(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
@@ -3807,7 +3843,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         lParse,
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -3818,7 +3854,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one_3 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 9966817879908499150;
+                                    current_block = block::REDUCE_JOIN_2;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
@@ -3844,11 +3880,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
@@ -3861,7 +3897,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         lParse,
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -3872,7 +3908,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut one_4 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    current_block = 9966817879908499150;
+                                    current_block = block::REDUCE_JOIN_2;
                                 } else {
                                     let mut iaxis_0: c_long = 0;
                                     let mut naxis_1: c_int = 0;
@@ -3909,30 +3945,30 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 9966817879908499150;
+                                        current_block = block::REDUCE_JOIN_2;
                                     }
                                 }
                             } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 9966817879908499150;
+                                    current_block = block::REDUCE_JOIN_2;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Function(expr,expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                             match current_block {
-                                4830776507462815627 => {}
+                                block::YYERRLAB => {}
                                 _ => {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -4000,7 +4036,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
                                             .value
@@ -4029,21 +4065,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                         }
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of ANGSEP arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Function(expr,expr,expr,expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         63 => {
@@ -4058,9 +4094,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         64 => {
@@ -4075,9 +4111,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 (yyvs[yyvsp - 1].astr).as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         65 => {
@@ -4093,9 +4129,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         66 => {
@@ -4111,9 +4147,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         67 => {
@@ -4129,9 +4165,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         68 => {
@@ -4147,9 +4183,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         69 => {
@@ -4165,9 +4201,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 1].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         70 => {
@@ -4179,9 +4215,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         71 => {
@@ -4193,9 +4229,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         72 => {
@@ -4207,9 +4243,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         73 => {
@@ -4221,9 +4257,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         74 => {
@@ -4235,18 +4271,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ::core::mem::size_of::<c_char>() as c_ulong as c_long,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         75 => {
                             /* bexpr: BCOLUMN  */
                             yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         76 => {
@@ -4260,7 +4296,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Offset argument must be a constant integer"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
@@ -4268,9 +4304,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp - 1].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -4284,10 +4320,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         78 => {
@@ -4300,10 +4336,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         79 => {
@@ -4316,10 +4352,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         80 => {
@@ -4332,10 +4368,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         81 => {
@@ -4348,10 +4384,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         82 => {
@@ -4364,10 +4400,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         83 => {
@@ -4399,9 +4435,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         84 => {
@@ -4433,9 +4469,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         85 => {
@@ -4467,9 +4503,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         86 => {
@@ -4501,9 +4537,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         87 => {
@@ -4535,9 +4571,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         88 => {
@@ -4569,9 +4605,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         89 => {
@@ -4603,9 +4639,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         90 => {
@@ -4618,10 +4654,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         91 => {
@@ -4634,10 +4670,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         92 => {
@@ -4650,10 +4686,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         93 => {
@@ -4666,10 +4702,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         94 => {
@@ -4682,10 +4718,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         95 => {
@@ -4698,10 +4734,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         96 => {
@@ -4714,9 +4750,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         97 => {
@@ -4729,9 +4765,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         98 => {
@@ -4744,9 +4780,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         99 => {
@@ -4759,9 +4795,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         100 => {
@@ -4845,9 +4881,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         101 => {
@@ -4857,7 +4893,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -4873,7 +4909,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                         < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
@@ -4885,7 +4921,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
                                             < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
@@ -4894,7 +4930,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         {
                                             Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
                                         }
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 }
                             }
@@ -4916,18 +4952,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Boolean Function(expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         103 => {
@@ -4947,18 +4983,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Boolean Function(expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         104 => {
@@ -4978,16 +5014,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Boolean Function(expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         105 => {
@@ -5012,23 +5048,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     if yyval.Node < 0 {
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
-                                        current_block = 17353983478346836848;
+                                        current_block = block::REDUCE_DONE;
                                     }
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"Dimensions of DEFNULL arguments are not compatible"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Boolean Function(expr,expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         106 => {
@@ -5071,7 +5107,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Dimensions of NEAR arguments are not compatible"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else if astr_eq(&yyvs[yyvsp - 6].astr, c"NEAR(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -5087,7 +5123,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
                                         < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
@@ -5110,11 +5146,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                     }
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Boolean Function not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         107 => {
@@ -5181,7 +5217,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Dimensions of CIRCLE arguments are not compatible"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else if astr_eq(&yyvs[yyvsp - 10].astr, c"CIRCLE(") {
                                 yyval.Node = New_Func(
                                     lParse,
@@ -5197,7 +5233,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
                                         < ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
@@ -5234,11 +5270,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                     }
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Boolean Function not supported"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         108 => {
@@ -5327,7 +5363,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     != 0)
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"));
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 if astr_eq(&yyvs[yyvsp - 14].astr, c"BOX(") {
                                     yyval.Node = New_Func(
@@ -5343,7 +5379,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         yyvs[yyvsp - 3].Node,
                                         yyvs[yyvsp - 1].Node,
                                     );
-                                    current_block = 3023179740610631044;
+                                    current_block = block::REDUCE_JOIN_12;
                                 } else if astr_eq(&yyvs[yyvsp - 14].astr, c"ELLIPSE(") {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -5358,19 +5394,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         yyvs[yyvsp - 3].Node,
                                         yyvs[yyvsp - 1].Node,
                                     );
-                                    current_block = 3023179740610631044;
+                                    current_block = block::REDUCE_JOIN_12;
                                 } else {
                                     fits_parser_yyerror(
                                         lParse,
                                         cs!(c"SAO Image Function not supported"),
                                     );
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 }
                                 match current_block {
-                                    4830776507462815627 => {}
+                                    block::YYERRLAB => {}
                                     _ => {
                                         if yyval.Node < 0 {
-                                            current_block = 4830776507462815627;
+                                            current_block = block::YYERRLAB;
                                         } else {
                                             if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
                                                 < ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize])
@@ -5441,7 +5477,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             {
                                                 Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
                                             }
-                                            current_block = 17353983478346836848;
+                                            current_block = block::REDUCE_DONE;
                                         }
                                     }
                                 }
@@ -5460,9 +5496,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         110 => {
@@ -5478,9 +5514,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         111 => {
@@ -5495,9 +5531,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         112 => {
@@ -5512,9 +5548,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 (yyvs[yyvsp - 1].astr).as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         113 => {
@@ -5530,9 +5566,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         114 => {
@@ -5547,9 +5583,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         115 => {
@@ -5564,9 +5600,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         116 => {
@@ -5581,9 +5617,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 (yyvs[yyvsp - 1].astr).as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         117 => {
@@ -5597,9 +5633,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 dummy.as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         118 => {
@@ -5613,9 +5649,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 dummy.as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         119 => {
@@ -5628,9 +5664,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 (yyvs[yyvsp - 1].astr).as_mut_ptr(),
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         120 => {
@@ -5646,9 +5682,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         121 => {
@@ -5664,9 +5700,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         122 => {
@@ -5682,9 +5718,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         123 => {
@@ -5700,9 +5736,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         124 => {
@@ -5718,9 +5754,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 1].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         125 => {
@@ -5732,15 +5768,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp].Node,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         126 => {
                             /* bexpr: '(' bexpr ')'  */
                             yyval.Node = yyvs[yyvsp - 1].Node;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         127 => {
                             /* sexpr: STRING  */
@@ -5752,20 +5788,20 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     as c_long,
                             );
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                     astr_len(&yyvs[yyvsp].astr) as c_long;
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         128 => {
                             /* sexpr: SCOLUMN  */
                             yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
                             if yyval.Node < 0 {
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
-                                current_block = 17353983478346836848;
+                                current_block = block::REDUCE_DONE;
                             }
                         }
                         129 => {
@@ -5779,7 +5815,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Offset argument must be a constant integer"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
@@ -5787,9 +5823,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp - 1].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -5808,12 +5844,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                             );
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         131 => {
                             /* sexpr: '(' sexpr ')'  */
                             yyval.Node = yyvs[yyvsp - 1].Node;
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                         132 => {
                             /* sexpr: sexpr '+' sexpr  */
@@ -5825,7 +5861,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Combined string size exceeds 255 characters"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
@@ -5835,14 +5871,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyvs[yyvsp].Node,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
                                         ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                             + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
                                                 .value
                                                 .nelem;
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -5854,7 +5890,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Cannot have a vector string column"),
                                 );
-                                current_block = 4830776507462815627; // goto yyerrorlab
+                                current_block = block::YYERRLAB; // goto yyerrorlab
                             } else {
                                 /* Since the output can be calculated now, as a constant
                                 scalar, we must precalculate the output size, in
@@ -5884,14 +5920,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     outSize,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
                                         < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
                                     {
                                         Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
                                     }
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             }
                         }
@@ -5928,7 +5964,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     outSize_0,
                                 );
                                 if yyval.Node < 0 {
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
                                         > ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
@@ -5940,14 +5976,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                                 .value
                                                 .nelem;
                                     }
-                                    current_block = 17353983478346836848;
+                                    current_block = block::REDUCE_DONE;
                                 }
                             } else {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Function(string,string) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         135 => {
@@ -5964,7 +6000,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         != 1
                                 {
                                     fits_parser_yyerror(lParse, cs!(c"When using STRMID(S,P,N), P and N must be integers (and not vector columns)"));
-                                    current_block = 4830776507462815627;
+                                    current_block = block::YYERRLAB;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                         == CONST_OP
@@ -5987,7 +6023,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             lParse,
                                             cs!(c"STRMID(S,P,N), N must be 1-255"),
                                         );
-                                        current_block = 4830776507462815627;
+                                        current_block = block::YYERRLAB;
                                     } else {
                                         yyval.Node = New_FuncSize(
                                             lParse,
@@ -6004,9 +6040,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             len,
                                         );
                                         if yyval.Node < 0 {
-                                            current_block = 4830776507462815627;
+                                            current_block = block::YYERRLAB;
                                         } else {
-                                            current_block = 17353983478346836848;
+                                            current_block = block::REDUCE_DONE;
                                         }
                                     }
                                 }
@@ -6015,11 +6051,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     lParse,
                                     cs!(c"Function(string,expr,expr) not supported"),
                                 );
-                                current_block = 4830776507462815627;
+                                current_block = block::YYERRLAB;
                             }
                         }
                         _ => {
-                            current_block = 17353983478346836848;
+                            current_block = block::REDUCE_DONE;
                         }
                     }
 
@@ -6044,13 +6080,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                     );
 
                     match current_block {
-                        4830776507462815627 => {
+                        block::YYERRLAB => {
                             fits_parser_yynerrs += 1;
                             yyvsp -= yylen as usize;
                             yyssp -= yylen as usize;
                             yylen = 0;
                             yystate = yy_state_fast_t::from(yyss[yyssp]);
-                            current_block = 1774893048582444437;
+                            current_block = block::YYERRLAB1;
                         }
                         _ => {
                             yyvsp -= yylen as usize;
@@ -6074,12 +6110,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 c_int::from(YYDEFGOTO[yylhs as usize])
                             };
-                            current_block = 7872030484262409139; // goto yynewstate;
+                            current_block = block::YYNEWSTATE; // goto yynewstate;
                         }
                     }
                 }
 
-                if current_block == 1774893048582444437 {
+                if current_block == block::YYERRLAB1 {
                     yyerrstatus = 3 as c_int;
                     loop {
                         yyn = c_int::from(YYPACT[yystate as usize]);
@@ -6096,7 +6132,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                         }
                         if yyssp == 0 {
-                            current_block = 3964311021479492664;
+                            current_block = block::YYABORTLAB;
                             break 's_54;
                         }
                         yydestruct(
@@ -6124,11 +6160,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
             }
         }
         match current_block {
-            11794367917084412820 => {
+            block::YYEXHAUSTEDLAB => {
                 fits_parser_yyerror(lParse, cs!(c"memory exhausted"));
                 yyresult = 2;
             }
-            3964311021479492664 => {
+            block::YYABORTLAB => {
                 yyresult = 1;
             }
             _ => {}
