@@ -10582,13 +10582,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut dptr: *mut c_long =
                                 (lParse.Nodes[theParams[0]]).value.data.lngptr;
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
-                            let mptr: *mut c_long = malloc(
-                                (::core::mem::size_of::<c_long>() as c_ulong)
-                                    .wrapping_mul(nelem as c_ulong)
-                                    .try_into()
-                                    .unwrap(),
-                            )
-                            .cast::<c_long>();
+                            let mut mptr_buf: Vec<c_long> = Vec::new();
+                            let mptr: *mut c_long =
+                                if mptr_buf.try_reserve_exact(nelem as usize).is_ok() {
+                                    mptr_buf.resize(nelem as usize, 0);
+                                    mptr_buf.as_mut_ptr()
+                                } else {
+                                    core::ptr::null_mut()
+                                };
                             let mut irow: c_int = 0;
                             if mptr.is_null() {
                                 fits_parser_yyerror(
@@ -10630,19 +10631,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     irow += 1;
                                 }
-                                free(mptr.cast::<c_void>());
                             }
                         } else {
                             let mut dptr_0: *mut c_double =
                                 (lParse.Nodes[theParams[0]]).value.data.dblptr;
                             let mut uptr_0: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
-                            let mptr_0: *mut c_double = malloc(
-                                (::core::mem::size_of::<c_double>() as c_ulong)
-                                    .wrapping_mul(nelem as c_ulong)
-                                    .try_into()
-                                    .unwrap(),
-                            )
-                            .cast::<c_double>();
+                            let mut mptr_0_buf: Vec<c_double> = Vec::new();
+                            let mptr_0: *mut c_double =
+                                if mptr_0_buf.try_reserve_exact(nelem as usize).is_ok() {
+                                    mptr_0_buf.resize(nelem as usize, 0.0);
+                                    mptr_0_buf.as_mut_ptr()
+                                } else {
+                                    core::ptr::null_mut()
+                                };
                             let mut irow_0: c_int = 0;
                             if mptr_0.is_null() {
                                 fits_parser_yyerror(
@@ -10684,7 +10685,6 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     irow_0 += 1;
                                 }
-                                free(mptr_0.cast::<c_void>());
                             }
                         }
                     }
