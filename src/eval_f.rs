@@ -4771,7 +4771,7 @@ fn find_keywd(
                 // 'C' as c_char
                 fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
                 ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(unsafe { thelval.astr.as_mut_ptr() }, keyvalue.as_ptr());
+                strcpy_safe(unsafe { &mut thelval.astr }, &keyvalue);
             }
             b'L' => {
                 // 'L' as c_char
