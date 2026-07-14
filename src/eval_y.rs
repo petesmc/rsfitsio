@@ -6535,8 +6535,10 @@ fn New_GTI(
         }
 
         /*  Locate START/STOP Columns  */
-        let start_str = CStr::from_ptr(start).to_bytes();
-        let stop_str = CStr::from_ptr(stop).to_bytes();
+        // ffgcno_safe expects a NUL-terminated column-name template; include the
+        // terminator so the wildcard match doesn't read past the slice.
+        let start_str = CStr::from_ptr(start).to_bytes_with_nul();
+        let stop_str = CStr::from_ptr(stop).to_bytes_with_nul();
         ffgcno_safe(
             fptr,
             0,
