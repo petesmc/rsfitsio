@@ -14178,20 +14178,20 @@ mod tests {
         fits_get_compression_type_safe, fits_get_dither_seed_safe, fits_get_noise_bits_safe,
         fits_get_quantize_level_safe, fits_get_tile_dim_safer, fits_img_compress_safe,
         fits_set_compression_type_safe, fits_set_dither_seed_safe, fits_set_noise_bits_safe,
-        fits_set_quantize_level_safe, fits_set_tile_dim_safe,
+        fits_set_quantize_level_safe, fits_set_quantize_method_safe, fits_set_tile_dim_safe,
     };
     use crate::c_types::c_long;
     use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
     use crate::fitscore::{ffmahd_safe, fits_is_compressed_image_safe};
     use crate::fitsio::{
-        BYTE_IMG, GZIP_1, GZIP_2, HCOMPRESS_1, LONG_IMG, LONGLONG, PLIO_1, READONLY, RICE_1,
-        SHORT_IMG, TBYTE, TINT, TSHORT, fitsfile,
+        BYTE_IMG, DOUBLE_IMG, GZIP_1, GZIP_2, HCOMPRESS_1, LONG_IMG, LONGLONG, PLIO_1, READONLY,
+        RICE_1, SHORT_IMG, SUBTRACTIVE_DITHER_2, TBYTE, TDOUBLE, TINT, TSHORT, fitsfile,
     };
     use crate::getcol::ffgpv_safe;
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use crate::putcol::ffppr_safe;
     use crate::putkey::ffcrim_safe;
-    use bytemuck::cast_slice;
+    use bytemuck::{cast_slice, cast_slice_mut};
 
     /// Create a fresh FITS file with a single empty image HDU of the given type.
     fn create_test_image(filename: &str, bitpix: i32, nx: c_long, ny: c_long) -> Box<fitsfile> {
@@ -14292,6 +14292,150 @@ mod tests {
         assert_eq!(status, 0, "close final");
 
         decompressed
+    }
+
+    /// Regression test for https://github.com/cruzzil/rsfitsio/issues/82
+    ///
+    /// Writing a lossy-compressed float image with SUBTRACTIVE_DITHER_2 and an
+    /// explicit dither seed must be bit-for-bit reproducible with cfitsio. The
+    /// failing `fitsio` test compresses `np.random.RandomState(42).normal((100,
+    /// 100))` with RICE + SUBTRACTIVE_DITHER_2 + dither_seed=42, reads it back,
+    /// and compares against cfitsio's reconstruction of the same input.
+    ///
+    /// The fixtures are:
+    ///   * `issue82_input_f64.bin` - the exact float64 input array (C order), and
+    ///   * `issue82_cfitsio_recon_f64.bin` - cfitsio's compress-then-decompress
+    ///     reconstruction of that input (generated with a non-FMA cfitsio via the
+    ///     `fitsio` package).
+    ///
+    /// This exercises the direct write path (`fits_create_img` on a
+    /// compression-configured file followed by `ffppr`), exactly as the `fitsio`
+    /// wrapper does. rsfitsio must produce the same reconstruction as cfitsio.
+    #[test]
+    fn test_dither2_seed_compression_matches_cfitsio_issue_82() {
+        // Load little-endian float64 fixtures (`include_bytes!` is only byte
+        // aligned, so decode explicitly rather than reinterpreting the slice).
+        fn load_f64_le(bytes: &[u8]) -> Vec<f64> {
+            bytes
+                .chunks_exact(8)
+                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                .collect()
+        }
+
+        // float64 input, C order (100x100).
+        let input_bytes: &[u8] = include_bytes!("../tests/fixtures/issue82_input_f64.bin");
+        // cfitsio's reconstruction (ground truth).
+        let recon_bytes: &[u8] = include_bytes!("../tests/fixtures/issue82_cfitsio_recon_f64.bin");
+
+        let input = load_f64_le(input_bytes);
+        let expected = load_f64_le(recon_bytes);
+
+        let nx: c_long = 100;
+        let ny: c_long = 100;
+        let n = (nx * ny) as usize;
+        assert_eq!(input.len(), n);
+        assert_eq!(expected.len(), n);
+        let seed = 42;
+
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+
+            // Create a fresh output file and configure compression exactly as the
+            // fitsio wrapper does: set compression type, quantize method, dither
+            // seed, then create the (compressed) image HDU and write the pixels.
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "create file");
+            {
+                let f = fptr.as_deref_mut().unwrap();
+                fits_set_compression_type_safe(f, RICE_1, &mut status);
+                assert_eq!(status, 0, "set compression type");
+                fits_set_quantize_method_safe(f, SUBTRACTIVE_DITHER_2, &mut status);
+                assert_eq!(status, 0, "set quantize method");
+                fits_set_dither_seed_safe(f, seed, &mut status);
+                assert_eq!(status, 0, "set dither seed");
+
+                // fits_create_img on a compression-configured file creates the
+                // compressed image HDU.
+                let naxes = [nx, ny];
+                ffcrim_safe(f, DOUBLE_IMG, 2, &naxes, &mut status);
+                assert_eq!(status, 0, "create (compressed) img");
+
+                // Write (and compress) the pixels. `input` is a Vec<f64>, so its
+                // byte view is 8-byte aligned.
+                let input_bytes_aligned: &[u8] = cast_slice(&input);
+                ffppr_safe(
+                    f,
+                    TDOUBLE,
+                    1,
+                    n as LONGLONG,
+                    input_bytes_aligned,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "write img");
+            }
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "close after write");
+
+            // Reopen and read (transparently decompress).
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "reopen");
+            let f = fptr.as_deref_mut().unwrap();
+            // The compressed image lives in HDU 2 (after the dummy primary).
+            ffmahd_safe(f, 2, None, &mut status);
+            assert_eq!(status, 0, "movabs hdu 2");
+            assert_eq!(
+                fits_is_compressed_image_safe(f, &mut status),
+                1,
+                "expected a compressed image in HDU 2"
+            );
+
+            // Read into an 8-byte-aligned buffer (a Vec<f64>) so the internal
+            // reinterpretation to f64 is well-aligned.
+            let mut got = vec![0f64; n];
+            {
+                let out_bytes: &mut [u8] = cast_slice_mut(&mut got);
+                ffgpv_safe(
+                    f,
+                    TDOUBLE,
+                    1,
+                    n as LONGLONG,
+                    None,
+                    out_bytes,
+                    None,
+                    &mut status,
+                );
+            }
+            assert_eq!(status, 0, "read (decompress) img");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "close final");
+
+            // Must match cfitsio's reconstruction exactly (as np.array_equal).
+            let mut nbad = 0usize;
+            let mut first: Option<(usize, f64, f64)> = None;
+            let mut max_abs = 0.0f64;
+            for i in 0..n {
+                if got[i].to_bits() != expected[i].to_bits() {
+                    nbad += 1;
+                    if first.is_none() {
+                        first = Some((i, got[i], expected[i]));
+                    }
+                    let d = (got[i] - expected[i]).abs();
+                    if d > max_abs {
+                        max_abs = d;
+                    }
+                }
+            }
+
+            assert!(
+                nbad == 0,
+                "rsfitsio lossy compression does not match cfitsio: {nbad}/{n} pixels differ \
+                 (first at index {:?}, max abs diff {max_abs})",
+                first
+            );
+        });
     }
 
     #[test]
