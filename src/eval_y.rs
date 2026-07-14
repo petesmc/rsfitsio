@@ -14283,31 +14283,24 @@ fn bitor(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut 
         *result = 0;
     }
 }
-fn bitnot(mut result: *mut c_char, mut bits: *mut c_char) {
+fn bitnot(result: *mut c_char, bits: *mut c_char) {
     unsafe {
-        let mut length: c_int = 0;
-        let mut chr: c_char = 0;
-        length = strlen(bits) as c_int;
-        loop {
-            let fresh253 = length;
-            length -= 1;
-            if fresh253 == 0 {
-                break;
-            }
-            let fresh254 = bits;
-            bits = bits.offset(1);
-            chr = *fresh254;
-            let fresh255 = result;
-            result = result.offset(1);
-            *fresh255 = (if c_int::from(chr) == '1' as i32 {
-                '0' as i32
-            } else if c_int::from(chr) == '0' as i32 {
-                '1' as i32
+        // Confine unsafe to building slices from the NUL-terminated bit strings;
+        // the inversion itself is bounded safe indexing.
+        let length = strlen(bits) as usize;
+        let bits = core::slice::from_raw_parts(bits, length);
+        let result = core::slice::from_raw_parts_mut(result, length + 1);
+        for i in 0..length {
+            let chr = bits[i];
+            result[i] = if chr == b'1' as c_char {
+                b'0' as c_char
+            } else if chr == b'0' as c_char {
+                b'1' as c_char
             } else {
-                c_int::from(chr)
-            }) as c_char;
+                chr
+            };
         }
-        *result = 0;
+        result[length] = 0;
     }
 }
 
