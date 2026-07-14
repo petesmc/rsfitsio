@@ -13955,332 +13955,112 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_char {
+/// Fetch bit `j` of a bit string that has been left-padded with '0' to `width`.
+/// Positions left of the original string (`j < width - len`) read as '0'.
+#[inline]
+fn padded_bit(s: &[c_char], width: usize, j: usize) -> c_char {
+    let len = s.len();
+    if j + len >= width {
+        s[j + len - width]
+    } else {
+        b'0' as c_char
+    }
+}
+
+fn bitlgte(bits1: *mut c_char, oper: c_int, bits2: *mut c_char) -> c_char {
     unsafe {
+        // Confine unsafe to reading the two NUL-terminated bit strings.
+        let l1 = strlen(bits1) as usize;
+        let l2 = strlen(bits2) as usize;
+        let s1 = core::slice::from_raw_parts(bits1, l1);
+        let s2 = core::slice::from_raw_parts(bits2, l2);
+        let length = l1.max(l2);
+
+        // Interpret both strings as unsigned integers (rightmost char = LSB),
+        // skipping don't-care ('x'/'X') positions, then compare magnitudes.
         let mut val1: c_int = 0;
         let mut val2: c_int = 0;
-        let mut nextbit: c_int = 0;
-        let mut result: c_char = 0;
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut length: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bits1) as c_int;
-        l2 = strlen(bits2) as c_int;
-        length = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((length + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh218 = ldiff;
-                ldiff -= 1;
-                if fresh218 == 0 {
-                    break;
-                }
-                let fresh219 = i;
-                i += 1;
-                *stream.offset(fresh219 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh220 = l1;
-                l1 -= 1;
-                if fresh220 == 0 {
-                    break;
-                }
-                let fresh221 = bits1;
-                bits1 = bits1.offset(1);
-                let fresh222 = i;
-                i += 1;
-                *stream.offset(fresh222 as isize) = *fresh221;
-            }
-            *stream.offset(i as isize) = 0;
-            bits1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh223 = ldiff;
-                ldiff -= 1;
-                if fresh223 == 0 {
-                    break;
-                }
-                let fresh224 = i;
-                i += 1;
-                *stream.offset(fresh224 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh225 = l2;
-                l2 -= 1;
-                if fresh225 == 0 {
-                    break;
-                }
-                let fresh226 = bits2;
-                bits2 = bits2.offset(1);
-                let fresh227 = i;
-                i += 1;
-                *stream.offset(fresh227 as isize) = *fresh226;
-            }
-            *stream.offset(i as isize) = 0;
-            bits2 = stream;
-        }
-        val2 = 0;
-        val1 = val2;
-        nextbit = 1;
-        loop {
-            let fresh228 = length;
-            length -= 1;
-            if fresh228 == 0 {
-                break;
-            }
-            chr1 = *bits1.offset(length as isize);
-            chr2 = *bits2.offset(length as isize);
-            if c_int::from(chr1) != 'x' as i32
-                && c_int::from(chr1) != 'X' as i32
-                && c_int::from(chr2) != 'x' as i32
-                && c_int::from(chr2) != 'X' as i32
+        let mut nextbit: c_int = 1;
+        for j in (0..length).rev() {
+            let chr1 = padded_bit(s1, length, j);
+            let chr2 = padded_bit(s2, length, j);
+            if chr1 != b'x' as c_char
+                && chr1 != b'X' as c_char
+                && chr2 != b'x' as c_char
+                && chr2 != b'X' as c_char
             {
-                if c_int::from(chr1) == '1' as i32 {
+                if chr1 == b'1' as c_char {
                     val1 += nextbit;
                 }
-                if c_int::from(chr2) == '1' as i32 {
+                if chr2 == b'1' as c_char {
                     val2 += nextbit;
                 }
                 nextbit *= 2;
             }
         }
-        result = 0;
-        match oper {
-            282 => {
-                if val1 < val2 {
-                    result = 1;
-                }
-            }
-            283 => {
-                if val1 <= val2 {
-                    result = 1;
-                }
-            }
-            281 => {
-                if val1 > val2 {
-                    result = 1;
-                }
-            }
-            284 => {
-                if val1 >= val2 {
-                    result = 1;
-                }
-            }
-            _ => {}
-        }
-        free(stream.cast::<c_void>());
-        result
+
+        (match oper {
+            282 => val1 < val2,
+            283 => val1 <= val2,
+            281 => val1 > val2,
+            284 => val1 >= val2,
+            _ => false,
+        }) as c_char
     }
 }
-fn bitand(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut c_char) {
+/// Combine two NUL-terminated bit strings bit-by-bit with `op`, left-padding the
+/// shorter operand with '0', and write the NUL-terminated result to `result`
+/// (which must hold at least `max(len1, len2) + 1` bytes). Replaces the C
+/// malloc-a-scratch-stream-and-pointer-walk idiom with bounded slice access.
+///
+/// # Safety
+/// `bitstrm1`/`bitstrm2` must be valid NUL-terminated strings and `result` must
+/// point to a buffer large enough for the longer operand plus a NUL; `result`
+/// must not overlap either operand.
+unsafe fn bit_binop(
+    result: *mut c_char,
+    bitstrm1: *mut c_char,
+    bitstrm2: *mut c_char,
+    op: impl Fn(c_char, c_char) -> c_char,
+) {
     unsafe {
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut largestStream: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bitstrm1) as c_int;
-        l2 = strlen(bitstrm2) as c_int;
-        largestStream = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((largestStream + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh229 = ldiff;
-                ldiff -= 1;
-                if fresh229 == 0 {
-                    break;
-                }
-                let fresh230 = i;
-                i += 1;
-                *stream.offset(fresh230 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh231 = l1;
-                l1 -= 1;
-                if fresh231 == 0 {
-                    break;
-                }
-                let fresh232 = bitstrm1;
-                bitstrm1 = bitstrm1.offset(1);
-                let fresh233 = i;
-                i += 1;
-                *stream.offset(fresh233 as isize) = *fresh232;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh234 = ldiff;
-                ldiff -= 1;
-                if fresh234 == 0 {
-                    break;
-                }
-                let fresh235 = i;
-                i += 1;
-                *stream.offset(fresh235 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh236 = l2;
-                l2 -= 1;
-                if fresh236 == 0 {
-                    break;
-                }
-                let fresh237 = bitstrm2;
-                bitstrm2 = bitstrm2.offset(1);
-                let fresh238 = i;
-                i += 1;
-                *stream.offset(fresh238 as isize) = *fresh237;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm2 = stream;
+        let l1 = strlen(bitstrm1) as usize;
+        let l2 = strlen(bitstrm2) as usize;
+        let s1 = core::slice::from_raw_parts(bitstrm1, l1);
+        let s2 = core::slice::from_raw_parts(bitstrm2, l2);
+        let n = l1.max(l2);
+        let out = core::slice::from_raw_parts_mut(result, n + 1);
+        for i in 0..n {
+            out[i] = op(padded_bit(s1, n, i), padded_bit(s2, n, i));
         }
-        loop {
-            let fresh239 = bitstrm1;
-            bitstrm1 = bitstrm1.offset(1);
-            chr1 = *fresh239;
-            if chr1 == 0 {
-                break;
-            }
-            let fresh240 = bitstrm2;
-            bitstrm2 = bitstrm2.offset(1);
-            chr2 = *fresh240;
-            if c_int::from(chr1) == 'x' as i32 || c_int::from(chr2) == 'x' as i32 {
-                *result = b'x' as c_char;
-            } else if c_int::from(chr1) == '1' as i32 && c_int::from(chr2) == '1' as i32 {
-                *result = b'1' as c_char;
-            } else {
-                *result = b'0' as c_char;
-            }
-            result = result.offset(1);
-        }
-        free(stream.cast::<c_void>());
-        *result = 0;
+        out[n] = 0;
     }
 }
-fn bitor(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut c_char) {
+
+fn bitand(result: *mut c_char, bitstrm1: *mut c_char, bitstrm2: *mut c_char) {
     unsafe {
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut largestStream: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bitstrm1) as c_int;
-        l2 = strlen(bitstrm2) as c_int;
-        largestStream = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((largestStream + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh241 = ldiff;
-                ldiff -= 1;
-                if fresh241 == 0 {
-                    break;
-                }
-                let fresh242 = i;
-                i += 1;
-                *stream.offset(fresh242 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh243 = l1;
-                l1 -= 1;
-                if fresh243 == 0 {
-                    break;
-                }
-                let fresh244 = bitstrm1;
-                bitstrm1 = bitstrm1.offset(1);
-                let fresh245 = i;
-                i += 1;
-                *stream.offset(fresh245 as isize) = *fresh244;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh246 = ldiff;
-                ldiff -= 1;
-                if fresh246 == 0 {
-                    break;
-                }
-                let fresh247 = i;
-                i += 1;
-                *stream.offset(fresh247 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh248 = l2;
-                l2 -= 1;
-                if fresh248 == 0 {
-                    break;
-                }
-                let fresh249 = bitstrm2;
-                bitstrm2 = bitstrm2.offset(1);
-                let fresh250 = i;
-                i += 1;
-                *stream.offset(fresh250 as isize) = *fresh249;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm2 = stream;
-        }
-        loop {
-            let fresh251 = bitstrm1;
-            bitstrm1 = bitstrm1.offset(1);
-            chr1 = *fresh251;
-            if chr1 == 0 {
-                break;
-            }
-            let fresh252 = bitstrm2;
-            bitstrm2 = bitstrm2.offset(1);
-            chr2 = *fresh252;
-            if c_int::from(chr1) == '1' as i32 || c_int::from(chr2) == '1' as i32 {
-                *result = b'1' as c_char;
-            } else if c_int::from(chr1) == '0' as i32 || c_int::from(chr2) == '0' as i32 {
-                *result = b'0' as c_char;
+        bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
+            if chr1 == b'x' as c_char || chr2 == b'x' as c_char {
+                b'x' as c_char
+            } else if chr1 == b'1' as c_char && chr2 == b'1' as c_char {
+                b'1' as c_char
             } else {
-                *result = b'x' as c_char;
+                b'0' as c_char
             }
-            result = result.offset(1);
-        }
-        free(stream.cast::<c_void>());
-        *result = 0;
+        });
+    }
+}
+fn bitor(result: *mut c_char, bitstrm1: *mut c_char, bitstrm2: *mut c_char) {
+    unsafe {
+        bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
+            if chr1 == b'1' as c_char || chr2 == b'1' as c_char {
+                b'1' as c_char
+            } else if chr1 == b'0' as c_char || chr2 == b'0' as c_char {
+                b'0' as c_char
+            } else {
+                b'x' as c_char
+            }
+        });
     }
 }
 fn bitnot(result: *mut c_char, bits: *mut c_char) {
