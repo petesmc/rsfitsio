@@ -15243,8 +15243,7 @@ fn cstrmid(
     let dest_len = dest_len as usize;
     let mut src_len = src_len as usize;
 
-    /* char fill_char = ' '; */
-    let fill_char: c_char = 0;
+    let mut endpos: usize = 0;
 
     if src_len == 0 {
         src_len = unsafe { strlen(src_str) };
@@ -15252,7 +15251,6 @@ fn cstrmid(
 
     let src_str = unsafe { core::slice::from_raw_parts(src_str, src_len + 1) };
 
-    /* Fill destination with blanks */
     if pos < 0 {
         fits_parser_yyerror(lParse, cs!(c"STRMID(S,P,N) P must be 0 or greater"));
         return -(1);
@@ -15261,23 +15259,21 @@ fn cstrmid(
     let pos = pos as usize; // Already checked if < 0
 
     if pos > src_len || pos == 0 {
-        /* pos==0: blank string requested */
-        dest_str[..dest_len].fill(fill_char);
-    } else if pos + dest_len > src_len {
-        /* Copy a subset */
+        /* pos==0: null string requested */
+        endpos = 0;
+    } else if pos - 1 + dest_len > src_len {
+        /* Copy only to end of src_str */
         let nsub = src_len - pos + 1;
-        let npad = dest_len - nsub;
+        endpos = nsub;
         dest_str[..nsub].copy_from_slice(&src_str[(pos - 1)..(pos - 1 + nsub)]);
-
-        /* Fill remaining string with blanks */
-        dest_str[nsub..(nsub + npad)].fill(fill_char);
     } else {
         /* Full string copy */
+        endpos = dest_len;
         dest_str[..dest_len].copy_from_slice(&src_str[(pos - 1)..(pos - 1 + dest_len)]);
     }
 
     /* Null-terminate */
-    dest_str[dest_len] = 0;
+    dest_str[endpos] = 0;
 
     0
 }

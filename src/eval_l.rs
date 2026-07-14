@@ -10,7 +10,7 @@ use bytemuck::cast_slice;
 use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
-use crate::eval_defs::{MAXVARNAME, P_ERROR, ParseData};
+use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData};
 use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::fitsio2::FSTRCMP;
 use crate::helpers::boxed::box_try_new;
@@ -420,18 +420,35 @@ pub(crate) fn fits_parser_yylex(
                             2 => {
                                 let mut len: c_int = 0;
                                 len = strlen(yyscanner.yytext_r) as c_int;
+                                len -= 1;
                                 while c_int::from(*(yyscanner.yytext_r).offset(len as isize))
                                     == ' ' as i32
                                 {
                                     len -= 1;
                                 }
-                                len -= 1;
-                                strncpy(
-                                    ((*yyscanner.yylval_r).astr).as_mut_ptr(),
-                                    &*(yyscanner.yytext_r).offset(1),
-                                    len as usize,
-                                );
-                                (*yyscanner.yylval_r).astr[len as usize] = 0;
+                                if len >= MAX_STRLEN {
+                                    let mut errMsg: [c_char; 100] = [0; 100];
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    strcpy_safe(
+                                        &mut errMsg,
+                                        cs!(c"Bit string exceeds maximum length: '"),
+                                    );
+                                    strncat(
+                                        errMsg.as_mut_ptr(),
+                                        &*(yyscanner.yytext_r).offset(0),
+                                        20,
+                                    );
+                                    strcat_safe(&mut errMsg, cs!(c"...'"));
+                                    ffpmsg_slice(&errMsg);
+                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                } else {
+                                    strncpy(
+                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        &*(yyscanner.yytext_r).offset(1),
+                                        len as usize,
+                                    );
+                                    (*yyscanner.yylval_r).astr[len as usize] = 0;
+                                }
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             3 => {
@@ -455,12 +472,12 @@ pub(crate) fn fits_parser_yylex(
                                     ffpmsg_slice(&errMsg);
                                     len_0 = 0;
                                 } else {
+                                    len_0 -= 1;
                                     while c_int::from(*(yyscanner.yytext_r).offset(len_0 as isize))
                                         == ' ' as i32
                                     {
                                         len_0 -= 1;
                                     }
-                                    len_0 -= 1;
                                     strncpy(
                                         tmpstring.as_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
@@ -575,12 +592,12 @@ pub(crate) fn fits_parser_yylex(
                                     ffpmsg_slice(&errMsg_0);
                                     len_1 = 0;
                                 } else {
+                                    len_1 -= 1;
                                     while c_int::from(*(yyscanner.yytext_r).offset(len_1 as isize))
                                         == ' ' as i32
                                     {
                                         len_1 -= 1;
                                     }
-                                    len_1 -= 1;
                                     strncpy(
                                         tmpstring_0.as_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
@@ -831,13 +848,30 @@ pub(crate) fn fits_parser_yylex(
                                     if c_int::from(*(yyscanner.yytext_r).offset(1)) == '$' as i32 {
                                         len_2 =
                                             (strlen(yyscanner.yytext_r)).wrapping_sub(3) as c_int;
-                                        (*yyscanner.yylval_r).astr[0] = '#' as i32 as c_char;
-                                        strncpy(
-                                            ((*yyscanner.yylval_r).astr).as_mut_ptr().offset(1),
-                                            &*(yyscanner.yytext_r).offset(2 as c_int as isize),
-                                            len_2 as usize,
-                                        );
-                                        (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] = 0;
+                                        if len_2 >= MAX_STRLEN {
+                                            let mut errMsg: [c_char; 100] = [0; 100];
+                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            strcpy_safe(
+                                                &mut errMsg,
+                                                cs!(c"Keyword string exceeds maximum length: '"),
+                                            );
+                                            strncat(
+                                                errMsg.as_mut_ptr(),
+                                                &*(yyscanner.yytext_r).offset(0),
+                                                20,
+                                            );
+                                            strcat_safe(&mut errMsg, cs!(c"...'"));
+                                            ffpmsg_slice(&errMsg);
+                                            (*yyscanner.yylval_r).astr[0] = 0;
+                                        } else {
+                                            (*yyscanner.yylval_r).astr[0] = '#' as i32 as c_char;
+                                            strncpy(
+                                                ((*yyscanner.yylval_r).astr).as_mut_ptr().offset(1),
+                                                &*(yyscanner.yytext_r).offset(2 as c_int as isize),
+                                                len_2 as usize,
+                                            );
+                                            (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] = 0;
+                                        }
                                         yyscanner.yytext_r =
                                             ((*yyscanner.yylval_r).astr).as_mut_ptr();
                                     }
@@ -890,7 +924,25 @@ pub(crate) fn fits_parser_yylex(
                             13 => {
                                 let mut len_4: c_int = 0;
                                 let mut dtype: c_int = 0;
-                                if c_int::from(*(yyscanner.yytext_r).offset(0)) == '$' as i32 {
+                                len_4 = strlen(yyscanner.yytext_r) as c_int;
+                                if len_4 >= MAX_STRLEN {
+                                    let mut errMsg: [c_char; 100] = [0; 100];
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    strcpy_safe(
+                                        &mut errMsg,
+                                        cs!(c"Variable exceeds maximum length: '"),
+                                    );
+                                    strncat(
+                                        errMsg.as_mut_ptr(),
+                                        &*(yyscanner.yytext_r).offset(0),
+                                        20,
+                                    );
+                                    strcat_safe(&mut errMsg, cs!(c"...'"));
+                                    ffpmsg_slice(&errMsg);
+                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                    yyscanner.yytext_r = ((*yyscanner.yylval_r).astr).as_mut_ptr();
+                                } else if c_int::from(*(yyscanner.yytext_r).offset(0)) == '$' as i32
+                                {
                                     len_4 = (strlen(yyscanner.yytext_r)).wrapping_sub(2) as c_int;
                                     strncpy(
                                         ((*yyscanner.yylval_r).astr).as_mut_ptr(),
@@ -913,15 +965,34 @@ pub(crate) fn fits_parser_yylex(
                                 return dtype;
                             }
                             14 => {
-                                let mut len: usize = 0;
+                                let mut len: usize = strlen(yyscanner.yytext_r);
                                 let fname = &mut ((*yyscanner.yylval_r).astr);
 
-                                loop {
-                                    fname[len] = toupper(*yyscanner.yytext_r.add(len));
-                                    if fname[len] == 0 {
-                                        break;
+                                if len >= MAX_STRLEN as usize {
+                                    let mut errMsg: [c_char; 100] = [0; 100];
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    strcpy_safe(
+                                        &mut errMsg,
+                                        cs!(c"Function exceeds maximum length: '"),
+                                    );
+                                    strncat(
+                                        errMsg.as_mut_ptr(),
+                                        &*(yyscanner.yytext_r).offset(0),
+                                        20,
+                                    );
+                                    strcat_safe(&mut errMsg, cs!(c"...'"));
+                                    ffpmsg_slice(&errMsg);
+                                    len = 0;
+                                    fname[0] = 0;
+                                } else {
+                                    len = 0;
+                                    loop {
+                                        fname[len] = toupper(*yyscanner.yytext_r.add(len));
+                                        if fname[len] == 0 {
+                                            break;
+                                        }
+                                        len += 1;
                                     }
-                                    len += 1;
                                 }
                                 if FSTRCMP(fname, cs!(c"BOX(")) == 0
                                     || FSTRCMP(fname, cs!(c"CIRCLE(")) == 0
