@@ -2150,8 +2150,18 @@ pub(crate) fn fits_parser_workfn_safe(
                         }
                     }
                     if result.operation > 0 {
-                        FREE!(*(result.value.data.strptr));
-                        FREE!(result.value.data.strptr);
+                        // Rust-owned string buffer (strptr array + backing):
+                        // release via the owning side-table when present, else
+                        // fall back to the legacy frees. Inlined because
+                        // `result` still borrows lParse.Nodes here.
+                        let ridx = lParse.resultNode as usize;
+                        if ridx < lParse.node_buffers.len() && lParse.node_buffers[ridx].is_some() {
+                            lParse.node_buffers[ridx] = None;
+                            result.value.data.strptr = core::ptr::null_mut();
+                        } else {
+                            FREE!(*(result.value.data.strptr));
+                            FREE!(result.value.data.strptr);
+                        }
                     }
                 }
                 fits_parser_yytokentype::STRING => {
@@ -2188,8 +2198,18 @@ pub(crate) fn fits_parser_workfn_safe(
                         lParse.status = PARSE_BAD_TYPE;
                     }
                     if result.operation > 0 {
-                        FREE!(*(result.value.data.strptr));
-                        FREE!(result.value.data.strptr);
+                        // Rust-owned string buffer (strptr array + backing):
+                        // release via the owning side-table when present, else
+                        // fall back to the legacy frees. Inlined because
+                        // `result` still borrows lParse.Nodes here.
+                        let ridx = lParse.resultNode as usize;
+                        if ridx < lParse.node_buffers.len() && lParse.node_buffers[ridx].is_some() {
+                            lParse.node_buffers[ridx] = None;
+                            result.value.data.strptr = core::ptr::null_mut();
+                        } else {
+                            FREE!(*(result.value.data.strptr));
+                            FREE!(result.value.data.strptr);
+                        }
                     }
                 }
                 _ => {}

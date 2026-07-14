@@ -41,48 +41,89 @@ impl Default for DataInfo {
     }
 }
 
-/// Owns a numeric node's result buffer as a raw heap allocation. The node's
-/// `value.data.ptr`/`value.undef` are raw *views* into this buffer; keeping the
-/// backing store as a raw allocation (rather than a `Box`/`Vec`, which are
-/// `noalias`) lets those views stay valid under Stacked Borrows. Freed on drop.
-pub struct NodeBuf {
+/// A single zeroed, 8-byte-aligned raw heap allocation. Node result buffers are
+/// kept as raw allocations (rather than `Box`/`Vec`, which are `noalias`) so the
+/// union's raw *views* into them stay valid under Stacked Borrows. Freed on drop.
+struct RawBuf {
     ptr: *mut u8,
     /// Number of `u64` words backing the allocation.
     words: usize,
 }
 
-impl NodeBuf {
-    /// Allocate a zeroed buffer of at least `len` bytes, 8-byte aligned (the
-    /// buffer stores f64/c_long values, so it needs the same alignment the
-    /// former `calloc` provided), or `None` on allocation failure.
-    pub fn new(len: usize) -> Option<Self> {
+impl RawBuf {
+    /// Allocate a zeroed buffer of at least `len` bytes, 8-byte aligned (buffers
+    /// store f64/c_long and arrays of pointers, needing the alignment the former
+    /// `calloc` provided), or `None` on allocation failure.
+    fn new(len: usize) -> Option<Self> {
         let words = len.div_ceil(8).max(1);
         let mut v: Vec<u64> = Vec::new();
         v.try_reserve_exact(words).ok()?;
         v.resize(words, 0);
         let raw = Box::into_raw(v.into_boxed_slice());
-        Some(NodeBuf {
+        Some(RawBuf {
             ptr: raw as *mut u8,
             words,
         })
     }
 
-    /// Raw pointer to the start of the buffer (valid for the buffer's lifetime).
-    pub fn as_ptr(&self) -> *mut u8 {
+    fn as_ptr(&self) -> *mut u8 {
         self.ptr
     }
 }
 
-impl Drop for NodeBuf {
+impl Drop for RawBuf {
     fn drop(&mut self) {
-        // Reconstitute the boxed [u64] slice from the raw parts and drop it,
-        // freeing via the same (Rust global) allocator it was created with.
+        // Reconstitute the boxed [u64] slice and drop it, freeing via the same
+        // (Rust global) allocator it was created with.
         unsafe {
             drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
                 self.ptr.cast::<u64>(),
                 self.words,
             )));
         }
+    }
+}
+
+/// Owns the heap storage for one node's result buffer. Numeric nodes use only
+/// `primary` (the data-plus-undef buffer). STRING/BITSTR nodes use `primary` as
+/// the array of row pointers (`strptr`) and `secondary` as the single backing
+/// character buffer those pointers index into. Everything is freed on drop.
+pub struct NodeBuf {
+    primary: RawBuf,
+    secondary: Option<RawBuf>,
+}
+
+impl NodeBuf {
+    /// Numeric node buffer: `len` bytes of data followed by the undef flags.
+    pub fn new_numeric(len: usize) -> Option<Self> {
+        Some(NodeBuf {
+            primary: RawBuf::new(len)?,
+            secondary: None,
+        })
+    }
+
+    /// String node buffer: `ptrs_len` bytes for the row-pointer array plus a
+    /// `backing_len`-byte character buffer they point into.
+    pub fn new_string(ptrs_len: usize, backing_len: usize) -> Option<Self> {
+        let primary = RawBuf::new(ptrs_len)?;
+        let secondary = RawBuf::new(backing_len)?;
+        Some(NodeBuf {
+            primary,
+            secondary: Some(secondary),
+        })
+    }
+
+    /// Raw view of the primary buffer (numeric data, or the `strptr` array).
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.primary.as_ptr()
+    }
+
+    /// Raw view of the string backing buffer (only for string nodes).
+    pub fn backing_ptr(&self) -> *mut u8 {
+        self.secondary
+            .as_ref()
+            .expect("backing_ptr on a numeric NodeBuf")
+            .as_ptr()
     }
 }
 

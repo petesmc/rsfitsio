@@ -7353,7 +7353,7 @@ fn alloc_node_data(lParse: &mut ParseData, idx: usize, n_bytes: usize) -> *mut c
     if lParse.node_buffers.len() <= idx {
         lParse.node_buffers.resize_with(idx + 1, || None);
     }
-    match NodeBuf::new(n_bytes) {
+    match NodeBuf::new_numeric(n_bytes) {
         Some(buf) => {
             let ptr = buf.as_ptr().cast::<c_void>();
             lParse.node_buffers[idx] = Some(buf);
@@ -7362,6 +7362,34 @@ fn alloc_node_data(lParse: &mut ParseData, idx: usize, n_bytes: usize) -> *mut c
         None => {
             lParse.node_buffers[idx] = None;
             core::ptr::null_mut()
+        }
+    }
+}
+
+/// Allocate the Rust-owned backing store for a STRING/BITSTR node: the row
+/// pointer array (`nrows` pointers) plus a single character buffer of
+/// `backing_len` bytes. Returns `(strptr_array, backing_buffer)` raw views, or
+/// `(null, null)` on allocation failure.
+fn alloc_str_node_data(
+    lParse: &mut ParseData,
+    idx: usize,
+    nrows: usize,
+    backing_len: usize,
+) -> (*mut *mut c_char, *mut c_char) {
+    if lParse.node_buffers.len() <= idx {
+        lParse.node_buffers.resize_with(idx + 1, || None);
+    }
+    let ptrs_len = nrows * size_of::<*mut c_char>();
+    match NodeBuf::new_string(ptrs_len, backing_len) {
+        Some(buf) => {
+            let ptrs = buf.as_ptr().cast::<*mut c_char>();
+            let backing = buf.backing_ptr().cast::<c_char>();
+            lParse.node_buffers[idx] = Some(buf);
+            (ptrs, backing)
+        }
+        None => {
+            lParse.node_buffers[idx] = None;
+            (core::ptr::null_mut(), core::ptr::null_mut())
         }
     }
 }
@@ -7390,60 +7418,38 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
         if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
             || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
         {
-            (lParse.Nodes[this_node_idx]).value.data.strptr = malloc(
-                (lParse.nRows as c_ulong)
-                    .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
-                    .try_into()
-                    .unwrap(),
-            )
-            .cast::<*mut c_char>();
-            if !((lParse.Nodes[this_node_idx]).value.data.strptr).is_null() {
-                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0);
-                *fresh20 = malloc(
-                    ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
-                        as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                )
-                .cast::<c_char>();
-                if !(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0)).is_null() {
-                    row = 0;
-                    loop {
-                        row += 1;
-                        if row >= lParse.nRows {
-                            break;
-                        }
-                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr)
-                            .offset(row as isize);
-                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.strptr)
-                            .offset((row - 1) as isize))
-                        .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
-                        .offset(1);
-                    }
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.undef =
-                            (*((lParse.Nodes[this_node_idx]).value.data.strptr)
-                                .offset((row - 1) as isize))
-                            .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
-                            .offset(1);
-                    } else {
-                        (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
-                    }
-                } else {
-                    lParse.status = MEMORY_ALLOCATION;
-                    free(
-                        (lParse.Nodes[this_node_idx])
-                            .value
-                            .data
-                            .strptr
-                            .cast::<c_void>(),
-                    );
-                }
-            } else {
+            // Rust-owned string storage: a row-pointer array (strptr) plus one
+            // backing char buffer of nRows * (nelem + 2) bytes. strptr[row]
+            // indexes into the backing buffer at stride (nelem + 1). Owned by
+            // lParse.node_buffers; strptr/undef are views.
+            let nelem = (lParse.Nodes[this_node_idx]).value.nelem;
+            let nrows = lParse.nRows as usize;
+            let backing_len = (lParse.nRows * (nelem + 2)) as usize;
+            let (strptr, backing) = alloc_str_node_data(lParse, this_node_idx, nrows, backing_len);
+            (lParse.Nodes[this_node_idx]).value.data.strptr = strptr;
+            if strptr.is_null() {
                 lParse.status = MEMORY_ALLOCATION;
+            } else {
+                *strptr.offset(0) = backing;
+                row = 0;
+                loop {
+                    row += 1;
+                    if row >= lParse.nRows {
+                        break;
+                    }
+                    let fresh21 = &mut *strptr.offset(row as isize);
+                    *fresh21 = (*strptr.offset((row - 1) as isize))
+                        .offset(nelem as isize)
+                        .offset(1);
+                }
+                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int {
+                    (lParse.Nodes[this_node_idx]).value.undef = (*strptr
+                        .offset((row - 1) as isize))
+                    .offset(nelem as isize)
+                    .offset(1);
+                } else {
+                    (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
+                }
             }
         } else {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
@@ -7478,24 +7484,10 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
 }
 
 unsafe fn free_node_buffer(lParse: &mut ParseData, idx: usize) {
-    let ntype = lParse.Nodes[idx].ntype;
-    if ntype == fits_parser_yytokentype::BITSTR as c_int
-        || ntype == fits_parser_yytokentype::STRING as c_int
-    {
-        // STRING/BITSTR nodes still use the legacy malloc'd 2-D strptr buffer.
-        let strptr = lParse.Nodes[idx].value.data.strptr;
-        if !strptr.is_null() {
-            if !(*strptr).is_null() {
-                free((*strptr) as *mut c_void);
-            }
-            free(strptr as *mut c_void);
-            lParse.Nodes[idx].value.data.strptr = ptr::null_mut();
-        }
-    } else {
-        // Numeric nodes: Rust-owned buffer (or legacy malloc for GTI etc.).
-        free_node_data(lParse, idx);
-    }
-
+    // Both numeric and STRING/BITSTR result buffers are now Rust-owned in
+    // node_buffers; free_node_data drops the whole NodeBuf (string nodes' row
+    // pointer array and backing buffer together) and nulls the data pointer.
+    free_node_data(lParse, idx);
     lParse.Nodes[idx].value.undef = ptr::null_mut();
 }
 
@@ -8207,12 +8199,10 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+            free_node_data(lParse, that1_idx);
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+            free_node_data(lParse, that2_idx);
         }
     }
 }
@@ -8526,12 +8516,10 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+            free_node_data(lParse, that1_idx);
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+            free_node_data(lParse, that2_idx);
         }
     }
 }
@@ -13208,13 +13196,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theVar]).operation > 0 {
-            if (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::STRING as c_int
-                || (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::BITSTR as c_int
-            {
-                free((*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).cast::<c_void>());
-            } else {
-                free_node_data(lParse, theVar);
-            }
+            // Rust-owned buffer (numeric data, or string strptr+backing).
+            free_node_data(lParse, theVar);
         }
         i = 0;
         while i < nDims {
@@ -14392,5 +14375,150 @@ mod node_buffer_tests {
         free_node_data(&mut lparse, idx);
         assert!(lparse.node_buffers[idx].is_none());
         assert!(unsafe { lparse.Nodes[idx].value.data.ptr }.is_null());
+    }
+
+    /// Exercises the Rust-owned STRING node buffer: Allocate_Ptrs builds the row
+    /// pointer array (strptr) plus backing buffer, each row string is written
+    /// and read back through the two-level raw views, and free_node_data
+    /// releases both. Runs under Miri to validate the aliased two-level access
+    /// and that no allocation is leaked or mismatched.
+    #[test]
+    fn string_node_buffer_alloc_access_free_roundtrip() {
+        let mut lparse = ParseData::default();
+        lparse.nRows = 3;
+
+        let mut node = Node::default();
+        node.ntype = fits_parser_yytokentype::STRING as c_int;
+        node.value.nelem = 5; // max string length
+        node.operation = 1;
+        lparse.Nodes.push(node);
+        let idx = 0usize;
+
+        Allocate_Ptrs(&mut lparse, idx);
+        assert_eq!(lparse.status, 0);
+        assert!(lparse.node_buffers[idx].is_some());
+
+        let strptr = unsafe { lparse.Nodes[idx].value.data.strptr };
+        let undef = lparse.Nodes[idx].value.undef;
+        assert!(!strptr.is_null());
+        assert!(!undef.is_null());
+
+        let nrows = lparse.nRows as usize;
+        unsafe {
+            // Distinct row pointers into the shared backing buffer.
+            for r in 0..nrows {
+                let rowp = *strptr.add(r);
+                assert!(!rowp.is_null());
+                // Write "ab" + NUL into each row string.
+                *rowp.add(0) = b'a' as c_char;
+                *rowp.add(1) = b'0' as c_char + r as c_char;
+                *rowp.add(2) = 0;
+                *undef.add(r) = 0;
+            }
+            for r in 0..nrows {
+                let rowp = *strptr.add(r);
+                assert_eq!(*rowp.add(0), b'a' as c_char);
+                assert_eq!(*rowp.add(1), b'0' as c_char + r as c_char);
+                assert_eq!(*rowp.add(2), 0);
+            }
+        }
+
+        free_node_data(&mut lparse, idx);
+        assert!(lparse.node_buffers[idx].is_none());
+        assert!(unsafe { lparse.Nodes[idx].value.data.strptr }.is_null());
+    }
+
+    /// BITSTR nodes allocate a strptr buffer but no undef array. Confirms the
+    /// buffer is owned and undef stays null.
+    #[test]
+    fn bitstr_node_buffer_has_no_undef() {
+        let mut lparse = ParseData::default();
+        lparse.nRows = 2;
+        let mut node = Node::default();
+        node.ntype = fits_parser_yytokentype::BITSTR as c_int;
+        node.value.nelem = 4;
+        node.operation = 1;
+        lparse.Nodes.push(node);
+
+        Allocate_Ptrs(&mut lparse, 0);
+        assert_eq!(lparse.status, 0);
+        assert!(lparse.node_buffers[0].is_some());
+        assert!(!unsafe { lparse.Nodes[0].value.data.strptr }.is_null());
+        assert!(lparse.Nodes[0].value.undef.is_null()); // BITSTRs don't use undef
+        free_node_data(&mut lparse, 0);
+        assert!(lparse.node_buffers[0].is_none());
+    }
+
+    /// Re-allocating a node's buffer (as happens when the tree is re-evaluated
+    /// for each row batch) must drop the previous buffer, not leak it. Under
+    /// Miri a leaked allocation fails the test.
+    #[test]
+    fn reallocating_a_node_buffer_drops_the_old_one() {
+        let mut lparse = ParseData::default();
+        lparse.nRows = 4;
+        let mut node = Node::default();
+        node.ntype = fits_parser_yytokentype::DOUBLE as c_int;
+        node.value.nelem = 2;
+        node.operation = 1;
+        lparse.Nodes.push(node);
+
+        Allocate_Ptrs(&mut lparse, 0);
+        let p1 = unsafe { lparse.Nodes[0].value.data.ptr };
+        Allocate_Ptrs(&mut lparse, 0); // old buffer must be dropped here
+        let p2 = unsafe { lparse.Nodes[0].value.data.ptr };
+        assert!(!p1.is_null() && !p2.is_null());
+        // New buffer is usable.
+        unsafe {
+            let d = p2.cast::<f64>();
+            *d.add(0) = 2.5;
+            assert_eq!(*d.add(0), 2.5);
+        }
+        free_node_data(&mut lparse, 0);
+        assert!(lparse.node_buffers[0].is_none());
+    }
+
+    /// free_node_data's legacy branch: a node whose pointer is NOT in the
+    /// side-table (e.g. GTI data malloc'd elsewhere) must be freed with
+    /// libc::free, not treated as a NodeBuf. This path is not covered by the
+    /// integration tests, so verify it (and its allocator match) directly.
+    #[test]
+    fn free_node_data_legacy_pointer_uses_libc_free() {
+        let mut lparse = ParseData::default();
+        let mut node = Node::default();
+        node.operation = 1;
+        // Simulate a legacy malloc'd buffer (as gtifilt would produce).
+        let raw = unsafe { libc::malloc(64) };
+        assert!(!raw.is_null());
+        node.value.data.ptr = raw;
+        lparse.Nodes.push(node);
+        // No side-table entry for this node -> legacy path.
+        assert!(lparse.node_buffers.is_empty());
+
+        free_node_data(&mut lparse, 0);
+        assert!(unsafe { lparse.Nodes[0].value.data.ptr }.is_null());
+    }
+
+    /// Dropping ParseData (as ffcprs does via `node_buffers = Vec::new()`) must
+    /// free every owned node buffer. Allocate several, free one explicitly, and
+    /// let the rest be reclaimed on drop; Miri flags any leak.
+    #[test]
+    fn dropping_parsedata_frees_all_owned_buffers() {
+        let mut lparse = ParseData::default();
+        lparse.nRows = 3;
+        for _ in 0..4 {
+            let mut node = Node::default();
+            node.ntype = fits_parser_yytokentype::LONG as c_int;
+            node.value.nelem = 2;
+            node.operation = 1;
+            lparse.Nodes.push(node);
+        }
+        for i in 0..4 {
+            Allocate_Ptrs(&mut lparse, i);
+            assert!(lparse.node_buffers[i].is_some());
+        }
+        free_node_data(&mut lparse, 1); // free one explicitly
+        assert!(lparse.node_buffers[1].is_none());
+        // The remaining three are freed when node_buffers is cleared (ffcprs).
+        lparse.node_buffers = Vec::new();
     }
 }
