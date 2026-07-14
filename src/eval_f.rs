@@ -2533,6 +2533,50 @@ fn Setup_DataArrays(
     }
 }
 
+/// Element-wise convert `n` values of type `S` at `input` into type `T` at
+/// `output`, applying `f` to each element. Unsafe is confined to building the
+/// two slices from the FFI raw pointers; the per-element work is safe indexing.
+///
+/// # Safety
+/// `input`/`output` must point to at least `n` valid, correctly-aligned `S`/`T`
+/// elements and must not overlap.
+unsafe fn cvt_map<S: Copy, T>(
+    input: *const c_void,
+    output: *mut c_void,
+    n: usize,
+    f: impl Fn(S) -> T,
+) {
+    let inp = unsafe { core::slice::from_raw_parts(input.cast::<S>(), n) };
+    let out = unsafe { core::slice::from_raw_parts_mut(output.cast::<T>(), n) };
+    for i in 0..n {
+        out[i] = f(inp[i]);
+    }
+}
+
+/// Apply UNDEF handling for `n` elements of type `T`: wherever `undef[i]` is
+/// nonzero, store `*nulval` into `output[i]` and flag `anynull`.
+///
+/// # Safety
+/// `output`/`undef` must cover `n` valid `T`/`c_char` elements and `nulval` a
+/// valid `T`.
+unsafe fn cvt_apply_undef<T: Copy>(
+    output: *mut c_void,
+    undef: *const c_char,
+    nulval: *const c_void,
+    n: usize,
+    anynull: &mut c_int,
+) {
+    let out = unsafe { core::slice::from_raw_parts_mut(output.cast::<T>(), n) };
+    let und = unsafe { core::slice::from_raw_parts(undef, n) };
+    let nul = unsafe { *nulval.cast::<T>() };
+    for i in 0..n {
+        if und[i] != 0 {
+            out[i] = nul;
+            *anynull = 1;
+        }
+    }
+}
+
 /*--------------------------------------------------------------------------*/
 /// Convert an array of any input data type to an array of any output
 /// data type, using an array of UNDEF flags to assign nulvals to
@@ -2601,10 +2645,7 @@ fn ffcvtn(
             TBYTE => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap()));
-                        }
+                        cvt_map::<c_uchar, c_uchar>(input, output, ntodo as usize, |v| v);
                     }
                     TSHORT => {
                         let input_slice = unsafe {
@@ -2636,23 +2677,23 @@ fn ffcvtn(
                         );
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            if *((undef).add(i.try_into().unwrap())) != 0 {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                                    *nulval.cast::<c_uchar>();
+                        let n = ntodo as usize;
+                        let inp = core::slice::from_raw_parts(input.cast::<c_long>(), n);
+                        let out = core::slice::from_raw_parts_mut(output.cast::<c_uchar>(), n);
+                        let und = core::slice::from_raw_parts(undef, n);
+                        let nul = *nulval.cast::<c_uchar>();
+                        for i in 0..n {
+                            if und[i] != 0 {
+                                out[i] = nul;
                                 *anynull = 1;
-                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap())) < 0 {
+                            } else if inp[i] < 0 {
                                 *status = OVERFLOW_ERR;
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) = 0;
-                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
-                                > UCHAR_MAX as c_long
-                            {
+                                out[i] = 0;
+                            } else if inp[i] > UCHAR_MAX as c_long {
                                 *status = OVERFLOW_ERR;
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                                    UCHAR_MAX as c_uchar;
+                                out[i] = UCHAR_MAX as c_uchar;
                             } else {
-                                *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                                    *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_uchar;
+                                out[i] = inp[i] as c_uchar;
                             }
                         }
                         return *status;
@@ -2718,50 +2759,36 @@ fn ffcvtn(
                     }
                 }
 
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_uchar>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_uchar>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_uchar>(output, undef, nulval, ntodo as usize, anynull);
             }
             TSHORT => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_short>().add(i.try_into().unwrap())) = c_short::from(
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
-                            );
-                        }
+                        cvt_map::<c_uchar, c_short>(input, output, ntodo as usize, |v| {
+                            c_short::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_short>().add(i.try_into().unwrap()));
-                        }
+                        cvt_map::<c_short, c_short>(input, output, ntodo as usize, |v| v);
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            if *((undef).add(i.try_into().unwrap())) != 0 {
-                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                    *nulval.cast::<c_short>();
+                        let n = ntodo as usize;
+                        let inp = core::slice::from_raw_parts(input.cast::<c_long>(), n);
+                        let out = core::slice::from_raw_parts_mut(output.cast::<c_short>(), n);
+                        let und = core::slice::from_raw_parts(undef, n);
+                        let nul = *nulval.cast::<c_short>();
+                        for i in 0..n {
+                            if und[i] != 0 {
+                                out[i] = nul;
                                 *anynull = 1;
-                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
-                                < SHRT_MIN as c_long
-                            {
+                            } else if inp[i] < SHRT_MIN as c_long {
                                 *status = OVERFLOW_ERR;
-                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                    SHRT_MIN as c_short;
-                            } else if *(input.cast::<c_long>().add(i.try_into().unwrap()))
-                                > SHRT_MAX as c_long
-                            {
+                                out[i] = SHRT_MIN as c_short;
+                            } else if inp[i] > SHRT_MAX as c_long {
                                 *status = OVERFLOW_ERR;
-                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                    SHRT_MAX as c_short;
+                                out[i] = SHRT_MAX as c_short;
                             } else {
-                                *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                                    *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_short;
+                                out[i] = inp[i] as c_short;
                             }
                         }
                         return *status;
@@ -2826,33 +2853,22 @@ fn ffcvtn(
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_short>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_short>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_short>(output, undef, nulval, ntodo as usize, anynull);
             }
             TINT => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                                c_int::from(*(input.cast::<c_uchar>().add(i.try_into().unwrap())));
-                        }
+                        cvt_map::<c_uchar, c_int>(input, output, ntodo as usize, |v| {
+                            c_int::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                                c_int::from(*(input.cast::<c_short>().add(i.try_into().unwrap())));
-                        }
+                        cvt_map::<c_short, c_int>(input, output, ntodo as usize, |v| {
+                            c_int::from(v)
+                        });
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_int;
-                        }
+                        cvt_map::<c_long, c_int>(input, output, ntodo as usize, |v| v as c_int);
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
@@ -2914,33 +2930,22 @@ fn ffcvtn(
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_int>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_int>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_int>(output, undef, nulval, ntodo as usize, anynull);
             }
             TLONG => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                                c_long::from(*(input.cast::<c_uchar>().add(i.try_into().unwrap())));
-                        }
+                        cvt_map::<c_uchar, c_long>(input, output, ntodo as usize, |v| {
+                            c_long::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                                c_long::from(*(input.cast::<c_short>().add(i.try_into().unwrap())));
-                        }
+                        cvt_map::<c_short, c_long>(input, output, ntodo as usize, |v| {
+                            c_long::from(v)
+                        });
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_long>().add(i.try_into().unwrap()));
-                        }
+                        cvt_map::<c_long, c_long>(input, output, ntodo as usize, |v| v);
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
@@ -3002,37 +3007,24 @@ fn ffcvtn(
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_long>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_long>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_long>(output, undef, nulval, ntodo as usize, anynull);
             }
             TLONGLONG => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                                LONGLONG::from(
-                                    *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
-                                );
-                        }
+                        cvt_map::<c_uchar, LONGLONG>(input, output, ntodo as usize, |v| {
+                            LONGLONG::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                                LONGLONG::from(
-                                    *(input.cast::<c_short>().add(i.try_into().unwrap())),
-                                );
-                        }
+                        cvt_map::<c_short, LONGLONG>(input, output, ntodo as usize, |v| {
+                            LONGLONG::from(v)
+                        });
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as LONGLONG;
-                        }
+                        cvt_map::<c_long, LONGLONG>(input, output, ntodo as usize, |v| {
+                            v as LONGLONG
+                        });
                     }
                     TFLOAT => {
                         let input_slice = unsafe {
@@ -3094,41 +3086,25 @@ fn ffcvtn(
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<LONGLONG>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<LONGLONG>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<LONGLONG>(output, undef, nulval, ntodo as usize, anynull);
             }
             TFLOAT => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) = c_float::from(
-                                *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
-                            );
-                        }
+                        cvt_map::<c_uchar, c_float>(input, output, ntodo as usize, |v| {
+                            c_float::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) = c_float::from(
-                                *(input.cast::<c_short>().add(i.try_into().unwrap())),
-                            );
-                        }
+                        cvt_map::<c_short, c_float>(input, output, ntodo as usize, |v| {
+                            c_float::from(v)
+                        });
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_float;
-                        }
+                        cvt_map::<c_long, c_float>(input, output, ntodo as usize, |v| v as c_float);
                     }
                     TFLOAT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_float>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_float>().add(i.try_into().unwrap()));
-                        }
+                        cvt_map::<c_float, c_float>(input, output, ntodo as usize, |v| v);
                     }
                     TDOUBLE => {
                         let input_slice = unsafe {
@@ -3162,63 +3138,40 @@ fn ffcvtn(
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_float>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_float>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_float>(output, undef, nulval, ntodo as usize, anynull);
             }
             TDOUBLE => {
                 match inputType {
                     TLOGICAL | TBYTE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                c_double::from(
-                                    *(input.cast::<c_uchar>().add(i.try_into().unwrap())),
-                                );
-                        }
+                        cvt_map::<c_uchar, c_double>(input, output, ntodo as usize, |v| {
+                            c_double::from(v)
+                        });
                     }
                     TSHORT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                c_double::from(
-                                    *(input.cast::<c_short>().add(i.try_into().unwrap())),
-                                );
-                        }
+                        cvt_map::<c_short, c_double>(input, output, ntodo as usize, |v| {
+                            c_double::from(v)
+                        });
                     }
                     TLONG => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_long>().add(i.try_into().unwrap())) as c_double;
-                        }
+                        cvt_map::<c_long, c_double>(input, output, ntodo as usize, |v| {
+                            v as c_double
+                        });
                     }
                     TFLOAT => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                c_double::from(
-                                    *(input.cast::<c_float>().add(i.try_into().unwrap())),
-                                );
-                        }
+                        cvt_map::<c_float, c_double>(input, output, ntodo as usize, |v| {
+                            c_double::from(v)
+                        });
                     }
                     TDOUBLE => {
-                        for i in 0..ntodo {
-                            *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                                *(input.cast::<c_double>().add(i.try_into().unwrap())) as c_double;
-                        }
+                        cvt_map::<c_double, c_double>(input, output, ntodo as usize, |v| {
+                            v as c_double
+                        });
                     }
                     _ => {
                         *status = BAD_DATATYPE;
                     }
                 }
-                for i in 0..ntodo {
-                    if *((undef).add(i.try_into().unwrap())) != 0 {
-                        *(output.cast::<c_double>().add(i.try_into().unwrap())) =
-                            *nulval.cast::<c_double>();
-                        *anynull = 1;
-                    }
-                }
+                cvt_apply_undef::<c_double>(output, undef, nulval, ntodo as usize, anynull);
             }
             _ => {
                 *status = BAD_DATATYPE;
