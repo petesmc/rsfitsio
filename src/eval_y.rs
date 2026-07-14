@@ -86,6 +86,17 @@ use crate::wrappers::strncpy_safe;
 use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
 use crate::{atoi, cs, int_snprintf};
 
+/// Safe equivalent of the cfitsio `FSTRCMP(buf, s) == 0` idiom: returns `true`
+/// when the NUL-terminated contents of the fixed `astr` buffer equal the C
+/// string `s`. Replaces the first-char-shortcut + `strcmp` expansion emitted by
+/// the bison grammar, with bounded (panic-free) comparison.
+fn astr_eq(buf: &[c_char], s: &CStr) -> bool {
+    let needle = s.to_bytes();
+    buf.len() > needle.len()
+        && buf[needle.len()] == 0
+        && needle.iter().zip(buf.iter()).all(|(&n, &b)| n == b as u8)
+}
+
 pub type yy_state_t = yytype_int16;
 pub type yytype_int16 = c_short;
 pub type yysymbol_kind_t = c_int;
@@ -2485,18 +2496,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         54 => {
                             /* expr: FUNCTION ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 1].astr[0])
-                                < c_int::from((cs!(c"RANDOM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 1].astr[0])
-                                > c_int::from((cs!(c"RANDOM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 1].astr, c"RANDOM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2511,18 +2511,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 1297461190301222800;
-                            } else if (if c_int::from(yyvs[yyvsp - 1].astr[0])
-                                < c_int::from((cs!(c"RANDOMN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 1].astr[0])
-                                > c_int::from((cs!(c"RANDOMN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOMN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 1].astr, c"RANDOMN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2554,18 +2543,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         55 => {
                             /* expr: FUNCTION bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"SUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"SUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2580,18 +2558,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 10848699504537784535;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2601,18 +2568,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = 10848699504537784535;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
                                 let mut zero: c_long = 0;
                                 let new_node = New_Const(
                                     lParse,
@@ -2646,18 +2602,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         56 => {
                             /* expr: FUNCTION bexpr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"AXISELEM"))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"AXISELEM"))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 4].astr, c"AXISELEM(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -2711,18 +2656,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 13755523488868872559;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"NAXES("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"NAXES("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -2785,18 +2719,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 13755523488868872559;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"ARRAY("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"ARRAY("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
@@ -2824,18 +2747,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         57 => {
                             /* expr: FUNCTION sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2845,18 +2757,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = 15752106442776732052;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2888,18 +2789,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         58 => {
                             /* expr: FUNCTION bits ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2909,18 +2799,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2930,18 +2809,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"SUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"SUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -2956,18 +2824,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"MIN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"MIN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MIN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -2983,18 +2840,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
                                 let mut zero_0: c_long = 0;
                                 let new_node = New_Const(
                                     lParse,
@@ -3011,18 +2857,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     new_node,
                                 );
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"MAX("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"MAX("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MAX(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -3055,18 +2890,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         59 => {
                             /* expr: FUNCTION expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"SUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"SUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -3081,18 +2905,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"AVERAGE("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"AVERAGE("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"AVERAGE(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"AVERAGE(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -3107,18 +2920,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"STDDEV("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"STDDEV("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"STDDEV(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"STDDEV(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -3133,18 +2935,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"MEDIAN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"MEDIAN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MEDIAN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MEDIAN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -3159,18 +2950,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NELEM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -3180,18 +2960,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NVALID("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -3206,17 +2975,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
-                            }) == 0
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
                             {
@@ -3239,17 +2998,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     new_node,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ACCUM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
-                            }) == 0
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
                             {
@@ -3269,17 +3018,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     new_node,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"SEQDIFF("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"SEQDIFF("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SEQDIFF(".as_ptr())
-                            }) == 0
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
                             {
@@ -3299,17 +3038,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     new_node,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"SEQDIFF("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"SEQDIFF("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SEQDIFF(".as_ptr())
-                            }) == 0
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
                             {
@@ -3329,18 +3058,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     new_node,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ABS("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ABS("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ABS(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ABS(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -3355,18 +3073,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"MIN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"MIN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MIN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -3381,18 +3088,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"MAX("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"MAX("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MAX(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
@@ -3407,18 +3103,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"RANDOM("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"RANDOM("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -3439,18 +3124,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         fits_parser_yytokentype::DOUBLE as c_int;
                                     current_block = 7600445499126923600;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"RANDOMN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"RANDOMN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"RANDOMN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -3471,18 +3145,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         fits_parser_yytokentype::DOUBLE as c_int;
                                     current_block = 7600445499126923600;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ELEMENTNUM"))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ELEMENTNUM"))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ELEMENTNUM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ELEMENTNUM(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -3516,18 +3179,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 7600445499126923600;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"NAXIS("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"NAXIS("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NAXIS(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NAXIS(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     == CONST_OP
                                 {
@@ -3566,18 +3218,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         yyvs[yyvsp - 1].Node,
                                     );
                                 }
-                                if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"SIN("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"SIN("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SIN(".as_ptr())
-                                }) == 0
-                                {
+                                if astr_eq(&yyvs[yyvsp - 2].astr, c"SIN(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3592,18 +3233,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"COS("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"COS("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"COS(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COS(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3618,18 +3248,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"TAN("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"TAN("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"TAN(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TAN(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3644,31 +3263,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"ARCSIN"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"ARCSIN"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCSIN(".as_ptr())
-                                }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        < c_int::from((cs!(c"ASIN"))[0])
-                                    {
-                                        -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        > c_int::from((cs!(c"ASIN"))[0])
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ASIN(".as_ptr(),
-                                        )
-                                    }) == 0
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCSIN(")
+                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ASIN(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3684,31 +3280,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"ARCCOS"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"ARCCOS"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCCOS(".as_ptr())
-                                }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        < c_int::from((cs!(c"ACOS"))[0])
-                                    {
-                                        -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        > c_int::from((cs!(c"ACOS"))[0])
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ACOS(".as_ptr(),
-                                        )
-                                    }) == 0
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCCOS(")
+                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ACOS(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3724,31 +3297,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"ARCTAN"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"ARCTAN"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCTAN(".as_ptr())
-                                }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        < c_int::from((cs!(c"ATAN"))[0])
-                                    {
-                                        -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                        > c_int::from((cs!(c"ATAN"))[0])
-                                    {
-                                        1
-                                    } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ATAN(".as_ptr(),
-                                        )
-                                    }) == 0
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCTAN(")
+                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ATAN(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
@@ -3764,18 +3314,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"SINH"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"SINH"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SINH(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SINH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3790,18 +3329,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"COSH"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"COSH"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"COSH(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COSH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3816,18 +3344,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"TANH"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"TANH"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"TANH(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TANH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3842,18 +3359,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"EXP("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"EXP("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"EXP(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"EXP(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3868,18 +3374,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"LOG("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"LOG("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"LOG(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3894,18 +3389,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"LOG10"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"LOG10"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"LOG10(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG10(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3920,18 +3404,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"SQRT"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"SQRT"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SQRT(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SQRT(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3946,18 +3419,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"ROUND"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"ROUND"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ROUND(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ROUND(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3972,18 +3434,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"FLOOR"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"FLOOR"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"FLOOR(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"FLOOR(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -3998,18 +3449,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"CEIL"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"CEIL"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"CEIL(".as_ptr())
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"CEIL(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -4024,21 +3464,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    < c_int::from((cs!(c"RANDOMP"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                    > c_int::from((cs!(c"RANDOMP"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp(
-                                        (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                        c"RANDOMP(".as_ptr(),
-                                    )
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMP(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
@@ -4076,18 +3502,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         60 => {
                             /* expr: IFUNCTION sexpr ',' sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"STRSTR("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"STRSTR("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"STRSTR(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 4].astr, c"STRSTR(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -4118,18 +3533,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         61 => {
                             /* expr: FUNCTION expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
                                     >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
                                     && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
@@ -4179,18 +3583,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"ARCTAN2("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"ARCTAN2("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARCTAN2(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARCTAN2(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
@@ -4248,18 +3641,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"MIN("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"MIN("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"MIN(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MIN(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                     > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                 {
@@ -4316,18 +3698,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"MAX("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"MAX("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"MAX(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MAX(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                     > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                 {
@@ -4384,18 +3755,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"SETNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"SETNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"SETNULL(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"SETNULL(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
@@ -4432,18 +3792,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 9966817879908499150;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"AXISELEM"))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"AXISELEM"))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"AXISELEM(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -4497,18 +3846,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 9966817879908499150;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"NAXES("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"NAXES("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -4571,18 +3909,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 9966817879908499150;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"ARRAY("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"ARRAY("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
@@ -4606,18 +3933,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         62 => {
                             /* expr: FUNCTION expr ',' expr ',' expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 8].astr[0])
-                                < c_int::from((cs!(c"ANGSEP("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 8].astr[0])
-                                > c_int::from((cs!(c"ANGSEP("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 8].astr).as_mut_ptr(), c"ANGSEP(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 8].astr, c"ANGSEP(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
@@ -5580,18 +4896,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         102 => {
                             /* bexpr: BFUNCTION expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -5622,18 +4927,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         103 => {
                             /* bexpr: BFUNCTION bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -5664,18 +4958,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         104 => {
                             /* bexpr: BFUNCTION sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                < c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
-                                > c_int::from((cs!(c"ISNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
@@ -5704,18 +4987,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         105 => {
                             /* bexpr: FUNCTION bexpr ',' bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
                                     >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
                                     && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
@@ -5795,18 +5067,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     cs!(c"Dimensions of NEAR arguments are not compatible"),
                                 );
                                 current_block = 4830776507462815627;
-                            } else if (if c_int::from(yyvs[yyvsp - 6].astr[0])
-                                < c_int::from((cs!(c"NEAR("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 6].astr[0])
-                                > c_int::from((cs!(c"NEAR("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 6].astr).as_mut_ptr(), c"NEAR(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 6].astr, c"NEAR(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
@@ -5916,18 +5177,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     cs!(c"Dimensions of CIRCLE arguments are not compatible"),
                                 );
                                 current_block = 4830776507462815627;
-                            } else if (if c_int::from(yyvs[yyvsp - 10].astr[0])
-                                < c_int::from((cs!(c"CIRCLE("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 10].astr[0])
-                                > c_int::from((cs!(c"CIRCLE("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 10].astr).as_mut_ptr(), c"CIRCLE(".as_ptr())
-                            }) == 0
-                            {
+                            } else if astr_eq(&yyvs[yyvsp - 10].astr, c"CIRCLE(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
@@ -6074,18 +5324,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 fits_parser_yyerror(lParse, cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"));
                                 current_block = 4830776507462815627;
                             } else {
-                                if (if c_int::from(yyvs[yyvsp - 14].astr[0])
-                                    < c_int::from((cs!(c"BOX("))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 14].astr[0])
-                                    > c_int::from((cs!(c"BOX("))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp((yyvs[yyvsp - 14].astr).as_mut_ptr(), c"BOX(".as_ptr())
-                                }) == 0
-                                {
+                                if astr_eq(&yyvs[yyvsp - 14].astr, c"BOX(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
@@ -6100,21 +5339,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         yyvs[yyvsp - 1].Node,
                                     );
                                     current_block = 3023179740610631044;
-                                } else if (if c_int::from(yyvs[yyvsp - 14].astr[0])
-                                    < c_int::from((cs!(c"ELLIPSE"))[0])
-                                {
-                                    -(1)
-                                } else if c_int::from(yyvs[yyvsp - 14].astr[0])
-                                    > c_int::from((cs!(c"ELLIPSE"))[0])
-                                {
-                                    1
-                                } else {
-                                    strcmp(
-                                        (yyvs[yyvsp - 14].astr).as_mut_ptr(),
-                                        c"ELLIPSE(".as_ptr(),
-                                    )
-                                }) == 0
-                                {
+                                } else if astr_eq(&yyvs[yyvsp - 14].astr, c"ELLIPSE(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
@@ -6668,18 +5893,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         134 => {
                             /* sexpr: FUNCTION sexpr ',' sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                < c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
-                                > c_int::from((cs!(c"DEFNULL("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
                                 /* Since the output can be calculated now, as a constant
                                 scalar, we must precalculate the output size, in
                                 order to avoid an overflow. */
@@ -6734,18 +5948,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         135 => {
                             /* sexpr: FUNCTION sexpr ',' expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 6].astr[0])
-                                < c_int::from((cs!(c"STRMID("))[0])
-                            {
-                                -(1)
-                            } else if c_int::from(yyvs[yyvsp - 6].astr[0])
-                                > c_int::from((cs!(c"STRMID("))[0])
-                            {
-                                1
-                            } else {
-                                strcmp((yyvs[yyvsp - 6].astr).as_mut_ptr(), c"STRMID(".as_ptr())
-                            }) == 0
-                            {
+                            if astr_eq(&yyvs[yyvsp - 6].astr, c"STRMID(") {
                                 let mut len: c_int = 0;
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
