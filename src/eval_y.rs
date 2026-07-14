@@ -6412,7 +6412,7 @@ fn New_GTI(
                         &mut xexpr,
                         &mut lParse.status,
                     );
-                    if *extname.as_mut_ptr() != 0 {
+                    if extname[0] != 0 {
                         ffmnhd_safe(fptr, movetotype, &extname, extvers, &mut lParse.status);
                         ffghdn_safe(fptr, &mut hdunum);
                     } else if hdunum != 0 {
