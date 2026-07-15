@@ -69,7 +69,7 @@ use crate::c_types::{
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{
-    CONST_OP, MAXDIMS, MAXSUBS, Node, NodeBuf, ParseData, data_union, lval, yyscan_t,
+    CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeBuf, ParseData, data_union, lval, yyscan_t,
 };
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::fits_parser_yytokentype::BITSTR;
@@ -630,11 +630,24 @@ fn New_Const(
             this_node.DoOp = None;
             this_node.nSubNodes = 0;
             this_node.ntype = returnType;
-            memcpy(
-                &mut this_node.value.data as *const _ as *mut c_void,
-                value,
-                (len as c_ulong).try_into().unwrap(),
-            );
+            // Store the constant as a typed value rather than memcpy'ing raw
+            // bytes into the storage (which would depend on its in-memory
+            // layout).
+            if returnType == fits_parser_yytokentype::DOUBLE as c_int {
+                this_node.value.data.dbl = *value.cast::<f64>();
+            } else if returnType == fits_parser_yytokentype::LONG as c_int {
+                this_node.value.data.lng = *value.cast::<c_long>();
+            } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
+                this_node.value.data.log = *value.cast::<c_char>();
+            } else {
+                // STRING / BITSTR: copy the bytes into the fixed astr buffer.
+                let n = (len as usize).min(MAX_STRLEN as usize);
+                core::ptr::copy_nonoverlapping(
+                    value.cast::<c_char>(),
+                    this_node.value.data.astr.as_mut_ptr(),
+                    n,
+                );
+            }
             this_node.value.undef = ptr::null_mut();
             this_node.value.nelem = 1;
             this_node.value.naxis = 1;

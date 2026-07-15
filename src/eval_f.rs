@@ -1911,11 +1911,22 @@ pub(crate) fn fits_parser_workfn_safe(
                 | fits_parser_yytokentype::DOUBLE => {
                     if constant != 0 {
                         let undef: c_char = 0;
+                        // Materialize the constant scalar into a typed cell so
+                        // ffcvtn reads it without depending on the in-memory
+                        // layout of value.data.
+                        let mut const_cell = [0u8; 8];
+                        if lParse.datatype == fits_parser_yytokentype::DOUBLE as c_int {
+                            const_cell = result.value.data.dbl().to_ne_bytes();
+                        } else if lParse.datatype == fits_parser_yytokentype::LONG as c_int {
+                            const_cell = (result.value.data.lng() as i64).to_ne_bytes();
+                        } else if lParse.datatype == fits_parser_yytokentype::BOOLEAN as c_int {
+                            const_cell[0] = result.value.data.log() as u8;
+                        }
                         for kk in 0..ntodo {
                             for jj in 0..pv.repeat {
                                 ffcvtn(
                                     lParse.datatype,
-                                    (&(result.value.data) as *const data_union).cast::<c_void>(),
+                                    const_cell.as_ptr().cast::<c_void>(),
                                     &undef,
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
