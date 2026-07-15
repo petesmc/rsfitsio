@@ -154,6 +154,51 @@ impl Default for data_union {
     }
 }
 
+/// Typed read accessors over `data_union`. Call sites use these instead of
+/// reading the union fields directly, so the backing storage can later be
+/// swapped for a typed enum by reimplementing only these methods (see
+/// PLAN_union_enum.md). Writes stay as place-assignments to the fields for now
+/// (borrow-friendly), and become enum constructions when the storage is swapped.
+/// The pointer getters all view the same underlying result-buffer pointer, typed
+/// per the node's `ntype`.
+impl data_union {
+    // --- scalar constant getters ---
+    pub fn dbl(&self) -> f64 {
+        unsafe { self.dbl }
+    }
+    pub fn lng(&self) -> c_long {
+        unsafe { self.lng }
+    }
+    pub fn log(&self) -> c_char {
+        unsafe { self.log }
+    }
+
+    // --- fixed-size string constant buffer (astr) ---
+    pub fn astr(&self) -> &[c_char; MAX_STRLEN as usize] {
+        unsafe { &self.astr }
+    }
+    pub fn astr_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
+        unsafe { &mut self.astr }
+    }
+
+    // --- result-buffer views (the pointer variants all alias one buffer) ---
+    pub fn dblptr(&self) -> *mut f64 {
+        unsafe { self.dblptr }
+    }
+    pub fn lngptr(&self) -> *mut c_long {
+        unsafe { self.lngptr }
+    }
+    pub fn logptr(&self) -> *mut c_char {
+        unsafe { self.logptr }
+    }
+    pub fn strptr(&self) -> *mut *mut c_char {
+        unsafe { self.strptr }
+    }
+    pub fn ptr(&self) -> *mut c_void {
+        unsafe { self.ptr }
+    }
+}
+
 #[derive(Default, Debug, Copy, Clone)]
 pub struct lval {
     pub nelem: c_long,

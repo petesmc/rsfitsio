@@ -217,7 +217,7 @@ pub fn fffrow_safe(
 
     if constant {
         /* No need to call parser... have result from ffiprs */
-        result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log };
+        result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log() };
         *n_good_rows = nrows;
 
         for elem in 0..nrows {
@@ -444,7 +444,7 @@ pub fn ffsrow_safe(
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
 
-            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log;
+            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
 
             for ntodo in 0..inExt.numRows {
                 *Info.dataPtr.cast::<c_char>().add(ntodo as usize) = result;
@@ -1227,7 +1227,7 @@ pub fn ffcalc_rng_safe(
                 ffukyd_safe(
                     outfptr,
                     parName,
-                    unsafe { result.value.data.dbl },
+                    unsafe { result.value.data.dbl() },
                     15,
                     Some(parInfo),
                     status,
@@ -1237,7 +1237,7 @@ pub fn ffcalc_rng_safe(
                 ffukyj_safe(
                     outfptr,
                     parName,
-                    unsafe { result.value.data.lng } as LONGLONG,
+                    unsafe { result.value.data.lng() } as LONGLONG,
                     Some(parInfo),
                     status,
                 );
@@ -1246,21 +1246,21 @@ pub fn ffcalc_rng_safe(
                 ffukyl_safe(
                     outfptr,
                     parName,
-                    i32::from(unsafe { result.value.data.log }),
+                    i32::from(unsafe { result.value.data.log() }),
                     Some(parInfo),
                     status,
                 );
             }
             TBIT | TSTRING => {
                 if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
-                    ffphis_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                    ffphis_safe(outfptr, result.value.data.astr(), status);
                 } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
-                    ffpcom_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                    ffpcom_safe(outfptr, result.value.data.astr(), status);
                 } else {
                     ffukys_safe(
                         outfptr,
                         parName,
-                        unsafe { &result.value.data.astr },
+                        result.value.data.astr(),
                         Some(parInfo),
                         status,
                     );
@@ -1586,7 +1586,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                 } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     fits_free_region(Box::from_raw(
-                        (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
+                        (lParse.Nodes[i]).value.data.ptr().cast::<SAORegion>(),
                     ));
                 }
             }
@@ -1937,7 +1937,7 @@ pub(crate) fn fits_parser_workfn_safe(
                         if (pv.repeat) == result.value.nelem {
                             ffcvtn(
                                 lParse.datatype,
-                                result.value.data.ptr,
+                                result.value.data.ptr(),
                                 result.value.undef,
                                 result.value.nelem * ntodo,
                                 (*(pv.userInfo)).datatype,
@@ -1985,7 +1985,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             for kk in 0..ntodo {
                                 ffcvtn(
                                     lParse.datatype,
-                                    (result.value.data.ptr as *const c_char)
+                                    (result.value.data.ptr() as *const c_char)
                                         .add(
                                             (kk * result.value.nelem * (pv.resDataSize))
                                                 .try_into()
@@ -2067,7 +2067,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                             0;
                                     }
                                     if constant != 0 {
-                                        if result.value.data.astr[jj as usize] == b'1' as c_char {
+                                        if result.value.data.astr()[jj as usize] == b'1' as c_char {
                                             *(pv.Data
                                                 .cast::<c_uchar>()
                                                 .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
@@ -2091,7 +2091,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             if constant != 0 {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
-                                        let r = if (result.value.data.astr[jj as usize])
+                                        let r = if (result.value.data.astr()[jj as usize])
                                             == b'1' as c_char
                                         {
                                             1
@@ -2132,7 +2132,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        result.value.data.astr.as_ptr(),
+                                        result.value.data.astr().as_ptr(),
                                     );
                                 }
                             } else {
@@ -2141,7 +2141,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                        *(result.value.data.strptr().add(jj.try_into().unwrap())),
                                     );
                                 }
                             }
@@ -2172,7 +2172,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             for jj in 0..ntodo {
                                 strcpy(
                                     *(pv.Data.cast::<*mut c_char>().add(jj.try_into().unwrap())),
-                                    result.value.data.astr.as_ptr(),
+                                    result.value.data.astr().as_ptr(),
                                 );
                             }
                         } else {
@@ -2190,7 +2190,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                        *(result.value.data.strptr().add(jj.try_into().unwrap())),
                                     );
                                 }
                             }
@@ -3436,7 +3436,7 @@ pub fn fffrwc_safe(
         if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
                 let result_node = lParse.Nodes[lParse.resultNode as usize];
-                result = (result_node).value.data.log;
+                result = (result_node).value.data.log();
                 let mut elem = ntimes;
                 while elem > 0 {
                     elem -= 1;
@@ -3562,7 +3562,7 @@ pub fn ffffrw_safer(
     *rownum = 0;
     {
         if constant != 0 {
-            result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log };
+            result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log() };
             if result != 0 {
                 ffgnrw_safe(fptr, &mut nelem, status);
                 if nelem != 0 {
@@ -3885,13 +3885,13 @@ pub(crate) fn ffffrw_work_safe(
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
             if result.operation == CONST_OP {
-                if result.value.data.log != 0 {
+                if result.value.data.log() != 0 {
                     *(workData.prownum) = firstrow;
                     return -1;
                 }
             } else {
                 for idx in 0..(nrows as usize) {
-                    if *(result.value.data.logptr.add(idx)) != 0
+                    if *(result.value.data.logptr().add(idx)) != 0
                         && *(result.value.undef.add(idx)) == 0
                     {
                         *(workData.prownum) = firstrow + idx as c_long;
@@ -4296,7 +4296,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyd_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.dbl,
+                        result.value.data.dbl(),
                         15,
                         par_info,
                         status,
@@ -4306,7 +4306,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyj_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.lng as LONGLONG,
+                        result.value.data.lng() as LONGLONG,
                         par_info,
                         status,
                     );
@@ -4315,7 +4315,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyl_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.log.into(),
+                        result.value.data.log().into(),
                         par_info,
                         status,
                     );
@@ -4323,8 +4323,8 @@ pub fn fits_pixel_filter_safer(
                 TBIT | TSTRING => {
                     let str_val = unsafe {
                         core::slice::from_raw_parts(
-                            result.value.data.astr.as_ptr(),
-                            strlen_safe(&result.value.data.astr),
+                            result.value.data.astr().as_ptr(),
+                            strlen_safe(result.value.data.astr()),
                         )
                     };
                     ffukys_safe(
