@@ -127,77 +127,127 @@ impl NodeBuf {
     }
 }
 
+/// A node's value payload. Formerly an untyped `union`; now a discriminated
+/// enum so a value can't be read as the wrong kind.
+///
+/// - `None` is the default (unset) value; pointer getters read it as null and
+///   scalar getters as zero, matching the old all-zero default union.
+/// - `Double`/`Long`/`Logical`/`Str` are scalar constant values (one per
+///   `Node.ntype`; no cross-type punning — verified before the migration).
+/// - `Buffer` is the per-node result-buffer pointer (numeric array, string
+///   `strptr` array, or GTI/region data). The typed pointer getters all view
+///   this one pointer, cast per the node's `ntype`.
+///
+/// Getters are lenient (zero/null on a `None`, `debug_assert!` on a genuine
+/// wrong-variant read) to preserve the old union's read-anything behaviour.
 #[derive(Copy, Clone)]
-pub union data_union {
-    pub dbl: f64,
-    pub lng: c_long,
-    pub log: c_char,
-    pub astr: [c_char; MAX_STRLEN as usize],
-    pub dblptr: *mut f64,
-    pub lngptr: *mut c_long,
-    pub logptr: *mut c_char,
-    pub strptr: *mut *mut c_char,
-    pub ptr: *mut c_void,
+pub enum DataVal {
+    None,
+    Double(f64),
+    Long(c_long),
+    Logical(c_char),
+    Str([c_char; MAX_STRLEN as usize]),
+    Buffer(*mut c_void),
 }
 
-impl core::fmt::Debug for data_union {
+impl core::fmt::Debug for DataVal {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng })
+        write!(f, "DataVal({:?})", self.lng())
     }
 }
 
-impl Default for data_union {
+impl Default for DataVal {
     fn default() -> Self {
-        data_union {
-            ptr: core::ptr::null_mut(),
-        }
+        DataVal::None
     }
 }
 
-/// Typed read accessors over `data_union`. Call sites use these instead of
-/// reading the union fields directly, so the backing storage can later be
-/// swapped for a typed enum by reimplementing only these methods (see
-/// PLAN_union_enum.md). Writes stay as place-assignments to the fields for now
-/// (borrow-friendly), and become enum constructions when the storage is swapped.
-/// The pointer getters all view the same underlying result-buffer pointer, typed
-/// per the node's `ntype`.
-impl data_union {
+impl DataVal {
     // --- scalar constant getters ---
     pub fn dbl(&self) -> f64 {
-        unsafe { self.dbl }
+        match self {
+            DataVal::Double(v) => *v,
+            DataVal::None => 0.0,
+            _ => {
+                debug_assert!(false, "dbl() on non-Double DataVal");
+                0.0
+            }
+        }
     }
     pub fn lng(&self) -> c_long {
-        unsafe { self.lng }
+        match self {
+            DataVal::Long(v) => *v,
+            DataVal::None => 0,
+            _ => {
+                debug_assert!(false, "lng() on non-Long DataVal");
+                0
+            }
+        }
     }
     pub fn log(&self) -> c_char {
-        unsafe { self.log }
+        match self {
+            DataVal::Logical(v) => *v,
+            DataVal::None => 0,
+            _ => {
+                debug_assert!(false, "log() on non-Logical DataVal");
+                0
+            }
+        }
     }
 
     // --- fixed-size string constant buffer (astr) ---
     pub fn astr(&self) -> &[c_char; MAX_STRLEN as usize] {
-        unsafe { &self.astr }
+        match self {
+            DataVal::Str(a) => a,
+            _ => {
+                debug_assert!(false, "astr() on non-Str DataVal");
+                const ZEROS: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
+                &ZEROS
+            }
+        }
     }
+    /// Mutable view of the string buffer, initialising the value to an empty
+    /// `Str` first if needed so callers can build a string in place.
     pub fn astr_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
-        unsafe { &mut self.astr }
+        if !matches!(self, DataVal::Str(_)) {
+            *self = DataVal::Str([0; MAX_STRLEN as usize]);
+        }
+        match self {
+            DataVal::Str(a) => a,
+            _ => unreachable!(),
+        }
     }
 
-    // --- result-buffer views (the pointer variants all alias one buffer) ---
+    // --- result-buffer views (all pointer kinds view one Buffer pointer) ---
+    fn buffer_ptr(&self) -> *mut c_void {
+        match self {
+            DataVal::Buffer(p) => *p,
+            DataVal::None => core::ptr::null_mut(),
+            _ => {
+                debug_assert!(false, "buffer view on a scalar DataVal");
+                core::ptr::null_mut()
+            }
+        }
+    }
     pub fn dblptr(&self) -> *mut f64 {
-        unsafe { self.dblptr }
+        self.buffer_ptr().cast::<f64>()
     }
     pub fn lngptr(&self) -> *mut c_long {
-        unsafe { self.lngptr }
+        self.buffer_ptr().cast::<c_long>()
     }
     pub fn logptr(&self) -> *mut c_char {
-        unsafe { self.logptr }
+        self.buffer_ptr().cast::<c_char>()
     }
     pub fn strptr(&self) -> *mut *mut c_char {
-        unsafe { self.strptr }
+        self.buffer_ptr().cast::<*mut c_char>()
     }
     pub fn ptr(&self) -> *mut c_void {
-        unsafe { self.ptr }
+        self.buffer_ptr()
     }
 }
+
+/// Backwards-compatible alias for the former union type name.
+pub use DataVal as data_union;
 
 #[derive(Default, Debug, Copy, Clone)]
 pub struct lval {

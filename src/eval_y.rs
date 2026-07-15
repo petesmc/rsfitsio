@@ -634,17 +634,17 @@ fn New_Const(
             // bytes into the storage (which would depend on its in-memory
             // layout).
             if returnType == fits_parser_yytokentype::DOUBLE as c_int {
-                this_node.value.data.dbl = *value.cast::<f64>();
+                this_node.value.data = data_union::Double(*value.cast::<f64>());
             } else if returnType == fits_parser_yytokentype::LONG as c_int {
-                this_node.value.data.lng = *value.cast::<c_long>();
+                this_node.value.data = data_union::Long(*value.cast::<c_long>());
             } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
-                this_node.value.data.log = *value.cast::<c_char>();
+                this_node.value.data = data_union::Logical(*value.cast::<c_char>());
             } else {
                 // STRING / BITSTR: copy the bytes into the fixed astr buffer.
                 let n = (len as usize).min(MAX_STRLEN as usize);
                 core::ptr::copy_nonoverlapping(
                     value.cast::<c_char>(),
-                    this_node.value.data.astr.as_mut_ptr(),
+                    this_node.value.data.astr_mut().as_mut_ptr(),
                     n,
                 );
             }
@@ -2751,7 +2751,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
-                                        .lng;
+                                        .lng();
                                     naxis =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis == 0 {
@@ -3941,7 +3941,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
-                                        .lng;
+                                        .lng();
                                     naxis_1 =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis_0 == 0 {
@@ -6025,7 +6025,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         len = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                             .value
                                             .data
-                                            .lng
+                                            .lng()
                                             as c_int;
                                     } else {
                                         /* Variable value: use the maximum possible (from $2) */
@@ -6631,7 +6631,8 @@ fn New_GTI(
             let that0_idx = Node0 as usize;
             (lParse.Nodes[that0_idx]).operation = CONST_OP;
             (lParse.Nodes[that0_idx]).DoOp = None;
-            (lParse.Nodes[that0_idx]).value.data.ptr = core::ptr::null_mut::<c_void>();
+            (lParse.Nodes[that0_idx]).value.data =
+                data_union::Buffer(core::ptr::null_mut::<c_void>());
 
             /*  Read in START/STOP times  */
 
@@ -6651,7 +6652,7 @@ fn New_GTI(
                 // dblptr + nrows); owned by lParse.node_buffers.
                 let n_bytes = (2 * nrows) as usize * size_of::<c_double>();
                 let p = alloc_node_data(lParse, that0_idx, n_bytes);
-                (lParse.Nodes[that0_idx]).value.data.ptr = p;
+                (lParse.Nodes[that0_idx]).value.data = data_union::Buffer(p);
                 if p.is_null() {
                     lParse.status = 113 as c_int;
                     return -(1);
@@ -6967,7 +6968,8 @@ fn New_REG(
                     return -(1);
                 }
             };
-            (lParse.Nodes[that0_idx]).value.data.ptr = Box::into_raw(rgn_box).cast::<c_void>();
+            (lParse.Nodes[that0_idx]).value.data =
+                data_union::Buffer(Box::into_raw(rgn_box).cast::<c_void>());
             if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
                 && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
             {
@@ -7071,7 +7073,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
                 return -(1);
             }
             naxis = 1;
-            naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng;
+            naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng();
         } else if ((lParse.Nodes)[dimNode as usize]).operation == '{' as i32 {
             /* ARRAY(V,{a,b,c,d,e}) up to 5 dimensions */
 
@@ -7107,7 +7109,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
                     [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
                     .value
                     .data
-                    .lng;
+                    .lng();
                 i += 1;
             }
         } else {
@@ -7284,45 +7286,53 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                         None => ptr::null_mut(),
                     };
 
+                // Point the column node at its slice of the loaded column
+                // buffer. All the typed pointer views share one Buffer value.
                 match ((lParse.Nodes)[i as usize]).ntype.into() {
                     fits_parser_yytokentype::BITSTR => {
-                        let fresh12 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh12 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
-                        let fresh13 = &mut (((lParse.Nodes)[i as usize]).value).undef;
-                        *fresh13 = ptr::null_mut();
+                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast::<c_void>(),
+                        );
+                        (lParse.Nodes[i as usize]).value.undef = ptr::null_mut();
                     }
                     fits_parser_yytokentype::STRING => {
-                        let fresh14 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh14 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
-                        let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
-                        *fresh15 = (((lParse.varData)[column as usize]).undef)
-                            .as_deref_mut()
-                            .unwrap()[(rowOffset as usize)..]
-                            .as_mut_ptr();
+                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast::<c_void>(),
+                        );
+                        (lParse.Nodes[i as usize]).value.undef =
+                            (((lParse.varData)[column as usize]).undef)
+                                .as_deref_mut()
+                                .unwrap()[(rowOffset as usize)..]
+                                .as_mut_ptr();
                     }
                     fits_parser_yytokentype::BOOLEAN => {
-                        let fresh16 = &mut (((lParse.Nodes)[i as usize]).value).data.logptr;
-                        *fresh16 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_char)
-                            .offset(offset as isize);
+                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
+                                .offset(offset as isize)
+                                .cast::<c_void>(),
+                        );
                     }
                     fits_parser_yytokentype::LONG => {
-                        let fresh17 = &mut (((lParse.Nodes)[i as usize]).value).data.lngptr;
-                        *fresh17 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_long)
-                            .offset(offset as isize);
+                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
+                                .offset(offset as isize)
+                                .cast::<c_void>(),
+                        );
                     }
                     fits_parser_yytokentype::DOUBLE => {
-                        let fresh18 = &mut (((lParse.Nodes)[i as usize]).value).data.dblptr;
-                        *fresh18 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_double)
-                            .offset(offset as isize);
+                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
+                                .offset(offset as isize)
+                                .cast::<c_void>(),
+                        );
                     }
                     _ => {}
                 }
@@ -7433,7 +7443,7 @@ pub(crate) fn free_node_data(lParse: &mut ParseData, idx: usize) {
         // Legacy malloc'd pointer (e.g. GTI data); free with libc.
         unsafe { free((lParse.Nodes[idx]).value.data.ptr()) };
     }
-    (lParse.Nodes[idx]).value.data.ptr = core::ptr::null_mut();
+    (lParse.Nodes[idx]).value.data = data_union::Buffer(core::ptr::null_mut());
 }
 
 fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
@@ -7452,7 +7462,8 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
             let nrows = lParse.nRows as usize;
             let backing_len = (lParse.nRows * (nelem + 2)) as usize;
             let (strptr, backing) = alloc_str_node_data(lParse, this_node_idx, nrows, backing_len);
-            (lParse.Nodes[this_node_idx]).value.data.strptr = strptr;
+            (lParse.Nodes[this_node_idx]).value.data =
+                data_union::Buffer((strptr).cast::<c_void>());
             if strptr.is_null() {
                 lParse.status = MEMORY_ALLOCATION;
             } else {
@@ -7498,7 +7509,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
             // flags. Owned by lParse.node_buffers; data.ptr/undef are views.
             let n_bytes = ((size + 1) * elem) as usize;
             let p = alloc_node_data(lParse, this_node_idx, n_bytes);
-            (lParse.Nodes[this_node_idx]).value.data.ptr = p;
+            (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer(p);
             if p.is_null() {
                 lParse.status = MEMORY_ALLOCATION;
             } else {
@@ -7533,59 +7544,64 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     || x == fits_parser_yytokentype::FLTCAST as c_int =>
                 {
                     if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.dbl = that_node.value.data.lng() as c_double;
+                        (this_node).value.data =
+                            data_union::Double(that_node.value.data.lng() as c_double);
                     } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.dbl = if c_int::from(that_node.value.data.log()) != 0
-                        {
-                            1.0
-                        } else {
-                            0.0
-                        };
+                        (this_node).value.data =
+                            data_union::Double(if c_int::from(that_node.value.data.log()) != 0 {
+                                1.0
+                            } else {
+                                0.0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::LONG as c_int
                     || x == fits_parser_yytokentype::INTCAST as c_int =>
                 {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.lng = that_node.value.data.dbl() as c_long;
+                        (this_node).value.data =
+                            data_union::Long(that_node.value.data.dbl() as c_long);
                     } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.lng = if c_int::from(that_node.value.data.log()) != 0
-                        {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            data_union::Long(if c_int::from(that_node.value.data.log()) != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.log = if that_node.value.data.dbl() != 0.0 {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            data_union::Logical(if that_node.value.data.dbl() != 0.0 {
+                                1
+                            } else {
+                                0
+                            });
                     } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.log = if that_node.value.data.lng() != 0 {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            data_union::Logical(if that_node.value.data.lng() != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::UMINUS as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.dbl = -that_node.value.data.dbl();
+                        (this_node).value.data = data_union::Double(-that_node.value.data.dbl());
                     } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.lng = -that_node.value.data.lng();
+                        (this_node).value.data = data_union::Long(-that_node.value.data.lng());
                     }
                 }
                 x if x == fits_parser_yytokentype::NOT as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.log = if that_node.value.data.log() == 0 {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            data_union::Logical(if that_node.value.data.log() == 0 {
+                                1
+                            } else {
+                                0
+                            });
                     } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
                         bitnot(
                             ((this_node).value.data.astr_mut()).as_mut_ptr(),
@@ -7793,7 +7809,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         let rowOffset = ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[1]])
             .value
             .data
-            .lng;
+            .lng();
 
         Allocate_Ptrs(lParse, this_node_idx);
 
@@ -8081,15 +8097,19 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
         if const1 != 0 && const2 != 0 {
             match (lParse.Nodes[this_node_idx]).operation {
                 280 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 });
                 }
                 279 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = bitcmp(sptr1, sptr2);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(bitcmp(sptr1, sptr2));
                 }
                 281..=284 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(bitlgte(
+                        sptr1,
+                        (lParse.Nodes[this_node_idx]).operation,
+                        sptr2,
+                    ));
                 }
                 124 => {
                     bitor(
@@ -8116,10 +8136,12 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     );
                 }
                 291 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(0);
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
-                            (lParse.Nodes[this_node_idx]).value.data.lng += 1;
+                            (lParse.Nodes[this_node_idx]).value.data = data_union::Long(
+                                (lParse.Nodes[this_node_idx]).value.data.lng() + 1,
+                            );
                             (lParse.Nodes[this_node_idx]).value.data.lng();
                         }
                         sptr1 = sptr1.offset(1);
@@ -8229,7 +8251,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                             i += 1;
                         }
-                        (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                        (lParse.Nodes[that2_idx]).value.data = data_union::Long(previous);
                     }
                     _ => {}
                 }
@@ -8284,17 +8306,18 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             strcmp(sptr1, sptr2)
                         }) == 0,
                     );
-                    (lParse.Nodes[this_node_idx]).value.data.log = (if (lParse.Nodes[this_node_idx])
-                        .operation
-                        == fits_parser_yytokentype::EQ as c_int
-                    {
-                        val
-                    } else {
-                        c_int::from(val == 0)
-                    }) as c_char;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
+                        (if (lParse.Nodes[this_node_idx]).operation
+                            == fits_parser_yytokentype::EQ as c_int
+                        {
+                            val
+                        } else {
+                            c_int::from(val == 0)
+                        }) as c_char,
+                    );
                 }
                 281 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -8306,10 +8329,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 282 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -8321,10 +8345,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 284 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -8336,10 +8361,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 283 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -8351,7 +8377,8 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 43 => {
                     strcpy(
@@ -8591,38 +8618,40 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
         if vector1 == 0 && vector2 == 0 {
             match (lParse.Nodes[this_node_idx]).operation {
                 277 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
                 278 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
                 279 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = c_int::from(
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(c_int::from(
                         c_int::from(val1) != 0 && c_int::from(val2) != 0 || val1 == 0 && val2 == 0,
-                    ) as c_char;
+                    )
+                        as c_char);
                 }
                 280 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if c_int::from(val1) != 0
-                        && val2 == 0
-                        || val1 == 0 && c_int::from(val2) != 0
-                    {
-                        1
-                    } else {
-                        0
-                    };
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
+                        if c_int::from(val1) != 0 && val2 == 0
+                            || val1 == 0 && c_int::from(val2) != 0
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    );
                 }
                 291 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = c_long::from(val1);
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(c_long::from(val1));
                 }
                 _ => {}
             }
@@ -8651,7 +8680,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                     i += 1;
                 }
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = data_union::Long(previous);
             }
         } else {
             rows = lParse.nRows;
@@ -8680,7 +8709,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i_0 as isize) = 0;
                         i_0 += 1;
                     }
-                    (lParse.Nodes[that2_idx]).value.data.lng = previous_0;
+                    (lParse.Nodes[that2_idx]).value.data = data_union::Long(previous_0);
                 }
                 loop {
                     let fresh46 = rows;
@@ -8826,40 +8855,46 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
 
             match (lParse.Nodes[this_node_idx]).operation {
                 126 | 279 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 == val2 { 1 } else { 0 });
                 }
                 280 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 != val2 { 1 } else { 0 });
                 }
                 281 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 > val2 { 1 } else { 0 });
                 }
                 282 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 < val2 { 1 } else { 0 });
                 }
                 283 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
                 284 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
                 43 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 + val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 + val2);
                 }
                 45 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 - val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 - val2);
                 }
                 42 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 * val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 * val2);
                 }
                 38 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 & val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 & val2);
                 }
                 124 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 | val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 | val2);
                 }
                 94 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 ^ val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1 ^ val2);
                 }
                 37 => {
                     if val2 != 0 {
@@ -8867,10 +8902,11 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lngptr()
                                 .offset(elem as isize) = 0;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                data_union::Long(val1 % val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
@@ -8882,24 +8918,25 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lngptr()
                                 .offset(elem as isize) = LONG_MAX;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                data_union::Long(val1 / val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 286 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng =
-                        pow(val1 as c_double, val2 as c_double) as c_long;
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Long(pow(val1 as c_double, val2 as c_double) as c_long);
                 }
                 291 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(val1);
                 }
                 292 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(0);
                 }
                 _ => {}
             }
@@ -8956,7 +8993,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         i += 1;
                     }
                 }
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = data_union::Long(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -9155,59 +9192,66 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             /*  Result is a constant  */
             match (lParse.Nodes[this_node_idx]).operation {
                 126 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if fabs(val1 - val2) < APPROX { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if fabs(val1 - val2) < APPROX { 1 } else { 0 });
                 }
                 279 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 == val2 { 1 } else { 0 });
                 }
                 280 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 != val2 { 1 } else { 0 });
                 }
                 281 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 > val2 { 1 } else { 0 });
                 }
                 282 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 < val2 { 1 } else { 0 });
                 }
                 283 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
                 284 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
                 43 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 + val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(val1 + val2);
                 }
                 45 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 - val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(val1 - val2);
                 }
                 42 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 * val2;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(val1 * val2);
                 }
                 37 => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            val1 - val2 * c_double::from((val1 / val2) as c_int);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(
+                            val1 - val2 * c_double::from((val1 / val2) as c_int),
+                        );
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 47 => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = val1 / val2;
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(val1 / val2);
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 286 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pow(val1, val2);
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(pow(val1, val2));
                 }
                 291 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(val1);
                 }
                 292 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(0.0);
                 }
                 _ => {}
             }
@@ -9266,7 +9310,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         i += 1;
                     }
                 }
-                (lParse.Nodes[that2_idx]).value.data.dbl = previous;
+                (lParse.Nodes[that2_idx]).value.data = data_union::Double(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -9590,7 +9634,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             naxis: 0,
             naxes: [0; 5],
             undef: core::ptr::null_mut::<c_char>(),
-            data: data_union { dbl: 0. },
+            data: data_union::Double(0.),
         }; 10];
         let mut pNull: [c_char; 10] = [0; 10];
         let mut ival: c_long = 0;
@@ -9618,21 +9662,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::DOUBLE as c_int
                 {
-                    pVals[i as usize].data.dbl =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.dbl();
+                    pVals[i as usize].data =
+                        data_union::Double((lParse.Nodes[theParams[i as usize]]).value.data.dbl());
                 } else if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::LONG as c_int
                 {
-                    pVals[i as usize].data.lng =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.lng();
+                    pVals[i as usize].data =
+                        data_union::Long((lParse.Nodes[theParams[i as usize]]).value.data.lng());
                 } else if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::BOOLEAN as c_int
                 {
-                    pVals[i as usize].data.log =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.log();
+                    pVals[i as usize].data =
+                        data_union::Logical((lParse.Nodes[theParams[i as usize]]).value.data.log());
                 } else {
                     strcpy(
-                        (pVals[i as usize].data.astr).as_mut_ptr(),
+                        (pVals[i as usize].data.astr_mut()).as_mut_ptr(),
                         ((lParse.Nodes[theParams[i as usize]]).value.data.astr_mut()).as_mut_ptr(),
                     );
                 }
@@ -9658,26 +9702,29 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
+                            },
+                        ));
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BITSTR as c_int
                     {
                         strcpy(
                             ((lParse.Nodes[this_node_idx]).value.data.astr_mut()).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (pVals[0].data.astr_mut()).as_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -9685,35 +9732,39 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 1038 => {
                     if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            pVals[0].data.lng as c_double;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.lng() as c_double);
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1039 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(0.0);
                     current_block_139 = 7627602990488000394;
                 }
                 1037 => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
+                            },
+                        ));
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(pVals[0].data.lng());
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -9721,11 +9772,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.dbl()),
+                        ));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.lng as c_double));
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.lng() as c_double),
+                        ));
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -9733,43 +9786,46 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        dval = pVals[0].data.dbl;
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if dval > 0.0 { dval } else { -dval };
+                        dval = pVals[0].data.dbl();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(if dval > 0.0 { dval } else { -dval });
                     } else {
-                        ival = pVals[0].data.lng;
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if ival > 0 { ival } else { -ival };
+                        ival = pVals[0].data.lng();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(if ival > 0 { ival } else { -ival });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1040 => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 1;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Long(1);
                     current_block_139 = 7627602990488000394;
                 }
                 1030 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(0);
                     current_block_139 = 7627602990488000394;
                 }
                 1031 => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.log = pVals[0].data.log;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Logical(pVals[0].data.log());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::STRING as c_int
                     {
                         strcpy(
                             ((lParse.Nodes[this_node_idx]).value.data.astr_mut()).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (pVals[0].data.astr_mut()).as_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -9777,115 +9833,128 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 1046 => {
                     if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1004 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sin(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(sin(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1005 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cos(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(cos(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1006 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(tan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1007 => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = asin(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(asin(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1008 => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = acos(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(acos(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1009 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = atan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(atan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1010 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sinh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(sinh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1011 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cosh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(cosh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1012 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tanh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(tanh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1013 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = exp(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(exp(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1014 => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(log(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1015 => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log10(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(log10(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1016 => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = sqrt(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Double(sqrt(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1019 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = ceil(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(ceil(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1020 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(floor(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1021 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl + 0.5);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(floor(pVals[0].data.dbl() + 0.5));
                     current_block_139 = 7627602990488000394;
                 }
                 1018 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl =
-                        atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(atan2(pVals[0].data.dbl(), pVals[1].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 1041 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = angsep_calc(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Double(angsep_calc(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                    ));
                     current_block_139 = 15934000668868306918;
                 }
                 1022 => {
@@ -9895,21 +9964,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
+                                pVals[1].data.dbl()
+                            });
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng < pVals[1].data.lng {
-                                pVals[0].data.lng
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(if pVals[0].data.lng() < pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -9917,17 +9986,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BITSTR as c_int
                     {
                         strcpy(
                             ((lParse.Nodes[this_node_idx]).value.data.astr_mut()).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (pVals[0].data.astr_mut()).as_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -9936,96 +10007,100 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Double(if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
+                                pVals[1].data.dbl()
+                            });
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng > pVals[1].data.lng {
-                                pVals[0].data.lng
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Long(if pVals[0].data.lng() > pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 1026 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(bnear(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 1027 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = circle(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(circle(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 1028 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = saobox(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(saobox(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 1029 => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = ellipse(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(ellipse(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 1034 => {
                     match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
-                            (lParse.Nodes[this_node_idx]).value.data.log =
-                                (if c_int::from(pVals[2].data.log) != 0 {
-                                    c_int::from(pVals[0].data.log)
+                            (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
+                                (if c_int::from(pVals[2].data.log()) != 0 {
+                                    c_int::from(pVals[0].data.log())
                                 } else {
-                                    c_int::from(pVals[1].data.log)
-                                }) as c_char;
+                                    c_int::from(pVals[1].data.log())
+                                }) as c_char,
+                            );
                         }
                         fits_parser_yytokentype::LONG => {
-                            (lParse.Nodes[this_node_idx]).value.data.lng =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.lng
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                data_union::Long(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.lng()
                                 } else {
-                                    pVals[1].data.lng
-                                };
+                                    pVals[1].data.lng()
+                                });
                         }
                         fits_parser_yytokentype::DOUBLE => {
-                            (lParse.Nodes[this_node_idx]).value.data.dbl =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.dbl
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                data_union::Double(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.dbl()
                                 } else {
-                                    pVals[1].data.dbl
-                                };
+                                    pVals[1].data.dbl()
+                                });
                         }
                         fits_parser_yytokentype::STRING => {
                             strcpy(
                                 ((lParse.Nodes[this_node_idx]).value.data.astr_mut()).as_mut_ptr(),
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    (pVals[0].data.astr).as_mut_ptr()
+                                if c_int::from(pVals[2].data.log()) != 0 {
+                                    (pVals[0].data.astr_mut()).as_mut_ptr()
                                 } else {
-                                    (pVals[1].data.astr).as_mut_ptr()
+                                    (pVals[1].data.astr_mut()).as_mut_ptr()
                                 },
                             );
                         }
@@ -10041,22 +10116,23 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         lParse,
                         dest_str,
                         dest_len,
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        (pVals[0].data.astr_mut()).as_mut_ptr(),
                         pVals[0].nelem as c_int,
-                        pVals[1].data.lng as c_int,
+                        pVals[1].data.lng() as c_int,
                     );
                     current_block_139 = 7627602990488000394;
                 }
                 1045 => {
                     let res: *mut c_char = strstr(
-                        (pVals[0].data.astr).as_mut_ptr(),
-                        (pVals[1].data.astr).as_mut_ptr(),
+                        (pVals[0].data.astr_mut()).as_mut_ptr(),
+                        (pVals[1].data.astr_mut()).as_mut_ptr(),
                     );
                     if res.is_null() {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(0);
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            res.offset_from((pVals[0].data.astr).as_mut_ptr()) as c_long + 1;
+                        (lParse.Nodes[this_node_idx]).value.data = data_union::Long(
+                            res.offset_from((pVals[0].data.astr_mut()).as_mut_ptr()) as c_long + 1,
+                        );
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10066,17 +10142,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             }
             if current_block_139 == 15934000668868306918 {
                 if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Double(pVals[0].data.dbl());
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::LONG as c_int
                 {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        data_union::Long(pVals[0].data.lng());
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                 {
                     strcpy(
                         ((lParse.Nodes[this_node_idx]).value.data.astr_mut()).as_mut_ptr(),
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        (pVals[0].data.astr_mut()).as_mut_ptr(),
                     );
                 }
             }
@@ -10132,7 +10210,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     1050 => {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
-                        let ipos: c_long = pVals[1].data.lng - 1;
+                        let ipos: c_long = pVals[1].data.lng() - 1;
                         let naxis: c_int = (lParse.Nodes[this_node_idx]).value.naxis;
                         let mut j: c_int = 0;
                         if ipos < 0 || ipos >= 5 as c_long {
@@ -10218,14 +10296,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) =
-                                        if pVals[0].data.dbl < 0.0 { 1 } else { 0 };
+                                        if pVals[0].data.dbl() < 0.0 { 1 } else { 0 };
                                     if *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize)
                                         == 0
                                     {
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
                                             .offset(elem as isize) =
-                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl()));
                                     }
                                 }
                             } else {
@@ -10268,14 +10346,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
-                                    if pVals[0].data.lng < 0 { 1 } else { 0 };
+                                    if pVals[0].data.lng() < 0 { 1 } else { 0 };
                                 if *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize)
                                     == 0
                                 {
                                     *((lParse.Nodes[this_node_idx]).value.data.lngptr())
                                         .offset(elem as isize) = c_long::from(
-                                        simplerng_getpoisson(pVals[0].data.lng as c_double),
+                                        simplerng_getpoisson(pVals[0].data.lng() as c_double),
                                     );
                                 }
                             }
@@ -10924,34 +11002,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .logptr())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .logptr())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
                                     *((lParse.Nodes[this_node_idx]).value.data.logptr())
-                                        .offset(elem as isize) = pVals[1].data.log;
+                                        .offset(elem as isize) = pVals[1].data.log();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.data.logptr())
-                                        .offset(elem as isize) = pVals[0].data.log;
+                                        .offset(elem as isize) = pVals[0].data.log();
                                 }
                             }
                         },
@@ -10981,34 +11061,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lngptr())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lngptr())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
                                     *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                        .offset(elem as isize) = pVals[1].data.lng;
+                                        .offset(elem as isize) = pVals[1].data.lng();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                        .offset(elem as isize) = pVals[0].data.lng;
+                                        .offset(elem as isize) = pVals[0].data.lng();
                                 }
                             }
                         },
@@ -11038,34 +11120,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dblptr())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dblptr())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
                                     *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                        .offset(elem as isize) = pVals[1].data.dbl;
+                                        .offset(elem as isize) = pVals[1].data.dbl();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                        .offset(elem as isize) = pVals[0].data.dbl;
+                                        .offset(elem as isize) = pVals[0].data.dbl();
                                 }
                             }
                         },
@@ -11087,7 +11171,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
+                                        (pVals[i as usize].data.astr_mut()).as_mut_ptr(),
                                         *((lParse.Nodes[theParams[i as usize]])
                                             .value
                                             .data
@@ -11102,7 +11186,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 strcpy(
                                     *((lParse.Nodes[this_node_idx]).value.data.strptr())
                                         .offset(row as isize),
-                                    (pVals[1].data.astr).as_mut_ptr(),
+                                    (pVals[1].data.astr_mut()).as_mut_ptr(),
                                 );
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
@@ -11110,7 +11194,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 strcpy(
                                     *((lParse.Nodes[this_node_idx]).value.data.strptr())
                                         .offset(row as isize),
-                                    (pVals[0].data.astr).as_mut_ptr(),
+                                    (pVals[0].data.astr_mut()).as_mut_ptr(),
                                 );
                             }
                         },
@@ -11506,22 +11590,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -11538,7 +11624,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if *fresh138 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr())
                                     .offset(elem as isize) =
-                                    atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                                    atan2(pVals[0].data.dbl(), pVals[1].data.dbl());
                             }
                         }
                     },
@@ -11564,22 +11650,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -11596,10 +11684,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if *fresh142 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr())
                                     .offset(elem as isize) = angsep_calc(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
                                 );
                             }
                         }
@@ -11763,24 +11851,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = data_union::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lngptr())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = data_union::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lngptr())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -11797,21 +11887,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng < pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() < pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
@@ -11841,24 +11931,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = data_union::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dblptr())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = data_union::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dblptr())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -11875,21 +11967,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
@@ -12055,24 +12147,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = data_union::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lngptr())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = data_union::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lngptr())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12089,21 +12183,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng > pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() > pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
@@ -12133,24 +12227,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = data_union::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dblptr())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = data_union::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dblptr())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12167,21 +12263,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
@@ -12210,22 +12306,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12240,8 +12338,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             ) as c_char;
                             if *fresh168 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr())
-                                    .offset(elem as isize) =
-                                    bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                                    .offset(elem as isize) = bnear(
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                );
                             }
                         }
                     },
@@ -12267,22 +12368,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12300,11 +12403,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if *fresh172 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr())
                                     .offset(elem as isize) = circle(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
                                 );
                             }
                         }
@@ -12331,22 +12434,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12366,13 +12471,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if *fresh176 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr())
                                     .offset(elem as isize) = saobox(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
@@ -12399,22 +12504,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(elem as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl = *((lParse.Nodes
-                                        [theParams[i as usize]])
-                                        .value
-                                        .data
-                                        .dblptr())
-                                    .offset(row as isize);
+                                    pVals[i as usize].data = data_union::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dblptr())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12434,13 +12541,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if *fresh180 == 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.logptr())
                                     .offset(elem as isize) = ellipse(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
@@ -12461,15 +12568,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(elem as isize);
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(row as isize);
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -12481,22 +12590,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .logptr())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .logptr())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -12506,14 +12617,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh184 = pNull[2];
                                 if *fresh184 == 0 {
-                                    if pVals[2].data.log != 0 {
+                                    if pVals[2].data.log() != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.data.logptr())
-                                            .offset(elem as isize) = pVals[0].data.log;
+                                            .offset(elem as isize) = pVals[0].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.data.logptr())
-                                            .offset(elem as isize) = pVals[1].data.log;
+                                            .offset(elem as isize) = pVals[1].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -12535,15 +12646,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(elem as isize);
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(row as isize);
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -12555,22 +12668,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lngptr())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lngptr())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -12580,14 +12695,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh188 = pNull[2];
                                 if *fresh188 == 0 {
-                                    if pVals[2].data.log != 0 {
+                                    if pVals[2].data.log() != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -12609,15 +12724,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(elem as isize);
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
+                                    pVals[2].data = data_union::Logical(
                                         *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                            .offset(row as isize);
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -12629,22 +12746,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = data_union::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dblptr())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = data_union::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dblptr())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -12654,14 +12773,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh192 = pNull[2];
                                 if *fresh192 == 0 {
-                                    if pVals[2].data.log != 0 {
+                                    if pVals[2].data.log() != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -12675,9 +12794,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 break;
                             }
                             if vector[2] != 0 {
-                                pVals[2].data.log =
+                                pVals[2].data = data_union::Logical(
                                     *((lParse.Nodes[theParams[2]]).value.data.logptr())
-                                        .offset(row as isize);
+                                        .offset(row as isize),
+                                );
                                 pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                     .offset(row as isize);
                             }
@@ -12690,7 +12810,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 if vector[i as usize] != 0 {
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
+                                        (pVals[i as usize].data.astr_mut()).as_mut_ptr(),
                                         *((lParse.Nodes[theParams[i as usize]])
                                             .value
                                             .data
@@ -12706,11 +12826,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(row as isize);
                             *fresh195 = pNull[2];
                             if *fresh195 == 0 {
-                                if pVals[2].data.log != 0 {
+                                if pVals[2].data.log() != 0 {
                                     strcpy(
                                         *((lParse.Nodes[this_node_idx]).value.data.strptr())
                                             .offset(row as isize),
-                                        (pVals[0].data.astr).as_mut_ptr(),
+                                        (pVals[0].data.astr_mut()).as_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[0];
@@ -12718,7 +12838,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     strcpy(
                                         *((lParse.Nodes[this_node_idx]).value.data.strptr())
                                             .offset(row as isize),
-                                        (pVals[1].data.astr).as_mut_ptr(),
+                                        (pVals[1].data.astr_mut()).as_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[1];
@@ -13009,7 +13129,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free_node_data(lParse, this_node_idx);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer(ptr::null_mut());
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -13021,7 +13141,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     free_node_data(lParse, this_node_idx);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                    (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer(ptr::null_mut());
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                     || (lParse.Nodes[this_node_idx]).ntype
@@ -13080,7 +13200,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .ptr
+                                .ptr()
                                 .cast::<c_char>()
                                 .offset(
                                     (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -13090,7 +13210,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[theVar])
                                 .value
                                 .data
-                                .ptr
+                                .ptr()
                                 .cast::<c_char>()
                                 .offset((elem * dsize) as isize)
                                 as *const c_void,
@@ -13118,7 +13238,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     cs!(c"Null encountered as vector index"),
                                 );
                                 free_node_data(lParse, this_node_idx);
-                                (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                                (lParse.Nodes[this_node_idx]).value.data =
+                                    data_union::Buffer(ptr::null_mut());
                                 break;
                             } else {
                                 dimVals[i as usize] =
@@ -13196,7 +13317,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                         free_node_data(lParse, this_node_idx);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Buffer(ptr::null_mut());
                     }
                     row += 1;
                 }
@@ -13208,7 +13330,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
                         free_node_data(lParse, this_node_idx);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            data_union::Buffer(ptr::null_mut());
                         break;
                     } else {
                         dimVals[0] =
@@ -13220,7 +13343,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                             free_node_data(lParse, this_node_idx);
-                            (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                data_union::Buffer(ptr::null_mut());
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BITSTR as c_int
                             || (lParse.Nodes[this_node_idx]).ntype
@@ -13278,7 +13402,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[this_node_idx])
                                     .value
                                     .data
-                                    .ptr
+                                    .ptr()
                                     .cast::<c_char>()
                                     .offset(
                                         (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -13288,7 +13412,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[theVar])
                                     .value
                                     .data
-                                    .ptr
+                                    .ptr()
                                     .cast::<c_char>()
                                     .offset((elem * dsize) as isize)
                                     as *const c_void,
@@ -13347,10 +13471,11 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                 core::ptr::null_mut::<c_long>(),
             );
             if dorow != 0 {
-                (lParse.Nodes[this_node_idx]).value.data.lng =
-                    if gti >= 0 { gti + 1 } else { -(1) as c_long };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    data_union::Long(if gti >= 0 { gti + 1 } else { -(1) as c_long });
             } else {
-                (lParse.Nodes[this_node_idx]).value.data.log = if gti >= 0 { 1 } else { 0 };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    data_union::Logical(if gti >= 0 { 1 } else { 0 });
             }
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
@@ -13450,14 +13575,14 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         if (lParse.Nodes[theStart]).operation == CONST_OP
             && (lParse.Nodes[theStop]).operation == CONST_OP
         {
-            (lParse.Nodes[this_node_idx]).value.data.dbl = GTI_Over(
+            (lParse.Nodes[this_node_idx]).value.data = data_union::Double(GTI_Over(
                 (lParse.Nodes[theStart]).value.data.dbl(),
                 (lParse.Nodes[theStop]).value.data.dbl(),
                 nGTI,
                 gtiStart,
                 gtiStop,
                 &mut gti,
-            );
+            ));
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             let mut undefStart: c_char = 0;
@@ -13702,20 +13827,22 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
             Yval = (lParse.Nodes[theY]).value.data.dbl();
         }
         if Xvector == 0 && Yvector == 0 {
-            (lParse.Nodes[this_node_idx]).value.data.log = if fits_in_region(
-                Xval,
-                Yval,
-                &mut *(lParse.Nodes[theRegion])
-                    .value
-                    .data
-                    .ptr()
-                    .cast::<SAORegion>(),
-            ) != 0
-            {
-                1
-            } else {
-                0
-            };
+            (lParse.Nodes[this_node_idx]).value.data = data_union::Logical(
+                if fits_in_region(
+                    Xval,
+                    Yval,
+                    &mut *(lParse.Nodes[theRegion])
+                        .value
+                        .data
+                        .ptr()
+                        .cast::<SAORegion>(),
+                ) != 0
+                {
+                    1
+                } else {
+                    0
+                },
+            );
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
@@ -13971,7 +14098,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                         [(lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize])
                         .value
                         .data
-                        .ptr,
+                        .ptr(),
                 );
             }
             node += 1;
@@ -14090,7 +14217,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]])
                         .value
                         .data
-                        .ptr,
+                        .ptr(),
                 );
             }
         }
@@ -14608,7 +14735,7 @@ mod node_buffer_tests {
         // Simulate a legacy malloc'd buffer (as gtifilt would produce).
         let raw = unsafe { libc::malloc(64) };
         assert!(!raw.is_null());
-        node.value.data.ptr = raw;
+        node.value.data = data_union::Buffer(raw);
         lparse.Nodes.push(node);
         // No side-table entry for this node -> legacy path.
         assert!(lparse.node_buffers.is_empty());
@@ -14655,7 +14782,7 @@ mod node_buffer_tests {
 
         let n_bytes = 2 * nrows * core::mem::size_of::<f64>();
         let p = alloc_node_data(&mut lparse, idx, n_bytes);
-        lparse.Nodes[idx].value.data.ptr = p;
+        lparse.Nodes[idx].value.data = data_union::Buffer(p);
         assert!(!p.is_null());
 
         unsafe {

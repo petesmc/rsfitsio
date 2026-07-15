@@ -1914,12 +1914,16 @@ pub(crate) fn fits_parser_workfn_safe(
                         // Materialize the constant scalar into a typed cell so
                         // ffcvtn reads it without depending on the in-memory
                         // layout of value.data.
+                        // Fill the cell according to the constant's own type
+                        // (result.ntype, a parser token), which is what
+                        // value.data actually holds; ffcvtn's inputType
+                        // (lParse.datatype) is the matching cfitsio type code.
                         let mut const_cell = [0u8; 8];
-                        if lParse.datatype == fits_parser_yytokentype::DOUBLE as c_int {
+                        if result.ntype == fits_parser_yytokentype::DOUBLE as c_int {
                             const_cell = result.value.data.dbl().to_ne_bytes();
-                        } else if lParse.datatype == fits_parser_yytokentype::LONG as c_int {
+                        } else if result.ntype == fits_parser_yytokentype::LONG as c_int {
                             const_cell = (result.value.data.lng() as i64).to_ne_bytes();
-                        } else if lParse.datatype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        } else if result.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
                             const_cell[0] = result.value.data.log() as u8;
                         }
                         for kk in 0..ntodo {
@@ -1965,7 +1969,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         result
                                             .value
                                             .data
-                                            .ptr
+                                            .ptr()
                                             .cast::<c_char>()
                                             .add((kk * (pv.resDataSize)).try_into().unwrap())
                                             as *const c_void,
@@ -2048,14 +2052,10 @@ pub(crate) fn fits_parser_workfn_safe(
                             // free_node_data) because `result` still borrows
                             // lParse.Nodes here; node_buffers is a disjoint field.
                             let ridx = lParse.resultNode as usize;
-                            if ridx < lParse.node_buffers.len()
-                                && lParse.node_buffers[ridx].is_some()
-                            {
-                                lParse.node_buffers[ridx] = None;
-                                result.value.data.ptr = core::ptr::null_mut();
-                            } else {
-                                FREE!(result.value.data.ptr);
+                            if ridx < lParse.node_buffers.len() {
+                                lParse.node_buffers[ridx] = None; // drop the owned result buffer
                             }
+                            result.value.data = data_union::None;
                         }
                     }
                     if lParse.status == OVERFLOW_ERR {
@@ -2086,7 +2086,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                     } else if *(*(result
                                         .value
                                         .data
-                                        .strptr
+                                        .strptr()
                                         .add(kk.try_into().unwrap())))
                                     .add(jj.try_into().unwrap())
                                         == b'1' as c_char
@@ -2120,7 +2120,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         let r = if (*(*(result
                                             .value
                                             .data
-                                            .strptr
+                                            .strptr()
                                             .add(kk.try_into().unwrap())))
                                         .add(jj.try_into().unwrap()))
                                             == b'1' as c_char
@@ -2168,13 +2168,10 @@ pub(crate) fn fits_parser_workfn_safe(
                         // fall back to the legacy frees. Inlined because
                         // `result` still borrows lParse.Nodes here.
                         let ridx = lParse.resultNode as usize;
-                        if ridx < lParse.node_buffers.len() && lParse.node_buffers[ridx].is_some() {
-                            lParse.node_buffers[ridx] = None;
-                            result.value.data.strptr = core::ptr::null_mut();
-                        } else {
-                            FREE!(*(result.value.data.strptr));
-                            FREE!(result.value.data.strptr);
+                        if ridx < lParse.node_buffers.len() {
+                            lParse.node_buffers[ridx] = None; // drop the owned result buffer
                         }
+                        result.value.data = data_union::None;
                     }
                 }
                 fits_parser_yytokentype::STRING => {
@@ -2216,13 +2213,10 @@ pub(crate) fn fits_parser_workfn_safe(
                         // fall back to the legacy frees. Inlined because
                         // `result` still borrows lParse.Nodes here.
                         let ridx = lParse.resultNode as usize;
-                        if ridx < lParse.node_buffers.len() && lParse.node_buffers[ridx].is_some() {
-                            lParse.node_buffers[ridx] = None;
-                            result.value.data.strptr = core::ptr::null_mut();
-                        } else {
-                            FREE!(*(result.value.data.strptr));
-                            FREE!(result.value.data.strptr);
+                        if ridx < lParse.node_buffers.len() {
+                            lParse.node_buffers[ridx] = None; // drop the owned result buffer
                         }
+                        result.value.data = data_union::None;
                     }
                 }
                 _ => {}

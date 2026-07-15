@@ -4675,7 +4675,7 @@ fn fits_get_expr_minmax(
         result = &mut lParse.Nodes[lParse.resultNode as usize];
         match Info.datatype {
             TDOUBLE => {
-                let tmp = unsafe { result.value.data.dbl };
+                let tmp = unsafe { result.value.data.dbl() };
                 if let Some(dm) = datamax {
                     *dm = tmp;
                 }
@@ -4684,7 +4684,7 @@ fn fits_get_expr_minmax(
                 }
             }
             TLONG => {
-                let tmp = unsafe { result.value.data.lng as f64 };
+                let tmp = unsafe { result.value.data.lng() as f64 };
                 if let Some(dm) = datamax {
                     *dm = tmp;
                 }
@@ -4693,7 +4693,13 @@ fn fits_get_expr_minmax(
                 }
             }
             TLOGICAL => {
-                let tmp = unsafe { if result.value.data.log == 1 { 1.0 } else { 0.0 } };
+                let tmp = unsafe {
+                    if result.value.data.log() == 1 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                };
                 if let Some(dm) = datamax {
                     *dm = tmp;
                 }
@@ -4703,7 +4709,7 @@ fn fits_get_expr_minmax(
             }
             TBIT => {
                 let tmp = unsafe {
-                    if result.value.data.astr[0] != 0 {
+                    if result.value.data.astr()[0] != 0 {
                         1.0
                     } else {
                         0.0
