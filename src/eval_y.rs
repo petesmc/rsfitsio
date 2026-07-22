@@ -7257,88 +7257,90 @@ fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
 }
 
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
+    let mut i: c_int = 0;
+    let mut column: c_int = 0;
+    let mut offset: c_long = 0;
+    let mut rowOffset: c_long = 0;
+    static mut RAND_INITIALIZED: c_int = 0;
+    // Access to the `static mut` RNG-init flag and the libc time() call are the
+    // only unsafe here.
     unsafe {
-        let mut i: c_int = 0;
-        let mut column: c_int = 0;
-        let mut offset: c_long = 0;
-        let mut rowOffset: c_long = 0;
-        static mut RAND_INITIALIZED: c_int = 0;
         if RAND_INITIALIZED == 0 {
             simplerng_srand(time(core::ptr::null_mut::<time_t>()) as c_uint);
             RAND_INITIALIZED = 1;
         }
-        lParse.firstRow = firstRow;
-        lParse.nRows = nRows;
-        rowOffset = firstRow - lParse.firstDataRow;
-        i = 0;
-        while i < lParse.nNodes {
-            if !(((lParse.Nodes)[i as usize]).operation > 0
-                || ((lParse.Nodes)[i as usize]).operation == CONST_OP)
-            {
-                column = -((lParse.Nodes)[i as usize]).operation;
-                offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
-
-                (((lParse.Nodes)[i as usize]).value).undef =
-                    match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
-                        Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
-                        None => ptr::null_mut(),
-                    };
-
-                // Point the column node at its slice of the loaded column
-                // buffer. All the typed pointer views share one Buffer value.
-                match ((lParse.Nodes)[i as usize]).ntype.into() {
-                    fits_parser_yytokentype::BITSTR => {
-                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
-                            ((lParse.varData)[column as usize])
-                                .data
-                                .cast::<*mut c_char>()
-                                .offset(rowOffset as isize)
-                                .cast::<c_void>(),
-                        );
-                        (lParse.Nodes[i as usize]).value.undef = ptr::null_mut();
-                    }
-                    fits_parser_yytokentype::STRING => {
-                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
-                            ((lParse.varData)[column as usize])
-                                .data
-                                .cast::<*mut c_char>()
-                                .offset(rowOffset as isize)
-                                .cast::<c_void>(),
-                        );
-                        (lParse.Nodes[i as usize]).value.undef =
-                            (((lParse.varData)[column as usize]).undef)
-                                .as_deref_mut()
-                                .unwrap()[(rowOffset as usize)..]
-                                .as_mut_ptr();
-                    }
-                    fits_parser_yytokentype::BOOLEAN => {
-                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
-                                .offset(offset as isize)
-                                .cast::<c_void>(),
-                        );
-                    }
-                    fits_parser_yytokentype::LONG => {
-                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
-                                .offset(offset as isize)
-                                .cast::<c_void>(),
-                        );
-                    }
-                    fits_parser_yytokentype::DOUBLE => {
-                        (lParse.Nodes[i as usize]).value.data = data_union::Buffer(
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
-                                .offset(offset as isize)
-                                .cast::<c_void>(),
-                        );
-                    }
-                    _ => {}
-                }
-            }
-            i += 1;
-        }
-        Evaluate_Node(lParse, lParse.resultNode);
     }
+    lParse.firstRow = firstRow;
+    lParse.nRows = nRows;
+    rowOffset = firstRow - lParse.firstDataRow;
+    i = 0;
+    while i < lParse.nNodes {
+        if !(((lParse.Nodes)[i as usize]).operation > 0
+            || ((lParse.Nodes)[i as usize]).operation == CONST_OP)
+        {
+            column = -((lParse.Nodes)[i as usize]).operation;
+            offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
+
+            (((lParse.Nodes)[i as usize]).value).undef =
+                match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
+                    Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
+                    None => ptr::null_mut(),
+                };
+
+            // Point the column node at its slice of the loaded column buffer.
+            // All the typed pointer views share one Buffer value; the raw
+            // `.offset()` into varData.data is the only unsafe part.
+            let col_data = (lParse.varData)[column as usize].data;
+            match ((lParse.Nodes)[i as usize]).ntype.into() {
+                fits_parser_yytokentype::BITSTR => {
+                    (lParse.Nodes[i as usize]).value.data = data_union::Buffer(unsafe {
+                        col_data
+                            .cast::<*mut c_char>()
+                            .offset(rowOffset as isize)
+                            .cast::<c_void>()
+                    });
+                    (lParse.Nodes[i as usize]).value.undef = ptr::null_mut();
+                }
+                fits_parser_yytokentype::STRING => {
+                    (lParse.Nodes[i as usize]).value.data = data_union::Buffer(unsafe {
+                        col_data
+                            .cast::<*mut c_char>()
+                            .offset(rowOffset as isize)
+                            .cast::<c_void>()
+                    });
+                    (lParse.Nodes[i as usize]).value.undef = (((lParse.varData)[column as usize])
+                        .undef)
+                        .as_deref_mut()
+                        .unwrap()[(rowOffset as usize)..]
+                        .as_mut_ptr();
+                }
+                fits_parser_yytokentype::BOOLEAN => {
+                    (lParse.Nodes[i as usize]).value.data = data_union::Buffer(unsafe {
+                        (col_data as *mut c_char)
+                            .offset(offset as isize)
+                            .cast::<c_void>()
+                    });
+                }
+                fits_parser_yytokentype::LONG => {
+                    (lParse.Nodes[i as usize]).value.data = data_union::Buffer(unsafe {
+                        (col_data as *mut c_long)
+                            .offset(offset as isize)
+                            .cast::<c_void>()
+                    });
+                }
+                fits_parser_yytokentype::DOUBLE => {
+                    (lParse.Nodes[i as usize]).value.data = data_union::Buffer(unsafe {
+                        (col_data as *mut c_double)
+                            .offset(offset as isize)
+                            .cast::<c_void>()
+                    });
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    Evaluate_Node(lParse, lParse.resultNode);
 }
 
 /**********************************************************************/
@@ -7445,28 +7447,27 @@ pub(crate) fn free_node_data(lParse: &mut ParseData, idx: usize) {
 }
 
 fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
-    unsafe {
-        let mut elem: c_long = 0;
-        let mut row: c_long = 0;
-        let mut size: c_long = 0;
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
-            || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
-        {
-            // Rust-owned string storage: a row-pointer array (strptr) plus one
-            // backing char buffer of nRows * (nelem + 2) bytes. strptr[row]
-            // indexes into the backing buffer at stride (nelem + 1). Owned by
-            // lParse.node_buffers; strptr/undef are views.
-            let nelem = (lParse.Nodes[this_node_idx]).value.nelem;
-            let nrows = lParse.nRows as usize;
-            let backing_len = (lParse.nRows * (nelem + 2)) as usize;
-            let (strptr, backing) = alloc_str_node_data(lParse, this_node_idx, nrows, backing_len);
-            (lParse.Nodes[this_node_idx]).value.data =
-                data_union::Buffer((strptr).cast::<c_void>());
-            if strptr.is_null() {
-                lParse.status = MEMORY_ALLOCATION;
-            } else {
+    if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
+        || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
+    {
+        // Rust-owned string storage: a row-pointer array (strptr) plus one
+        // backing char buffer of nRows * (nelem + 2) bytes. strptr[row]
+        // indexes into the backing buffer at stride (nelem + 1). Owned by
+        // lParse.node_buffers; strptr/undef are views.
+        let nelem = (lParse.Nodes[this_node_idx]).value.nelem;
+        let nrows = lParse.nRows as usize;
+        let backing_len = (lParse.nRows * (nelem + 2)) as usize;
+        let (strptr, backing) = alloc_str_node_data(lParse, this_node_idx, nrows, backing_len);
+        (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer((strptr).cast::<c_void>());
+        if strptr.is_null() {
+            lParse.status = MEMORY_ALLOCATION;
+        } else {
+            let is_string =
+                (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int;
+            // Wire up the row pointers into the backing buffer (raw walk).
+            let undef = unsafe {
                 *strptr.offset(0) = backing;
-                row = 0;
+                let mut row: c_long = 0;
                 loop {
                     row += 1;
                     if row >= lParse.nRows {
@@ -7477,44 +7478,35 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         .offset(nelem as isize)
                         .offset(1);
                 }
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int {
-                    (lParse.Nodes[this_node_idx]).value.undef = (*strptr
-                        .offset((row - 1) as isize))
-                    .offset(nelem as isize)
-                    .offset(1);
+                if is_string {
+                    (*strptr.offset((row - 1) as isize))
+                        .offset(nelem as isize)
+                        .offset(1)
                 } else {
-                    (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
+                    ptr::null_mut() /* BITSTRs don't use undef array */
                 }
-            }
-        } else {
-            elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
-            match (lParse.Nodes[this_node_idx]).ntype.into() {
-                fits_parser_yytokentype::DOUBLE => {
-                    size = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
-                }
-                fits_parser_yytokentype::LONG => {
-                    size = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
-                }
-                fits_parser_yytokentype::BOOLEAN => {
-                    size = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
-                }
-                _ => {
-                    size = 1;
-                }
-            }
-            // Rust-owned buffer of (size + 1) * elem bytes (matching the former
-            // calloc): `elem * size` bytes of data followed by `elem` undef
-            // flags. Owned by lParse.node_buffers; data.ptr/undef are views.
-            let n_bytes = ((size + 1) * elem) as usize;
-            let p = alloc_node_data(lParse, this_node_idx, n_bytes);
-            (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer(p);
-            if p.is_null() {
-                lParse.status = MEMORY_ALLOCATION;
-            } else {
-                (lParse.Nodes[this_node_idx]).value.undef =
-                    p.cast::<c_char>().offset((elem * size) as isize);
-            }
+            };
+            (lParse.Nodes[this_node_idx]).value.undef = undef;
+        }
+    } else {
+        let elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
+        let size: c_long = match (lParse.Nodes[this_node_idx]).ntype.into() {
+            fits_parser_yytokentype::DOUBLE => size_of::<c_double>() as c_long,
+            fits_parser_yytokentype::LONG => size_of::<c_long>() as c_long,
+            fits_parser_yytokentype::BOOLEAN => size_of::<c_char>() as c_long,
+            _ => 1,
         };
+        // Rust-owned buffer of (size + 1) * elem bytes (matching the former
+        // calloc): `elem * size` bytes of data followed by `elem` undef flags.
+        let n_bytes = ((size + 1) * elem) as usize;
+        let p = alloc_node_data(lParse, this_node_idx, n_bytes);
+        (lParse.Nodes[this_node_idx]).value.data = data_union::Buffer(p);
+        if p.is_null() {
+            lParse.status = MEMORY_ALLOCATION;
+        } else {
+            (lParse.Nodes[this_node_idx]).value.undef =
+                unsafe { p.cast::<c_char>().offset((elem * size) as isize) };
+        }
     }
 }
 

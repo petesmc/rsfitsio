@@ -1541,66 +1541,66 @@ pub(crate) fn ffiprs(
 /*---------------------------------------------------------------------------*/
 /// Clear the parser, making it ready to accept a new expression.
 pub(crate) fn ffcprs(lParse: &mut ParseData) {
-    unsafe {
-        let col: c_int = 0;
-        let mut node: c_int = 0;
-        let mut i: usize = 0;
+    let mut node: c_int;
+    let mut i: usize;
 
-        if lParse.expr.is_some() {
-            lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
-        }
+    if lParse.expr.is_some() {
+        lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
+    }
 
-        if lParse.nCols > 0 {
-            lParse.colData.clear();
+    if lParse.nCols > 0 {
+        lParse.colData.clear();
 
-            for col in 0..lParse.nCols {
-                if lParse.varData[col as usize].undef.is_none() {
-                    continue;
-                }
+        for col in 0..lParse.nCols {
+            if lParse.varData[col as usize].undef.is_none() {
+                continue;
+            }
 
-                if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
-                    let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
+            if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
+                // The BITSTR column data is a libc-malloc'd 2-D buffer.
+                let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
+                unsafe {
                     let mut first_ptr = *data_ptr;
                     FREE!(first_ptr);
                 }
-
-                lParse.varData[col as usize].undef = None;
             }
-            lParse.varData.clear();
-            lParse.nCols = 0;
-        } else if !lParse.colData.is_empty() {
-            /* Special case if colData needed to be created with no columns */
-            lParse.colData.clear();
+
+            lParse.varData[col as usize].undef = None;
         }
-
-        if lParse.nNodes > 0 {
-            node = lParse.nNodes;
-            while node != 0 {
-                node -= 1;
-                if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
-                    // The GTI START/STOP buffer is now Rust-owned; drop it via
-                    // the side-table rather than FREE! (which would be an
-                    // allocator mismatch).
-                    i = lParse.Nodes[node as usize].SubNodes[0];
-                    free_node_data(lParse, i);
-                } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
-                    i = (lParse.Nodes[node as usize]).SubNodes[0];
-                    fits_free_region(Box::from_raw(
-                        (lParse.Nodes[i]).value.data.ptr().cast::<SAORegion>(),
-                    ));
-                }
-            }
-            lParse.nNodes = 0;
-        }
-
-        lParse.Nodes = Vec::new(); // Frees
-        lParse.node_buffers = Vec::new(); // Frees Rust-owned numeric node buffers
-
-        lParse.hdutype = ANY_HDU;
-        lParse.pixFilter = core::ptr::null_mut();
-        lParse.nDataRows = 0;
-        lParse.nPrevDataRows = 0;
+        lParse.varData.clear();
+        lParse.nCols = 0;
+    } else if !lParse.colData.is_empty() {
+        /* Special case if colData needed to be created with no columns */
+        lParse.colData.clear();
     }
+
+    if lParse.nNodes > 0 {
+        node = lParse.nNodes;
+        while node != 0 {
+            node -= 1;
+            if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
+                // The GTI START/STOP buffer is now Rust-owned; drop it via the
+                // side-table rather than FREE! (which would be an allocator
+                // mismatch).
+                i = lParse.Nodes[node as usize].SubNodes[0];
+                free_node_data(lParse, i);
+            } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
+                i = (lParse.Nodes[node as usize]).SubNodes[0];
+                let rgn = (lParse.Nodes[i]).value.data.ptr().cast::<SAORegion>();
+                // Reclaim the region Box::into_raw'd in New_REG.
+                fits_free_region(unsafe { Box::from_raw(rgn) });
+            }
+        }
+        lParse.nNodes = 0;
+    }
+
+    lParse.Nodes = Vec::new(); // Frees
+    lParse.node_buffers = Vec::new(); // Frees Rust-owned numeric node buffers
+
+    lParse.hdutype = ANY_HDU;
+    lParse.pixFilter = core::ptr::null_mut();
+    lParse.nDataRows = 0;
+    lParse.nPrevDataRows = 0;
 }
 
 /*---------------------------------------------------------------------------*/
