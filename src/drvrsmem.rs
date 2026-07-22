@@ -229,6 +229,23 @@ fn state_lock() -> std::sync::MutexGuard<'static, ()> {
     STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Run a `c_int`-returning public entry point: take the process-local lock, then
+/// run `f` inside `catch_unwind`. A panic escaping `f` would be UB across the
+/// `extern "C"` boundary (C never unwinds), so it is contained and mapped to
+/// `SHARED_IPCERR`, matching how these functions report failure. Because the
+/// panic is caught before the guard is dropped, the mutex is not poisoned.
+fn entry_int(f: impl FnOnce() -> c_int) -> c_int {
+    let _g = state_lock();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or(SHARED_IPCERR)
+}
+
+/// Like [`entry_int`] but for `SHARED_P` (pointer)-returning entry points; a
+/// contained panic maps to a null pointer (the failure sentinel there).
+fn entry_ptr(f: impl FnOnce() -> SHARED_P) -> SHARED_P {
+    let _g = state_lock();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or(ptr::null())
+}
+
 /// Borrow the `idx`-th global-table entry from the attached segment.
 ///
 /// Returns a shared `&` to the entry so its atomic fields can be loaded/stored
@@ -247,7 +264,12 @@ unsafe fn gt<'a>(base: *mut SHARED_GTAB, idx: usize) -> &'a SHARED_GTAB {
 
 unsafe fn shared_clear_entry(idx: usize) -> c_int /* unconditionally clear entry */ {
     unsafe {
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
@@ -271,7 +293,12 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
         let mut r2: c_int = 0;
         let filler: semun = semun { val: 0 };
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
@@ -297,8 +324,13 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
 /// This must (should) be called during exit/abort. Registered via `atexit`.
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub extern "C" fn shared_cleanup() {
+    // Runs at process teardown (atexit) and touches all global state and does
+    // I/O (print!); a panic here (e.g. a broken pipe) would be UB across the
+    // extern "C" boundary, so contain and swallow it.
     let _g = state_lock();
-    unsafe { shared_cleanup_locked() }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        shared_cleanup_locked()
+    }));
 }
 
 /// Core of `shared_cleanup`: assumes the process-local lock is held.
@@ -412,7 +444,9 @@ unsafe fn shared_cleanup_locked() {
 
             /* if we locked, we need to unlock */
             if filelocked {
-                flk.l_type = F_UNLCK.try_into().unwrap();
+                flk.l_type = F_UNLCK
+                    .try_into()
+                    .expect("fcntl F_UNLCK constant fits c_short");
                 flk.l_whence = 0;
                 flk.l_start = 0;
                 flk.l_len = SHARED_MAXSEG.into();
@@ -444,8 +478,7 @@ unsafe fn shared_cleanup_locked() {
 /// Initialize shared memory stuff, you have to call this routine once
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_init(debug_msgs: c_int) -> c_int {
-    let _g = state_lock();
-    unsafe { shared_init_locked(debug_msgs) }
+    entry_int(|| unsafe { shared_init_locked(debug_msgs) })
 }
 
 /// Public Rust entry point (locks); kept for source compatibility.
@@ -641,7 +674,10 @@ unsafe fn shared_init_locked(debug_msgs: c_int) -> c_int {
 /// try to recover dormant segments after applic crash
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_recover_core(id) })
+}
+
+unsafe fn shared_recover_core(id: c_int) -> c_int {
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -731,14 +767,23 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
         flk.l_type = if (mode & SHARED_RDWRITE) != 0 {
-            F_WRLCK.try_into().unwrap()
+            F_WRLCK
+                .try_into()
+                .expect("fcntl F_WRLCK constant fits c_short")
         } else {
-            F_RDLCK.try_into().unwrap()
+            F_RDLCK
+                .try_into()
+                .expect("fcntl F_RDLCK constant fits c_short")
         };
         flk.l_whence = 0;
         flk.l_start = idx as c_long;
@@ -800,11 +845,18 @@ unsafe fn shared_demux(idx: usize, mode: c_int) -> c_int /* free exclusive acces
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
-        flk.l_type = F_UNLCK.try_into().unwrap();
+        flk.l_type = F_UNLCK
+            .try_into()
+            .expect("fcntl F_UNLCK constant fits c_short");
         flk.l_whence = 0;
         flk.l_start = idx as c_long;
         flk.l_len = 1;
@@ -957,8 +1009,7 @@ fn shared_adjust_size(size: usize) -> c_int {
 /// return idx or SHARED_INVALID
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_int) -> c_int {
-    let _g = state_lock();
-    unsafe { shared_malloc_locked(size, mode, newhandle) }
+    entry_int(|| unsafe { shared_malloc_locked(size, mode, newhandle) })
 }
 
 /// Core of `shared_malloc`: assumes the process-local lock is held.
@@ -1112,8 +1163,7 @@ unsafe fn shared_malloc_locked(size: c_long, mode: c_int, newhandle: c_int) -> c
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
-    let _g = state_lock();
-    unsafe { shared_attach_locked(idx) }
+    entry_int(|| unsafe { shared_attach_locked(idx) })
 }
 
 /// Core of `shared_attach`: assumes the process-local lock is held.
@@ -1172,7 +1222,12 @@ unsafe fn shared_check_locked_index(idx: usize) -> c_int /* verify that given id
             }
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
@@ -1205,7 +1260,12 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
     unsafe {
         /* have to obtain excl. access before calling shared_map */
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if (idx < 0)
+            || (idx
+                >= SHARED_MAXSEG
+                    .try_into()
+                    .expect("SHARED_MAXSEG is validated positive and bounded at init"))
+        {
             return SHARED_BADARG;
         }
 
@@ -1298,8 +1358,7 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P /* realloc shared memory segment */
 {
-    let _g = state_lock();
-    unsafe { shared_realloc_locked(idx, newsize) }
+    entry_ptr(|| unsafe { shared_realloc_locked(idx, newsize) })
 }
 
 /// Core of `shared_realloc`: assumes the process-local lock is held.
@@ -1419,8 +1478,7 @@ unsafe fn shared_realloc_locked(idx: usize, newsize: c_int) -> SHARED_P {
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if last process & !PERSIST, destroy segment */
 {
-    let _g = state_lock();
-    unsafe { shared_free_locked(idx) }
+    entry_int(|| unsafe { shared_free_locked(idx) })
 }
 
 /// Core of `shared_free`: assumes the process-local lock is held.
@@ -1485,8 +1543,7 @@ unsafe fn shared_free_locked(idx: usize) -> c_int {
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* lock given segment for exclusive access */
 {
-    let _g = state_lock();
-    unsafe { shared_lock_locked(idx, mode) }
+    entry_ptr(|| unsafe { shared_lock_locked(idx, mode) })
 }
 
 /// Core of `shared_lock`: assumes the process-local lock is held.
@@ -1545,8 +1602,7 @@ unsafe fn shared_lock_locked(idx: usize, mode: c_int) -> SHARED_P {
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segment, assumes seg is locked !! */
 {
-    let _g = state_lock();
-    unsafe { shared_unlock_locked(idx) }
+    entry_int(|| unsafe { shared_unlock_locked(idx) })
 }
 
 /// Core of `shared_unlock`: assumes the process-local lock is held.
@@ -1594,7 +1650,10 @@ unsafe fn shared_unlock_locked(idx: usize) -> c_int {
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes of the shared memory segment */
 {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_attr_core(idx) })
+}
+
+unsafe fn shared_attr_core(idx: usize) -> c_int {
     unsafe {
         if shared_check_locked_index(idx) != 0 {
             return SHARED_INVALID;
@@ -1609,8 +1668,7 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /* get the attributes of the shared memory segment */
 {
-    let _g = state_lock();
-    unsafe { shared_set_attr_locked(idx, newattr) }
+    entry_int(|| unsafe { shared_set_attr_locked(idx, newattr) })
 }
 
 /// Core of `shared_set_attr`: assumes the process-local lock is held.
@@ -1639,7 +1697,10 @@ unsafe fn shared_set_attr_locked(idx: usize, newattr: c_int) -> c_int {
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset debug mode */ {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_set_debug_core(mode) })
+}
+
+unsafe fn shared_set_debug_core(mode: c_int) -> c_int {
     unsafe {
         let r: c_int = SHARED_DEBUG as c_int;
 
@@ -1650,7 +1711,10 @@ pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset deb
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/reset debug mode */ {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_set_createmode_core(mode) })
+}
+
+unsafe fn shared_set_createmode_core(mode: c_int) -> c_int {
     unsafe {
         let r: c_int = SHARED_CREATE_MODE;
 
@@ -1661,7 +1725,10 @@ pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/rese
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_list_core(id) })
+}
+
+unsafe fn shared_list_core(id: c_int) -> c_int {
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -1745,7 +1812,10 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_getaddr_core(id, address) })
+}
+
+unsafe fn shared_getaddr_core(id: c_int, address: &mut *mut c_char) -> c_int {
     unsafe {
         let mut i: c_int = 0;
         let mut segname: [c_char; 10] = [0; 10];
@@ -1768,8 +1838,11 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
             return SHARED_BADARG;
         }
 
-        *address = (((SHARED_LT[i as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD).add(1))
-            as *mut c_char;
+        let base = match SHARED_LT[i as usize].p {
+            Some(p) => p,
+            None => return SHARED_BADARG, /* not attached (should not happen after smem_open) */
+        };
+        *address = (((base.add(1)) as *const DAL_SHM_SEGHEAD).add(1)) as *mut c_char;
         /*  smem_close_locked(i); */
         SHARED_OK
     }
@@ -1777,7 +1850,10 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
-    let _g = state_lock();
+    entry_int(|| unsafe { shared_uncond_delete_core(id) })
+}
+
+unsafe fn shared_uncond_delete_core(id: c_int) -> c_int {
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -1890,6 +1966,12 @@ fn smem_open_locked(filename: &[c_char], rwmode: c_int, driverhandle: &mut c_int
             return SHARED_BADARG;
         }
 
+        if h < 0 {
+            // Untrusted handle from the filename (e.g. "h-1"); a negative value
+            // would panic converting to usize. Reject it cleanly instead.
+            return SHARED_BADARG;
+        }
+
         let r: c_int = shared_attach_locked(h.try_into().unwrap());
 
         if SHARED_OK != r {
@@ -1997,6 +2079,12 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
         nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
 
         if 1 != nitems {
+            return SHARED_BADARG;
+        }
+
+        if h < 0 {
+            // Untrusted handle from the filename (e.g. "h-1"); a negative value
+            // would panic converting to usize. Reject it cleanly instead.
             return SHARED_BADARG;
         }
 
@@ -2120,10 +2208,13 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
             return SHARED_BADARG; /* read beyond EOF */
         }
 
+        let base = match SHARED_LT[driverhandle as usize].p {
+            Some(p) => p,
+            None => return SHARED_BADARG, /* not attached (checked above, defensive) */
+        };
         memcpy(
             buffer.as_mut_ptr() as *mut c_void,
-            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
-                .add(1)) as *const c_char)
+            ((((base.add(1)) as *const DAL_SHM_SEGHEAD).add(1)) as *const c_char)
                 .add(SHARED_LT[driverhandle as usize].seekpos as usize)
                 as *const c_void,
             nbytes,
@@ -2178,9 +2269,12 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
             }
         }
 
+        let base = match SHARED_LT[driverhandle as usize].p {
+            Some(p) => p,
+            None => return SHARED_BADARG, /* not attached (checked above, defensive) */
+        };
         memcpy(
-            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
-                .add(1)) as *const c_char)
+            ((((base.add(1)) as *const DAL_SHM_SEGHEAD).add(1)) as *const c_char)
                 .add(SHARED_LT[driverhandle as usize].seekpos as usize) as *mut c_void,
             buffer.as_ptr() as *mut c_void,
             nbytes,
@@ -2707,6 +2801,20 @@ mod tests {
             let oldmode = shared_set_createmode(0o666);
             shared_set_createmode(oldmode);
         }
+    }
+
+    #[test]
+    fn test_smem_open_negative_handle_returns_code() {
+        let _g = shmem_guard();
+        // Phase 4: an untrusted "h-1" parses to a negative handle. It must return
+        // a SHARED_* code (SHARED_BADARG), not panic converting to usize / abort.
+        let mut handle: c_int = 0;
+        let mut name = cc("h-1");
+        assert_eq!(smem_open(&mut name, READONLY, &mut handle), SHARED_BADARG);
+        // shared_free with a negative-derived huge usize must also stay contained
+        // (catch_unwind maps any panic to an error code, never aborts).
+        let r = unsafe { shared_free(usize::MAX) };
+        assert_ne!(r, SHARED_OK);
     }
 
     #[test]
