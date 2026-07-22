@@ -14530,6 +14530,20 @@ fn fits_parser_yyerror(lParse: &mut ParseData, s: &[c_char]) {
 mod node_buffer_tests {
     use super::*;
 
+    /// qselect_median_* now operate on slices; check they pick the correct
+    /// median and are Miri-clean (no out-of-bounds / aliasing).
+    #[test]
+    fn qselect_median_slices() {
+        let mut a = [5_i64, 1, 4, 2, 3];
+        assert_eq!(qselect_median_lng(&mut a, 5), 3);
+        let mut b = [2_i64, 1, 3];
+        assert_eq!(qselect_median_lng(&mut b, 3), 2);
+        let mut c = [5.0_f64, 1.0, 4.0, 2.0, 3.0];
+        assert_eq!(qselect_median_dbl(&mut c, 5), 3.0);
+        let mut d = [42_i64];
+        assert_eq!(qselect_median_lng(&mut d, 1), 42);
+    }
+
     /// Exercises the Rust-owned numeric node buffer end to end: Allocate_Ptrs
     /// builds the backing store, data/undef are written and read back through
     /// the raw union views, and free_node_data releases it. Runs with no file
