@@ -13463,10 +13463,9 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
             gti = Search_GTI(
                 (lParse.Nodes[theExpr]).value.data.dbl(),
                 nGTI,
-                start,
-                stop,
+                core::slice::from_raw_parts(start, (2 * nGTI) as usize),
                 ordered,
-                core::ptr::null_mut::<c_long>(),
+                None,
             );
             if dorow != 0 {
                 (lParse.Nodes[this_node_idx]).value.data =
@@ -13502,10 +13501,9 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                             gti = Search_GTI(
                                 *times.offset(elem as isize),
                                 nGTI,
-                                start,
-                                stop,
+                                core::slice::from_raw_parts(start, (2 * nGTI) as usize),
                                 ordered,
-                                core::ptr::null_mut::<c_long>(),
+                                None,
                             );
                         }
                         if dorow != 0 {
@@ -13684,8 +13682,20 @@ fn GTI_Over(
         if evtStop <= evtStart {
             return 0.0;
         }
-        gti1 = Search_GTI(evtStart, nGTI, start, stop, 1, &mut nextGTI1);
-        gti2 = Search_GTI(evtStop, nGTI, start, stop, 1, &mut nextGTI2);
+        gti1 = Search_GTI(
+            evtStart,
+            nGTI,
+            core::slice::from_raw_parts(start, (2 * nGTI) as usize),
+            1,
+            Some(&mut nextGTI1),
+        );
+        gti2 = Search_GTI(
+            evtStop,
+            nGTI,
+            core::slice::from_raw_parts(start, (2 * nGTI) as usize),
+            1,
+            Some(&mut nextGTI2),
+        );
         if gti1 >= 0 {
             *gtiout = gti1;
         }
@@ -13721,77 +13731,79 @@ fn GTI_Over(
         overlap
     }
 }
+/// `gti_times` is one buffer of `2 * nGTI` doubles: START[0..nGTI] followed by
+/// STOP[0..nGTI] (as allocated by New_GTI). Fully bounds-checked — no unsafe.
 fn Search_GTI(
     evtTime: c_double,
     nGTI: c_long,
-    start: *mut c_double,
-    stop: *mut c_double,
+    gti_times: &[c_double],
     ordered: c_int,
-    nextGTI0: *mut c_long,
+    nextGTI0: Option<&mut c_long>,
 ) -> c_long {
-    unsafe {
-        let mut gti: c_long = 0;
-        let mut nextGTI: c_long = -(1 as c_long);
-        let mut step: c_long = 0;
-        if ordered != 0 && nGTI > 15 as c_long {
-            if evtTime >= *start.offset(0) && evtTime <= *stop.offset((nGTI - 1) as isize) {
-                step = nGTI >> 1;
-                gti = step;
-                loop {
-                    if step > 1 {
-                        step >>= 1;
-                    }
-                    if evtTime > *stop.offset(gti as isize) {
-                        if evtTime >= *start.offset((gti + 1) as isize) {
-                            gti += step;
-                        } else {
-                            nextGTI = gti + 1;
-                            gti = -(1 as c_long);
-                            break;
-                        }
-                    } else if evtTime < *start.offset(gti as isize) {
-                        if evtTime <= *stop.offset((gti - 1) as isize) {
-                            gti -= step;
-                        } else {
-                            nextGTI = gti;
-                            gti = -(1 as c_long);
-                            break;
-                        }
+    let start = |i: c_long| gti_times[i as usize];
+    let stop = |i: c_long| gti_times[(nGTI + i) as usize];
+
+    let mut gti: c_long = 0;
+    let mut nextGTI: c_long = -(1 as c_long);
+    let mut step: c_long = 0;
+    if ordered != 0 && nGTI > 15 as c_long {
+        if evtTime >= start(0) && evtTime <= stop(nGTI - 1) {
+            step = nGTI >> 1;
+            gti = step;
+            loop {
+                if step > 1 {
+                    step >>= 1;
+                }
+                if evtTime > stop(gti) {
+                    if evtTime >= start(gti + 1) {
+                        gti += step;
                     } else {
-                        nextGTI = gti;
+                        nextGTI = gti + 1;
+                        gti = -(1 as c_long);
                         break;
                     }
+                } else if evtTime < start(gti) {
+                    if evtTime <= stop(gti - 1) {
+                        gti -= step;
+                    } else {
+                        nextGTI = gti;
+                        gti = -(1 as c_long);
+                        break;
+                    }
+                } else {
+                    nextGTI = gti;
+                    break;
                 }
-            } else {
-                if *start.offset(0) > evtTime {
-                    nextGTI = 0;
-                }
-                gti = -(1 as c_long);
             }
         } else {
-            gti = nGTI;
-            loop {
-                let fresh209 = gti;
-                gti -= 1;
-                if fresh209 == 0 {
-                    break;
-                }
-                if *stop.offset(gti as isize) >= evtTime {
-                    nextGTI = gti;
-                }
-                if evtTime >= *start.offset(gti as isize) && evtTime <= *stop.offset(gti as isize) {
-                    break;
-                }
+            if start(0) > evtTime {
+                nextGTI = 0;
+            }
+            gti = -(1 as c_long);
+        }
+    } else {
+        gti = nGTI;
+        loop {
+            let fresh209 = gti;
+            gti -= 1;
+            if fresh209 == 0 {
+                break;
+            }
+            if stop(gti) >= evtTime {
+                nextGTI = gti;
+            }
+            if evtTime >= start(gti) && evtTime <= stop(gti) {
+                break;
             }
         }
-        if nextGTI >= nGTI {
-            nextGTI = -1;
-        }
-        if !nextGTI0.is_null() {
-            *nextGTI0 = nextGTI;
-        }
-        gti
     }
+    if nextGTI >= nGTI {
+        nextGTI = -1;
+    }
+    if let Some(n) = nextGTI0 {
+        *n = nextGTI;
+    }
+    gti
 }
 fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
