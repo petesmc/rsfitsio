@@ -101,3 +101,29 @@ pub(crate) union FITS_PARSER_YYSTYPE {
     pub(crate) log: c_char,                         /* logical value */
     pub(crate) astr: [c_char; MAX_STRLEN as usize], /* string value  */
 }
+
+/// Typed read accessors over the parser-stack value union. Call sites use these
+/// instead of reading the union fields directly, so the backing storage can
+/// later be swapped for a typed enum by reimplementing only these methods
+/// (mirrors the `DataVal` migration). Writes stay as field assignments for now.
+impl FITS_PARSER_YYSTYPE {
+    /// Node index (the dominant variant on the parser stack).
+    pub(crate) fn node(&self) -> c_int {
+        unsafe { self.Node }
+    }
+    pub(crate) fn dbl(&self) -> c_double {
+        unsafe { self.dbl }
+    }
+    pub(crate) fn lng(&self) -> c_long {
+        unsafe { self.lng }
+    }
+    pub(crate) fn log(&self) -> c_char {
+        unsafe { self.log }
+    }
+    pub(crate) fn astr(&self) -> &[c_char; MAX_STRLEN as usize] {
+        unsafe { &self.astr }
+    }
+    pub(crate) fn astr_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
+        unsafe { &mut self.astr }
+    }
+}

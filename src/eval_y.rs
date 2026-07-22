@@ -1439,53 +1439,53 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         5 => {
                             /* line: expr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = Block::YyErrLab;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = Block::ReduceDone;
                             }
                         }
                         6 => {
                             /* line: bexpr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = Block::YyErrLab;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = Block::ReduceDone;
                             }
                         }
                         7 => {
                             /* line: sexpr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = Block::YyErrLab;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = Block::ReduceDone;
                             }
                         }
                         8 => {
                             /* line: bits '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = Block::YyErrLab;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -1496,8 +1496,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         10 => {
                             /* bvector: '{' bexpr  */
-                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].node());
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1505,41 +1505,41 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         11 => {
                             /* bvector: bvector ',' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].node());
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].node());
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin10;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval.Node = yyvs[yyvsp - 2].node();
                                 current_block = Block::ReduceJoin10;
                             }
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
                                     let fresh2 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh3 = *fresh2;
                                     *fresh2 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh3 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh3 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = Block::ReduceDone;
                                 }
                             }
                         }
                         12 => {
                             /* vector: '{' expr  */
-                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].node());
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1547,115 +1547,115 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         13 => {
                             /* vector: vector ',' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype =
-                                    ((lParse.Nodes)[yyvs[yyvsp].Node as usize]).ntype;
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype =
+                                    ((lParse.Nodes)[yyvs[yyvsp].node() as usize]).ntype;
                             }
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].node());
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].node());
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin11;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval.Node = yyvs[yyvsp - 2].node();
                                 current_block = Block::ReduceJoin11;
                             }
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
                                     let fresh4 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh5 = *fresh4;
                                     *fresh4 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh5 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh5 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = Block::ReduceDone;
                                 }
                             }
                         }
                         14 => {
                             /* vector: vector ',' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= MAXSUBS as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].node());
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].node());
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin9;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval.Node = yyvs[yyvsp - 2].node();
                                 current_block = Block::ReduceJoin9;
                             }
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
                                     let fresh6 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh7 = *fresh6;
                                     *fresh6 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh7 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh7 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = Block::ReduceDone;
                                 }
                             }
                         }
                         15 => {
                             /* vector: bvector ',' expr  */
-                            (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype =
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype;
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype =
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype;
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].node());
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].node());
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin13;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval.Node = yyvs[yyvsp - 2].node();
                                 current_block = Block::ReduceJoin13;
                             }
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
                                     let fresh8 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh9 = *fresh8;
                                     *fresh8 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh9 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh9 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = Block::ReduceDone;
                                 }
                             }
                         }
                         16 => {
                             /* expr: vector '}'  */
-                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
-                            if yyval.Node < 0 {
+                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].node());
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1663,8 +1663,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         17 => {
                             /* bexpr: bvector '}'  */
-                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
-                            if yyval.Node < 0 {
+                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].node());
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1675,22 +1675,22 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (astr_len(&yyvs[yyvsp].astr)).wrapping_add((1).try_into().unwrap())
+                                (yyvs[yyvsp].astr_mut()).as_mut_ptr().cast::<c_void>(),
+                                (astr_len(yyvs[yyvsp].astr())).wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    astr_len(&yyvs[yyvsp].astr) as c_long;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    astr_len(yyvs[yyvsp].astr()) as c_long;
                                 current_block = Block::ReduceDone;
                             }
                         }
                         19 => {
                             /* bits: BITCOL  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng() as c_int);
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1698,9 +1698,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         20 => {
                             /* bits: BITCOL '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -1711,10 +1711,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceDone;
@@ -1726,20 +1726,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '&' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
-                                        > (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
+                                        .nelem
+                                        > (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
                                     } else {
-                                        (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                        (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     };
                                 current_block = Block::ReduceDone;
                             }
@@ -1749,28 +1752,31 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '|' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
-                                        > (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
+                                        .nelem
+                                        > (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
                                     } else {
-                                        (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                        (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     };
                                 current_block = Block::ReduceDone;
                             }
                         }
                         23 => {
                             /* bits: bits '+' bits  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                + (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).value.nelem
+                                + (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                 >= 256 as c_long
                             {
                                 fits_parser_yyerror(
@@ -1782,16 +1788,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::BITSTR as c_int,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                     '+' as i32,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                            + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
+                                    (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
+                                            + ((lParse.Nodes)[yyvs[yyvsp].node() as usize])
                                                 .value
                                                 .nelem;
                                     current_block = Block::ReduceDone;
@@ -1802,15 +1810,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1820,15 +1828,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1838,15 +1846,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1856,15 +1864,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1874,15 +1882,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1894,9 +1902,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1904,7 +1912,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         30 => {
                             /* bits: '(' bits ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval.Node = yyvs[yyvsp - 1].node();
                             current_block = Block::ReduceDone;
                         }
                         31 => {
@@ -1912,10 +1920,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_Const(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                (&mut yyvs[yyvsp].lng as *mut c_long).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].lng() as *mut c_long).cast::<c_void>(),
                                 ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1926,10 +1934,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_Const(
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
-                                (&mut yyvs[yyvsp].dbl as *mut c_double).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].dbl() as *mut c_double).cast::<c_void>(),
                                 ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1937,8 +1945,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         33 => {
                             /* expr: COLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng() as c_int);
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -1946,9 +1954,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         34 => {
                             /* expr: COLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -1959,10 +1967,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceDone;
@@ -2005,33 +2013,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         37 => {
                             /* expr: expr '%' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '%' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2039,33 +2047,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         38 => {
                             /* expr: expr '+' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '+' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2073,33 +2081,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         39 => {
                             /* expr: expr '-' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '-' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2107,33 +2115,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         40 => {
                             /* expr: expr '*' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2141,33 +2149,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         41 => {
                             /* expr: expr '/' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '/' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2175,9 +2183,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         42 => {
                             /* expr: expr '&' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
@@ -2185,19 +2193,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    yyvs[yyvsp - 2].node(),
                                     '&' as i32,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
                                 current_block = Block::ReduceDone;
                             }
                         }
                         43 => {
                             /* expr: expr '|' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
@@ -2205,19 +2213,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    yyvs[yyvsp - 2].node(),
                                     '|' as i32,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
                                 current_block = Block::ReduceDone;
                             }
                         }
                         44 => {
                             /* expr: expr XOR expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
@@ -2225,43 +2233,43 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    yyvs[yyvsp - 2].node(),
                                     '^' as i32,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
                                 current_block = Block::ReduceDone;
                             }
                         }
                         45 => {
                             /* expr: expr POWER expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::POWER as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2269,18 +2277,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         46 => {
                             /* expr: '+' expr  */
-                            yyval.Node = yyvs[yyvsp].Node;
+                            yyval.Node = yyvs[yyvsp].node();
                             current_block = Block::ReduceDone;
                         }
                         47 => {
                             /* expr: '-' expr  */
                             yyval.Node = New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                 fits_parser_yytokentype::UMINUS as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2288,25 +2296,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         48 => {
                             /* expr: '(' expr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval.Node = yyvs[yyvsp - 1].node();
                             current_block = Block::ReduceDone;
                         }
                         49 => {
                             /* expr: expr '*' bexpr  */
                             yyvs[yyvsp].Node = New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
                                 0,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2316,18 +2324,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: bexpr '*' expr  */
                             yyvs[yyvsp - 2].Node = New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                 0,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                             );
                             yyval.Node = New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -2335,26 +2343,26 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         51 => {
                             /* expr: bexpr '?' expr ':' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
@@ -2366,39 +2374,42 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = Block::ReduceDone;
                                     }
@@ -2407,26 +2418,26 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         52 => {
                             /* expr: bexpr '?' bexpr ':' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
@@ -2438,39 +2449,42 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = Block::ReduceDone;
                                     }
@@ -2479,26 +2493,26 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         53 => {
                             /* expr: bexpr '?' expr ':' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
@@ -2510,39 +2524,42 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
                                             fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = Block::ReduceDone;
                                     }
@@ -2551,7 +2568,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         54 => {
                             /* expr: FUNCTION ')'  */
-                            if astr_eq(&yyvs[yyvsp - 1].astr, c"RANDOM(") {
+                            if astr_eq(yyvs[yyvsp - 1].astr(), c"RANDOM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2566,7 +2583,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin7;
-                            } else if astr_eq(&yyvs[yyvsp - 1].astr, c"RANDOMN(") {
+                            } else if astr_eq(yyvs[yyvsp - 1].astr(), c"RANDOMN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2588,7 +2605,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -2598,13 +2615,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         55 => {
                             /* expr: FUNCTION bexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
                                     SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2613,17 +2630,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin5;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = Block::ReduceJoin5;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ACCUM(") {
                                 let mut zero: c_long = 0;
                                 let new_node = New_Const(
                                     lParse,
@@ -2635,7 +2654,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
@@ -2647,7 +2666,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -2657,10 +2676,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         56 => {
                             /* expr: FUNCTION bexpr ',' expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 4].astr, c"AXISELEM(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            if astr_eq(yyvs[yyvsp - 4].astr(), c"AXISELEM(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -2668,7 +2689,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
                                     current_block = Block::YyErrLab;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one: c_long = 1;
@@ -2680,14 +2702,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::ReduceJoin4;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
                                     {
                                         yyvs[yyvsp - 1].Node = New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 1].node(),
                                         );
                                     }
                                     yyval.Node = New_Func(
@@ -2695,26 +2717,28 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         AXISELEM_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
                                         current_block = Block::ReduceJoin4;
                                     }
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"NAXES(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -2722,7 +2746,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
                                     current_block = Block::YyErrLab;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one_0: c_long = 1;
@@ -2736,26 +2761,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else {
                                     let mut iaxis: c_long = 0;
                                     let mut naxis: c_int = 0;
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
                                     {
                                         yyvs[yyvsp - 1].Node = New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 1].node(),
                                         );
                                     }
-                                    iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
                                         .data
                                         .lng();
-                                    naxis =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
+                                    naxis = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .naxis;
                                     if iaxis == 0 {
                                         iaxis = c_long::from(naxis);
                                     } else if iaxis <= c_long::from(naxis) {
-                                        iaxis = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        iaxis = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .naxes
                                             [(iaxis - 1) as usize];
@@ -2768,16 +2794,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut iaxis as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin4;
                                     }
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
-                                yyval.Node =
-                                    New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
-                                if yyval.Node < 0 {
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"ARRAY(") {
+                                yyval.Node = New_Array(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                );
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceJoin4;
@@ -2792,7 +2821,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -2802,23 +2831,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         57 => {
                             /* expr: FUNCTION sexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = Block::ReduceJoin8;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
                                     NONNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2834,7 +2865,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -2844,33 +2875,37 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         58 => {
                             /* expr: FUNCTION bits ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = Block::ReduceJoin3;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NVALID(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = Block::ReduceJoin3;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
                                     SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2879,13 +2914,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin3;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     MIN1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2893,9 +2928,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceJoin3;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ACCUM(") {
                                 let mut zero_0: c_long = 0;
                                 let new_node = New_Const(
                                     lParse,
@@ -2907,18 +2942,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
                                 current_block = Block::ReduceJoin3;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     MAX1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2926,7 +2961,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceJoin3;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(bits) not supported"));
@@ -2935,7 +2970,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -2945,13 +2980,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         59 => {
                             /* expr: FUNCTION expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"SUM(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"SUM(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2960,13 +2995,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"AVERAGE(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"AVERAGE(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     AVERAGE_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2975,13 +3010,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"STDDEV(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"STDDEV(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     STDDEV_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -2990,13 +3025,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MEDIAN(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"MEDIAN(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     MEDIAN_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3005,23 +3040,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NELEM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NELEM(") {
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NVALID(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NVALID(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
                                     NONNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3030,8 +3067,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ACCUM(")
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
                             {
                                 let mut zero_1: c_long = 0;
@@ -3048,13 +3085,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ACCUM(")
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ACCUM(")
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 let mut zero_2: c_double = 0.0;
@@ -3068,13 +3105,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"SEQDIFF(")
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == fits_parser_yytokentype::LONG as c_int
                             {
                                 let mut zero_3: c_long = 0;
@@ -3088,13 +3125,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SEQDIFF(")
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"SEQDIFF(")
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 let mut zero_4: c_double = 0.0;
@@ -3108,18 +3145,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ABS(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ABS(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
                                     ABS_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3128,13 +3165,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MIN(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"MIN(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     MIN1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3143,13 +3180,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"MAX(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"MAX(") {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                     MAX1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3158,13 +3195,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                 );
                                 current_block = Block::ReduceJoin1;
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOM(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"RANDOM(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
                                     RND_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3172,20 +3209,20 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                         fits_parser_yytokentype::DOUBLE as c_int;
                                     current_block = Block::ReduceJoin1;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMN(") {
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"RANDOMN(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
                                     GASRND_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -3193,15 +3230,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                         fits_parser_yytokentype::DOUBLE as c_int;
                                     current_block = Block::ReduceJoin1;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ELEMENTNUM(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ELEMENTNUM(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     == CONST_OP
                                 {
                                     let mut one_1: c_long = 1;
@@ -3218,7 +3255,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         ELEMNUM_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3226,16 +3263,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
                                         current_block = Block::ReduceJoin1;
                                     }
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 2].astr, c"NAXIS(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 2].astr(), c"NAXIS(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     == CONST_OP
                                 {
                                     let mut one_2: c_long = 1;
@@ -3248,7 +3285,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = Block::ReduceJoin1;
                                 } else {
                                     let mut naxis_0: c_long = c_long::from(
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.naxis,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .value
+                                            .naxis,
                                     );
                                     yyval.Node = New_Const(
                                         lParse,
@@ -3256,30 +3295,30 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut naxis_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin1;
                                     }
                                 }
                             } else {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 1].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                     );
                                 }
-                                if astr_eq(&yyvs[yyvsp - 2].astr, c"SIN(") {
+                                if astr_eq(yyvs[yyvsp - 2].astr(), c"SIN(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         SIN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3288,13 +3327,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COS(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"COS(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         COS_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3303,13 +3342,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TAN(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"TAN(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         TAN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3318,15 +3357,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCSIN(")
-                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ASIN(")
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ARCSIN(")
+                                    || astr_eq(yyvs[yyvsp - 2].astr(), c"ASIN(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         ASIN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3335,15 +3374,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCCOS(")
-                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ACOS(")
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ARCCOS(")
+                                    || astr_eq(yyvs[yyvsp - 2].astr(), c"ACOS(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         ACOS_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3352,15 +3391,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ARCTAN(")
-                                    || astr_eq(&yyvs[yyvsp - 2].astr, c"ATAN(")
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ARCTAN(")
+                                    || astr_eq(yyvs[yyvsp - 2].astr(), c"ATAN(")
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         ATAN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3369,13 +3408,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SINH(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"SINH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         SINH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3384,13 +3423,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"COSH(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"COSH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         COSH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3399,13 +3438,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"TANH(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"TANH(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         TANH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3414,13 +3453,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"EXP(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"EXP(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         EXP_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3429,13 +3468,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"LOG(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         LOG_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3444,13 +3483,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"LOG10(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"LOG10(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         LOG10_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3459,13 +3498,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"SQRT(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"SQRT(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         SQRT_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3474,13 +3513,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"ROUND(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"ROUND(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         ROUND_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3489,13 +3528,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"FLOOR(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"FLOOR(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         FLOOR_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3504,13 +3543,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"CEIL(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"CEIL(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         CEIL_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3519,13 +3558,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                     );
                                     current_block = Block::ReduceJoin1;
-                                } else if astr_eq(&yyvs[yyvsp - 2].astr, c"RANDOMP(") {
+                                } else if astr_eq(yyvs[yyvsp - 2].astr(), c"RANDOMP(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         POIRND_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
@@ -3533,7 +3572,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     );
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                         fits_parser_yytokentype::LONG as c_int;
                                     current_block = Block::ReduceJoin1;
                                 } else {
@@ -3547,7 +3586,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 Block::YyErrLab => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -3557,21 +3596,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         60 => {
                             /* expr: IFUNCTION sexpr ',' sexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 4].astr, c"STRSTR(") {
+                            if astr_eq(yyvs[yyvsp - 4].astr(), c"STRSTR(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
                                     STRPOS_FCT,
                                     2,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceJoin6;
@@ -3588,29 +3627,37 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         61 => {
                             /* expr: FUNCTION expr ',' expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                            if astr_eq(yyvs[yyvsp - 4].astr(), c"DEFNULL(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .value
+                                    .nelem
+                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                        > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
                                         yyvs[yyvsp - 1].Node = New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 1].node(),
                                         );
-                                    } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .ntype
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
                                         yyvs[yyvsp - 3].Node = New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                             0,
-                                            yyvs[yyvsp - 3].Node,
+                                            yyvs[yyvsp - 3].node(),
                                         );
                                     }
                                     yyval.Node = New_Func(
@@ -3618,15 +3665,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         DEFNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin2;
@@ -3638,28 +3685,28 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::YyErrLab;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARCTAN2(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"ARCTAN2(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 3].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 3].node(),
                                     );
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 1].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                     );
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
                                     yyval.Node = New_Func(
@@ -3667,25 +3714,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         ATAN2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = Block::ReduceJoin2;
                                     }
@@ -3696,27 +3743,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::YyErrLab;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MIN(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"MIN(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
                                     yyvs[yyvsp - 1].Node = New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                     );
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
                                     yyvs[yyvsp - 3].Node = New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 3].node(),
                                     );
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
                                     yyval.Node = New_Func(
@@ -3724,25 +3771,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         MIN2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = Block::ReduceJoin2;
                                     }
@@ -3753,27 +3800,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::YyErrLab;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"MAX(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"MAX(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
                                     yyvs[yyvsp - 1].Node = New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                     );
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
                                     yyvs[yyvsp - 3].Node = New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 3].node(),
                                     );
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
                                     yyval.Node = New_Func(
@@ -3781,25 +3828,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         MAX2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = Block::ReduceJoin2;
                                     }
@@ -3810,10 +3857,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::YyErrLab;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"SETNULL(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"SETNULL(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -3822,14 +3871,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        != ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                        != ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
                                         yyvs[yyvsp - 3].Node = New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
                                             0,
-                                            yyvs[yyvsp - 3].Node,
+                                            yyvs[yyvsp - 3].node(),
                                         );
                                     }
                                     yyval.Node = New_Func(
@@ -3837,8 +3886,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         SETNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 1].Node,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 1].node(),
+                                        yyvs[yyvsp - 3].node(),
                                         0,
                                         0,
                                         0,
@@ -3847,10 +3896,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::ReduceJoin2;
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"AXISELEM(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"AXISELEM(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -3858,7 +3909,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
                                     current_block = Block::YyErrLab;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one_3: c_long = 1;
@@ -3870,14 +3922,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = Block::ReduceJoin2;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
                                     {
                                         yyvs[yyvsp - 1].Node = New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 1].node(),
                                         );
                                     }
                                     yyval.Node = New_Func(
@@ -3885,26 +3937,28 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         AXISELEM_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                             fits_parser_yytokentype::LONG as c_int;
                                         current_block = Block::ReduceJoin2;
                                     }
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"NAXES(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"NAXES(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -3912,7 +3966,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
                                     current_block = Block::YyErrLab;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one_4: c_long = 1;
@@ -3926,26 +3981,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else {
                                     let mut iaxis_0: c_long = 0;
                                     let mut naxis_1: c_int = 0;
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
                                     {
                                         yyvs[yyvsp - 1].Node = New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 1].node(),
                                         );
                                     }
-                                    iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
                                         .data
                                         .lng();
-                                    naxis_1 =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
+                                    naxis_1 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .naxis;
                                     if iaxis_0 == 0 {
                                         iaxis_0 = c_long::from(naxis_1);
                                     } else if iaxis_0 <= c_long::from(naxis_1) {
-                                        iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .naxes
                                             [(iaxis_0 - 1) as usize];
@@ -3958,16 +4014,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         (&mut iaxis_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceJoin2;
                                     }
                                 }
-                            } else if astr_eq(&yyvs[yyvsp - 4].astr, c"ARRAY(") {
-                                yyval.Node =
-                                    New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
-                                if yyval.Node < 0 {
+                            } else if astr_eq(yyvs[yyvsp - 4].astr(), c"ARRAY(") {
+                                yyval.Node = New_Array(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                );
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceJoin2;
@@ -3988,96 +4047,102 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         62 => {
                             /* expr: FUNCTION expr ',' expr ',' expr ',' expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 8].astr, c"ANGSEP(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
+                            if astr_eq(yyvs[yyvsp - 8].astr(), c"ANGSEP(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 7].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 7].Node,
+                                        yyvs[yyvsp - 7].node(),
                                     );
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 5].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 5].Node,
+                                        yyvs[yyvsp - 5].node(),
                                     );
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 3].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 3].node(),
                                     );
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
                                     yyvs[yyvsp - 1].Node = New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                     );
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 7].node(), yyvs[yyvsp - 5].node())
                                     != 0
-                                    && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                        != 0
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                    ) != 0
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         ANGSEP_FCT,
                                         4 as c_int,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                         }
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                         }
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = Block::ReduceDone;
                                     }
@@ -4101,13 +4166,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIOVER_FCT,
-                                (yyvs[yyvsp - 5].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                (yyvs[yyvsp - 5].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4118,13 +4183,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIOVER_FCT,
-                                (yyvs[yyvsp - 9].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 9].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                (yyvs[yyvsp - 3].astr_mut()).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4134,15 +4199,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4152,15 +4217,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4170,15 +4235,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4188,15 +4253,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4206,15 +4271,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4226,9 +4291,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4240,9 +4305,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4254,9 +4319,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4268,9 +4333,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4281,10 +4346,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                (&mut yyvs[yyvsp].log as *mut c_char).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].log() as *mut c_char).cast::<c_void>(),
                                 ::core::mem::size_of::<c_char>() as c_ulong as c_long,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4292,8 +4357,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         75 => {
                             /* bexpr: BCOLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng() as c_int);
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4301,9 +4366,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         76 => {
                             /* bexpr: BCOLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -4314,10 +4379,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceDone;
@@ -4329,14 +4394,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4345,14 +4410,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4361,14 +4426,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4377,14 +4442,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4393,14 +4458,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4409,46 +4474,46 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
                         83 => {
                             /* bexpr: expr GT expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4456,33 +4521,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         84 => {
                             /* bexpr: expr LT expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4490,33 +4555,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         85 => {
                             /* bexpr: expr GTE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4524,33 +4589,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         86 => {
                             /* bexpr: expr LTE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4558,33 +4623,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         87 => {
                             /* bexpr: expr '~' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '~' as i32,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4592,33 +4657,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         88 => {
                             /* bexpr: expr EQ expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4626,33 +4691,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         89 => {
                             /* bexpr: expr NE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4663,14 +4728,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4679,14 +4744,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4695,14 +4760,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4711,14 +4776,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4727,14 +4792,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4743,14 +4808,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = Block::ReduceDone;
                             }
                         }
@@ -4759,11 +4824,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4774,11 +4839,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::OR as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4789,11 +4854,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4804,11 +4869,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4816,85 +4881,85 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         100 => {
                             /* bexpr: expr '=' expr ':' expr  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 4].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 4].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 4].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 4].node(),
                                 );
                             }
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp].Node = New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
                                 yyvs[yyvsp - 2].Node = New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
                                     0,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                 );
                             }
                             yyvs[yyvsp - 2].Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp - 4].Node,
+                                yyvs[yyvsp - 4].node(),
                             );
                             yyvs[yyvsp].Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 4].Node,
+                                yyvs[yyvsp - 4].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
                             yyval.Node = New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -4902,7 +4967,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         101 => {
                             /* bexpr: bexpr '?' bexpr ':' bexpr  */
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
@@ -4914,35 +4979,38 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = Block::YyErrLab;
                                     } else {
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = Block::ReduceDone;
                                     }
@@ -4951,13 +5019,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         102 => {
                             /* bexpr: BFUNCTION expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
                                     ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -4965,10 +5033,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
                                     current_block = Block::ReduceDone;
                                 }
@@ -4982,13 +5050,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         103 => {
                             /* bexpr: BFUNCTION bexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
                                     ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -4996,10 +5064,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
                                     current_block = Block::ReduceDone;
                                 }
@@ -5013,13 +5081,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         104 => {
                             /* bexpr: BFUNCTION sexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 2].astr, c"ISNULL(") {
+                            if astr_eq(yyvs[yyvsp - 2].astr(), c"ISNULL(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -5027,7 +5095,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceDone;
@@ -5042,26 +5110,33 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         105 => {
                             /* bexpr: FUNCTION bexpr ',' bexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                            if astr_eq(yyvs[yyvsp - 4].astr(), c"DEFNULL(") {
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .value
+                                    .nelem
+                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
                                     yyval.Node = New_Func(
                                         lParse,
                                         0,
                                         DEFNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                     );
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = Block::YyErrLab;
                                     } else {
                                         current_block = Block::ReduceDone;
@@ -5083,82 +5158,90 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         106 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 5].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
+                                    yyvs[yyvsp - 5].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 3].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
+                                    yyvs[yyvsp - 3].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 1].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                 );
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node) != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(lParse, yyvs[yyvsp - 5].node(), yyvs[yyvsp - 3].node())
+                                != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Dimensions of NEAR arguments are not compatible"),
                                 );
                                 current_block = Block::YyErrLab;
-                            } else if astr_eq(&yyvs[yyvsp - 6].astr, c"NEAR(") {
+                            } else if astr_eq(yyvs[yyvsp - 6].astr(), c"NEAR(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     NEAR_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 5].Node,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                    if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                     }
                                     current_block = Block::ReduceDone;
                                 }
@@ -5169,120 +5252,138 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         107 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 9].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 9].Node,
+                                    yyvs[yyvsp - 9].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 7].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 7].Node,
+                                    yyvs[yyvsp - 7].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 5].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
+                                    yyvs[yyvsp - 5].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 3].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
+                                    yyvs[yyvsp - 3].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 1].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                 );
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 9].Node, yyvs[yyvsp - 7].Node) != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(lParse, yyvs[yyvsp - 9].node(), yyvs[yyvsp - 7].node())
+                                != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Dimensions of CIRCLE arguments are not compatible"),
                                 );
                                 current_block = Block::YyErrLab;
-                            } else if astr_eq(&yyvs[yyvsp - 10].astr, c"CIRCLE(") {
+                            } else if astr_eq(yyvs[yyvsp - 10].astr(), c"CIRCLE(") {
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     CIRCLE_FCT,
                                     5 as c_int,
-                                    yyvs[yyvsp - 9].Node,
-                                    yyvs[yyvsp - 7].Node,
-                                    yyvs[yyvsp - 5].Node,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 9].node(),
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                    if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 9].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 9].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 7].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 7].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                     }
                                     current_block = Block::ReduceDone;
                                 }
@@ -5293,120 +5394,138 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         108 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 13].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 13].Node,
+                                    yyvs[yyvsp - 13].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 11].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 11].Node,
+                                    yyvs[yyvsp - 11].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 9].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 9].Node,
+                                    yyvs[yyvsp - 9].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 7].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 7].Node,
+                                    yyvs[yyvsp - 7].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 5].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
+                                    yyvs[yyvsp - 5].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 3].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
+                                    yyvs[yyvsp - 3].node(),
                                 );
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::DOUBLE as c_int
                             {
                                 yyvs[yyvsp - 1].Node = New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                 );
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 13].Node, yyvs[yyvsp - 11].Node)
-                                != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 11].Node, yyvs[yyvsp - 9].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 9].Node, yyvs[yyvsp - 7].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(
+                                lParse,
+                                yyvs[yyvsp - 13].node(),
+                                yyvs[yyvsp - 11].node(),
+                            ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 11].node(),
+                                    yyvs[yyvsp - 9].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 9].node(),
+                                    yyvs[yyvsp - 7].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"));
                                 current_block = Block::YyErrLab;
                             } else {
-                                if astr_eq(&yyvs[yyvsp - 14].astr, c"BOX(") {
+                                if astr_eq(yyvs[yyvsp - 14].astr(), c"BOX(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
                                         BOX_FCT,
                                         7 as c_int,
-                                        yyvs[yyvsp - 13].Node,
-                                        yyvs[yyvsp - 11].Node,
-                                        yyvs[yyvsp - 9].Node,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 13].node(),
+                                        yyvs[yyvsp - 11].node(),
+                                        yyvs[yyvsp - 9].node(),
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                     );
                                     current_block = Block::ReduceJoin12;
-                                } else if astr_eq(&yyvs[yyvsp - 14].astr, c"ELLIPSE(") {
+                                } else if astr_eq(yyvs[yyvsp - 14].astr(), c"ELLIPSE(") {
                                     yyval.Node = New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
                                         ELPS_FCT,
                                         7 as c_int,
-                                        yyvs[yyvsp - 13].Node,
-                                        yyvs[yyvsp - 11].Node,
-                                        yyvs[yyvsp - 9].Node,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 13].node(),
+                                        yyvs[yyvsp - 11].node(),
+                                        yyvs[yyvsp - 9].node(),
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                     );
                                     current_block = Block::ReduceJoin12;
                                 } else {
@@ -5419,77 +5538,97 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 match current_block {
                                     Block::YyErrLab => {}
                                     _ => {
-                                        if yyval.Node < 0 {
+                                        if yyval.node() < 0 {
                                             current_block = Block::YyErrLab;
                                         } else {
-                                            if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize])
+                                            if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize])
                                                     .value
                                                     .nelem
                                             {
                                                 Copy_Dims(
                                                     lParse,
-                                                    yyval.Node,
-                                                    yyvs[yyvsp - 13].Node,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 13].node(),
                                                 );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize])
                                                     .value
                                                     .nelem
                                             {
                                                 Copy_Dims(
                                                     lParse,
-                                                    yyval.Node,
-                                                    yyvs[yyvsp - 11].Node,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 11].node(),
                                                 );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 9].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 9].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 7].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 7].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 5].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 3].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 1].node(),
+                                                );
                                             }
                                             current_block = Block::ReduceDone;
                                         }
@@ -5509,7 +5648,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5521,13 +5660,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFILT_FCT,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5538,13 +5677,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFILT_FCT,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 1].Node,
+                                (yyvs[yyvsp - 3].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 1].node(),
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5555,13 +5694,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFILT_FCT,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
+                                (yyvs[yyvsp - 7].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
                                 -99,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 3].astr_mut()).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5579,7 +5718,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5590,13 +5729,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFIND_FCT,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5607,13 +5746,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFIND_FCT,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 1].Node,
+                                (yyvs[yyvsp - 3].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 1].node(),
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5624,13 +5763,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_GTI(
                                 lParse,
                                 GTIFIND_FCT,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
+                                (yyvs[yyvsp - 7].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
                                 -99,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 3].astr_mut()).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5641,12 +5780,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let mut dummy = [0];
                             yyval.Node = New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                                 -99,
                                 -99,
                                 dummy.as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5657,12 +5796,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let mut dummy = [0];
                             yyval.Node = New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 5].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                (yyvs[yyvsp - 5].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 dummy.as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5672,12 +5811,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ',' STRING ')'  */
                             yyval.Node = New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                (yyvs[yyvsp - 7].astr_mut()).as_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                (yyvs[yyvsp - 1].astr_mut()).as_mut_ptr(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5687,15 +5826,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5705,15 +5844,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5723,15 +5862,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5741,15 +5880,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5759,15 +5898,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval.Node = New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5779,9 +5918,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
-                                yyvs[yyvsp].Node,
+                                yyvs[yyvsp].node(),
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5789,7 +5928,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         126 => {
                             /* bexpr: '(' bexpr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval.Node = yyvs[yyvsp - 1].node();
                             current_block = Block::ReduceDone;
                         }
                         127 => {
@@ -5797,22 +5936,22 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval.Node = New_Const(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
-                                (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (astr_len(&yyvs[yyvsp].astr)).wrapping_add((1).try_into().unwrap())
+                                (yyvs[yyvsp].astr_mut()).as_mut_ptr().cast::<c_void>(),
+                                (astr_len(yyvs[yyvsp].astr())).wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             );
-                            if yyval.Node < 0 {
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    astr_len(&yyvs[yyvsp].astr) as c_long;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    astr_len(yyvs[yyvsp].astr()) as c_long;
                                 current_block = Block::ReduceDone;
                             }
                         }
                         128 => {
                             /* sexpr: SCOLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng() as c_int);
+                            if yyval.node() < 0 {
                                 current_block = Block::YyErrLab;
                             } else {
                                 current_block = Block::ReduceDone;
@@ -5820,9 +5959,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         129 => {
                             /* sexpr: SCOLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -5833,10 +5972,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval.Node = New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
                                     current_block = Block::ReduceDone;
@@ -5862,13 +6001,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         131 => {
                             /* sexpr: '(' sexpr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval.Node = yyvs[yyvsp - 1].node();
                             current_block = Block::ReduceDone;
                         }
                         132 => {
                             /* sexpr: sexpr '+' sexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                + (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).value.nelem
+                                + (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                 >= 256 as c_long
                             {
                                 fits_parser_yyerror(
@@ -5880,16 +6019,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval.Node = New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::STRING as c_int,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                     '+' as i32,
-                                    yyvs[yyvsp].Node,
+                                    yyvs[yyvsp].node(),
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                            + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
+                                    (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
+                                            + ((lParse.Nodes)[yyvs[yyvsp].node() as usize])
                                                 .value
                                                 .nelem;
                                     current_block = Block::ReduceDone;
@@ -5899,7 +6040,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         133 => {
                             /* sexpr: bexpr '?' sexpr ':' sexpr  */
                             let mut outSize: c_int = 0;
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).value.nelem != 1 {
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                .value
+                                .nelem
+                                != 1
+                            {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Cannot have a vector string column"),
@@ -5910,13 +6055,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 scalar, we must precalculate the output size, in
                                 order to avoid an overflow. */
 
-                                outSize = (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value)
+                                outSize = (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
                                     .nelem as c_int;
-                                if (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                if (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     > c_long::from(outSize)
                                 {
                                     outSize =
-                                        ((lParse.Nodes)[yyvs[yyvsp].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp].node() as usize]).value.nelem
                                             as c_int;
                                 }
                                 yyval.Node = New_FuncSize(
@@ -5924,22 +6069,24 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     outSize,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
                                     current_block = Block::ReduceDone;
                                 }
@@ -5947,29 +6094,32 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         134 => {
                             /* sexpr: FUNCTION sexpr ',' sexpr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 4].astr, c"DEFNULL(") {
+                            if astr_eq(yyvs[yyvsp - 4].astr(), c"DEFNULL(") {
                                 /* Since the output can be calculated now, as a constant
                                 scalar, we must precalculate the output size, in
                                 order to avoid an overflow. */
 
                                 let mut outSize_0: c_int = 0;
-                                outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                     .value
                                     .nelem as c_int;
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    .value
+                                    .nelem
                                     > c_long::from(outSize_0)
                                 {
-                                    outSize_0 =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                            as c_int;
+                                    outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                        as c_int;
                                 }
                                 yyval.Node = New_FuncSize(
                                     lParse,
                                     0,
                                     DEFNULL_FCT,
                                     2,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
@@ -5977,16 +6127,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     outSize_0,
                                 );
-                                if yyval.Node < 0 {
+                                if yyval.node() < 0 {
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                        > ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                        > ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                        (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem;
                                     }
@@ -6002,32 +6154,36 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         135 => {
                             /* sexpr: FUNCTION sexpr ',' expr ',' expr ')'  */
-                            if astr_eq(&yyvs[yyvsp - 6].astr, c"STRMID(") {
+                            if astr_eq(yyvs[yyvsp - 6].astr(), c"STRMID(") {
                                 let mut len: c_int = 0;
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
                                     != fits_parser_yytokentype::LONG as c_int
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                         != fits_parser_yytokentype::LONG as c_int
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(lParse, cs!(c"When using STRMID(S,P,N), P and N must be integers (and not vector columns)"));
                                     current_block = Block::YyErrLab;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                         == CONST_OP
                                     {
                                         /* Constant value: use that directly */
-                                        len = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                        len = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .data
                                             .lng()
                                             as c_int;
                                     } else {
                                         /* Variable value: use the maximum possible (from $2) */
-                                        len = ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                        len = ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                             as c_int;
@@ -6044,16 +6200,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             0,
                                             STRMID_FCT,
                                             3 as c_int,
-                                            yyvs[yyvsp - 5].Node,
-                                            yyvs[yyvsp - 3].Node,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 5].node(),
+                                            yyvs[yyvsp - 3].node(),
+                                            yyvs[yyvsp - 1].node(),
                                             0,
                                             0,
                                             0,
                                             0,
                                             len,
                                         );
-                                        if yyval.Node < 0 {
+                                        if yyval.node() < 0 {
                                             current_block = Block::YyErrLab;
                                         } else {
                                             current_block = Block::ReduceDone;
@@ -6381,7 +6537,7 @@ fn New_GTI(
         {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                Node1 = New_Column(lParse, colVal.lng as c_int);
+                Node1 = New_Column(lParse, colVal.lng() as c_int);
             } else {
                 fits_parser_yyerror(
                     lParse,
@@ -6792,7 +6948,7 @@ fn New_REG(
         if NodeX == -99 {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"X"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeX = New_Column(lParse, colVal.lng as c_int);
+                NodeX = New_Column(lParse, colVal.lng() as c_int);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build X column for REGFILTER"));
                 return -(1);
@@ -6801,7 +6957,7 @@ fn New_REG(
         if NodeY == -99 {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"Y"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeY = New_Column(lParse, colVal.lng as c_int);
+                NodeY = New_Column(lParse, colVal.lng() as c_int);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build Y column for REGFILTER"));
                 return -(1);
