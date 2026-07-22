@@ -94,6 +94,36 @@ fn wrong_seed_is_detected() {
     );
 }
 
+/// BUG-1 regression: after a full create -> delete cycle, the per-keybase
+/// global-table SysV segment must NOT leak.
+///
+/// The prior port guarded the global-table detach/delete block with
+/// `if !SHARED_GT.len() == 0`, which always evaluated false, so the table was
+/// never IPC_RMID'd — every process leaked one ~448-byte segment at exit. With
+/// the fix (`if !SHARED_GT_PTR.is_null()`), the last process to detach with no
+/// data segments left removes the table. We drive the whole lifecycle in child
+/// processes (so each one's atexit shared_cleanup runs), then probe the key.
+#[test]
+fn global_table_segment_not_leaked_after_cleanup() {
+    let keybase = 24_030_001;
+    let handle = "h0";
+    let seed = "7";
+    let _teardown = Teardown { keybase, handle };
+
+    // create (child A exits -> data seg PERSISTs, global table stays) ...
+    assert_eq!(run(keybase, &["create", handle, seed]), 0, "create failed");
+    // ... delete (child B removes the data seg; being the last attacher with no
+    // segments left, its cleanup also removes the global table).
+    assert_eq!(run(keybase, &["delete", handle]), 0, "delete failed");
+
+    // The global-table segment (key == keybase) must be gone.
+    assert_eq!(
+        run(keybase, &["gtprobe"]),
+        0,
+        "global-table segment leaked after cleanup (BUG-1 regression)"
+    );
+}
+
 // TODO (after Phase 2, when a `hold <hN> <ms>` op is added to the helper):
 // cross-process lock contention — process A holds the segment RW-locked while
 // process B attempts a SHARED_NOWAIT open and must observe SHARED_AGAIN. This

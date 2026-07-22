@@ -8,6 +8,7 @@ use std::{
     ffi::{CStr, c_void},
     mem::MaybeUninit,
     ptr,
+    sync::atomic::{AtomicI32, AtomicU8, Ordering::Relaxed},
 };
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -97,15 +98,34 @@ struct BLKHEAD {
 
 type SHARED_P = *const c_void; /* generic type of shared memory pointer */
 
+// The integer fields are `AtomicI32` (and `attr` is `AtomicU8`) rather than
+// plain `c_int`/`c_char` because this struct lives *inside a SysV shared-memory
+// segment that other processes mutate concurrently by design*. A Rust `&mut`
+// into that memory would be unsound (it asserts unique access, which is false),
+// and plain reads/writes racing with another process are UB in the abstract
+// machine. `AtomicI32`/`AtomicU8` are `#[repr(transparent)]` over `i32`/`u8`,
+// so the segment layout, size, alignment, and C ABI are byte-identical to the
+// original plain-int struct — the C library still sees plain `int`/`char`.
+//
+// Real mutual exclusion still comes from the fcntl lock-file + SysV semaphores;
+// the atomics only make the individual field accesses well-defined (tear-free)
+// instead of UB. `Relaxed` is sufficient: the fcntl/semaphore locks provide the
+// ordering, and we only need each integer load/store to be indivisible.
+// Pedantically, Rust-atomic <-> C-plain-int on one address is a data race in
+// the abstract machine, but in practice it is fine because the locks serialize
+// all real access and `Relaxed` only requires tear-free integer load/store.
+//
+// Consequence: this struct is NOT `Copy`/`Clone` (atomics aren't) — access
+// fields in place through the `gt()` accessor, never copy the whole struct.
 #[repr(C)]
 struct SHARED_GTAB /* data type used in global table */ {
-    sem: c_int,        /* access semaphore (1 field): process count */
-    semkey: c_int,     /* key value used to generate semaphore handle */
-    key: c_int,        /* key value used to generate shared memory handle (realloc changes it) */
-    handle: c_int,     /* handle of shared memory segment */
-    size: c_int,       /* size of shared memory segment */
-    nprocdebug: c_int, /* attached proc counter, helps remove zombie segments */
-    attr: c_char,      /* attributes of shared memory object */
+    sem: AtomicI32,        /* access semaphore (1 field): process count */
+    semkey: AtomicI32,     /* key value used to generate semaphore handle */
+    key: AtomicI32, /* key value used to generate shared memory handle (realloc changes it) */
+    handle: AtomicI32, /* handle of shared memory segment */
+    size: AtomicI32, /* size of shared memory segment */
+    nprocdebug: AtomicI32, /* attached proc counter, helps remove zombie segments */
+    attr: AtomicU8, /* attributes of shared memory object */
 }
 
 #[derive(Default, Clone)]
@@ -165,9 +185,24 @@ static mut SHARED_DEBUG: bool = false; /* simple debugging tool, set to 0 to dis
 static mut SHARED_CREATE_MODE: c_int = 0o666; /* permission flags for created objects */
 static mut SHARED_INIT_CALLED: bool = false; /* flag whether shared_init() has been called, used for delayed init */
 
-static mut SHARED_GT: &mut [SHARED_GTAB] = &mut []; /* global table pointer */
-static mut SHARED_GT_PTR: *mut SHARED_GTAB = ptr::null_mut();
+static mut SHARED_GT_PTR: *mut SHARED_GTAB = ptr::null_mut(); /* attached global table (null = not attached) */
 static mut SHARED_LT: Vec<SHARED_LTAB> = Vec::new(); /* local table pointer */
+
+/// Borrow the `idx`-th global-table entry from the attached segment.
+///
+/// Returns a shared `&` to the entry so its atomic fields can be loaded/stored
+/// in place. NEVER returns `&mut`: other processes mutate this memory
+/// concurrently, so an exclusive reference would be unsound. `base` is taken as
+/// a parameter so this composes with the Phase 2 `SharedState` (which owns the
+/// pointer); today `base` is always `SHARED_GT_PTR`.
+///
+/// # Safety
+/// `base` must be a valid pointer to at least `idx + 1` attached `SHARED_GTAB`
+/// entries (guaranteed by the `SHARED_MAXSEG` bound checks at every call site).
+#[inline]
+unsafe fn gt<'a>(base: *mut SHARED_GTAB, idx: usize) -> &'a SHARED_GTAB {
+    unsafe { &*base.add(idx) }
+}
 
 unsafe fn shared_clear_entry(idx: usize) -> c_int /* unconditionally clear entry */ {
     unsafe {
@@ -175,13 +210,14 @@ unsafe fn shared_clear_entry(idx: usize) -> c_int /* unconditionally clear entry
             return SHARED_BADARG;
         }
 
-        SHARED_GT[idx].key = SHARED_INVALID; /* clear entries in global table */
-        SHARED_GT[idx].handle = SHARED_INVALID;
-        SHARED_GT[idx].sem = SHARED_INVALID;
-        SHARED_GT[idx].semkey = SHARED_INVALID;
-        SHARED_GT[idx].nprocdebug = 0;
-        SHARED_GT[idx].size = 0;
-        SHARED_GT[idx].attr = 0;
+        let e = gt(SHARED_GT_PTR, idx);
+        e.key.store(SHARED_INVALID, Relaxed); /* clear entries in global table */
+        e.handle.store(SHARED_INVALID, Relaxed);
+        e.sem.store(SHARED_INVALID, Relaxed);
+        e.semkey.store(SHARED_INVALID, Relaxed);
+        e.nprocdebug.store(0, Relaxed);
+        e.size.store(0, Relaxed);
+        e.attr.store(0, Relaxed);
 
         SHARED_OK
     }
@@ -201,11 +237,13 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
         r2 = SHARED_OK;
         r = SHARED_OK;
 
-        if SHARED_INVALID != SHARED_GT[idx].sem {
-            r = semctl(SHARED_GT[idx].sem, 0, IPC_RMID, filler); /* destroy semaphore */
+        let sem = gt(SHARED_GT_PTR, idx).sem.load(Relaxed);
+        if SHARED_INVALID != sem {
+            r = semctl(sem, 0, IPC_RMID, filler); /* destroy semaphore */
         }
-        if SHARED_INVALID != SHARED_GT[idx].handle {
-            r2 = shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()); /* destroy shared memory segment */
+        let handle = gt(SHARED_GT_PTR, idx).handle.load(Relaxed);
+        if SHARED_INVALID != handle {
+            r2 = shmctl(handle, IPC_RMID, std::ptr::null_mut()); /* destroy shared memory segment */
         }
         if SHARED_OK == r {
             r = r2; /* accumulate error code in r, free r2 */
@@ -267,7 +305,15 @@ pub extern "C" fn shared_cleanup() {
         }
 
         /* detach global index table */
-        if !SHARED_GT.len() == 0 {
+        // BUG-1 fix: the C original guards this with `if (NULL != shared_gt)`.
+        // The prior port `if !SHARED_GT.len() == 0` parses as
+        // `(!SHARED_GT.len()) == 0`, and since `!` is bitwise NOT on the `usize`
+        // length it is ALWAYS false (attached: `!16 != 0`; empty: `!0 != 0`), so
+        // this whole block never ran — the global-table segment was never
+        // detached or IPC_RMID'd and the file lock never released, leaking one
+        // ~448-byte SysV segment per process at exit. `is_null()` is the faithful
+        // translation of `NULL != shared_gt`.
+        if !SHARED_GT_PTR.is_null() {
             oktodelete = false;
             filelocked = false;
             if SHARED_DEBUG {
@@ -285,7 +331,7 @@ pub extern "C" fn shared_cleanup() {
                     filelocked = true; /* success, scan global table, to see if there are any segs */
                     segmentspresent = false; /* assume, there are no segs in the system */
                     for j in 0..SHARED_MAXSEG {
-                        if SHARED_INVALID != SHARED_GT[j as usize].key {
+                        if SHARED_INVALID != gt(SHARED_GT_PTR, j as usize).key.load(Relaxed) {
                             segmentspresent = true; /* yes, there is at least one */
                             break;
                         }
@@ -307,7 +353,7 @@ pub extern "C" fn shared_cleanup() {
                 }
             }
 
-            let _ = shmdt(SHARED_GT.as_ptr() as *const _); /* detach global table */
+            let _ = shmdt(SHARED_GT_PTR as *const _); /* detach global table */
 
             /* delete global table from system, if no shm seg present */
             if oktodelete {
@@ -315,7 +361,7 @@ pub extern "C" fn shared_cleanup() {
                 SHARED_GT_H = SHARED_INVALID;
             }
 
-            SHARED_GT = &mut [];
+            SHARED_GT_PTR = ptr::null_mut(); /* mark table detached */
 
             /* if we locked, we need to unlock */
             if filelocked {
@@ -479,8 +525,6 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
                     return SHARED_IPCERR;
                 }
 
-                SHARED_GT = slice::from_raw_parts_mut(SHARED_GT_PTR, SHARED_MAXSEG as usize);
-
                 if SHARED_DEBUG {
                     print!("slave");
                 }
@@ -490,8 +534,6 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
                 if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
                     return SHARED_IPCERR;
                 }
-
-                SHARED_GT = slice::from_raw_parts_mut(SHARED_GT_PTR, SHARED_MAXSEG as usize);
 
                 for i in 0..SHARED_MAXSEG {
                     shared_clear_entry(i.try_into().unwrap()); /* since we are master, init data */
@@ -549,7 +591,7 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
 
-        if SHARED_GT.is_empty() {
+        if SHARED_GT_PTR.is_null() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -570,7 +612,7 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
                 continue; /* somebody (we) is using it */
             }
 
-            if SHARED_INVALID == SHARED_GT[i as usize].key {
+            if SHARED_INVALID == gt(SHARED_GT_PTR, i as usize).key.load(Relaxed) {
                 continue; /* unused slot */
             }
 
@@ -578,12 +620,14 @@ pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
                 continue; /* acquire exclusive access to segment, but do not wait */
             }
 
-            r2 = shared_process_count(SHARED_GT[i as usize].sem);
-            if (SHARED_GT[i as usize].nprocdebug > r2) || (0 == r2) {
+            r2 = shared_process_count(gt(SHARED_GT_PTR, i as usize).sem.load(Relaxed));
+            if (gt(SHARED_GT_PTR, i as usize).nprocdebug.load(Relaxed) > r2) || (0 == r2) {
                 if SHARED_DEBUG {
                     print!(
                         "Bogus handle={} nproc={} sema={}:",
-                        i, SHARED_GT[i as usize].nprocdebug, r2,
+                        i,
+                        gt(SHARED_GT_PTR, i as usize).nprocdebug.load(Relaxed),
+                        r2,
                     );
                 }
                 r = shared_destroy_entry(i.try_into().unwrap());
@@ -794,7 +838,7 @@ unsafe fn shared_detach_process(sem: c_int) -> c_int {
 unsafe fn shared_get_free_entry(newhandle: c_int) -> c_int /* get newhandle, or -1, entry is set rw locked */
 {
     unsafe {
-        if SHARED_GT.is_empty() {
+        if SHARED_GT_PTR.is_null() {
             return -1; /* not initialized */
         }
 
@@ -822,7 +866,7 @@ unsafe fn shared_get_free_entry(newhandle: c_int) -> c_int /* get newhandle, or 
             return -1; /* used by others */
         }
 
-        if SHARED_INVALID == SHARED_GT[newhandle as usize].key {
+        if SHARED_INVALID == gt(SHARED_GT_PTR, newhandle as usize).key.load(Relaxed) {
             return newhandle; /* we have found free slot, lock it and return index */
         }
 
@@ -936,8 +980,11 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
                 continue;
             } /* now create semaphor counting number of processes attached */
 
-            SHARED_GT[idx as usize].sem = semget(key, 1, IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE);
-            if SHARED_INVALID == SHARED_GT[idx as usize].sem {
+            gt(SHARED_GT_PTR, idx as usize).sem.store(
+                semget(key, 1, IPC_CREAT | IPC_EXCL | SHARED_CREATE_MODE),
+                Relaxed,
+            );
+            if SHARED_INVALID == gt(SHARED_GT_PTR, idx as usize).sem.load(Relaxed) {
                 shmdt(bp as *const c_void); /* cannot create segment, delete everything */
                 shmctl(h, IPC_RMID, ptr::null_mut());
                 i += 1;
@@ -945,12 +992,17 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
             }
 
             if SHARED_DEBUG {
-                print!(" sem={}", SHARED_GT[idx as usize].sem);
+                print!(" sem={}", gt(SHARED_GT_PTR, idx as usize).sem.load(Relaxed));
             }
 
             /* try attach process */
-            if shared_attach_process(SHARED_GT[idx as usize].sem) != 0 {
-                semctl(SHARED_GT[idx as usize].sem, 0, IPC_RMID, filler); /* destroy semaphore */
+            if shared_attach_process(gt(SHARED_GT_PTR, idx as usize).sem.load(Relaxed)) != 0 {
+                semctl(
+                    gt(SHARED_GT_PTR, idx as usize).sem.load(Relaxed),
+                    0,
+                    IPC_RMID,
+                    filler,
+                ); /* destroy semaphore */
                 shmdt(bp as *const c_void); /* detach shared mem segment */
                 shmctl(h, IPC_RMID, std::ptr::null_mut()); /* destroy shared mem segment */
                 i += 1;
@@ -975,12 +1027,16 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
                 SHARED_LT[idx as usize].tcnt = 1; /* one thread using segment */
                 SHARED_LT[idx as usize].lkcnt = 0; /* no locks at the moment */
                 SHARED_LT[idx as usize].seekpos = 0; /* r/w pointer positioned at beg of block */
-                SHARED_GT[idx as usize].handle = h; /* fill in data in global table */
-                SHARED_GT[idx as usize].size = size as c_int;
-                SHARED_GT[idx as usize].attr = mode as c_char;
-                SHARED_GT[idx as usize].semkey = key;
-                SHARED_GT[idx as usize].key = key;
-                SHARED_GT[idx as usize].nprocdebug = 0;
+                gt(SHARED_GT_PTR, idx as usize).handle.store(h, Relaxed); /* fill in data in global table */
+                gt(SHARED_GT_PTR, idx as usize)
+                    .size
+                    .store(size as c_int, Relaxed);
+                gt(SHARED_GT_PTR, idx as usize)
+                    .attr
+                    .store(mode as u8, Relaxed);
+                gt(SHARED_GT_PTR, idx as usize).semkey.store(key, Relaxed);
+                gt(SHARED_GT_PTR, idx as usize).key.store(key, Relaxed);
+                gt(SHARED_GT_PTR, idx as usize).nprocdebug.store(0, Relaxed);
             }
 
             break;
@@ -1013,7 +1069,7 @@ pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
         // let shared_lt = shared_lt.as_mut().unwrap();
 
         /* try attach process */
-        if shared_attach_process(SHARED_GT[idx].sem) != 0 {
+        if shared_attach_process(gt(SHARED_GT_PTR, idx).sem.load(Relaxed)) != 0 {
             shmdt(SHARED_LT[idx].p.unwrap() as *const c_void); /* cannot attach process, detach everything */
             SHARED_LT[idx].p = None;
             shared_demux(idx, SHARED_RDWRITE);
@@ -1023,7 +1079,7 @@ pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
         SHARED_LT[idx].tcnt += 1; /* one more thread is using segment */
 
         /* if resizeable, detach and return special pointer */
-        if SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
+        if gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int & SHARED_RESIZE != 0 {
             if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
                 r = SHARED_IPCERR; /* if segment is resizable, then detach segment */
             }
@@ -1085,11 +1141,15 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
             return SHARED_BADARG;
         }
 
-        if SHARED_INVALID == SHARED_GT[idx].key {
+        if SHARED_INVALID == gt(SHARED_GT_PTR, idx).key.load(Relaxed) {
             return SHARED_BADARG;
         }
 
-        let h: c_int = shmget(SHARED_GT[idx].key, 1, SHARED_CREATE_MODE);
+        let h: c_int = shmget(
+            gt(SHARED_GT_PTR, idx).key.load(Relaxed),
+            1,
+            SHARED_CREATE_MODE,
+        );
 
         if SHARED_INVALID == h {
             return SHARED_BADARG;
@@ -1103,14 +1163,20 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
         if (SHARED_ID_0 != (*bp).ID[0])
             || (SHARED_ID_1 != (*bp).ID[1])
             || (BLOCK_SHARED != (*bp).tflag)
-            || (h != SHARED_GT[idx].handle)
+            || (h != gt(SHARED_GT_PTR, idx).handle.load(Relaxed))
         {
             shmdt(bp as *const c_void); /* invalid segment, detach everything */
             return SHARED_BADARG;
         }
 
         /* check if sema is still there */
-        if SHARED_GT[idx].sem != semget(SHARED_GT[idx].semkey, 1, SHARED_CREATE_MODE) {
+        if gt(SHARED_GT_PTR, idx).sem.load(Relaxed)
+            != semget(
+                gt(SHARED_GT_PTR, idx).semkey.load(Relaxed),
+                1,
+                SHARED_CREATE_MODE,
+            )
+        {
             shmdt(bp as *const c_void); /* cannot attach semaphore, detach everything */
             return SHARED_BADARG;
         }
@@ -1182,7 +1248,7 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
             return ptr::null();
         }
 
-        if 0 == (SHARED_GT[idx].attr as c_int & SHARED_RESIZE) {
+        if 0 == (gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int & SHARED_RESIZE) {
             return ptr::null();
         }
 
@@ -1196,10 +1262,15 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
             return ptr::null(); /* check for RW lock */
         }
 
-        if shared_adjust_size(SHARED_GT[idx].size.try_into().unwrap())
-            == shared_adjust_size(newsize.try_into().unwrap())
+        if shared_adjust_size(
+            gt(SHARED_GT_PTR, idx)
+                .size
+                .load(Relaxed)
+                .try_into()
+                .unwrap(),
+        ) == shared_adjust_size(newsize.try_into().unwrap())
         {
-            SHARED_GT[idx].size = newsize;
+            gt(SHARED_GT_PTR, idx).size.store(newsize, Relaxed);
 
             return ((SHARED_LT[idx].p.unwrap()).add(1)) as SHARED_P;
         }
@@ -1232,10 +1303,10 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
 
             *bp = *(SHARED_LT[idx].p.unwrap()); /* copy header, then data */
 
-            transfersize = if newsize < SHARED_GT[idx].size {
+            transfersize = if newsize < gt(SHARED_GT_PTR, idx).size.load(Relaxed) {
                 newsize.into()
             } else {
-                SHARED_GT[idx].size.into()
+                gt(SHARED_GT_PTR, idx).size.load(Relaxed).into()
             };
 
             if transfersize > 0 {
@@ -1250,14 +1321,19 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
                 r = SHARED_IPCERR; /* try to detach old segment */
             }
 
-            if shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()) != 0 && SHARED_OK == r
+            if shmctl(
+                gt(SHARED_GT_PTR, idx).handle.load(Relaxed),
+                IPC_RMID,
+                std::ptr::null_mut(),
+            ) != 0
+                && SHARED_OK == r
             {
                 r = SHARED_IPCERR; /* destroy old shared memory segment */
             }
 
-            SHARED_GT[idx].size = newsize; /* signal new size */
-            SHARED_GT[idx].handle = h; /* signal new handle */
-            SHARED_GT[idx].key = key; /* signal new key */
+            gt(SHARED_GT_PTR, idx).size.store(newsize, Relaxed); /* signal new size */
+            gt(SHARED_GT_PTR, idx).handle.store(h, Relaxed); /* signal new handle */
+            gt(SHARED_GT_PTR, idx).key.store(key, Relaxed); /* signal new key */
             SHARED_LT[idx].p = Some(bp);
             break;
         }
@@ -1279,7 +1355,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
             return r;
         }
 
-        r = shared_detach_process(SHARED_GT[idx].sem);
+        r = shared_detach_process(gt(SHARED_GT_PTR, idx).sem.load(Relaxed));
 
         /* update number of processes using segment */
         if SHARED_OK != r {
@@ -1307,7 +1383,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
 
         SHARED_LT[idx].p = None; /* clear entry in local table */
         SHARED_LT[idx].seekpos = 0; /* r/w pointer positioned at beg of block */
-        (cnt = shared_process_count(SHARED_GT[idx].sem));
+        (cnt = shared_process_count(gt(SHARED_GT_PTR, idx).sem.load(Relaxed)));
 
         /* get number of processes hanging on segment */
         if -1 == cnt {
@@ -1315,7 +1391,9 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
             return SHARED_IPCERR;
         }
 
-        if (0 == cnt) && (0 == (SHARED_GT[idx].attr as c_int & SHARED_PERSIST)) {
+        if (0 == cnt)
+            && (0 == (gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int & SHARED_PERSIST))
+        {
             r = shared_destroy_entry(idx); /* no procs on seg, destroy it */
         }
 
@@ -1368,7 +1446,7 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
         if (mode & SHARED_RDWRITE) != 0 {
             SHARED_LT[idx].lkcnt = -1;
 
-            SHARED_GT[idx].nprocdebug += 1;
+            gt(SHARED_GT_PTR, idx).nprocdebug.fetch_add(1, Relaxed);
         } else {
             SHARED_LT[idx].lkcnt += 1;
         }
@@ -1402,11 +1480,13 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
             mode = SHARED_RDONLY;
         } else {
             SHARED_LT[idx].lkcnt = 0; /* unlock write lock */
-            SHARED_GT[idx].nprocdebug -= 1;
+            gt(SHARED_GT_PTR, idx).nprocdebug.fetch_sub(1, Relaxed);
             mode = SHARED_RDWRITE;
         }
 
-        if 0 == SHARED_LT[idx].lkcnt && SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
+        if 0 == SHARED_LT[idx].lkcnt
+            && gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int & SHARED_RESIZE != 0
+        {
             if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
                 r = SHARED_IPCERR; /* segment is resizable, then detach segment */
             }
@@ -1427,7 +1507,7 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
             return SHARED_INVALID;
         }
 
-        let r: c_int = SHARED_GT[idx].attr as c_int;
+        let r: c_int = gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int;
 
         r
     }
@@ -1451,9 +1531,9 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
             return SHARED_INVALID; /* ADDED - check for RW lock */
         }
 
-        let r: c_int = SHARED_GT[idx].attr as c_int;
+        let r: c_int = gt(SHARED_GT_PTR, idx).attr.load(Relaxed) as c_int;
 
-        SHARED_GT[idx].attr = newattr as c_char;
+        gt(SHARED_GT_PTR, idx).attr.store(newattr as u8, Relaxed);
         r
     }
 }
@@ -1484,7 +1564,7 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
         let i: c_int = 0;
         let mut r: c_int = 0;
 
-        if SHARED_GT.is_empty() {
+        if SHARED_GT_PTR.is_null() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -1504,7 +1584,7 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                 continue;
             }
 
-            if SHARED_INVALID == SHARED_GT[i as usize].key {
+            if SHARED_INVALID == gt(SHARED_GT_PTR, i as usize).key.load(Relaxed) {
                 continue; /* unused slot */
             }
 
@@ -1514,14 +1594,18 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                     print!(
                         "!{:3} {:08x} {:4}  {:8}",
                         i,
-                        SHARED_GT[i as usize].key as c_ulong,
-                        SHARED_GT[i as usize].nprocdebug,
-                        SHARED_GT[i as usize].size
+                        gt(SHARED_GT_PTR, i as usize).key.load(Relaxed) as c_ulong,
+                        gt(SHARED_GT_PTR, i as usize).nprocdebug.load(Relaxed),
+                        gt(SHARED_GT_PTR, i as usize).size.load(Relaxed)
                     );
-                    if SHARED_RESIZE & SHARED_GT[i as usize].attr as c_int != 0 {
+                    if SHARED_RESIZE & gt(SHARED_GT_PTR, i as usize).attr.load(Relaxed) as c_int
+                        != 0
+                    {
                         print!(" RESIZABLE");
                     }
-                    if SHARED_PERSIST & SHARED_GT[i as usize].attr as c_int != 0 {
+                    if SHARED_PERSIST & gt(SHARED_GT_PTR, i as usize).attr.load(Relaxed) as c_int
+                        != 0
+                    {
                         print!(" PERSIST");
                     }
                     println!();
@@ -1530,14 +1614,18 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
                     print!(
                         " {:3} {:08x} {:4}  {:8}",
                         i,
-                        SHARED_GT[i as usize].key as c_ulong,
-                        SHARED_GT[i as usize].nprocdebug,
-                        SHARED_GT[i as usize].size
+                        gt(SHARED_GT_PTR, i as usize).key.load(Relaxed) as c_ulong,
+                        gt(SHARED_GT_PTR, i as usize).nprocdebug.load(Relaxed),
+                        gt(SHARED_GT_PTR, i as usize).size.load(Relaxed)
                     );
-                    if SHARED_RESIZE & SHARED_GT[i as usize].attr as c_int != 0 {
+                    if SHARED_RESIZE & gt(SHARED_GT_PTR, i as usize).attr.load(Relaxed) as c_int
+                        != 0
+                    {
                         print!(" RESIZABLE");
                     }
-                    if SHARED_PERSIST & SHARED_GT[i as usize].attr as c_int != 0 {
+                    if SHARED_PERSIST & gt(SHARED_GT_PTR, i as usize).attr.load(Relaxed) as c_int
+                        != 0
+                    {
                         print!(" PERSIST");
                     }
                     println!();
@@ -1559,7 +1647,7 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
         let mut i: c_int = 0;
         let mut segname: [c_char; 10] = [0; 10];
 
-        if SHARED_GT.is_empty() {
+        if SHARED_GT_PTR.is_null() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -1590,7 +1678,7 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
         let i: c_int = 0;
         let mut r: c_int = 0;
 
-        if SHARED_GT.is_empty() {
+        if SHARED_GT_PTR.is_null() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
@@ -1835,7 +1923,7 @@ pub(crate) fn smem_size(driverhandle: c_int, size: &mut usize) -> c_int {
                     return SHARED_INVALID;
                 }
 
-                *sz = (SHARED_GT[driverhandle as usize].size
+                *sz = (gt(SHARED_GT_PTR, driverhandle as usize).size.load(Relaxed)
                     - size_of::<DAL_SHM_SEGHEAD>() as c_int) as usize;
             }
 
@@ -1897,7 +1985,10 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
         // let shared_lt = shared_lt.as_mut().unwrap();
 
         if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long)
-            > SHARED_GT[driverhandle as usize].size.into()
+            > gt(SHARED_GT_PTR, driverhandle as usize)
+                .size
+                .load(Relaxed)
+                .into()
         {
             return SHARED_BADARG; /* read beyond EOF */
         }
@@ -1941,8 +2032,8 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
         }
 
         if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long) as c_ulong
-            > (SHARED_GT[driverhandle as usize].size - size_of::<DAL_SHM_SEGHEAD>() as c_int)
-                as c_ulong
+            > (gt(SHARED_GT_PTR, driverhandle as usize).size.load(Relaxed)
+                - size_of::<DAL_SHM_SEGHEAD>() as c_int) as c_ulong
         {
             /* need to realloc shmem */
             if shared_realloc(

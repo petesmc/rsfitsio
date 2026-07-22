@@ -53,8 +53,32 @@ fn main() -> std::process::ExitCode {
     }
 
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("usage: shmem_helper <create|read|delete|gtprobe> <hN> [seed]");
+        return ExitCode::from(2);
+    }
+
+    // BUG-1 regression probe: does the per-keybase global-table SysV segment
+    // still exist? The driver keys the global table on SHARED_KBASE
+    // (== SHMEM_LIB_KEYBASE). A plain shmget with no IPC_CREAT just looks it up
+    // without creating/attaching. Exit 0 = ABSENT (healthy: cleanup removed it),
+    // exit 1 = PRESENT (leaked — the BUG-1 symptom).
+    if args[1] == "gtprobe" {
+        let keybase: rsfitsio::c_types::c_int = std::env::var("SHMEM_LIB_KEYBASE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(14011963);
+        let id = unsafe { libc::shmget(keybase, 0, 0) };
+        return if id == -1 {
+            ExitCode::SUCCESS // ENOENT -> segment gone, as it should be
+        } else {
+            eprintln!("LEAK: global-table segment key={keybase} still present (id={id})");
+            ExitCode::from(1)
+        };
+    }
+
     if args.len() < 3 {
-        eprintln!("usage: shmem_helper <create|read|delete> <hN> [seed]");
+        eprintln!("usage: shmem_helper <create|read|delete|gtprobe> <hN> [seed]");
         return ExitCode::from(2);
     }
     let op = args[1].as_str();
@@ -113,6 +137,12 @@ fn main() -> std::process::ExitCode {
         }
         "delete" => {
             fits_open_file(&mut f, &cc(&url), READWRITE, &mut status);
+            if status != 0 || f.is_none() {
+                // Segment already gone (e.g. best-effort teardown double-delete).
+                // Nothing to remove; don't call fits_delete_file on a None handle.
+                eprintln!("delete: segment not open (status={status}); nothing to do");
+                return ExitCode::from(1);
+            }
             fits_delete_file(&mut f, &mut status);
             if status != 0 {
                 eprintln!("delete failed: status={status}");
