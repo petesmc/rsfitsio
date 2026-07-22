@@ -9438,156 +9438,114 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
+/// Quickselect median of `arr[0..n]` (rearranges `arr`). Fully bounds-checked.
+pub(crate) fn qselect_median_lng(arr: &mut [c_long], n: c_int) -> c_long {
+    let mut low: c_int = 0;
+    let mut high: c_int = n - 1;
+    let median: c_int = (low + high) / 2;
+    loop {
+        if high <= low {
+            return arr[median as usize];
+        }
+        if high == low + 1 {
+            if arr[low as usize] > arr[high as usize] {
+                arr.swap(low as usize, high as usize);
+            }
+            return arr[median as usize];
+        }
+        let middle: c_int = (low + high) / 2;
+        if arr[middle as usize] > arr[high as usize] {
+            arr.swap(middle as usize, high as usize);
+        }
+        if arr[low as usize] > arr[high as usize] {
+            arr.swap(low as usize, high as usize);
+        }
+        if arr[middle as usize] > arr[low as usize] {
+            arr.swap(middle as usize, low as usize);
+        }
+        arr.swap(middle as usize, (low + 1) as usize);
+        let mut ll: c_int = low + 1;
+        let mut hh: c_int = high;
         loop {
-            if high <= low {
-                return *arr.offset(median as isize);
-            }
-            if high == low + 1 {
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_long = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
-            }
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
-            }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_long = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            let t_3: c_long = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
-            ll = low + 1;
-            hh = high;
             loop {
-                loop {
-                    ll += 1;
-                    if *arr.offset(low as isize) <= *arr.offset(ll as isize) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if *arr.offset(hh as isize) <= *arr.offset(low as isize) {
-                        break;
-                    }
-                }
-                if hh < ll {
+                ll += 1;
+                if arr[low as usize] <= arr[ll as usize] {
                     break;
                 }
-                let t_4: c_long = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
             }
-            let t_5: c_long = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            if hh <= median {
-                low = ll;
+            loop {
+                hh -= 1;
+                if arr[hh as usize] <= arr[low as usize] {
+                    break;
+                }
             }
-            if hh >= median {
-                high = hh - 1;
+            if hh < ll {
+                break;
             }
+            arr.swap(ll as usize, hh as usize);
+        }
+        arr.swap(low as usize, hh as usize);
+        if hh <= median {
+            low = ll;
+        }
+        if hh >= median {
+            high = hh - 1;
         }
     }
 }
 
-pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
+/// Quickselect median of `arr[0..n]` (rearranges `arr`). Fully bounds-checked.
+pub(crate) fn qselect_median_dbl(arr: &mut [c_double], n: c_int) -> c_double {
+    let mut low: c_int = 0;
+    let mut high: c_int = n - 1;
+    let median: c_int = (low + high) / 2;
+    loop {
+        if high <= low {
+            return arr[median as usize];
+        }
+        if high == low + 1 {
+            if arr[low as usize] > arr[high as usize] {
+                arr.swap(low as usize, high as usize);
+            }
+            return arr[median as usize];
+        }
+        let middle: c_int = (low + high) / 2;
+        if arr[middle as usize] > arr[high as usize] {
+            arr.swap(middle as usize, high as usize);
+        }
+        if arr[low as usize] > arr[high as usize] {
+            arr.swap(low as usize, high as usize);
+        }
+        if arr[middle as usize] > arr[low as usize] {
+            arr.swap(middle as usize, low as usize);
+        }
+        arr.swap(middle as usize, (low + 1) as usize);
+        let mut ll: c_int = low + 1;
+        let mut hh: c_int = high;
         loop {
-            if high <= low {
-                return *arr.offset(median as isize);
-            }
-            if high == low + 1 {
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_double = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
-            }
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
-            }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_double = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            let t_3: c_double = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
-            ll = low + 1;
-            hh = high;
             loop {
-                loop {
-                    ll += 1;
-                    if !(*arr.offset(low as isize) > *arr.offset(ll as isize)) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if !(*arr.offset(hh as isize) > *arr.offset(low as isize)) {
-                        break;
-                    }
-                }
-                if hh < ll {
+                ll += 1;
+                if !(arr[low as usize] > arr[ll as usize]) {
                     break;
                 }
-                let t_4: c_double = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
             }
-            let t_5: c_double = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            if hh <= median {
-                low = ll;
+            loop {
+                hh -= 1;
+                if !(arr[hh as usize] > arr[low as usize]) {
+                    break;
+                }
             }
-            if hh >= median {
-                high = hh - 1;
+            if hh < ll {
+                break;
             }
+            arr.swap(ll as usize, hh as usize);
+        }
+        arr.swap(low as usize, hh as usize);
+        if hh <= median {
+            low = ll;
+        }
+        if hh >= median {
+            high = hh - 1;
         }
     }
 }
@@ -10774,46 +10732,35 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[theParams[0]]).value.data.lngptr();
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mut mptr_buf: Vec<c_long> = Vec::new();
-                            let mptr: *mut c_long =
-                                if mptr_buf.try_reserve_exact(nelem as usize).is_ok() {
-                                    mptr_buf.resize(nelem as usize, 0);
-                                    mptr_buf.as_mut_ptr()
-                                } else {
-                                    core::ptr::null_mut()
-                                };
-                            let mut irow: c_int = 0;
-                            if mptr.is_null() {
+                            if mptr_buf.try_reserve_exact(nelem as usize).is_err() {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
                                 free_node_data(lParse, this_node_idx);
                             } else {
-                                irow = 0;
+                                mptr_buf.resize(nelem as usize, 0);
+                                let mut irow: c_int = 0;
                                 while c_long::from(irow) < row {
-                                    let mut p: *mut c_long = mptr;
-                                    let mut nelem1: c_int = nelem as c_int;
-                                    loop {
-                                        let fresh80 = nelem1;
-                                        nelem1 -= 1;
-                                        if fresh80 == 0 {
-                                            break;
-                                        }
+                                    // Gather this row's defined elements into the
+                                    // scratch buffer (bounds-checked).
+                                    let mut count: usize = 0;
+                                    for _ in 0..nelem {
                                         if c_int::from(*uptr) == 0 {
-                                            let fresh81 = p;
-                                            p = p.offset(1);
-                                            *fresh81 = *dptr;
+                                            mptr_buf[count] = *dptr;
+                                            count += 1;
                                         }
                                         dptr = dptr.offset(1);
                                         uptr = uptr.offset(1);
                                     }
-                                    nelem1 = p.offset_from(mptr) as c_long as c_int;
-                                    if nelem1 > 0 {
+                                    if count > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr())
-                                            .offset(irow as isize) =
-                                            qselect_median_lng(mptr, nelem1);
+                                            .offset(irow as isize) = qselect_median_lng(
+                                            &mut mptr_buf[..count],
+                                            count as c_int,
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 1;
@@ -10828,46 +10775,35 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[theParams[0]]).value.data.dblptr();
                             let mut uptr_0: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mut mptr_0_buf: Vec<c_double> = Vec::new();
-                            let mptr_0: *mut c_double =
-                                if mptr_0_buf.try_reserve_exact(nelem as usize).is_ok() {
-                                    mptr_0_buf.resize(nelem as usize, 0.0);
-                                    mptr_0_buf.as_mut_ptr()
-                                } else {
-                                    core::ptr::null_mut()
-                                };
-                            let mut irow_0: c_int = 0;
-                            if mptr_0.is_null() {
+                            if mptr_0_buf.try_reserve_exact(nelem as usize).is_err() {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
                                 free_node_data(lParse, this_node_idx);
                             } else {
-                                irow_0 = 0;
+                                mptr_0_buf.resize(nelem as usize, 0.0);
+                                let mut irow_0: c_int = 0;
                                 while c_long::from(irow_0) < row {
-                                    let mut p_0: *mut c_double = mptr_0;
-                                    let mut nelem1_0: c_int = nelem as c_int;
-                                    loop {
-                                        let fresh82 = nelem1_0;
-                                        nelem1_0 -= 1;
-                                        if fresh82 == 0 {
-                                            break;
-                                        }
+                                    // Gather this row's defined elements into the
+                                    // scratch buffer (bounds-checked).
+                                    let mut count: usize = 0;
+                                    for _ in 0..nelem {
                                         if c_int::from(*uptr_0) == 0 {
-                                            let fresh83 = p_0;
-                                            p_0 = p_0.offset(1);
-                                            *fresh83 = *dptr_0;
+                                            mptr_0_buf[count] = *dptr_0;
+                                            count += 1;
                                         }
                                         dptr_0 = dptr_0.offset(1);
                                         uptr_0 = uptr_0.offset(1);
                                     }
-                                    nelem1_0 = p_0.offset_from(mptr_0) as c_long as c_int;
-                                    if nelem1_0 > 0 {
+                                    if count > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr())
-                                            .offset(irow_0 as isize) =
-                                            qselect_median_dbl(mptr_0, nelem1_0);
+                                            .offset(irow_0 as isize) = qselect_median_dbl(
+                                            &mut mptr_0_buf[..count],
+                                            count as c_int,
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 1;
