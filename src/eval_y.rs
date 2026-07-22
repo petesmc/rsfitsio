@@ -14235,135 +14235,139 @@ fn padded_bit(s: &[c_char], width: usize, j: usize) -> c_char {
 }
 
 fn bitlgte(bits1: *mut c_char, oper: c_int, bits2: *mut c_char) -> c_char {
-    unsafe {
-        // Confine unsafe to reading the two NUL-terminated bit strings.
-        let l1 = strlen(bits1) as usize;
-        let l2 = strlen(bits2) as usize;
-        let s1 = core::slice::from_raw_parts(bits1, l1);
-        let s2 = core::slice::from_raw_parts(bits2, l2);
-        let length = l1.max(l2);
+    // Confine unsafe to reading the two NUL-terminated bit strings.
+    let (s1, s2) = unsafe {
+        (
+            core::slice::from_raw_parts(bits1, strlen(bits1) as usize),
+            core::slice::from_raw_parts(bits2, strlen(bits2) as usize),
+        )
+    };
+    let length = s1.len().max(s2.len());
 
-        // Interpret both strings as unsigned integers (rightmost char = LSB),
-        // skipping don't-care ('x'/'X') positions, then compare magnitudes.
-        let mut val1: c_int = 0;
-        let mut val2: c_int = 0;
-        let mut nextbit: c_int = 1;
-        for j in (0..length).rev() {
-            let chr1 = padded_bit(s1, length, j);
-            let chr2 = padded_bit(s2, length, j);
-            if chr1 != b'x' as c_char
-                && chr1 != b'X' as c_char
-                && chr2 != b'x' as c_char
-                && chr2 != b'X' as c_char
-            {
-                if chr1 == b'1' as c_char {
-                    val1 += nextbit;
-                }
-                if chr2 == b'1' as c_char {
-                    val2 += nextbit;
-                }
-                nextbit *= 2;
+    // Interpret both strings as unsigned integers (rightmost char = LSB),
+    // skipping don't-care ('x'/'X') positions, then compare magnitudes.
+    let mut val1: c_int = 0;
+    let mut val2: c_int = 0;
+    let mut nextbit: c_int = 1;
+    for j in (0..length).rev() {
+        let chr1 = padded_bit(s1, length, j);
+        let chr2 = padded_bit(s2, length, j);
+        if chr1 != b'x' as c_char
+            && chr1 != b'X' as c_char
+            && chr2 != b'x' as c_char
+            && chr2 != b'X' as c_char
+        {
+            if chr1 == b'1' as c_char {
+                val1 += nextbit;
             }
+            if chr2 == b'1' as c_char {
+                val2 += nextbit;
+            }
+            nextbit *= 2;
         }
-
-        (match oper {
-            282 => val1 < val2,
-            283 => val1 <= val2,
-            281 => val1 > val2,
-            284 => val1 >= val2,
-            _ => false,
-        }) as c_char
     }
+
+    (match oper {
+        282 => val1 < val2,
+        283 => val1 <= val2,
+        281 => val1 > val2,
+        284 => val1 >= val2,
+        _ => false,
+    }) as c_char
 }
 /// Combine two NUL-terminated bit strings bit-by-bit with `op`, left-padding the
 /// shorter operand with '0', and write the NUL-terminated result to `result`
 /// (which must hold at least `max(len1, len2) + 1` bytes). Replaces the C
 /// malloc-a-scratch-stream-and-pointer-walk idiom with bounded slice access.
-///
-/// # Safety
-/// `bitstrm1`/`bitstrm2` must be valid NUL-terminated strings and `result` must
-/// point to a buffer large enough for the longer operand plus a NUL; `result`
-/// must not overlap either operand.
-unsafe fn bit_binop(
+/// `unsafe` is confined to building the slices from the (internally-supplied,
+/// valid) node buffer pointers; the combine loop is bounds-checked.
+fn bit_binop(
     result: *mut c_char,
     bitstrm1: *mut c_char,
     bitstrm2: *mut c_char,
     op: impl Fn(c_char, c_char) -> c_char,
 ) {
-    unsafe {
+    let (s1, s2, out) = unsafe {
         let l1 = strlen(bitstrm1) as usize;
         let l2 = strlen(bitstrm2) as usize;
-        let s1 = core::slice::from_raw_parts(bitstrm1, l1);
-        let s2 = core::slice::from_raw_parts(bitstrm2, l2);
         let n = l1.max(l2);
-        let out = core::slice::from_raw_parts_mut(result, n + 1);
-        for i in 0..n {
-            out[i] = op(padded_bit(s1, n, i), padded_bit(s2, n, i));
-        }
-        out[n] = 0;
+        (
+            core::slice::from_raw_parts(bitstrm1, l1),
+            core::slice::from_raw_parts(bitstrm2, l2),
+            core::slice::from_raw_parts_mut(result, n + 1),
+        )
+    };
+    let n = s1.len().max(s2.len());
+    for i in 0..n {
+        out[i] = op(padded_bit(s1, n, i), padded_bit(s2, n, i));
     }
+    out[n] = 0;
 }
 
 fn bitand(result: *mut c_char, bitstrm1: *mut c_char, bitstrm2: *mut c_char) {
-    unsafe {
-        bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
-            if chr1 == b'x' as c_char || chr2 == b'x' as c_char {
-                b'x' as c_char
-            } else if chr1 == b'1' as c_char && chr2 == b'1' as c_char {
-                b'1' as c_char
-            } else {
-                b'0' as c_char
-            }
-        });
-    }
+    bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
+        if chr1 == b'x' as c_char || chr2 == b'x' as c_char {
+            b'x' as c_char
+        } else if chr1 == b'1' as c_char && chr2 == b'1' as c_char {
+            b'1' as c_char
+        } else {
+            b'0' as c_char
+        }
+    });
 }
 fn bitor(result: *mut c_char, bitstrm1: *mut c_char, bitstrm2: *mut c_char) {
-    unsafe {
-        bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
-            if chr1 == b'1' as c_char || chr2 == b'1' as c_char {
-                b'1' as c_char
-            } else if chr1 == b'0' as c_char || chr2 == b'0' as c_char {
-                b'0' as c_char
-            } else {
-                b'x' as c_char
-            }
-        });
-    }
+    bit_binop(result, bitstrm1, bitstrm2, |chr1, chr2| {
+        if chr1 == b'1' as c_char || chr2 == b'1' as c_char {
+            b'1' as c_char
+        } else if chr1 == b'0' as c_char || chr2 == b'0' as c_char {
+            b'0' as c_char
+        } else {
+            b'x' as c_char
+        }
+    });
 }
 fn bitnot(result: *mut c_char, bits: *mut c_char) {
-    unsafe {
-        // Confine unsafe to building slices from the NUL-terminated bit strings;
-        // the inversion itself is bounded safe indexing.
+    // Confine unsafe to building slices from the NUL-terminated bit strings;
+    // the inversion itself is bounded safe indexing.
+    let (bits, result) = unsafe {
         let length = strlen(bits) as usize;
-        let bits = core::slice::from_raw_parts(bits, length);
-        let result = core::slice::from_raw_parts_mut(result, length + 1);
-        for i in 0..length {
-            let chr = bits[i];
-            result[i] = if chr == b'1' as c_char {
-                b'0' as c_char
-            } else if chr == b'0' as c_char {
-                b'1' as c_char
-            } else {
-                chr
-            };
-        }
-        result[length] = 0;
+        (
+            core::slice::from_raw_parts(bits, length),
+            core::slice::from_raw_parts_mut(result, length + 1),
+        )
+    };
+    let length = bits.len();
+    for i in 0..length {
+        let chr = bits[i];
+        result[i] = if chr == b'1' as c_char {
+            b'0' as c_char
+        } else if chr == b'0' as c_char {
+            b'1' as c_char
+        } else {
+            chr
+        };
     }
+    result[length] = 0;
 }
 
 fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
-    unsafe {
+    // Confine unsafe to viewing the NUL-terminated bit strings as slices; the
+    // padding/compare below is bounds-checked.
+    let (mut bitstrm1, mut bitstrm2) = unsafe {
+        (
+            core::slice::from_raw_parts_mut(bitstrm1, strlen(bitstrm1) as usize + 1),
+            core::slice::from_raw_parts_mut(bitstrm2, strlen(bitstrm2) as usize + 1),
+        )
+    };
+    {
         let mut i: c_int = 0;
         let mut ldiff: c_int = 0;
         let mut largestStream: c_int = 0;
         let mut chr1: c_char = 0;
         let mut chr2: c_char = 0;
 
-        let mut l1 = strlen(bitstrm1) as c_int;
-        let mut l2 = strlen(bitstrm2) as c_int;
-
-        let mut bitstrm1 = core::slice::from_raw_parts_mut(bitstrm1, l1 as usize + 1);
-        let mut bitstrm2 = core::slice::from_raw_parts_mut(bitstrm2, l2 as usize + 1);
+        let mut l1 = bitstrm1.len() as c_int - 1;
+        let mut l2 = bitstrm2.len() as c_int - 1;
 
         largestStream = cmp::max(l1, l2);
 
