@@ -93,37 +93,78 @@ impl From<c_int> for fits_parser_yytokentype {
     }
 }
 
+/// The bison parser-stack value. Formerly an untyped `union`; now a
+/// discriminated enum so a stack slot can't be read as the wrong kind. The
+/// default/unset slot is `Node(0)` (matching the old `{ Node: 0 }` init).
+///
+/// Getters match on the variant (lenient with a `debug_assert!` on a genuine
+/// wrong-variant read, preserving the union's read-anything behaviour).
 #[derive(Copy, Clone)]
-pub(crate) union FITS_PARSER_YYSTYPE {
-    pub(crate) Node: c_int,                         /* Index of Node */
-    pub(crate) dbl: c_double,                       /* real value    */
-    pub(crate) lng: c_long,                         /* integer value */
-    pub(crate) log: c_char,                         /* logical value */
-    pub(crate) astr: [c_char; MAX_STRLEN as usize], /* string value  */
+pub(crate) enum FITS_PARSER_YYSTYPE {
+    Node(c_int),
+    Dbl(c_double),
+    Lng(c_long),
+    Log(c_char),
+    Astr([c_char; MAX_STRLEN as usize]),
 }
 
-/// Typed read accessors over the parser-stack value union. Call sites use these
-/// instead of reading the union fields directly, so the backing storage can
-/// later be swapped for a typed enum by reimplementing only these methods
-/// (mirrors the `DataVal` migration). Writes stay as field assignments for now.
 impl FITS_PARSER_YYSTYPE {
     /// Node index (the dominant variant on the parser stack).
     pub(crate) fn node(&self) -> c_int {
-        unsafe { self.Node }
+        match self {
+            Self::Node(v) => *v,
+            _ => {
+                debug_assert!(false, "node() on non-Node YYSTYPE");
+                0
+            }
+        }
     }
     pub(crate) fn dbl(&self) -> c_double {
-        unsafe { self.dbl }
+        match self {
+            Self::Dbl(v) => *v,
+            _ => {
+                debug_assert!(false, "dbl() on non-Dbl YYSTYPE");
+                0.0
+            }
+        }
     }
     pub(crate) fn lng(&self) -> c_long {
-        unsafe { self.lng }
+        match self {
+            Self::Lng(v) => *v,
+            _ => {
+                debug_assert!(false, "lng() on non-Lng YYSTYPE");
+                0
+            }
+        }
     }
     pub(crate) fn log(&self) -> c_char {
-        unsafe { self.log }
+        match self {
+            Self::Log(v) => *v,
+            _ => {
+                debug_assert!(false, "log() on non-Log YYSTYPE");
+                0
+            }
+        }
     }
     pub(crate) fn astr(&self) -> &[c_char; MAX_STRLEN as usize] {
-        unsafe { &self.astr }
+        match self {
+            Self::Astr(a) => a,
+            _ => {
+                debug_assert!(false, "astr() on non-Astr YYSTYPE");
+                const ZEROS: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
+                &ZEROS
+            }
+        }
     }
+    /// Mutable view of the string buffer, initialising to an empty `Astr` first
+    /// if needed so callers (the lexer) can build a string token in place.
     pub(crate) fn astr_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
-        unsafe { &mut self.astr }
+        if !matches!(self, Self::Astr(_)) {
+            *self = Self::Astr([0; MAX_STRLEN as usize]);
+        }
+        match self {
+            Self::Astr(a) => a,
+            _ => unreachable!(),
+        }
     }
 }

@@ -4702,7 +4702,7 @@ fn find_column(
             }
         }
         lParse.nCols += 1;
-        thelval.lng = c_long::from(col_cnt);
+        *thelval = FITS_PARSER_YYSTYPE::Lng(c_long::from(col_cnt));
 
         ktype
     }
@@ -4764,14 +4764,14 @@ fn find_keywd(
             // 'C' as c_char
             fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
             ktype = fits_parser_yytokentype::STRING as c_int;
-            strcpy_safe(unsafe { &mut thelval.astr }, &keyvalue);
+            strcpy_safe(thelval.astr_mut(), &keyvalue);
         }
         b'L' => {
             // 'L' as c_char
             fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
             ktype = fits_parser_yytokentype::BOOLEAN as c_int;
             unsafe {
-                thelval.log = bval as c_char;
+                *thelval = FITS_PARSER_YYSTYPE::Log(bval as c_char);
             }
         }
         b'I' => {
@@ -4779,7 +4779,7 @@ fn find_keywd(
             fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
             ktype = fits_parser_yytokentype::LONG as c_int;
             unsafe {
-                thelval.lng = ival;
+                *thelval = FITS_PARSER_YYSTYPE::Lng(ival);
             }
         }
         b'F' => {
@@ -4787,7 +4787,7 @@ fn find_keywd(
             fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
             ktype = fits_parser_yytokentype::DOUBLE as c_int;
             unsafe {
-                thelval.dbl = rval;
+                *thelval = FITS_PARSER_YYSTYPE::Dbl(rval);
             }
         }
         _ => {
