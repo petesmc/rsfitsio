@@ -2,7 +2,6 @@
 
 /* configuration parameters */
 
-use core::slice;
 use std::{
     cmp,
     ffi::{CStr, c_void},
@@ -1765,7 +1764,7 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
 
         int_snprintf!(&mut segname[1..], 9, "{}", id);
 
-        if smem_open_locked(&mut segname, 0, &mut i) != 0 {
+        if smem_open_locked(&segname, 0, &mut i) != 0 {
             return SHARED_BADARG;
         }
 
@@ -1864,13 +1863,19 @@ pub(crate) fn smem_getversion(version: &mut c_int) -> c_int {
     0
 }
 
+// The registered driver shim keeps `&mut [c_char]` to match the shared
+// `fitsdriver.open` function-pointer type (all drivers share that signature).
+// It only reborrows the buffer as `&[c_char]` for the core, which never writes
+// it — the parse (`sscanf_d`) is read-only. This is what lets `smem_remove`
+// drop its old `&[c_char] -> &mut [c_char]` cast (see below).
 pub(crate) fn smem_open(filename: &mut [c_char], rwmode: c_int, driverhandle: &mut c_int) -> c_int {
     let _g = state_lock();
     smem_open_locked(filename, rwmode, driverhandle)
 }
 
-/// Core of `smem_open`: assumes the process-local lock is held.
-fn smem_open_locked(filename: &mut [c_char], rwmode: c_int, driverhandle: &mut c_int) -> c_int {
+/// Core of `smem_open`: assumes the process-local lock is held. Takes the
+/// filename by shared reference — the body only reads it.
+fn smem_open_locked(filename: &[c_char], rwmode: c_int, driverhandle: &mut c_int) -> c_int {
     unsafe {
         let mut h: c_int = 0;
         let mut nitems: c_int = 0;
@@ -2017,11 +2022,9 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
         } else {
             /* not locked */
 
-            // WARNING: This is bad! We are just converting a immutable slice to a mutable
-            // SAFETY: Absolutely none.
-            let f = slice::from_raw_parts_mut(filename.as_ptr() as *mut c_char, filename.len());
-
-            r = smem_open_locked(f, READWRITE, &mut h);
+            // smem_open_locked only reads the filename, so pass the shared slice
+            // directly — no more `&[c_char] -> &mut [c_char]` cast.
+            r = smem_open_locked(filename, READWRITE, &mut h);
             if SHARED_OK != r {
                 return r; /* so open in RW mode */
             }
