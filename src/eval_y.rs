@@ -621,40 +621,38 @@ fn New_Const(
     value: *const c_void,
     len: c_long,
 ) -> c_int {
-    unsafe {
-        let mut n: c_int = 0;
-        n = Alloc_Node(lParse);
-        if n >= 0 {
-            let this_node = &mut lParse.Nodes[n as usize];
-            this_node.operation = CONST_OP; /* Flag a constant */
-            this_node.DoOp = None;
-            this_node.nSubNodes = 0;
-            this_node.ntype = returnType;
-            // Store the constant as a typed value rather than memcpy'ing raw
-            // bytes into the storage (which would depend on its in-memory
-            // layout).
-            if returnType == fits_parser_yytokentype::DOUBLE as c_int {
-                this_node.value.data = data_union::Double(*value.cast::<f64>());
-            } else if returnType == fits_parser_yytokentype::LONG as c_int {
-                this_node.value.data = data_union::Long(*value.cast::<c_long>());
-            } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
-                this_node.value.data = data_union::Logical(*value.cast::<c_char>());
-            } else {
-                // STRING / BITSTR: copy the bytes into the fixed astr buffer.
-                let n = (len as usize).min(MAX_STRLEN as usize);
-                core::ptr::copy_nonoverlapping(
-                    value.cast::<c_char>(),
-                    this_node.value.data.astr_mut().as_mut_ptr(),
-                    n,
-                );
+    let n = Alloc_Node(lParse);
+    if n >= 0 {
+        let this_node = &mut lParse.Nodes[n as usize];
+        this_node.operation = CONST_OP; /* Flag a constant */
+        this_node.DoOp = None;
+        this_node.nSubNodes = 0;
+        this_node.ntype = returnType;
+        // Store the constant as a typed value rather than memcpy'ing raw bytes
+        // into the storage (which would depend on its in-memory layout). The
+        // only unsafe part is reading the constant from the caller's raw
+        // pointer.
+        this_node.value.data = if returnType == fits_parser_yytokentype::DOUBLE as c_int {
+            data_union::Double(unsafe { *value.cast::<f64>() })
+        } else if returnType == fits_parser_yytokentype::LONG as c_int {
+            data_union::Long(unsafe { *value.cast::<c_long>() })
+        } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
+            data_union::Logical(unsafe { *value.cast::<c_char>() })
+        } else {
+            // STRING / BITSTR: copy the bytes into a fixed astr buffer.
+            let nbytes = (len as usize).min(MAX_STRLEN as usize);
+            let mut a = [0 as c_char; MAX_STRLEN as usize];
+            unsafe {
+                core::ptr::copy_nonoverlapping(value.cast::<c_char>(), a.as_mut_ptr(), nbytes);
             }
-            this_node.value.undef = ptr::null_mut();
-            this_node.value.nelem = 1;
-            this_node.value.naxis = 1;
-            this_node.value.naxes[0] = 1;
-        }
-        n
+            data_union::Str(a)
+        };
+        this_node.value.undef = ptr::null_mut();
+        this_node.value.nelem = 1;
+        this_node.value.naxis = 1;
+        this_node.value.naxes[0] = 1;
     }
+    n
 }
 
 fn New_Column(lParse: &mut ParseData, ColNum: c_int) -> c_int {
