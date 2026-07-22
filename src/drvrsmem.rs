@@ -54,6 +54,13 @@ const SHARED_PERSIST: c_int = 8; /* flag for shared_malloc, object is not delete
 
 const SHARED_INVALID: c_int = -1; /* invalid handle for semaphore/shared memory */
 
+/// The value `shmat(2)` returns on failure: `(void *) -1`, i.e. an all-ones
+/// pointer. The port previously tested this as `SHARED_INVALID as *mut T`, which
+/// only works because `-1i32 as *mut T` sign-extends to `0xFFFF…FFFF` rather
+/// than zero-extending — a reliance on int->ptr cast semantics. Compare against
+/// this explicit sentinel instead (cast it to the needed pointer type).
+const SHM_FAILED: *mut c_void = usize::MAX as *mut c_void;
+
 const SHARED_EMPTY: c_int = 0; /* entries for shared_used table */
 const SHARED_USED: c_int = 1;
 
@@ -609,7 +616,7 @@ unsafe fn shared_init_locked(debug_msgs: c_int) -> c_int {
 
                 SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
 
-                if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
+                if SHARED_GT_PTR == SHM_FAILED as *mut SHARED_GTAB {
                     return SHARED_IPCERR;
                 }
 
@@ -619,7 +626,7 @@ unsafe fn shared_init_locked(debug_msgs: c_int) -> c_int {
             } else {
                 SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
 
-                if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
+                if SHARED_GT_PTR == SHM_FAILED as *mut SHARED_GTAB {
                     return SHARED_IPCERR;
                 }
 
@@ -1087,7 +1094,7 @@ unsafe fn shared_malloc_locked(size: c_long, mode: c_int, newhandle: c_int) -> c
             }
 
             /* cannot attach, delete segment, try with another key */
-            if (SHARED_INVALID as *mut BLKHEAD) == bp {
+            if bp == SHM_FAILED as *mut BLKHEAD {
                 shmctl(h, IPC_RMID, std::ptr::null_mut());
                 i += 1;
                 continue;
@@ -1285,7 +1292,7 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
 
         let bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD;
 
-        if (SHARED_INVALID as *const BLKHEAD) == bp {
+        if bp == SHM_FAILED as *mut BLKHEAD {
             return SHARED_BADARG;
         }
         if (SHARED_ID_0 != (*bp).ID[0])
@@ -1428,7 +1435,7 @@ unsafe fn shared_realloc_locked(idx: usize, newsize: c_int) -> SHARED_P {
             bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD; /* try attach */
 
             /* cannot attach, delete segment, try with another key */
-            if (SHARED_INVALID as *mut BLKHEAD) == bp {
+            if bp == SHM_FAILED as *mut BLKHEAD {
                 shmctl(h, IPC_RMID, std::ptr::null_mut());
                 i += 1;
                 continue;
@@ -2189,17 +2196,23 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
             return SHARED_INVALID;
         }
 
-        if nbytes < 0 {
-            return SHARED_BADARG;
-        }
+        // (`nbytes < 0` was dead here: nbytes is usize.)
 
         if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
 
-        // let shared_lt = shared_lt.as_mut().unwrap();
-
-        if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long)
+        // Guard `seekpos + nbytes` against c_long overflow before the EOF bound
+        // check, so a huge nbytes can't wrap and slip past the bound into the
+        // raw memcpy below.
+        let end = match SHARED_LT[driverhandle as usize]
+            .seekpos
+            .checked_add(nbytes as c_long)
+        {
+            Some(e) => e,
+            None => return SHARED_BADARG,
+        };
+        if end
             > gt(SHARED_GT_PTR, driverhandle as usize)
                 .size
                 .load(Relaxed)
@@ -2246,25 +2259,31 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
             return SHARED_INVALID; /* are we locked RW ? */
         }
 
-        if nbytes < 0 {
-            return SHARED_BADARG;
-        }
+        // (`nbytes < 0` was dead here: nbytes is usize.)
 
-        if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long) as c_ulong
+        // Guard `seekpos + nbytes` (and the realloc size) against c_long overflow
+        // before it can wrap and defeat the size comparison / feed a bad size to
+        // shared_realloc.
+        let end = match SHARED_LT[driverhandle as usize]
+            .seekpos
+            .checked_add(nbytes as c_long)
+        {
+            Some(e) => e,
+            None => return SHARED_BADARG,
+        };
+        if (end as c_ulong)
             > (gt(SHARED_GT_PTR, driverhandle as usize).size.load(Relaxed)
                 - size_of::<DAL_SHM_SEGHEAD>() as c_int) as c_ulong
         {
             /* need to realloc shmem */
-            if shared_realloc_locked(
-                driverhandle.try_into().unwrap(),
-                (SHARED_LT[driverhandle as usize].seekpos
-                    + nbytes as c_long
-                    + size_of::<DAL_SHM_SEGHEAD>() as c_long)
-                    .try_into()
-                    .unwrap(),
-            )
-            .is_null()
+            let newsize = match end
+                .checked_add(size_of::<DAL_SHM_SEGHEAD>() as c_long)
+                .and_then(|n| c_int::try_from(n).ok())
             {
+                Some(n) => n,
+                None => return SHARED_NOMEM,
+            };
+            if shared_realloc_locked(driverhandle.try_into().unwrap(), newsize).is_null() {
                 return SHARED_NOMEM;
             }
         }
