@@ -4713,96 +4713,94 @@ fn find_keywd(
     keyname: &[c_char],
     itslval: &mut FITS_PARSER_YYSTYPE,
 ) -> c_int {
-    unsafe {
-        let thelval = itslval;
+    let thelval = itslval;
 
-        let mut status: c_int = 0;
-        let mut ktype: c_int = 0;
+    let mut status: c_int = 0;
+    let mut ktype: c_int = 0;
 
-        let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut dtype: c_char = 0;
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut dtype: c_char = 0;
 
-        let mut rval: c_double = 0.0;
-        let mut bval: c_int = 0;
-        let mut ival: c_long = 0;
+    let mut rval: c_double = 0.0;
+    let mut bval: c_int = 0;
+    let mut ival: c_long = 0;
 
-        status = 0;
+    status = 0;
 
-        if lParse.def_fptr.is_null() {
-            ffpmsg_str("find_keywd: no default fitsfile defined");
-            lParse.status = P_ERROR;
-            return P_ERROR;
-        }
-
-        let fptr: &mut fitsfile = lParse.def_fptr.as_mut().expect(NULL_MSG);
-
-        if fits_read_keyword(fptr, keyname, &mut keyvalue, None, &mut status) != 0 {
-            if status == KEY_NO_EXIST {
-                /*  Do this since ffgkey doesn't put an error message on stack  */
-                int_snprintf!(
-                    &mut keyvalue,
-                    FLEN_VALUE,
-                    "ffgkey could not find keyword: {}",
-                    CStr::from_bytes_until_nul(cast_slice(keyname))
-                        .unwrap()
-                        .to_str()
-                        .unwrap(),
-                );
-                ffpmsg_slice(&keyvalue);
-            }
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        if fits_get_keytype(&keyvalue, &mut dtype, &mut status) != 0 {
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        /* Read appropriate value type and set to CONST_OP */
-        match dtype as u8 {
-            b'C' => {
-                // 'C' as c_char
-                fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
-                ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy_safe(unsafe { &mut thelval.astr }, &keyvalue);
-            }
-            b'L' => {
-                // 'L' as c_char
-                fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
-                ktype = fits_parser_yytokentype::BOOLEAN as c_int;
-                unsafe {
-                    thelval.log = bval as c_char;
-                }
-            }
-            b'I' => {
-                // 'I' as c_char
-                fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
-                ktype = fits_parser_yytokentype::LONG as c_int;
-                unsafe {
-                    thelval.lng = ival;
-                }
-            }
-            b'F' => {
-                // 'F' as c_char
-                fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
-                ktype = fits_parser_yytokentype::DOUBLE as c_int;
-                unsafe {
-                    thelval.dbl = rval;
-                }
-            }
-            _ => {
-                ktype = P_ERROR;
-            }
-        }
-
-        if status != 0 {
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        ktype
+    if lParse.def_fptr.is_null() {
+        ffpmsg_str("find_keywd: no default fitsfile defined");
+        lParse.status = P_ERROR;
+        return P_ERROR;
     }
+
+    let fptr: &mut fitsfile = unsafe { lParse.def_fptr.as_mut() }.expect(NULL_MSG);
+
+    if fits_read_keyword(fptr, keyname, &mut keyvalue, None, &mut status) != 0 {
+        if status == KEY_NO_EXIST {
+            /*  Do this since ffgkey doesn't put an error message on stack  */
+            int_snprintf!(
+                &mut keyvalue,
+                FLEN_VALUE,
+                "ffgkey could not find keyword: {}",
+                CStr::from_bytes_until_nul(cast_slice(keyname))
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            );
+            ffpmsg_slice(&keyvalue);
+        }
+        lParse.status = status;
+        return P_ERROR;
+    }
+
+    if fits_get_keytype(&keyvalue, &mut dtype, &mut status) != 0 {
+        lParse.status = status;
+        return P_ERROR;
+    }
+
+    /* Read appropriate value type and set to CONST_OP */
+    match dtype as u8 {
+        b'C' => {
+            // 'C' as c_char
+            fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
+            ktype = fits_parser_yytokentype::STRING as c_int;
+            strcpy_safe(unsafe { &mut thelval.astr }, &keyvalue);
+        }
+        b'L' => {
+            // 'L' as c_char
+            fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
+            ktype = fits_parser_yytokentype::BOOLEAN as c_int;
+            unsafe {
+                thelval.log = bval as c_char;
+            }
+        }
+        b'I' => {
+            // 'I' as c_char
+            fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
+            ktype = fits_parser_yytokentype::LONG as c_int;
+            unsafe {
+                thelval.lng = ival;
+            }
+        }
+        b'F' => {
+            // 'F' as c_char
+            fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
+            ktype = fits_parser_yytokentype::DOUBLE as c_int;
+            unsafe {
+                thelval.dbl = rval;
+            }
+        }
+        _ => {
+            ktype = P_ERROR;
+        }
+    }
+
+    if status != 0 {
+        lParse.status = status;
+        return P_ERROR;
+    }
+
+    ktype
 }
 
 /// Allocates parser iterator column storage for 25 columns *more* than nCols
