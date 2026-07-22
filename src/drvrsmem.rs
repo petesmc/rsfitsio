@@ -150,6 +150,13 @@ unsafe impl Send for SHARED_LTAB {}
 
 type flock_t = flock;
 
+// ABI note: SysV `semctl(2)` is variadic; its 4th argument is a `union semun`
+// passed BY VALUE. POSIX deliberately does not define `semun` — the program is
+// expected to declare it — so this layout (matching glibc's historical
+// definition) is what the kernel/libc expect on the Linux/macOS/*BSD targets
+// this driver builds for (`not(target_os = "windows")`). Passing it by value to
+// the variadic `libc::semctl` matches the C `drvrsmem.c` original. If ported to
+// a platform whose `semctl` expects a different `semun`, revisit this.
 #[derive(Clone, Copy)]
 #[repr(C)]
 union semun {
@@ -1817,6 +1824,23 @@ unsafe fn shared_list_core(id: c_int) -> c_int {
     }
 }
 
+/// Return, in `*address`, a pointer to the data area of segment `id`.
+///
+/// LIFETIME / LOCK CONTRACT (Phase 5c — behaviour intentionally unchanged from
+/// cfitsio, documented here rather than "fixed"):
+/// - On success the segment is left **attached and locked** — the matching
+///   `smem_close` is deliberately not called (see the commented-out line in
+///   `shared_getaddr_core`). The caller is expected to hold that lock and is
+///   responsible for the eventual `shared_unlock`/`shared_free`; otherwise the
+///   segment stays locked/attached (a lock+attach leak). `src/bin/smem` calls
+///   this in a loop over all 16 ids and never frees — that leak is inherent to
+///   the C tool and is called out at that call site.
+/// - The returned pointer **dangles** if another process `shared_realloc`s the
+///   segment: realloc swaps the underlying SysV segment and detaches the old
+///   one. Only valid while the caller holds the lock and no realloc intervenes.
+///
+/// Do not change this contract without a maintainer decision (some callers rely
+/// on the segment staying locked after the call).
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
     entry_int(|| unsafe { shared_getaddr_core(id, address) })
