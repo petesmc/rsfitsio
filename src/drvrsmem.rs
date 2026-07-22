@@ -8,6 +8,7 @@ use std::{
     ffi::{CStr, c_void},
     mem::MaybeUninit,
     ptr,
+    sync::Mutex,
     sync::atomic::{AtomicI32, AtomicU8, Ordering::Relaxed},
 };
 
@@ -183,10 +184,51 @@ static mut SHARED_GT_H: c_int = SHARED_INVALID; /* handle of global table segmen
 static mut SHARED_KBASE: c_int = 0; /* base for shared memory handles */
 static mut SHARED_DEBUG: bool = false; /* simple debugging tool, set to 0 to disable messages */
 static mut SHARED_CREATE_MODE: c_int = 0o666; /* permission flags for created objects */
-static mut SHARED_INIT_CALLED: bool = false; /* flag whether shared_init() has been called, used for delayed init */
+static mut SHARED_INIT_CALLED: bool = false; /* flag whether shared_init_locked() has been called, used for delayed init */
 
 static mut SHARED_GT_PTR: *mut SHARED_GTAB = ptr::null_mut(); /* attached global table (null = not attached) */
 static mut SHARED_LT: Vec<SHARED_LTAB> = Vec::new(); /* local table pointer */
+
+/// Process-local lock serializing ALL public shared-memory driver entry points.
+///
+/// Phase 2 (HARDENING_PLAN_drvrsmem.md): the driver's process-local bookkeeping
+/// (the `SHARED_*` statics and `SHARED_LT`) previously had no intra-process
+/// synchronization, so two threads in any `smem_*`/`shared_*` entry point raced
+/// — UB regardless of the cross-process locking. Every public entry point now
+/// takes this mutex once at the top, making them mutually exclusive within the
+/// process.
+///
+/// This only covers the IN-process side. The cross-process contract is
+/// unchanged: the fcntl lock-file + SysV semaphores (plus the Phase 1 atomics on
+/// the shared segment) still serialize real access ACROSS processes. Note that a
+/// blocking `fcntl(F_SETLKW)` in `shared_mux` is issued while this lock is held,
+/// so threads contending for one segment serialize behind its waiter; that is
+/// acceptable for correctness (a later throughput refinement, not a concern
+/// here).
+///
+/// The `static mut SHARED_*` globals are kept (rather than moved into a
+/// `Mutex<SharedState>` as sketched in the plan) to keep this change mechanical
+/// and low-risk; they are now only ever touched while this lock is held, which
+/// gives the same intra-process safety. Migrating them into an owned struct to
+/// drop `#![allow(static_mut_refs)]` is left to Phase 6.
+///
+/// Re-entrancy: several entry points call one another (delayed init; the smem_*
+/// driver calling shared_*; smem_remove calling smem_open/smem_close). To avoid
+/// self-deadlock on this non-reentrant lock, each such entry point is split into
+/// a public locking wrapper and a `_locked` core. Cores NEVER lock and only ever
+/// call other cores; wrappers are only entered from outside (C / cfileio / the
+/// tests), never from a core.
+static STATE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Acquire the process-local lock, recovering from poisoning.
+///
+/// Poisoning can genuinely happen (a thread panicked mid-op), so we recover the
+/// guard and continue rather than panic: panicking out of the `extern "C"` entry
+/// points is UB, and C never panics on a lock. Phase 4 additionally wraps entry
+/// bodies in `catch_unwind`, which makes poisoning rare in the first place.
+fn state_lock() -> std::sync::MutexGuard<'static, ()> {
+    STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Borrow the `idx`-th global-table entry from the attached segment.
 ///
@@ -253,9 +295,15 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
     }
 }
 
-/// This must (should) be called during exit/abort
+/// This must (should) be called during exit/abort. Registered via `atexit`.
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub extern "C" fn shared_cleanup() {
+    let _g = state_lock();
+    unsafe { shared_cleanup_locked() }
+}
+
+/// Core of `shared_cleanup`: assumes the process-local lock is held.
+unsafe fn shared_cleanup_locked() {
     unsafe {
         let i: c_int = 0;
         let j: c_int = 0;
@@ -397,11 +445,19 @@ pub extern "C" fn shared_cleanup() {
 /// Initialize shared memory stuff, you have to call this routine once
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_init(debug_msgs: c_int) -> c_int {
-    unsafe { shared_init_safer(debug_msgs) }
+    let _g = state_lock();
+    unsafe { shared_init_locked(debug_msgs) }
 }
 
-/// Initialize shared memory stuff, you have to call this routine once
+/// Public Rust entry point (locks); kept for source compatibility.
 pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
+    let _g = state_lock();
+    unsafe { shared_init_locked(debug_msgs) }
+}
+
+/// Core of `shared_init`: assumes the process-local lock is already held and
+/// only calls other `_locked` cores. Never locks.
+unsafe fn shared_init_locked(debug_msgs: c_int) -> c_int {
     unsafe {
         let i: c_int = 0;
         let mut buf: [c_char; 1000] = [0; 1000];
@@ -586,6 +642,7 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
 /// try to recover dormant segments after applic crash
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
+    let _g = state_lock();
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -665,7 +722,7 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
 
         /* delayed initialization */
         if !SHARED_INIT_CALLED {
-            r = shared_init(0);
+            r = shared_init_locked(0);
             if SHARED_OK != r {
                 return r;
             }
@@ -901,6 +958,12 @@ fn shared_adjust_size(size: usize) -> c_int {
 /// return idx or SHARED_INVALID
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_int) -> c_int {
+    let _g = state_lock();
+    unsafe { shared_malloc_locked(size, mode, newhandle) }
+}
+
+/// Core of `shared_malloc`: assumes the process-local lock is held.
+unsafe fn shared_malloc_locked(size: c_long, mode: c_int, newhandle: c_int) -> c_int {
     let mut h: c_int = 0;
     let mut i: c_int = 0;
     let mut r: c_int = 0;
@@ -911,7 +974,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
     unsafe {
         /* delayed initialization */
         if !SHARED_INIT_CALLED {
-            r = shared_init(0);
+            r = shared_init_locked(0);
             if SHARED_OK != r {
                 return r;
             }
@@ -1050,6 +1113,12 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
+    let _g = state_lock();
+    unsafe { shared_attach_locked(idx) }
+}
+
+/// Core of `shared_attach`: assumes the process-local lock is held.
+unsafe fn shared_attach_locked(idx: usize) -> c_int {
     unsafe {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
@@ -1098,7 +1167,7 @@ unsafe fn shared_check_locked_index(idx: usize) -> c_int /* verify that given id
 
         /* delayed initialization */
         if !SHARED_INIT_CALLED {
-            r = shared_init(0);
+            r = shared_init_locked(0);
             if SHARED_OK != r {
                 return r;
             }
@@ -1230,6 +1299,12 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P /* realloc shared memory segment */
 {
+    let _g = state_lock();
+    unsafe { shared_realloc_locked(idx, newsize) }
+}
+
+/// Core of `shared_realloc`: assumes the process-local lock is held.
+unsafe fn shared_realloc_locked(idx: usize, newsize: c_int) -> SHARED_P {
     unsafe {
         let mut h: c_int = 0;
         let mut key: c_int = 0;
@@ -1345,6 +1420,12 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if last process & !PERSIST, destroy segment */
 {
+    let _g = state_lock();
+    unsafe { shared_free_locked(idx) }
+}
+
+/// Core of `shared_free`: assumes the process-local lock is held.
+unsafe fn shared_free_locked(idx: usize) -> c_int {
     unsafe {
         let mut cnt: c_int = 0;
         let r: c_int = 0;
@@ -1405,6 +1486,12 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* lock given segment for exclusive access */
 {
+    let _g = state_lock();
+    unsafe { shared_lock_locked(idx, mode) }
+}
+
+/// Core of `shared_lock`: assumes the process-local lock is held.
+unsafe fn shared_lock_locked(idx: usize, mode: c_int) -> SHARED_P {
     unsafe {
         let mut r: c_int = 0;
 
@@ -1459,6 +1546,12 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segment, assumes seg is locked !! */
 {
+    let _g = state_lock();
+    unsafe { shared_unlock_locked(idx) }
+}
+
+/// Core of `shared_unlock`: assumes the process-local lock is held.
+unsafe fn shared_unlock_locked(idx: usize) -> c_int {
     unsafe {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
@@ -1502,6 +1595,7 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes of the shared memory segment */
 {
+    let _g = state_lock();
     unsafe {
         if shared_check_locked_index(idx) != 0 {
             return SHARED_INVALID;
@@ -1516,6 +1610,12 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /* get the attributes of the shared memory segment */
 {
+    let _g = state_lock();
+    unsafe { shared_set_attr_locked(idx, newattr) }
+}
+
+/// Core of `shared_set_attr`: assumes the process-local lock is held.
+unsafe fn shared_set_attr_locked(idx: usize, newattr: c_int) -> c_int {
     unsafe {
         if shared_check_locked_index(idx) != 0 {
             return SHARED_INVALID;
@@ -1540,6 +1640,7 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset debug mode */ {
+    let _g = state_lock();
     unsafe {
         let r: c_int = SHARED_DEBUG as c_int;
 
@@ -1550,6 +1651,7 @@ pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset deb
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/reset debug mode */ {
+    let _g = state_lock();
     unsafe {
         let r: c_int = SHARED_CREATE_MODE;
 
@@ -1560,6 +1662,7 @@ pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/rese
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
+    let _g = state_lock();
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -1643,6 +1746,7 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
+    let _g = state_lock();
     unsafe {
         let mut i: c_int = 0;
         let mut segname: [c_char; 10] = [0; 10];
@@ -1661,19 +1765,20 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
 
         int_snprintf!(&mut segname[1..], 9, "{}", id);
 
-        if smem_open(&mut segname, 0, &mut i) != 0 {
+        if smem_open_locked(&mut segname, 0, &mut i) != 0 {
             return SHARED_BADARG;
         }
 
         *address = (((SHARED_LT[i as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD).add(1))
             as *mut c_char;
-        /*  smem_close(i); */
+        /*  smem_close_locked(i); */
         SHARED_OK
     }
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
+    let _g = state_lock();
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -1696,7 +1801,7 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
                 continue;
             }
 
-            if shared_attach(i.try_into().unwrap()) != 0 {
+            if shared_attach_locked(i.try_into().unwrap()) != 0 {
                 if -1 != id {
                     println!("no such handle");
                 }
@@ -1705,16 +1810,16 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
 
             print!("handle {i}:");
 
-            if shared_lock(i.try_into().unwrap(), SHARED_RDWRITE | SHARED_NOWAIT).is_null() {
+            if shared_lock_locked(i.try_into().unwrap(), SHARED_RDWRITE | SHARED_NOWAIT).is_null() {
                 println!(" cannot lock in RW mode, not deleted");
                 continue;
             }
 
-            if shared_set_attr(i.try_into().unwrap(), SHARED_RESIZE) >= SHARED_ERRBASE {
+            if shared_set_attr_locked(i.try_into().unwrap(), SHARED_RESIZE) >= SHARED_ERRBASE {
                 print!(" cannot clear PERSIST attribute");
             }
 
-            if shared_free(i.try_into().unwrap()) != 0 {
+            if shared_free_locked(i.try_into().unwrap()) != 0 {
                 println!(" delete failed");
             } else {
                 println!(" deleted");
@@ -1735,9 +1840,10 @@ pub(crate) fn smem_init() -> c_int {
 }
 
 pub(crate) fn smem_shutdown() -> c_int {
+    let _g = state_lock();
     unsafe {
         if SHARED_INIT_CALLED {
-            shared_cleanup();
+            shared_cleanup_locked();
         }
         0
     }
@@ -1759,6 +1865,12 @@ pub(crate) fn smem_getversion(version: &mut c_int) -> c_int {
 }
 
 pub(crate) fn smem_open(filename: &mut [c_char], rwmode: c_int, driverhandle: &mut c_int) -> c_int {
+    let _g = state_lock();
+    smem_open_locked(filename, rwmode, driverhandle)
+}
+
+/// Core of `smem_open`: assumes the process-local lock is held.
+fn smem_open_locked(filename: &mut [c_char], rwmode: c_int, driverhandle: &mut c_int) -> c_int {
     unsafe {
         let mut h: c_int = 0;
         let mut nitems: c_int = 0;
@@ -1773,13 +1885,13 @@ pub(crate) fn smem_open(filename: &mut [c_char], rwmode: c_int, driverhandle: &m
             return SHARED_BADARG;
         }
 
-        let r: c_int = shared_attach(h.try_into().unwrap());
+        let r: c_int = shared_attach_locked(h.try_into().unwrap());
 
         if SHARED_OK != r {
             return r;
         }
 
-        let sp: *mut DAL_SHM_SEGHEAD = shared_lock(
+        let sp: *mut DAL_SHM_SEGHEAD = shared_lock_locked(
             h.try_into().unwrap(),
             if READWRITE == rwmode {
                 SHARED_RDWRITE
@@ -1789,13 +1901,13 @@ pub(crate) fn smem_open(filename: &mut [c_char], rwmode: c_int, driverhandle: &m
         ) as *mut DAL_SHM_SEGHEAD;
 
         if sp.is_null() {
-            shared_free(h.try_into().unwrap());
+            shared_free_locked(h.try_into().unwrap());
             return SHARED_BADARG;
         }
 
         if (h != (*sp).h) || (DAL_SHM_SEGHEAD_ID != (*sp).ID) {
-            shared_unlock(h.try_into().unwrap());
-            shared_free(h.try_into().unwrap());
+            shared_unlock_locked(h.try_into().unwrap());
+            shared_free_locked(h.try_into().unwrap());
 
             return SHARED_BADARG;
         }
@@ -1809,6 +1921,7 @@ pub(crate) fn smem_create(
     filename: &mut [c_char; FLEN_FILENAME],
     driverhandle: &mut c_int,
 ) -> c_int {
+    let _g = state_lock();
     unsafe {
         let mut sz: c_int = 0;
         let mut nitems: c_int = 0;
@@ -1825,16 +1938,16 @@ pub(crate) fn smem_create(
 
         sz = BL!() + size_of::<DAL_SHM_SEGHEAD>() as c_int;
 
-        h = shared_malloc(sz.into(), SHARED_RESIZE | SHARED_PERSIST, h);
+        h = shared_malloc_locked(sz.into(), SHARED_RESIZE | SHARED_PERSIST, h);
 
         if SHARED_INVALID == h {
             return SHARED_NOMEM;
         }
 
         let sp: *mut DAL_SHM_SEGHEAD =
-            shared_lock(h.try_into().unwrap(), SHARED_RDWRITE) as *mut DAL_SHM_SEGHEAD;
+            shared_lock_locked(h.try_into().unwrap(), SHARED_RDWRITE) as *mut DAL_SHM_SEGHEAD;
         if sp.is_null() {
-            shared_free(h.try_into().unwrap());
+            shared_free_locked(h.try_into().unwrap());
             return SHARED_BADARG;
         }
 
@@ -1850,16 +1963,23 @@ pub(crate) fn smem_create(
 }
 
 pub(crate) fn smem_close(driverhandle: c_int) -> c_int {
+    let _g = state_lock();
+    smem_close_locked(driverhandle)
+}
+
+/// Core of `smem_close`: assumes the process-local lock is held.
+fn smem_close_locked(driverhandle: c_int) -> c_int {
     let mut r: c_int = 0;
 
-    r = unsafe { shared_unlock(driverhandle.try_into().unwrap()) };
+    r = unsafe { shared_unlock_locked(driverhandle.try_into().unwrap()) };
     if SHARED_OK != r {
         return r;
     }
-    unsafe { shared_free(driverhandle.try_into().unwrap()) }
+    unsafe { shared_free_locked(driverhandle.try_into().unwrap()) }
 }
 
 pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
+    let _g = state_lock();
     unsafe {
         let mut h: c_int = 0;
         let mut nitems: c_int = 0;
@@ -1886,11 +2006,11 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
             if -1 != SHARED_LT[h as usize].lkcnt
             /* are we locked RO ? */
             {
-                r = shared_unlock(h.try_into().unwrap());
+                r = shared_unlock_locked(h.try_into().unwrap());
                 if SHARED_OK != r {
                     return r; /* yes, so relock in RW */
                 }
-                if shared_lock(h.try_into().unwrap(), SHARED_RDWRITE).is_null() {
+                if shared_lock_locked(h.try_into().unwrap(), SHARED_RDWRITE).is_null() {
                     return SHARED_BADARG;
                 }
             }
@@ -1901,18 +2021,19 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
             // SAFETY: Absolutely none.
             let f = slice::from_raw_parts_mut(filename.as_ptr() as *mut c_char, filename.len());
 
-            r = smem_open(f, READWRITE, &mut h);
+            r = smem_open_locked(f, READWRITE, &mut h);
             if SHARED_OK != r {
                 return r; /* so open in RW mode */
             }
         }
 
-        shared_set_attr(h.try_into().unwrap(), SHARED_RESIZE); /* delete PERSIST attribute */
-        smem_close(h.try_into().unwrap()) /* detach segment (this will delete it) */
+        shared_set_attr_locked(h.try_into().unwrap(), SHARED_RESIZE); /* delete PERSIST attribute */
+        smem_close_locked(h.try_into().unwrap()) /* detach segment (this will delete it) */
     }
 }
 
 pub(crate) fn smem_size(driverhandle: c_int, size: &mut usize) -> c_int {
+    let _g = state_lock();
     // Hack
     let size = Some(size);
 
@@ -1937,6 +2058,7 @@ pub(crate) fn smem_size(driverhandle: c_int, size: &mut usize) -> c_int {
 }
 
 pub(crate) fn smem_flush(driverhandle: c_int) -> c_int {
+    let _g = state_lock();
     if unsafe { shared_check_locked_index(driverhandle as usize) } != 0 {
         return SHARED_INVALID;
     }
@@ -1944,6 +2066,7 @@ pub(crate) fn smem_flush(driverhandle: c_int) -> c_int {
 }
 
 pub(crate) fn smem_seek(driverhandle: c_int, offset: LONGLONG) -> c_int {
+    let _g = state_lock();
     unsafe {
         if offset < 0 {
             return SHARED_BADARG;
@@ -1965,6 +2088,7 @@ pub(crate) fn smem_seek(driverhandle: c_int, offset: LONGLONG) -> c_int {
 }
 
 pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
+    let _g = state_lock();
     unsafe {
         if buffer.is_empty() {
             return SHARED_NULPTR;
@@ -2008,6 +2132,7 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
 }
 
 pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c_int {
+    let _g = state_lock();
     unsafe {
         if buffer.is_empty() {
             return SHARED_NULPTR;
@@ -2036,7 +2161,7 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
                 - size_of::<DAL_SHM_SEGHEAD>() as c_int) as c_ulong
         {
             /* need to realloc shmem */
-            if shared_realloc(
+            if shared_realloc_locked(
                 driverhandle.try_into().unwrap(),
                 (SHARED_LT[driverhandle as usize].seekpos
                     + nbytes as c_long
@@ -2646,5 +2771,97 @@ mod tests {
         }
         fits_delete_file(&mut f, &mut status);
         assert_eq!(status, 0, "ffdelt failed");
+    }
+
+    /// Phase 2 regression: multiple threads driving the shared-memory driver
+    /// concurrently, each on a DISTINCT handle, must not race, panic, or corrupt
+    /// data. Before Phase 2 the process-local bookkeeping (SHARED_LT, the
+    /// SHARED_* statics, the shared_get_hash COUNTER) had no intra-process
+    /// synchronization; this exercises the new STATE_LOCK.
+    ///
+    /// SCOPE: this validates the in-process mutex ONLY, not the fcntl/semaphore
+    /// protocol — POSIX record locks and SEM_UNDO counting are per-process, so
+    /// two threads in one process share the same attachment and bypass them.
+    /// Real lock-protocol validation lives in tests/test_drvrsmem_xproc.rs.
+    #[test]
+    fn test_concurrent_distinct_handles() {
+        let _g = shmem_guard();
+
+        // Use handles that NO other test touches (every other test uses
+        // h0..h11, h13, h14). Reusing a shared name would let another test's
+        // leftover kernel segment / mid-suite smem_shutdown interfere with this
+        // one's teardown — a test-isolation artifact, not a locking bug. h12 and
+        // h15 are the only free slots (SHARED_MAXSEG == 16 => slots 0..15).
+        let handles = ["h12", "h15"];
+
+        // Best-effort pre-clean in case a previously-crashed run leaked these.
+        for &h in &handles {
+            let _ = smem_remove(&cc(h));
+        }
+
+        let threads: Vec<_> = handles
+            .iter()
+            .enumerate()
+            .map(|(tid, &hname)| {
+                let url = format!("shmem://{hname}");
+                std::thread::spawn(move || {
+                    let mut status: c_int = 0;
+                    let naxes: [c_long; 2] = [10, 10];
+                    // Thread-distinct pixel pattern.
+                    let mut data = [0i16; 100];
+                    for (i, d) in data.iter_mut().enumerate() {
+                        *d = (tid as i16) * 1000 + i as i16;
+                    }
+
+                    // create + write
+                    let mut f: Option<Box<fitsfile>> = None;
+                    fits_create_file(&mut f, &cc(&url), &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffinit");
+                    fits_write_imghdr(f.as_deref_mut().unwrap(), SHORT_IMG, 2, &naxes, &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffphps");
+                    fits_write_img(
+                        f.as_deref_mut().unwrap(),
+                        TSHORT,
+                        1,
+                        100,
+                        cast_slice(&data),
+                        &mut status,
+                    );
+                    assert_eq!(status, 0, "thread {tid}: ffppr");
+                    fits_close_file(f.take().unwrap(), &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffclos");
+
+                    // reopen + read back + verify our own pattern survived
+                    let mut got = [0i16; 100];
+                    let mut anynull: c_int = 0;
+                    fits_open_file(&mut f, &cc(&url), READONLY, &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffopen");
+                    fits_read_img(
+                        f.as_deref_mut().unwrap(),
+                        TSHORT,
+                        1,
+                        100,
+                        None,
+                        cast_slice_mut(&mut got),
+                        Some(&mut anynull),
+                        &mut status,
+                    );
+                    assert_eq!(status, 0, "thread {tid}: ffgpv");
+                    assert_eq!(got, data, "thread {tid}: data corrupted across threads");
+                    fits_close_file(f.take().unwrap(), &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffclos2");
+
+                    // delete
+                    fits_open_file(&mut f, &cc(&url), READWRITE, &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffopen3");
+                    fits_delete_file(&mut f, &mut status);
+                    assert_eq!(status, 0, "thread {tid}: ffdelt");
+                })
+            })
+            .collect();
+
+        for t in threads {
+            t.join().expect("a driver thread panicked (race/deadlock)");
+        }
     }
 }
