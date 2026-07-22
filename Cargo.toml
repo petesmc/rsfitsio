@@ -25,6 +25,12 @@ crate-type = ["lib", "cdylib"]
 name = "smem"
 required-features = ["shared_mem"]
 
+# Cross-process test helper for the shared-memory driver (tests/test_drvrsmem_xproc.rs).
+[[bin]]
+name = "shmem_helper"
+path = "src/bin/shmem_helper/main.rs"
+required-features = ["shared_mem"]
+
 [[example]]
 name = "cookbook_c"
 test = true

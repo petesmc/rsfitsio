@@ -1996,6 +1996,16 @@ mod tests {
     use bytemuck::{cast_slice, cast_slice_mut};
     use libc::{c_char, c_int, c_long};
 
+    // Serializes the shmem tests w.r.t. EACH OTHER only; the rest of the suite
+    // still runs in parallel. The shmem driver is process-global (fixed segment
+    // names h0..h14, global static state), so two shmem tests running at once
+    // collide. Recover on poison so one failing test doesn't cascade into the
+    // rest. Equivalent to `serial_test`'s `#[serial]`, without adding a dep.
+    static SHMEM_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn shmem_guard() -> std::sync::MutexGuard<'static, ()> {
+        SHMEM_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
     fn cc(s: &str) -> Vec<c_char> {
         let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
@@ -2069,6 +2079,7 @@ mod tests {
 
     #[test]
     fn test_create_shmem_file() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 2] = [10, 10];
         let mut data = [0i16; 100];
@@ -2099,6 +2110,7 @@ mod tests {
 
     #[test]
     fn test_open_and_read_shmem() {
+        let _g = shmem_guard();
         setup_h0();
 
         let mut status: c_int = 0;
@@ -2130,6 +2142,7 @@ mod tests {
 
     #[test]
     fn test_shmem_keywords() {
+        let _g = shmem_guard();
         setup_h0();
 
         let mut status: c_int = 0;
@@ -2185,6 +2198,7 @@ mod tests {
 
     #[test]
     fn test_delete_shmem() {
+        let _g = shmem_guard();
         setup_h0();
 
         let mut status: c_int = 0;
@@ -2198,6 +2212,7 @@ mod tests {
 
     #[test]
     fn test_create_second_segment() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [5];
 
@@ -2212,6 +2227,7 @@ mod tests {
 
     #[test]
     fn test_smem_option_functions() {
+        let _g = shmem_guard();
         let mut options: c_int = 0;
         let mut version: c_int = 0;
 
@@ -2228,6 +2244,7 @@ mod tests {
 
     #[test]
     fn test_shared_utility_functions() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [5];
 
@@ -2253,6 +2270,7 @@ mod tests {
 
     #[test]
     fn test_read_beyond_eof() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [2];
         let mut data = [0u8; 1000];
@@ -2292,6 +2310,7 @@ mod tests {
 
     #[test]
     fn test_smem_read_beyond_eof() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [2];
         let mut data = [0u8; 1000];
@@ -2319,6 +2338,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_locked_segment() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [3];
 
@@ -2336,6 +2356,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_with_debug() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [3];
 
@@ -2357,6 +2378,7 @@ mod tests {
 
     #[test]
     fn test_smem_size() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 2] = [10, 10];
         let mut handle: c_int = 0;
@@ -2384,6 +2406,7 @@ mod tests {
 
     #[test]
     fn test_smem_flush() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [5];
         let mut handle: c_int = 0;
@@ -2409,6 +2432,7 @@ mod tests {
 
     #[test]
     fn test_smem_write() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [10];
         let mut handle: c_int = 0;
@@ -2441,6 +2465,7 @@ mod tests {
 
     #[test]
     fn test_smem_remove() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [3];
 
@@ -2458,6 +2483,7 @@ mod tests {
 
     #[test]
     fn test_shared_set_createmode() {
+        let _g = shmem_guard();
         unsafe {
             let oldmode = shared_set_createmode(0o666);
             shared_set_createmode(oldmode);
@@ -2466,6 +2492,7 @@ mod tests {
 
     #[test]
     fn test_smem_open_nonexistent() {
+        let _g = shmem_guard();
         let mut handle: c_int = 0;
         // Opening non-existent segment should fail
         let mut name = cc("nonexistent_segment_xyz");
@@ -2474,6 +2501,7 @@ mod tests {
 
     #[test]
     fn test_smem_create_and_delete() {
+        let _g = shmem_guard();
         let mut handle: c_int = 0;
         let mut name = cc_fixed("h11");
         assert!(!(smem_create(&mut name, &mut handle) != 0));
@@ -2486,6 +2514,7 @@ mod tests {
 
     #[test]
     fn test_shared_attr() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [10];
         let mut handle: c_int = 0;
@@ -2511,6 +2540,7 @@ mod tests {
 
     #[test]
     fn test_list_with_segments() {
+        let _g = shmem_guard();
         let mut status: c_int = 0;
         let naxes: [c_long; 1] = [5];
 
