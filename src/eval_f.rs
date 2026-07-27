@@ -1583,9 +1583,12 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                     }
                 } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
-                    fits_free_region(Box::from_raw(
-                        (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
-                    ));
+                    if !(lParse.Nodes[i]).value.data.ptr.is_null() {
+                        fits_free_region(Box::from_raw(
+                            (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
+                        ));
+                        (lParse.Nodes[i]).value.data.ptr = core::ptr::null_mut();
+                    }
                 }
             }
             lParse.nNodes = 0;
@@ -8493,6 +8496,1652 @@ mod tests {
             assert!(result[0] >= 4.9e307 && result[0] <= 5.1e307);
 
             fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ============ within-range ("in-range") operator: x = a:b ============
+    //
+    // "In the within-range expression, "x=a:b", the value of x is tested to
+    //  be within the range a through b, where all of those values may be
+    //  columns or expressions.  The result value is a boolean true or false.
+    //  The expression is a shorthand notation equivalent to the expression
+    //  "((a.le.x).and.(x.le.b))"."
+
+    #[test]
+    fn test_fffrow_within_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(INTCOL = 3:7)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 3,4,5,6,7 */
+            assert_eq!(row_status[1], 0); /* 2 is below the range */
+            assert_eq!(row_status[2], 1); /* lower bound is inclusive */
+            assert_eq!(row_status[6], 1); /* upper bound is inclusive */
+            assert_eq!(row_status[7], 0); /* 8 is above the range */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_no_parens() {
+        /* the docs recommend parentheses to avoid confusing other parsers,
+        but the bare form is legal grammar as well */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("INTCOL = 3:7"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 3,4,5,6,7 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_equivalent_expression() {
+        /* "(x=a:b)" is shorthand for "((a.le.x).and.(x.le.b))" - verify the
+        two forms select exactly the same rows */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_short = 0;
+            let mut short_status = [0 as c_char; 10];
+            let mut n_long = 0;
+            let mut long_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(FLOATCOL = 2:8)"),
+                1,
+                10,
+                &mut n_short,
+                &mut short_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            fits_find_rows(
+                &mut f,
+                &cc("((2 .le. FLOATCOL) .and. (FLOATCOL .le. 8))"),
+                1,
+                10,
+                &mut n_long,
+                &mut long_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_short, n_long);
+            assert_eq!(short_status, long_status);
+            assert_eq!(n_short, 6); /* 2.5,3.5,4.5,5.5,6.5,7.5 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_reversed() {
+        /* an inverted range can never be satisfied: a.le.x .and. x.le.b */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(INTCOL = 7:3)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_promotes_types() {
+        /* integer column tested against a floating point range */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(INTCOL = 2.5:5.5)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 3); /* rows 3,4,5 */
+            assert_eq!(row_status[1], 0);
+            assert_eq!(row_status[2], 1);
+            assert_eq!(row_status[4], 1);
+            assert_eq!(row_status[5], 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_column_bounds() {
+        /* x, a and b may all be columns or expressions:
+        FLOATCOL is always INTCOL+0.5, so it lies in [INTCOL, INTCOL+1] */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(FLOATCOL = INTCOL:INTCOL+1)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 10);
+
+            /* ... while INTCOL is always just below FLOATCOL */
+            fits_find_rows(
+                &mut f,
+                &cc("(INTCOL = FLOATCOL:100)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_compound() {
+        /* the result is an ordinary boolean, usable in a larger expression */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(INTCOL = 3:7) && BOOLCOL"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 3); /* rows 3,5,7 - BOOLCOL is T,F,T,F,... */
+            assert_eq!(row_status[2], 1);
+            assert_eq!(row_status[3], 0);
+            assert_eq!(row_status[4], 1);
+
+            /* and it can be negated */
+            fits_find_rows(
+                &mut f,
+                &cc("!(INTCOL = 3:7)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 5); /* rows 1,2,8,9,10 */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_within_range_row_number() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            fits_find_rows(
+                &mut f,
+                &cc("(#row = 4:6)"),
+                1,
+                10,
+                &mut n_good_rows,
+                &mut row_status,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(n_good_rows, 3);
+            assert_eq!(row_status[3], 1);
+            assert_eq!(row_status[5], 1);
+            assert_eq!(row_status[6], 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_within_range() {
+        /* "The result value is a boolean true or false." */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+
+            fits_test_expr(
+                &mut f,
+                &cc("(INTCOL = 3:7)"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TLOGICAL);
+            assert_eq!(nelem, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_within_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_char; 10];
+            let mut anynul = 0;
+
+            fits_calc_rows(
+                &mut f,
+                TLOGICAL,
+                &cc("(INTCOL = 4:6)"),
+                1,
+                10,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results, [0, 0, 0, 1, 1, 1, 0, 0, 0, 0]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_within_range_vector() {
+        /* a vector x produces a vector boolean result */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let vecdata: [f64; 5] = [1.0, 2.0, 3.0, 4.0, 5.0];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            create_tbl(
+                f.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                1,
+                &["VECCOL"],
+                &["5D"],
+                None,
+                &mut status,
+            );
+            fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut datatype = 0;
+            let mut naxis = 0;
+            let mut nelem = 0;
+            let mut naxes = [0 as c_long; 10];
+            fits_test_expr(
+                f.as_deref_mut().unwrap(),
+                &cc("(VECCOL = 2:4)"),
+                10,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TLOGICAL);
+            assert_eq!(nelem, 5);
+
+            let mut results = [0 as c_char; 5];
+            let mut anynul = 0;
+            fits_calc_rows(
+                f.as_deref_mut().unwrap(),
+                TLOGICAL,
+                &cc("(VECCOL = 2:4)"),
+                1,
+                5,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results, [0, 1, 1, 1, 0]);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcalc_within_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut results = [0 as c_char; 10];
+            let mut nullarr = [0 as c_char; 10];
+            let mut anynul = 0;
+
+            let fp_self: *mut fitsfile = &mut *f;
+            fits_calculator(
+                unsafe { &mut *fp_self },
+                &cc("(INTCOL = 3:7)"),
+                unsafe { &mut *fp_self },
+                &cc("INRANGE"),
+                &cc("1L"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            fits_read_colnull_log(
+                &mut f,
+                5,
+                1,
+                1,
+                10,
+                &mut results,
+                &mut nullarr,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(results, [0, 0, 1, 1, 1, 1, 1, 0, 0, 0]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffsrow_within_range() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            {
+                let f = create_test_table(&name);
+                fits_close_file(f, &mut status);
+            }
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_open_file(&mut f, &name, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
+            fits_select_rows(
+                unsafe { &mut *fp },
+                unsafe { &mut *fp },
+                &cc("(INTCOL = 3:7)"),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+
+            let mut nrows = 0;
+            fits_get_num_rows(f.as_deref_mut().unwrap(), &mut nrows, &mut status);
+            assert_eq!(nrows, 5);
+
+            let mut intdata = [0 as c_long; 5];
+            let mut anynull = 0;
+            fits_read_col_lng(
+                f.as_deref_mut().unwrap(),
+                1,
+                1,
+                1,
+                5,
+                0,
+                &mut intdata,
+                Some(&mut anynull),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(intdata, [3, 4, 5, 6, 7]);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
+
+    // ===================== operator / function coverage =====================
+    //
+    // The expression syntax accepted by fffrow/ffcrow/ffcalc/ffsrow is
+    // documented in the "Row Filtering Specification" section of the CFITSIO
+    // manual.  The tests below walk through that operator and function table.
+
+    /// Evaluate a boolean expression over all 10 rows of `create_test_table`,
+    /// returning (number of true rows, per-row flags).
+    fn count_rows(f: &mut fitsfile, expr: &str) -> (c_long, [c_char; 10]) {
+        let mut status = 0;
+        let mut n_good_rows: c_long = 0;
+        let mut row_status = [0 as c_char; 10];
+        fits_find_rows(
+            f,
+            &cc(expr),
+            1,
+            10,
+            &mut n_good_rows,
+            &mut row_status,
+            &mut status,
+        );
+        assert_eq!(status, 0, "fits_find_rows failed for expression: {expr}");
+        (n_good_rows, row_status)
+    }
+
+    /// Evaluate an expression, returning N elements as doubles.
+    fn eval_dbl<const N: usize>(f: &mut fitsfile, expr: &str) -> [f64; N] {
+        let mut status = 0;
+        let mut results = [0.0f64; N];
+        let mut anynul = 0;
+        fits_calc_rows(
+            f,
+            TDOUBLE,
+            &cc(expr),
+            1,
+            N as c_long,
+            core::ptr::null(),
+            as_bytes_mut(&mut results),
+            &mut anynul,
+            &mut status,
+        );
+        assert_eq!(status, 0, "fits_calc_rows failed for expression: {expr}");
+        results
+    }
+
+    /// Evaluate an expression, returning N elements as longs.
+    fn eval_lng<const N: usize>(f: &mut fitsfile, expr: &str) -> [c_long; N] {
+        let mut status = 0;
+        let mut results = [0 as c_long; N];
+        let mut anynul = 0;
+        fits_calc_rows(
+            f,
+            TLONG,
+            &cc(expr),
+            1,
+            N as c_long,
+            core::ptr::null(),
+            as_bytes_mut(&mut results),
+            &mut anynul,
+            &mut status,
+        );
+        assert_eq!(status, 0, "fits_calc_rows failed for expression: {expr}");
+        results
+    }
+
+    /// Evaluate an expression, returning N elements as logicals.
+    fn eval_log<const N: usize>(f: &mut fitsfile, expr: &str) -> [c_char; N] {
+        let mut status = 0;
+        let mut results = [0 as c_char; N];
+        let mut anynul = 0;
+        fits_calc_rows(
+            f,
+            TLOGICAL,
+            &cc(expr),
+            1,
+            N as c_long,
+            core::ptr::null(),
+            as_bytes_mut(&mut results),
+            &mut anynul,
+            &mut status,
+        );
+        assert_eq!(status, 0, "fits_calc_rows failed for expression: {expr}");
+        results
+    }
+
+    #[test]
+    fn test_fffrow_fortran_boolean_spellings() {
+        /* "Boolean operators can be used in the expression in either their
+        Fortran or C forms." */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            assert_eq!(count_rows(&mut f, "INTCOL .gt. 5").0, 5);
+            assert_eq!(count_rows(&mut f, "INTCOL .GT. 5").0, 5);
+            assert_eq!(count_rows(&mut f, "INTCOL gt. 5").0, 5);
+            assert_eq!(count_rows(&mut f, "INTCOL .lt. 5").0, 4);
+            assert_eq!(count_rows(&mut f, "INTCOL .LT. 5").0, 4);
+            assert_eq!(count_rows(&mut f, "INTCOL .ge. 5").0, 6);
+            assert_eq!(count_rows(&mut f, "INTCOL .le. 5").0, 5);
+            assert_eq!(count_rows(&mut f, "INTCOL .eq. 5").0, 1);
+            assert_eq!(count_rows(&mut f, "INTCOL .EQ. 5").0, 1);
+            assert_eq!(count_rows(&mut f, "INTCOL .ne. 5").0, 9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_fortran_logical_spellings() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            assert_eq!(
+                count_rows(&mut f, "(INTCOL .gt. 3) .and. (INTCOL .lt. 6)").0,
+                2
+            );
+            assert_eq!(
+                count_rows(&mut f, "(INTCOL .lt. 3) .or. (INTCOL .gt. 8)").0,
+                4
+            );
+            assert_eq!(count_rows(&mut f, ".not. (INTCOL .gt. 5)").0, 5);
+            assert_eq!(count_rows(&mut f, "NOT. (INTCOL .GT. 5)").0, 5);
+            assert_eq!(count_rows(&mut f, "(INTCOL .GT. 3) .AND. BOOLCOL").0, 3);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_alternate_comparison_spellings() {
+        /* "=>" and "=<" are accepted as synonyms for ">=" and "<=" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            assert_eq!(count_rows(&mut f, "INTCOL => 5").0, 6);
+            assert_eq!(count_rows(&mut f, "INTCOL =< 5").0, 5);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_power_caret() {
+        /* "exponentiation"  ** ^ */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<4>(&mut f, "INTCOL ^ 2");
+            assert!((r[0] - 1.0).abs() < 1e-9);
+            assert!((r[3] - 16.0).abs() < 1e-9);
+
+            let r = eval_dbl::<1>(&mut f, "2 ** 3");
+            assert!((r[0] - 8.0).abs() < 1e-9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_bitwise_xor() {
+        /* "bitwise XOR"  x ^^ y  (32-bit int only) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_lng::<4>(&mut f, "INTCOL ^^ 3");
+            assert_eq!(r, [2, 1, 0, 7]);
+
+            let r = eval_lng::<4>(&mut f, "INTCOL .xor. 3");
+            assert_eq!(r, [2, 1, 0, 7]);
+
+            let r = eval_lng::<4>(&mut f, "INTCOL .XOR. 3");
+            assert_eq!(r, [2, 1, 0, 7]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_type_casts() {
+        /* "real to integer"  (int) x     "integer to real"  (float) i */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* FLOATCOL is 1.5, 2.5, ... - the cast truncates toward zero */
+            let r = eval_lng::<4>(&mut f, "(int) FLOATCOL");
+            assert_eq!(r, [1, 2, 3, 4]);
+            let r = eval_lng::<4>(&mut f, "(INT) FLOATCOL");
+            assert_eq!(r, [1, 2, 3, 4]);
+            let r = eval_lng::<1>(&mut f, "(int) -2.7");
+            assert_eq!(r, [-2]);
+
+            /* the integer to real cast promotes to double precision */
+            let r = eval_dbl::<4>(&mut f, "(float) INTCOL + 0.25");
+            assert!((r[0] - 1.25).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "(FLOAT) 7");
+            assert!((r[0] - 7.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "(double) 7");
+            assert!((r[0] - 7.0).abs() < 1e-9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_builtin_constants() {
+        /* #pi, #e and #deg (#row is covered by test_ffcrow_row_number) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<1>(&mut f, "#pi");
+            assert!((r[0] - std::f64::consts::PI).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "#PI");
+            assert!((r[0] - std::f64::consts::PI).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "#e");
+            assert!((r[0] - std::f64::consts::E).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "#deg");
+            assert!((r[0] - std::f64::consts::PI / 180.0).abs() < 1e-12);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_integer_constant_bases() {
+        /* 13245 decimal, 0x12f3 hex, 0o1373 octal, 0b01001 binary */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<1>(&mut f, "13245"), [13245]);
+            assert_eq!(eval_lng::<1>(&mut f, "0x12f3"), [0x12f3]);
+            assert_eq!(eval_lng::<1>(&mut f, "0o1373"), [0o1373]);
+            assert_eq!(eval_lng::<1>(&mut f, "0b01001"), [0b01001]);
+            /* usable in ordinary arithmetic */
+            assert_eq!(eval_lng::<3>(&mut f, "INTCOL + 0x10"), [17, 18, 19]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_isnull_and_setnull() {
+        /* "declare certain value null" SETNULL(x,y) - if x==y a NULL is
+        returned, otherwise y;  "a null value?" ISNULL(x) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            assert_eq!(count_rows(&mut f, "ISNULL(INTCOL)").0, 0);
+
+            let (n, flags) = count_rows(&mut f, "ISNULL(SETNULL(3,INTCOL))");
+            assert_eq!(n, 1);
+            assert_eq!(flags[2], 1);
+
+            /* DEFNULL substitutes for the value made NULL by SETNULL */
+            let r = eval_lng::<5>(&mut f, "DEFNULL(SETNULL(3,INTCOL), -99)");
+            assert_eq!(r, [1, 2, -99, 4, 5]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_null_constant() {
+        /* "#null  undefined value" - useful for conditionally setting values
+        to a NULL, eg. "col1==-99 ? #NULL : col1" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "ISNULL(INTCOL==3 ? #NULL : INTCOL)");
+            assert_eq!(n, 1);
+            assert_eq!(flags[2], 1);
+
+            let r = eval_lng::<4>(&mut f, "DEFNULL(INTCOL==3 ? #null : INTCOL, -1)");
+            assert_eq!(r, [1, 2, -1, 4]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_snull_constant() {
+        /* "#snull  undefined string" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "ISNULL(INTCOL==2 ? #snull : STRCOL)");
+            assert_eq!(n, 1);
+            assert_eq!(flags[1], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_near_function() {
+        /* near(value_1, value_2, tolerance) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "NEAR(FLOATCOL, 3.5, 0.01)");
+            assert_eq!(n, 1);
+            assert_eq!(flags[2], 1);
+
+            /* the tolerance test is strict: |x-y| < tolerance, so a tolerance
+            of exactly 1.0 still excludes 2.5 and 4.5 */
+            assert_eq!(count_rows(&mut f, "NEAR(FLOATCOL, 3.5, 1.0)").0, 1);
+            assert_eq!(count_rows(&mut f, "NEAR(FLOATCOL, 3.5, 1.001)").0, 3);
+            assert_eq!(count_rows(&mut f, "near(INTCOL, 5, 0.5)").0, 1);
+            assert_eq!(count_rows(&mut f, "near(INTCOL, 5, 0)").0, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_hyperbolic_functions() {
+        /* SINH(x), COSH(x), TANH(x) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<1>(&mut f, "SINH(0)");
+            assert!(r[0].abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "COSH(0)");
+            assert!((r[0] - 1.0).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "TANH(0)");
+            assert!(r[0].abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "SINH(1)");
+            assert!((r[0] - 1.0_f64.sinh()).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "COSH(1)");
+            assert!((r[0] - 1.0_f64.cosh()).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "TANH(1)");
+            assert!((r[0] - 1.0_f64.tanh()).abs() < 1e-12);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_arc_function_spellings() {
+        /* ARCSIN/ARCCOS/ARCTAN are synonyms of ASIN/ACOS/ATAN */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<1>(&mut f, "ARCSIN(1)");
+            assert!((r[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "ARCCOS(0)");
+            assert!((r[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+            let r = eval_dbl::<1>(&mut f, "ARCTAN(1)");
+            assert!((r[0] - std::f64::consts::FRAC_PI_4).abs() < 1e-12);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_angsep_function() {
+        /* "angular separation"  angsep(ra1,dec1,ra2,dec2)  (all in degrees) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* 0*INTCOL keeps the arguments non-constant - see
+            test_ffcrow_angsep_constant_folding below */
+            let r = eval_dbl::<3>(&mut f, "ANGSEP(0.0*INTCOL, 0.0, 0.0, 90.0)");
+            for v in r {
+                assert!((v - 90.0).abs() < 1e-9, "got {v}");
+            }
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(0.0*INTCOL, 0.0, 90.0, 0.0)");
+            assert!((r[0] - 90.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(10.0 + 0.0*INTCOL, 20.0, 10.0, 20.0)");
+            assert!(r[0].abs() < 1e-9);
+            /* 1 degree of RA at declination 60 is 0.5 degrees on the sky */
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(0.0*INTCOL, 60.0, 1.0, 60.0)");
+            assert!((r[0] - 0.5).abs() < 1e-3);
+            /* the declination separation grows with the row number */
+            let r = eval_dbl::<3>(&mut f, "ANGSEP(0.0, 0.0, 0.0, 9.0*INTCOL)");
+            assert!((r[0] - 9.0).abs() < 1e-9);
+            assert!((r[1] - 18.0).abs() < 1e-9);
+            assert!((r[2] - 27.0).abs() < 1e-9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_angsep_constant_folding() {
+        /* When all four arguments are constants, ANGSEP is folded at parse
+        time - and there the C "case angsep_fct:" falls through into
+        "case min1_fct:", which overwrites the result with the first
+        argument.  This port reproduces that upstream quirk, so pin it down
+        here to catch any accidental divergence. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(0,0,0,90)");
+            assert!(r[0].abs() < 1e-9, "got {}", r[0]);
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(7.5,0,0,90)");
+            assert!((r[0] - 7.5).abs() < 1e-9, "got {}", r[0]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_random_functions() {
+        /* random(), randomn() and randomp(x) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_dbl::<10>(&mut f, "RANDOM()");
+            for v in r {
+                assert!((0.0..1.0).contains(&v), "random() out of range: {v}");
+            }
+            assert!(r.iter().any(|v| *v != r[0]), "random() returned constants");
+
+            /* a normal deviate - just check it is finite and not always zero */
+            let r = eval_dbl::<10>(&mut f, "RANDOMN()");
+            for v in r {
+                assert!(v.is_finite());
+            }
+            assert!(r.iter().any(|v| *v != 0.0));
+
+            /* Poisson deviates are non-negative integers */
+            let r = eval_lng::<10>(&mut f, "RANDOMP(5)");
+            for v in r {
+                assert!(v >= 0);
+            }
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_string_functions() {
+        /* "substring" strmid(s,p,n), "string search" strstr(s,r) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* STRCOL row 1 is 'alpha' */
+            let (n, flags) = count_rows(&mut f, "STRMID(STRCOL,1,3) == 'alp'");
+            assert_eq!(n, 1);
+            assert_eq!(flags[0], 1);
+            assert_eq!(count_rows(&mut f, "STRMID(STRCOL,2,3) == 'lph'").0, 1);
+
+            /* position of the first 'a' in each string; 'epsilon' has none,
+            so STRSTR returns NULL there */
+            let r = eval_lng::<10>(&mut f, "DEFNULL(STRSTR(STRCOL,'a'), -1)");
+            assert_eq!(r, [1, 4, 2, 5, -1, 4, 3, 5, 4, 2]);
+            assert_eq!(count_rows(&mut f, "ISNULL(STRSTR(STRCOL,'a'))").0, 1);
+            /* 'ta' starts at position 3 of beta, zeta and iota */
+            assert_eq!(count_rows(&mut f, "STRSTR(STRCOL,'ta') == 3").0, 3);
+
+            /* strings can be concatenated with '+' */
+            let (n, flags) = count_rows(&mut f, "(STRCOL + '!') == 'alpha!'");
+            assert_eq!(n, 1);
+            assert_eq!(flags[0], 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_row_offset() {
+        /* "PHA{-3} will evaluate to the value of column PHA, 3 rows above the
+        row currently being processed.  Rows that fall outside the table will
+        be treated as undefined, or NULLs." */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let r = eval_lng::<5>(&mut f, "DEFNULL(INTCOL{-1}, -99)");
+            assert_eq!(r, [-99, 1, 2, 3, 4]);
+
+            let r = eval_lng::<5>(&mut f, "DEFNULL(INTCOL{2}, -99)");
+            assert_eq!(r, [3, 4, 5, 6, 7]);
+
+            let (n, flags) = count_rows(&mut f, "ISNULL(INTCOL{-2})");
+            assert_eq!(n, 2);
+            assert_eq!(flags[0], 1);
+            assert_eq!(flags[1], 1);
+            assert_eq!(flags[2], 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_accum_and_seqdiff() {
+        /* "cumulative sum" accum(x), "sequential difference" seqdiff(x);
+        the two are functional inverses */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* over rows, accum runs through the whole column */
+            let r = eval_lng::<5>(&mut f, "ACCUM(INTCOL)");
+            assert_eq!(r, [1, 3, 6, 10, 15]);
+
+            let r = eval_lng::<5>(&mut f, "SEQDIFF(ACCUM(INTCOL))");
+            assert_eq!(r, [1, 2, 3, 4, 5]);
+
+            let r = eval_dbl::<3>(&mut f, "ACCUM(FLOATCOL)");
+            assert!((r[0] - 1.5).abs() < 1e-6);
+            assert!((r[1] - 4.0).abs() < 1e-6);
+            assert!((r[2] - 7.5).abs() < 1e-6);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_approx_equal() {
+        /* "approx. equal(1e-7)"  ~  -- true when |x-y| < 1.0e-7 */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "FLOATCOL ~ 1.5");
+            assert_eq!(n, 1);
+            assert_eq!(flags[0], 1);
+
+            let (n, flags) = count_rows(&mut f, "INTCOL ~ 5");
+            assert_eq!(n, 1);
+            assert_eq!(flags[4], 1);
+
+            /* a difference below the 1e-7 threshold still compares equal ... */
+            assert_eq!(count_rows(&mut f, "FLOATCOL ~ (1.5 + 1.0e-9)").0, 1);
+            /* ... but one above it does not */
+            assert_eq!(count_rows(&mut f, "FLOATCOL ~ (1.5 + 1.0e-5)").0, 0);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    /// Single-row table exercising the vector, bit and dereference syntax.
+    ///
+    /// VECCOL is the 5-vector [1,2,3,4,5], IVEC the 5-vector [10,20,30,40,50],
+    /// MATRIX a 2x3 array holding 1..6, BITS an 8-bit column set to 11110000,
+    /// and "MY COL" a scalar whose name needs the $...$ quoting syntax.
+    fn create_vector_table(name: &[c_char]) -> Box<fitsfile> {
+        let mut status = 0;
+        let vecdata: [f64; 5] = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let ivecdata: [c_long; 5] = [10, 20, 30, 40, 50];
+        let matdata: [c_long; 6] = [1, 2, 3, 4, 5, 6];
+        let tdim: [c_long; 2] = [2, 3];
+        let bits: [c_char; 8] = [1, 1, 1, 1, 0, 0, 0, 0];
+        let spaced: [c_long; 1] = [42];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, &mut status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+        create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            1,
+            &["VECCOL", "IVEC", "MATRIX", "BITS", "MY COL"],
+            &["5D", "5J", "6J", "8X", "1J"],
+            None,
+            &mut status,
+        );
+        fits_write_tdim(f.as_deref_mut().unwrap(), 3, 2, &tdim, &mut status);
+        fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
+        fits_write_col_lng(
+            f.as_deref_mut().unwrap(),
+            2,
+            1,
+            1,
+            5,
+            &ivecdata,
+            &mut status,
+        );
+        fits_write_col_lng(f.as_deref_mut().unwrap(), 3, 1, 1, 6, &matdata, &mut status);
+        fits_write_col_bit(f.as_deref_mut().unwrap(), 4, 1, 1, 8, &bits, &mut status);
+        fits_write_col_lng(f.as_deref_mut().unwrap(), 5, 1, 1, 1, &spaced, &mut status);
+        assert_eq!(status, 0, "create_vector_table setup failed");
+        f.unwrap()
+    }
+
+    #[test]
+    fn test_ffcrow_vector_functions() {
+        /* MIN/MAX/AVERAGE/MEDIAN/SUM/STDDEV/NELEM/NVALID/NAXIS/NAXES */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            let r = eval_dbl::<1>(&mut f, "MIN(VECCOL)");
+            assert!((r[0] - 1.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "MAX(VECCOL)");
+            assert!((r[0] - 5.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "SUM(VECCOL)");
+            assert!((r[0] - 15.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "AVERAGE(VECCOL)");
+            assert!((r[0] - 3.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "MEDIAN(VECCOL)");
+            assert!((r[0] - 3.0).abs() < 1e-9);
+            /* the sample standard deviation, i.e. 1/sqrt(N-1) */
+            let r = eval_dbl::<1>(&mut f, "STDDEV(VECCOL)");
+            assert!((r[0] - 2.5_f64.sqrt()).abs() < 1e-9, "got {}", r[0]);
+
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(VECCOL)"), [5]);
+            assert_eq!(eval_lng::<1>(&mut f, "NVALID(VECCOL)"), [5]);
+            assert_eq!(eval_lng::<1>(&mut f, "NAXIS(VECCOL)"), [1]);
+            assert_eq!(eval_lng::<1>(&mut f, "NAXES(VECCOL,1)"), [5]);
+
+            /* the same functions over an integer vector */
+            assert_eq!(eval_lng::<1>(&mut f, "MIN(IVEC)"), [10]);
+            assert_eq!(eval_lng::<1>(&mut f, "MAX(IVEC)"), [50]);
+            assert_eq!(eval_lng::<1>(&mut f, "SUM(IVEC)"), [150]);
+
+            /* a 2x3 array */
+            assert_eq!(eval_lng::<1>(&mut f, "NAXIS(MATRIX)"), [2]);
+            assert_eq!(eval_lng::<1>(&mut f, "NAXES(MATRIX,1)"), [2]);
+            assert_eq!(eval_lng::<1>(&mut f, "NAXES(MATRIX,2)"), [3]);
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(MATRIX)"), [6]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_boolean_sum() {
+        /* "If V is a boolean vector, SUM returns the number of TRUE elements";
+        the documented all-elements idiom is SUM(A>B) == NELEM(A) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<1>(&mut f, "SUM(VECCOL > 2)"), [3]);
+            assert_eq!(
+                eval_log::<1>(&mut f, "SUM(VECCOL > 0) == NELEM(VECCOL)"),
+                [1]
+            );
+            assert_eq!(
+                eval_log::<1>(&mut f, "SUM(VECCOL > 2) == NELEM(VECCOL)"),
+                [0]
+            );
+            /* elementwise comparison of two vectors */
+            assert_eq!(eval_lng::<1>(&mut f, "SUM(IVEC > VECCOL)"), [5]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_element_position_functions() {
+        /* ELEMENTNUM(V) and AXISELEM(V,n) return vectors of the same size */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<5>(&mut f, "ELEMENTNUM(VECCOL)"), [1, 2, 3, 4, 5]);
+            assert_eq!(eval_lng::<5>(&mut f, "AXISELEM(VECCOL,1)"), [1, 2, 3, 4, 5]);
+            /* for the 2x3 array the axis positions cycle per axis */
+            assert_eq!(
+                eval_lng::<6>(&mut f, "ELEMENTNUM(MATRIX)"),
+                [1, 2, 3, 4, 5, 6]
+            );
+            assert_eq!(
+                eval_lng::<6>(&mut f, "AXISELEM(MATRIX,1)"),
+                [1, 2, 1, 2, 1, 2]
+            );
+            assert_eq!(
+                eval_lng::<6>(&mut f, "AXISELEM(MATRIX,2)"),
+                [1, 1, 2, 2, 3, 3]
+            );
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_array_function() {
+        /* "promote to array"  ARRAY(X,d) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            /* a scalar promoted to a 4-vector */
+            assert_eq!(eval_lng::<4>(&mut f, "ARRAY(3,4)"), [3, 3, 3, 3]);
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(ARRAY(3,4))"), [4]);
+            /* a multi-dimensional shape given as a vector of dimensions */
+            assert_eq!(
+                eval_lng::<6>(&mut f, "ARRAY(0,{2,3,1})"),
+                [0, 0, 0, 0, 0, 0]
+            );
+            assert_eq!(eval_lng::<1>(&mut f, "NAXIS(ARRAY(0,{2,3,1}))"), [3]);
+            assert_eq!(eval_lng::<1>(&mut f, "NAXES(ARRAY(0,{2,3,1}),2)"), [3]);
+            /* a column promoted to an array */
+            assert_eq!(eval_lng::<3>(&mut f, "ARRAY($MY COL$,3)"), [42, 42, 42]);
+            /* re-dimensioning an existing vector */
+            assert_eq!(eval_lng::<1>(&mut f, "NAXIS(ARRAY(MATRIX,6))"), [1]);
+            assert_eq!(eval_lng::<6>(&mut f, "ARRAY(MATRIX,6)"), [1, 2, 3, 4, 5, 6]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_literal() {
+        /* "Vectors can be manually constructed ... using a comma-separated
+        list of elements surrounded by curly braces" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<4>(&mut f, "{1,3,6,1}"), [1, 3, 6, 1]);
+            assert_eq!(eval_lng::<1>(&mut f, "SUM({1,3,6,1})"), [11]);
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM({1,3,6,1})"), [4]);
+            assert_eq!(eval_lng::<1>(&mut f, "MAX({1,3,6,1})"), [6]);
+            /* "Any elements which are themselves vectors will be expanded
+            out with each of its elements becoming an element" */
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM({IVEC,0})"), [6]);
+            assert_eq!(eval_lng::<6>(&mut f, "{IVEC,0}"), [10, 20, 30, 40, 50, 0]);
+            /* "elements will be promoted to the highest data type present" */
+            let r = eval_dbl::<3>(&mut f, "{1,2.5,3}");
+            assert!((r[1] - 2.5).abs() < 1e-9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_dereference() {
+        /* single elements are selected with a bracketed index list; a C-like
+        reversed-index form is also accepted */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<1>(&mut f, "IVEC[2]"), [20]);
+            /* the index may itself be an expression */
+            assert_eq!(eval_lng::<1>(&mut f, "IVEC[NELEM(IVEC)]"), [50]);
+            assert_eq!(eval_lng::<1>(&mut f, "IVEC[1+1]"), [20]);
+
+            /* MATRIX is 2x3 holding 1..6 in column-major (Fortran) order */
+            assert_eq!(eval_lng::<1>(&mut f, "MATRIX[1,2]"), [3]);
+            assert_eq!(eval_lng::<1>(&mut f, "MATRIX[2,3]"), [6]);
+            /* the C-like syntax reverses the index order */
+            assert_eq!(eval_lng::<1>(&mut f, "MATRIX[2][1]"), [3]);
+            assert_eq!(eval_lng::<1>(&mut f, "MATRIX[3][2]"), [6]);
+            /* with fewer indices a slice of the array is extracted */
+            assert_eq!(eval_lng::<2>(&mut f, "MATRIX[3]"), [5, 6]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_dollar_quoted_column_name() {
+        /* "Vector columns which contain spaces or arithmetic operators must
+        have their names enclosed in '$' characters" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_lng::<1>(&mut f, "$MY COL$"), [42]);
+            assert_eq!(eval_lng::<1>(&mut f, "$MY COL$ * 2"), [84]);
+            assert_eq!(eval_log::<1>(&mut f, "$MY COL$ > 40"), [1]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_vector_functions_with_nulls() {
+        /* "The first 6 of these functions ignore any null values"; NELEM
+        counts all elements while NVALID counts the non-null ones */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let mut f = create_vector_table(&name);
+
+            /* make the 3rd element of VECCOL undefined */
+            fits_write_col_null(&mut f, 1, 1, 3, 1, &mut status);
+            assert_eq!(status, 0);
+
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(VECCOL)"), [5]);
+            assert_eq!(eval_lng::<1>(&mut f, "NVALID(VECCOL)"), [4]);
+            let r = eval_dbl::<1>(&mut f, "SUM(VECCOL)");
+            assert!((r[0] - 12.0).abs() < 1e-9, "got {}", r[0]);
+            let r = eval_dbl::<1>(&mut f, "AVERAGE(VECCOL)");
+            assert!((r[0] - 3.0).abs() < 1e-9, "got {}", r[0]);
+            let r = eval_dbl::<1>(&mut f, "MIN(VECCOL)");
+            assert!((r[0] - 1.0).abs() < 1e-9);
+            let r = eval_dbl::<1>(&mut f, "MAX(VECCOL)");
+            assert!((r[0] - 5.0).abs() < 1e-9);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_bit_masks() {
+        /* Bit masks in binary, octal and hex form, with 'x' wildcards */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_log::<1>(&mut f, "BITS == b11110000"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS .eq. b11110000"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS == b00001111"), [0]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS != b00001111"), [1]);
+            /* 'x' is a wildcard bit */
+            assert_eq!(eval_log::<1>(&mut f, "BITS == bxxxx0000"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS == b1111xxxx"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS == bxxxx1xxx"), [0]);
+            /* octal and hex masks describe the same pattern */
+            assert_eq!(eval_log::<1>(&mut f, "BITS == o360"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS == hF0"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS == hf0"), [1]);
+            /* NELEM returns the column width for bit columns */
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(BITS)"), [8]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_bit_mask_ordering() {
+        /* "It is also possible to test if a range of bits is less than, less
+        than equal, greater than and greater than equal to a ... value" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_log::<1>(&mut f, "BITS <= b11111111"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS >= b11110000"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS > b00000000"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS < b11111111"), [1]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS > b11111111"), [0]);
+            /* a wildcard limits which bits take part in the comparison */
+            assert_eq!(eval_log::<1>(&mut f, "BITS .gt. bxxx100xx"), [0]);
+            assert_eq!(eval_log::<1>(&mut f, "BITS .le. b1xxxxxxx"), [1]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_bit_operators() {
+        /* "Bit wise AND, OR and NOT operations are also possible ... All of
+        these operators result in a bit field"; bit fields can also be
+        appended with '+' */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_vector_table(&to_buf(filename));
+
+            assert_eq!(eval_log::<1>(&mut f, "(!BITS) == b00001111"), [1]);
+            assert_eq!(
+                eval_log::<1>(&mut f, "(BITS & b10000001) == b10000000"),
+                [1]
+            );
+            assert_eq!(
+                eval_log::<1>(&mut f, "(BITS | b00000001) == b11110001"),
+                [1]
+            );
+            assert_eq!(
+                eval_log::<1>(&mut f, "(BITS + BITS) == b1111000011110000"),
+                [1]
+            );
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(BITS + BITS)"), [16]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_region_shape_functions() {
+        /* CIRCLE(xcen,ycen,rad,x,y), BOX(xcen,ycen,xwid,ywid,rot,x,y) and
+        ELLIPSE(xcen,ycen,xrad,yrad,rot,x,y) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* points (1,1.5) ... (10,10.5) against a circle of radius 5
+            centred on the origin: rows 1..3 are inside */
+            let (n, flags) = count_rows(&mut f, "CIRCLE(0, 0, 5, INTCOL, FLOATCOL)");
+            assert_eq!(n, 3, "flags {flags:?}");
+            assert_eq!(flags[2], 1);
+            assert_eq!(flags[3], 0);
+
+            /* an unrotated 8x8 box centred on the origin holds rows 1..3 */
+            let (n, _) = count_rows(&mut f, "BOX(0, 0, 8, 8, 0, INTCOL, FLOATCOL)");
+            assert_eq!(n, 3);
+            /* rotating the box by 90 degrees leaves it unchanged */
+            assert_eq!(
+                count_rows(&mut f, "BOX(0, 0, 8, 8, 90, INTCOL, FLOATCOL)").0,
+                3
+            );
+            /* a wide, flat box only admits the first row */
+            assert_eq!(
+                count_rows(&mut f, "BOX(0, 0, 20, 4, 0, INTCOL, FLOATCOL)").0,
+                1
+            );
+
+            /* an ellipse with semi-axes 5 and 5 behaves like the circle */
+            assert_eq!(
+                count_rows(&mut f, "ELLIPSE(0, 0, 5, 5, 0, INTCOL, FLOATCOL)").0,
+                3
+            );
+            assert_eq!(
+                count_rows(&mut f, "ELLIPSE(0, 0, 20, 2, 0, INTCOL, FLOATCOL)").0,
+                1
+            );
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    /// Build a file holding a 10-row event table (TIME = 0.5, 1.5, ... 9.5)
+    /// followed by a GTI extension covering 0-2, 4-6 and 8-10, and leave the
+    /// file positioned on the event table.
+    fn create_gti_table(name: &[c_char]) -> Box<fitsfile> {
+        let mut status = 0;
+        let times: [f64; 10] = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5];
+        let start: [f64; 3] = [0.0, 4.0, 8.0];
+        let stop: [f64; 3] = [2.0, 6.0, 10.0];
+
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, &mut status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+
+        create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            10,
+            &["TIME"],
+            &["1D"],
+            None,
+            &mut status,
+        );
+        fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 10, &times, &mut status);
+
+        create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            3,
+            &["START", "STOP"],
+            &["1D", "1D"],
+            None,
+            &mut status,
+        );
+        let extname = cc("STDGTI");
+        fits_update_key_str(
+            f.as_deref_mut().unwrap(),
+            &cc("EXTNAME"),
+            &extname,
+            None,
+            &mut status,
+        );
+        fits_write_col_dbl(f.as_deref_mut().unwrap(), 1, 1, 1, 3, &start, &mut status);
+        fits_write_col_dbl(f.as_deref_mut().unwrap(), 2, 1, 1, 3, &stop, &mut status);
+
+        /* leave the file on the event table */
+        fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+        assert_eq!(status, 0, "create_gti_table setup failed");
+        f.unwrap()
+    }
+
+    #[test]
+    fn test_fffrow_gtifilter() {
+        /* gtifilter( [ "gtifile" [, expr [, "STARTCOL", "STOPCOL" ] ] ] ) -
+        "gtifilter()" is equivalent to
+        gtifilter( "", TIME, "*START*", "*STOP*" ) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_gti_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "gtifilter()");
+            assert_eq!(n, 6, "flags {flags:?}");
+            assert_eq!(flags, [1, 1, 0, 0, 1, 1, 0, 0, 1, 1]);
+
+            /* the same, spelled out */
+            let (n, flags) = count_rows(&mut f, "gtifilter('', TIME, '*START*', '*STOP*')");
+            assert_eq!(n, 6);
+            assert_eq!(flags, [1, 1, 0, 0, 1, 1, 0, 0, 1, 1]);
+
+            /* an arbitrary time expression may be filtered: TIME+2 is in a
+            GTI for rows 3,4 (4.5,5.5) and 7,8 (8.5,9.5) only */
+            let (n, flags) = count_rows(&mut f, "gtifilter('', TIME + 2)");
+            assert_eq!(n, 4, "flags {flags:?}");
+            assert_eq!(flags, [0, 0, 1, 1, 0, 0, 1, 1, 0, 0]);
+
+            /* the GTI extension may be named explicitly */
+            assert_eq!(count_rows(&mut f, "gtifilter('[STDGTI]')").0, 6);
+            assert_eq!(
+                count_rows(&mut f, "gtifilter('', TIME, 'START', 'STOP')").0,
+                6
+            );
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_gtifind() {
+        /* "gtifind() returns the row number in the GTI table that matches the
+        time sample, or -1 if the time sample is not within any GTI" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_gti_table(&to_buf(filename));
+
+            /* rows outside every GTI are returned as undefined, which
+            without a null value becomes 0 */
+            let r = eval_lng::<10>(&mut f, "gtifind('', TIME)");
+            assert_eq!(r, [1, 1, 0, 0, 2, 2, 0, 0, 3, 3]);
+
+            /* supplying a null value shows which rows are undefined; note
+            that gtifind() is a bexpr in the grammar, so it cannot be nested
+            inside DEFNULL()/ISNULL() even though it yields an integer */
+            let mut results = [0 as c_long; 10];
+            let nulval: c_long = -1;
+            let mut anynul = 0;
+            fits_calc_rows(
+                &mut f,
+                TLONG,
+                &cc("gtifind('', TIME)"),
+                1,
+                10,
+                (&raw const nulval).cast::<c_void>(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(anynul, 1);
+            assert_eq!(results, [1, 1, -1, -1, 2, 2, -1, -1, 3, 3]);
+
+            let r = eval_lng::<10>(&mut f, "gtifind('', TIME, 'START', 'STOP')");
+            assert_eq!(r, [1, 1, 0, 0, 2, 2, 0, 0, 3, 3]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_gtioverlap() {
+        /* gtioverlap( "gtifile", startExpr, stopExpr [, "STARTCOL", "STOPCOL"] )
+        computes the overlap between the requested range and the GTIs */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_gti_table(&to_buf(filename));
+
+            /* one second bins starting at each TIME value */
+            let r = eval_dbl::<10>(&mut f, "gtioverlap('', TIME, TIME + 1)");
+            let expect = [1.0, 0.5, 0.0, 0.5, 1.0, 0.5, 0.0, 0.5, 1.0, 0.5];
+            for (i, e) in expect.iter().enumerate() {
+                assert!(
+                    (r[i] - e).abs() < 1e-9,
+                    "row {}: got {} want {e}",
+                    i + 1,
+                    r[i]
+                );
+            }
+
+            /* a range spanning every interval sees the full 6 seconds of GTI */
+            let r = eval_dbl::<1>(&mut f, "gtioverlap('', 0*TIME, 0*TIME + 20)");
+            assert!((r[0] - 6.0).abs() < 1e-9, "got {}", r[0]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_regfilter() {
+        /* regfilter( "regfilename" [, Xexpr, Yexpr [, "wcs cols" ] ] ) */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let dir = std::path::Path::new(filename).parent().unwrap();
+            let regpath = dir.join("test_region.reg");
+            std::fs::write(&regpath, "circle(5,5,3)\n").unwrap();
+            let regpath = regpath.to_str().unwrap();
+
+            /* the points are (INTCOL, FLOATCOL) = (1,1.5) ... (10,10.5);
+            rows 3 to 6 lie within 3 units of (5,5) */
+            let (n, flags) =
+                count_rows(&mut f, &format!("regfilter('{regpath}', INTCOL, FLOATCOL)"));
+            assert_eq!(n, 4, "flags {flags:?}");
+            assert_eq!(flags, [0, 0, 1, 1, 1, 1, 0, 0, 0, 0]);
+
+            /* an excluded region is subtracted from the accepted area */
+            std::fs::write(&regpath, "circle(5,5,3)\n-circle(5,5,1)\n").unwrap();
+            let (n, flags) =
+                count_rows(&mut f, &format!("regfilter('{regpath}', INTCOL, FLOATCOL)"));
+            assert_eq!(n, 3, "flags {flags:?}");
+            assert_eq!(flags[4], 0); /* (5,5.5) is inside the excluded circle */
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_boolean_literals() {
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            /* note that for a constant expression fffrow reports every row
+            as "good" regardless of the value, so check the flags */
+            assert_eq!(count_rows(&mut f, "T").1, [1; 10]);
+            assert_eq!(count_rows(&mut f, "F").1, [0; 10]);
+            assert_eq!(count_rows(&mut f, "t").1, [1; 10]);
+            assert_eq!(count_rows(&mut f, "f").1, [0; 10]);
+            /* BOOLCOL alternates true/false starting with true */
+            assert_eq!(count_rows(&mut f, "BOOLCOL == T").0, 5);
+            assert_eq!(count_rows(&mut f, "BOOLCOL != T").0, 5);
+            assert_eq!(count_rows(&mut f, "BOOLCOL .and. T").0, 5);
+            assert_eq!(count_rows(&mut f, "BOOLCOL .or. T").0, 10);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_string_comparisons() {
+        /* the comparison operators also apply to string expressions */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "STRCOL == 'gamma'");
+            assert_eq!(n, 1);
+            assert_eq!(flags[2], 1);
+            assert_eq!(count_rows(&mut f, "STRCOL != 'gamma'").0, 9);
+            /* only 'alpha' sorts before 'beta' */
+            assert_eq!(count_rows(&mut f, "STRCOL < 'beta'").0, 1);
+            assert_eq!(count_rows(&mut f, "STRCOL <= 'beta'").0, 2);
+            /* 'theta' and 'zeta' sort after 'kappa' */
+            assert_eq!(count_rows(&mut f, "STRCOL > 'kappa'").0, 2);
+            assert_eq!(count_rows(&mut f, "STRCOL >= 'kappa'").0, 3);
+            /* double quotes may be used instead of single quotes */
+            assert_eq!(count_rows(&mut f, "STRCOL == \"gamma\"").0, 1);
+
+            /* NELEM of a string column is its declared width */
+            assert_eq!(eval_lng::<1>(&mut f, "NELEM(STRCOL)"), [10]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_string_conditional() {
+        /* "x and y can be any scalar data type (including string)" */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            let (n, flags) = count_rows(&mut f, "(INTCOL > 5 ? 'big' : 'small') == 'big'");
+            assert_eq!(n, 5);
+            assert_eq!(flags[4], 0);
+            assert_eq!(flags[5], 1);
+            /* string concatenation inside the branches */
+            assert_eq!(
+                count_rows(&mut f, "(BOOLCOL ? STRCOL + '!' : STRCOL) == 'alpha!'").0,
+                1
+            );
+
+            fits_close_file(f, &mut status);
         });
     }
 
