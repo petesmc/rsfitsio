@@ -10577,7 +10577,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         pVals[2].data.dbl,
                         pVals[3].data.dbl,
                     );
-                    current_block_139 = 15934000668868306918;
+                    /* DEVIATION from CFITSIO 4.7.0: "case angsep_fct:" there
+                    is missing its "break;" and falls through into
+                    "case min1_fct:", which overwrites the separation just
+                    computed with pVals[0] - so a constant-folded ANGSEP
+                    returns its first argument.  Fix submitted upstream; the
+                    non-constant path in Do_Func has always been correct. */
+                    current_block_139 = 7627602990488000394;
                 }
                 1022 => {
                     current_block_139 = 15934000668868306918;

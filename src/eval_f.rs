@@ -9340,8 +9340,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            /* 0*INTCOL keeps the arguments non-constant - see
-            test_ffcrow_angsep_constant_folding below */
+            /* 0*INTCOL keeps the arguments non-constant, so these go
+            through Do_Func rather than being folded at parse time - see
+            test_ffcrow_angsep_constant_arguments below */
             let r = eval_dbl::<3>(&mut f, "ANGSEP(0.0*INTCOL, 0.0, 0.0, 90.0)");
             for v in r {
                 assert!((v - 90.0).abs() < 1e-9, "got {v}");
@@ -9364,20 +9365,30 @@ mod tests {
     }
 
     #[test]
-    fn test_ffcrow_angsep_constant_folding() {
-        /* When all four arguments are constants, ANGSEP is folded at parse
-        time - and there the C "case angsep_fct:" falls through into
-        "case min1_fct:", which overwrites the result with the first
-        argument.  This port reproduces that upstream quirk, so pin it down
-        here to catch any accidental divergence. */
+    fn test_ffcrow_angsep_constant_arguments() {
+        /* When all four arguments are constants ANGSEP is folded at parse
+        time, and the folded result must agree with the per-row one computed
+        by test_ffcrow_angsep_function above.
+
+        DEVIATION from CFITSIO 4.7.0: there "case angsep_fct:" is missing its
+        "break;" and falls through into "case min1_fct:", so the folded form
+        returns its first argument instead of the separation.  Fix submitted
+        upstream; see the comment in New_Func in eval_y.rs. */
         with_temp_file(|filename| {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
             let r = eval_dbl::<1>(&mut f, "ANGSEP(0,0,0,90)");
-            assert!(r[0].abs() < 1e-9, "got {}", r[0]);
+            assert!((r[0] - 90.0).abs() < 1e-9, "got {}", r[0]);
             let r = eval_dbl::<1>(&mut f, "ANGSEP(7.5,0,0,90)");
-            assert!((r[0] - 7.5).abs() < 1e-9, "got {}", r[0]);
+            assert!((r[0] - 90.0).abs() < 1e-9, "got {}", r[0]);
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(0,0,90,0)");
+            assert!((r[0] - 90.0).abs() < 1e-9, "got {}", r[0]);
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(10,20,10,20)");
+            assert!(r[0].abs() < 1e-9, "got {}", r[0]);
+            /* 1 degree of RA at declination 60 is 0.5 degrees on the sky */
+            let r = eval_dbl::<1>(&mut f, "ANGSEP(0,60,1,60)");
+            assert!((r[0] - 0.5).abs() < 1e-3, "got {}", r[0]);
 
             fits_close_file(f, &mut status);
         });
