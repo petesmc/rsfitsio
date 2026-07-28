@@ -7191,7 +7191,7 @@ fn New_GTI(
                 if *fname.offset(i as isize) != 0 {
                     *fname.offset(i as isize) = 0;
                     fname = fname.offset(1);
-                    let fname_str = CStr::from_ptr(fname).to_bytes();
+                    let fname_str = CStr::from_ptr(fname).to_bytes_with_nul();
                     ffexts_safe(
                         core::slice::from_raw_parts(
                             fname_str.as_ptr().cast::<c_char>(),
@@ -7240,7 +7240,7 @@ fn New_GTI(
             _ => {
                 samefile = 0;
                 let mut fptr_tmp: Option<Box<fitsfile>> = None;
-                let fname_str = CStr::from_ptr(fname).to_bytes();
+                let fname_str = CStr::from_ptr(fname).to_bytes_with_nul();
                 if ffopen_safe(
                     &mut fptr_tmp,
                     core::slice::from_raw_parts(
@@ -7289,8 +7289,8 @@ fn New_GTI(
         }
 
         /*  Locate START/STOP Columns  */
-        let start_str = CStr::from_ptr(start).to_bytes();
-        let stop_str = CStr::from_ptr(stop).to_bytes();
+        let start_str = CStr::from_ptr(start).to_bytes_with_nul();
+        let stop_str = CStr::from_ptr(stop).to_bytes_with_nul();
         ffgcno_safe(
             fptr,
             0,
@@ -7432,11 +7432,12 @@ fn New_GTI(
                 loop {
                     /* the following are failure conditions for GTI ordering */
 
+                    /* C: while( --j ) - the body never runs with j == 0, so
+                    stopptr[j-1] is always in bounds */
+                    i -= 1;
                     if i == 0 {
-                        i -= 1;
                         break;
                     }
-                    i -= 1;
 
                     if !(*startptr.offset(i as isize) > *stopptr.offset(i as isize) /* START{j} > STOP{j} */
                         || *startptr.offset(i as isize) < *stopptr.offset((i - 1) as isize))
@@ -7528,7 +7529,6 @@ fn New_REG(
             rot: 0.,
             dtype: [0; 5],
         };
-        let Rgn: *mut SAORegion = ptr::null_mut();
         let mut cX: *mut c_char = ptr::null_mut();
         let mut cY: *mut c_char = ptr::null_mut();
         let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
@@ -7618,8 +7618,8 @@ fn New_REG(
                 }
 
                 let fptr = lParse.def_fptr.as_mut().unwrap();
-                let cX_str = CStr::from_ptr(cX).to_bytes();
-                let cY_str = CStr::from_ptr(cY).to_bytes();
+                let cX_str = CStr::from_ptr(cX).to_bytes_with_nul();
+                let cY_str = CStr::from_ptr(cY).to_bytes_with_nul();
                 ffgcno_safe(
                     fptr,
                     0,
@@ -7683,18 +7683,24 @@ fn New_REG(
                 }
             }
 
+            /* the region is allocated by fits_read_rgnfile; hand ownership of
+            it to the node, which frees it again in ffcprs */
             let fname_slice = CStr::from_ptr(fname);
-            let rgn_box = Box::from_raw(Rgn);
+            let mut rgn: Option<Box<SAORegion>> = None;
             fits_read_rgnfile(
                 cast_slice(fname_slice.to_bytes_with_nul()),
                 &mut wcs,
-                &mut Some(rgn_box),
+                &mut rgn,
                 &mut lParse.status,
             );
             if lParse.status != 0 {
                 Free_Last_Node(lParse);
                 return -(1);
             }
+            let Rgn: *mut SAORegion = match rgn {
+                Some(rgn) => Box::into_raw(rgn),
+                None => ptr::null_mut(),
+            };
             (lParse.Nodes[that0_idx]).value.data.ptr = Rgn.cast::<c_void>();
             if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
                 && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
@@ -9607,7 +9613,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
                 previous = (lParse.Nodes[that2_idx]).value.data.lng;
-                undef = c_long::from(*(lParse.Nodes[that2_idx]).value.undef);
+                /* the C stores this flag *in* the undef pointer field of the
+                constant node ("XXX evil, but no harm here"), so read the
+                pointer value back rather than dereferencing it */
+                undef = (lParse.Nodes[that2_idx]).value.undef as c_long;
                 if (lParse.Nodes[this_node_idx]).operation
                     == fits_parser_yytokentype::ACCUM as c_int
                 {
@@ -10568,7 +10577,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         pVals[2].data.dbl,
                         pVals[3].data.dbl,
                     );
-                    current_block_139 = 15934000668868306918;
+                    /* DEVIATION from CFITSIO 4.7.0: "case angsep_fct:" there
+                    is missing its "break;" and falls through into
+                    "case min1_fct:", which overwrites the separation just
+                    computed with pVals[0] - so a constant-folded ANGSEP
+                    returns its first argument.  Fix submitted upstream; the
+                    non-constant path in Do_Func has always been correct. */
+                    current_block_139 = 7627602990488000394;
                 }
                 1022 => {
                     current_block_139 = 15934000668868306918;
