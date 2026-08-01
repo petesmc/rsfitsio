@@ -9180,13 +9180,13 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
 
             let r = eval_dbl::<1>(&mut f, "#pi");
-            assert!((r[0] - std::f64::consts::PI).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::PI).abs() < 1e-12);
             let r = eval_dbl::<1>(&mut f, "#PI");
-            assert!((r[0] - std::f64::consts::PI).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::PI).abs() < 1e-12);
             let r = eval_dbl::<1>(&mut f, "#e");
-            assert!((r[0] - std::f64::consts::E).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::E).abs() < 1e-12);
             let r = eval_dbl::<1>(&mut f, "#deg");
-            assert!((r[0] - std::f64::consts::PI / 180.0).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::PI / 180.0).abs() < 1e-12);
 
             fits_close_file(f, &mut status);
         });
@@ -9320,11 +9320,11 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
 
             let r = eval_dbl::<1>(&mut f, "ARCSIN(1)");
-            assert!((r[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::FRAC_PI_2).abs() < 1e-12);
             let r = eval_dbl::<1>(&mut f, "ARCCOS(0)");
-            assert!((r[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::FRAC_PI_2).abs() < 1e-12);
             let r = eval_dbl::<1>(&mut f, "ARCTAN(1)");
-            assert!((r[0] - std::f64::consts::FRAC_PI_4).abs() < 1e-12);
+            assert!((r[0] - core::f64::consts::FRAC_PI_4).abs() < 1e-12);
 
             fits_close_file(f, &mut status);
         });
