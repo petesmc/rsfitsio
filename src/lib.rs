@@ -12,6 +12,14 @@
     // eval_tab.rs mirrors the bison-generated token enum from eval_tab.h;
     // BOOLEAN/BITSTR/GTIFILTER/... must keep the grammar's spelling.
     clippy::upper_case_acronyms,
+    // C integer widths are target-dependent -- c_long is 64-bit on Linux/macOS
+    // and 32-bit on Windows -- so a cast or Into that clippy sees as a no-op
+    // here is load-bearing elsewhere. Taking these two lints has already
+    // broken the Windows build once. Verify with
+    //   cargo check --target i686-unknown-linux-gnu --all-targets
+    // before "simplifying" any conversion in this crate.
+    clippy::unnecessary_cast,
+    clippy::useless_conversion,
     // The deg<->rad and pi literals are carried over verbatim from the
     // CFITSIO C; keep them as written rather than swapping in core::f64
     // constants, which would perturb the transpiled arithmetic.
