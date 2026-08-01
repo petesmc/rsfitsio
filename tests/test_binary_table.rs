@@ -1,3 +1,7 @@
+// Ported from the CFITSIO C test programs; indexed loops and the
+// operator-named test fns mirror the originals.
+#![allow(non_snake_case)]
+
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 use std::str::FromStr;
