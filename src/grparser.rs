@@ -1457,22 +1457,12 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
             i = 0;
             loop {
                 let token = &ngph.tok[i as usize];
-                if 1 == sscanf_d_c(
-                    &mut token.name.clone(),
-                    cs!(c"TFORM%d%c"),
-                    &mut ngph_i,
-                    &mut ngph_ctmp,
-                ) {
+                if 1 == sscanf_d_c(&token.name, cs!(c"TFORM%d%c"), &mut ngph_i, &mut ngph_ctmp) {
                     if (NGP_TTYPE_STRING == token.type_) && (ngph_i == (j + 1)) {
                         my_tform = token.value.s;
                     }
                 } else if 1
-                    == sscanf_d_c(
-                        &mut token.name.clone(),
-                        cs!(c"TTYPE%d%c"),
-                        &mut ngph_i,
-                        &mut ngph_ctmp,
-                    )
+                    == sscanf_d_c(&token.name, cs!(c"TTYPE%d%c"), &mut ngph_i, &mut ngph_ctmp)
                     && (NGP_TTYPE_STRING == token.type_)
                     && (ngph_i == (j + 1))
                 {
@@ -1673,13 +1663,7 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         ngph_extname = token.value.s;
                     }
-                } else if 1
-                    == sscanf_d_c(
-                        &mut token.name.clone(),
-                        cs!(c"NAXIS%d%c"),
-                        &mut j,
-                        &mut ngph_ctmp,
-                    )
+                } else if 1 == sscanf_d_c(&token.name, cs!(c"NAXIS%d%c"), &mut j, &mut ngph_ctmp)
                     && NGP_TTYPE_INT == token.type_
                     && (j >= 1)
                     && (j <= NGP_MAX_ARRAY_DIM as c_int)
@@ -2186,8 +2170,10 @@ mod tests {
         value_int: c_int,
         comment: &str,
     ) -> NgpToken {
-        let mut token = NgpToken::default();
-        token.type_ = type_;
+        let mut token = NgpToken {
+            type_,
+            ..Default::default()
+        };
 
         // Copy name
         let name_bytes = name.as_bytes();

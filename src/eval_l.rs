@@ -549,7 +549,7 @@ pub(crate) fn fits_parser_yylex(
                                                 20,
                                             );
                                             strcat_safe(&mut errMsg, cs!(c"...'"));
-                                            ffpmsg_slice(&mut errMsg);
+                                            ffpmsg_slice(&errMsg);
                                             overflow = 1;
                                             break;
                                         }
@@ -700,7 +700,7 @@ pub(crate) fn fits_parser_yylex(
                                                 20,
                                             );
                                             strcat_safe(&mut errMsg, cs!(c"...'"));
-                                            ffpmsg_slice(&mut errMsg);
+                                            ffpmsg_slice(&errMsg);
                                             overflow = 1;
                                             break;
                                         }

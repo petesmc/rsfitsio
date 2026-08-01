@@ -9801,7 +9801,7 @@ fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
         return 0;
     }
 
-    return 1;
+    1
 }
 
 fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
@@ -14723,6 +14723,9 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
+// One arm per comparison operator, mirroring the C's switch; match guards
+// would make the operator table harder to scan.
+#[allow(clippy::collapsible_match, clippy::collapsible_if)]
 fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_char {
     unsafe {
         let mut val1: c_int = 0;

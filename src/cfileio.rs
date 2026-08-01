@@ -78,6 +78,17 @@ pub const MAX_DRIVERS: usize = 31; /* max number of file I/O drivers */
 
 pub(crate) trait Driver {}
 
+/// A driver's `checkfile` hook: given the parsed URL type it may rewrite the
+/// input and output file names before the file is opened.
+pub type CheckFileFn = fn(
+    urltype: &mut [c_char; MAX_PREFIX_LEN],
+    infile: &mut [c_char; FLEN_FILENAME],
+    outfile: &mut [c_char; FLEN_FILENAME],
+) -> c_int;
+
+/// A driver's `open` hook.
+pub type DriverOpenFn = fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int;
+
 pub struct fitsdriver {
     /* structure containing pointers to I/O driver functions */
     pub prefix: [c_char; MAX_PREFIX_LEN],
@@ -86,14 +97,8 @@ pub struct fitsdriver {
     pub setoptions: Option<fn(option: c_int) -> c_int>,
     pub getoptions: Option<fn(options: &mut c_int) -> c_int>,
     pub getversion: Option<fn(version: &mut c_int) -> c_int>,
-    pub checkfile: Option<
-        fn(
-            urltype: &mut [c_char; MAX_PREFIX_LEN],
-            infile: &mut [c_char; FLEN_FILENAME],
-            outfile: &mut [c_char; FLEN_FILENAME],
-        ) -> c_int,
-    >,
-    pub open: Option<fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int>,
+    pub checkfile: Option<CheckFileFn>,
+    pub open: Option<DriverOpenFn>,
     pub create:
         Option<fn(filename: &mut [c_char; FLEN_FILENAME], drivehandle: &mut c_int) -> c_int>,
     pub truncate: Option<fn(drivehandle: c_int, size: usize) -> c_int>,
@@ -5018,14 +5023,8 @@ pub(crate) fn fits_register_driver(
     setoptions: Option<fn(option: c_int) -> c_int>,
     getoptions: Option<fn(options: &mut c_int) -> c_int>,
     getversion: Option<fn(version: &mut c_int) -> c_int>,
-    checkfile: Option<
-        fn(
-            urltype: &mut [c_char; MAX_PREFIX_LEN],
-            infile: &mut [c_char; FLEN_FILENAME],
-            outfile: &mut [c_char; FLEN_FILENAME],
-        ) -> c_int,
-    >,
-    open: Option<fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int>,
+    checkfile: Option<CheckFileFn>,
+    open: Option<DriverOpenFn>,
     create: Option<fn(filename: &mut [c_char; FLEN_FILENAME], drivehandle: &mut c_int) -> c_int>,
     truncate: Option<fn(drivehandle: c_int, size: usize) -> c_int>,
     close: fn(drivehandle: c_int) -> c_int,

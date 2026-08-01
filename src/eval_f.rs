@@ -3239,6 +3239,9 @@ pub unsafe extern "C" fn fffrwc(
 /*---------------------------------------------------------------------------*/
 /// Evaluate a boolean expression for each time in a compressed file,
 /// returning an array of flags indicating which times evaluated to TRUE/FALSE
+// The TSTRING arm dispatches on fits_get_coltype's result; hoisting that call
+// into a match guard would hide it. Left as the C writes it.
+#[allow(clippy::collapsible_match, clippy::collapsible_if)]
 pub fn fffrwc_safe(
     fptr: &mut fitsfile,        /* I - Input FITS file                    */
     expr: &[c_char],            /* I - Boolean expression                 */
@@ -9988,7 +9991,7 @@ mod tests {
             assert_eq!(flags, [0, 0, 1, 1, 1, 1, 0, 0, 0, 0]);
 
             /* an excluded region is subtracted from the accepted area */
-            std::fs::write(&regpath, "circle(5,5,3)\n-circle(5,5,1)\n").unwrap();
+            std::fs::write(regpath, "circle(5,5,3)\n-circle(5,5,1)\n").unwrap();
             let (n, flags) =
                 count_rows(&mut f, &format!("regfilter('{regpath}', INTCOL, FLOATCOL)"));
             assert_eq!(n, 3, "flags {flags:?}");

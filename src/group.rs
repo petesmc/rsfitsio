@@ -144,7 +144,7 @@ pub fn ffgtcr_safe(
 
     *status = fits_insert_group(fptr, grpname, grouptype, status);
 
-    return *status;
+    *status
 }
 
 /*---------------------------------------------------------------------------*/

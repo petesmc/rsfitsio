@@ -17,7 +17,7 @@ pub const MAX_STRLEN_S: &str = "255";
 pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
 #[derive(Debug)]
-pub struct DataInfo {
+pub(crate) struct DataInfo {
     pub name: [c_char; MAXVARNAME + 1],
     pub dtype: c_int,
     pub nelem: c_long,
@@ -42,7 +42,7 @@ impl Default for DataInfo {
 }
 
 #[derive(Copy, Clone)]
-pub union data_union {
+pub(crate) union data_union {
     pub dbl: f64,
     pub lng: c_long,
     pub log: c_char,
@@ -69,7 +69,7 @@ impl Default for data_union {
 }
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct lval {
+pub(crate) struct lval {
     pub nelem: c_long,
     pub naxis: c_int,
     pub naxes: [c_long; MAXDIMS as usize],
@@ -78,7 +78,7 @@ pub struct lval {
 }
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct Node {
+pub(crate) struct Node {
     pub operation: c_int,
     pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
     pub nSubNodes: c_int,
@@ -87,22 +87,25 @@ pub struct Node {
     pub value: lval,
 }
 
+/// Fetches a single named value for the parser (ffcalc's keyword lookup).
+pub(crate) type GetDataFn =
+    fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int;
+
+/// Loads a row range of one parser variable into the caller's buffers.
+pub(crate) type LoadDataFn = fn(
+    p: &mut ParseData,
+    varNum: c_int,
+    fRow: c_long,
+    nRows: c_long,
+    data: *mut c_void,
+    undef: *mut c_char,
+) -> c_int;
+
 #[derive(Default)]
-pub struct ParseData {
+pub(crate) struct ParseData {
     pub def_fptr: *mut fitsfile,
-    pub getData: Option<
-        fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int,
-    >,
-    pub loadData: Option<
-        fn(
-            p: &mut ParseData,
-            varNum: c_int,
-            fRow: c_long,
-            nRows: c_long,
-            data: *mut c_void,
-            undef: *mut c_char,
-        ) -> c_int,
-    >,
+    pub getData: Option<GetDataFn>,
+    pub loadData: Option<LoadDataFn>,
     pub compressed: c_int,
     pub timeCol: c_int,
     pub parCol: c_int,

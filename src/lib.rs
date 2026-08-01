@@ -250,6 +250,15 @@ macro_rules! raw_to_slice {
     };
 }
 
+/// The borrowed (ttype, tform, tunit) column-keyword slices produced by
+/// [`TKeywords::tkeywords_to_vecs`]. tunit is optional because the C API
+/// allows a NULL tunit array.
+pub(crate) type TKeywordVecs<'a> = (
+    Vec<Option<&'a [c_char]>>,
+    Vec<&'a [c_char]>,
+    Option<Vec<Option<&'a [c_char]>>>,
+);
+
 pub(crate) struct TKeywords<'a> {
     tfields: c_int,              /* I - number of columns in the table           */
     ttype: *const *const c_char, /* I - name of each column                      */
@@ -274,13 +283,7 @@ impl<'a> TKeywords<'a> {
         }
     }
 
-    pub unsafe fn tkeywords_to_vecs(
-        &'a self,
-    ) -> (
-        Vec<Option<&'a [c_char]>>,
-        Vec<&'a [c_char]>,
-        Option<Vec<Option<&'a [c_char]>>>,
-    ) {
+    pub unsafe fn tkeywords_to_vecs(&'a self) -> TKeywordVecs<'a> {
         unsafe {
             // Handle case where tfields is 0 or pointers are null
             if self.tfields == 0 || self.ttype.is_null() || self.tform.is_null() {
