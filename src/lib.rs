@@ -8,7 +8,11 @@
     unreachable_code,
     clippy::too_many_arguments,
     clippy::needless_range_loop,
-    clippy::manual_range_contains
+    clippy::manual_range_contains,
+    // The deg<->rad and pi literals are carried over verbatim from the
+    // CFITSIO C; keep them as written rather than swapping in core::f64
+    // constants, which would perturb the transpiled arithmetic.
+    clippy::approx_constant
 )]
 /*
 #![warn(
@@ -24,13 +28,11 @@
     clippy::char_lit_as_u8,
     clippy::ptr_as_ptr,
     clippy::cast,
-    // clippy::alloc_instead_of_core,
-    // clippy::std_instead_of_alloc,
-    //clippy::std_instead_of_core,
 )]
 */
 #![allow(deprecated)]
 #![deny(clippy::std_instead_of_core, clippy::std_instead_of_alloc)]
+// #![deny(clippy::unnecessary_cast)]
 
 extern crate alloc;
 
