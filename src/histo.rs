@@ -4977,7 +4977,7 @@ extern "C" fn ffcalchist(
          irow = pixel counter (1 .. totalnpix)
          elem = 1  (not applicable)
     */
-    if (!histData.tblptr.is_null() && (unsafe { &*histData.tblptr }.Fptr.hdutype != IMAGE_HDU)) {
+    if !histData.tblptr.is_null() && (unsafe { &*histData.tblptr }.Fptr.hdutype != IMAGE_HDU) {
         adjustedRepeat = histData.repeat;
     } else {
         adjustedRepeat = 1;

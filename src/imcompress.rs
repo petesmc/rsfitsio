@@ -2395,7 +2395,7 @@ unsafe fn imcomp_compress_tile(
         let mut flag: c_int = 1; // true by default; only = 0 if float data couldn't be quantized
         let mut intlength: c_int = 0; // size of integers to be compressed
 
-        let mut clen: usize; // size of cbuf
+        let clen: usize; // size of cbuf
         let mut cbuf: Vec<c_short> = Vec::new(); // compressed data
         let mut nelem: c_int = 0; // number of bytes
         let tilecol: c_int;
@@ -7041,7 +7041,7 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             return *status;
         }
 
-        if ((infptr.Fptr).znaxis[ii] == LONG_MIN)
+        if (infptr.Fptr).znaxis[ii] == LONG_MIN
         /* cannot subtract 1 from this */
         {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
@@ -7049,14 +7049,14 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             return *status;
         }
         rowFactor = ((infptr.Fptr).znaxis[ii] - 1) / (infptr.Fptr).tilesize[ii] + 1;
-        if (expect_nrows > LONG_MAX / rowFactor) {
+        if expect_nrows > LONG_MAX / rowFactor {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
         }
         expect_nrows *= rowFactor;
 
-        if (maxtilelen > LONG_MAX / ((infptr.Fptr).tilesize[ii])) {
+        if maxtilelen > LONG_MAX / ((infptr.Fptr).tilesize[ii]) {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
