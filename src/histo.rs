@@ -273,6 +273,7 @@ pub(crate) fn ffbinse(
     }
 
     // This look to used to emulate the goto getweight
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'getweight: loop {
         if ptr[0] == bb(b'(') {
             /* this must be the opening parenthesis around a list of column */
@@ -4040,6 +4041,7 @@ pub(crate) fn fits_make_histde(
         .map(|s| s.as_ptr() as *mut c_char)
         .unwrap_or(ptr::null_mut());
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'cleanup: loop {
         /* Now make iterator columns for input, as well as any calculated values */
         numAllocCols = 5;
