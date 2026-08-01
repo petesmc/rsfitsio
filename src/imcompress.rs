@@ -7704,6 +7704,8 @@ unsafe fn imcomp_copy_prime2img(
 
 /*--------------------------------------------------------------------------*/
 /// This routine decompresses one tile of the image
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 fn imcomp_decompress_tile(
     infptr: &mut fitsfile,
     nrow: c_int,                    /* I - row of table to read and uncompress */

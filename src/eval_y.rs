@@ -1117,6 +1117,8 @@ fn New_FuncSize(
     n
 }
 
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
     unsafe {
         let mut current_block: u64;

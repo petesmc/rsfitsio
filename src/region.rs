@@ -152,6 +152,8 @@ pub(crate) fn fits_read_rgnfile(
 /// in the "SAORegion" structure.  If it is nonNULL, use wcs to convert the  
 /// region coordinates to pixels.  Return an error if region is in degrees   
 /// but no WCS data is provided.                                             
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn fits_read_ascii_region(
     filename: &[c_char],
     wcs: &mut WCSdata,

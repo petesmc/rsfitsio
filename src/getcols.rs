@@ -1001,6 +1001,8 @@ pub fn ffgcdw_safe(
 
 /*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcls2(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col) */

@@ -2877,6 +2877,8 @@ pub unsafe extern "C" fn ffgmop(
 /// to the CWD is given, and (3) a path relative to the grouping table file
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgmop_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
     member: c_long,       /* member ID (row num) within grouping table    */
@@ -5253,6 +5255,8 @@ pub(crate) fn ffgmul(
 /// match only if the grouping table type is GT_ID_POS_URI or GT_ID_POS. This
 /// is because the position information can become invalid much more
 /// easily then the reference information for a group member.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgmf(
     gfptr: &mut fitsfile,        /* pointer to grouping table HDU to search       */
     xtension: &[c_char],         /* XTENSION value for member HDU                */
@@ -6766,6 +6770,8 @@ pub(crate) fn fits_get_cwd(
 ///
 /// It is assumed that the url string has enough room to hold the resulting
 /// URL, and the the accessType string has enough room to hold the access type.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn fits_get_url(
     fptr: &mut fitsfile,        /* I ptr to FITS file to evaluate    */
     realURL: &mut [c_char],     /* O URL of real FITS file           */

@@ -1132,6 +1132,8 @@ pub fn ffgcfuj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcluj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -3693,6 +3695,8 @@ pub fn ffgcfujj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgclujj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */

@@ -621,6 +621,8 @@ pub unsafe extern "C" fn ffgcxui(
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgcxui_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer                       */
     colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
@@ -817,6 +819,8 @@ pub unsafe extern "C" fn ffgcxuk(
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgcxuk_safe(
     fptr: &mut fitsfile,     /* I - FITS file pointer                       */
     colnum: c_int,           /* I - number of column to read (1 = 1st col)  */

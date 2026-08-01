@@ -10706,6 +10706,8 @@ pub unsafe extern "C" fn ffgkcl(tcard: *mut c_char) -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
     let mut card: [c_char; 20] = [0; 20];
 

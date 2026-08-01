@@ -996,6 +996,8 @@ pub unsafe extern "C" fn ffphbn(
 
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the Binary Table:
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffphbn_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
