@@ -1724,9 +1724,9 @@ fn ngp_read_xtension(
                         &mut r,
                     );
 
-                    let continue_match = true;
-
-                    while continue_match {
+                    /* the C `break`s below exit the enclosing switch case */
+                    #[allow(clippy::never_loop)]
+                    loop {
                         if NGP_OK != r {
                             break;
                         }

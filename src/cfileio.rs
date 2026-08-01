@@ -8465,6 +8465,9 @@ pub fn pixel_filter_helper(
 
     /* copy any remaining HDUs to the output file */
     ii = hdunum + 1;
+    /* C: for (ii = hdunum + 1; !singleHDU; ii++) -- singleHDU is loop
+    invariant there too; the loop is exited by the ffmahd break below. */
+    #[allow(clippy::while_immutable_condition)]
     while singleHDU == 0 {
         if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
             break;
