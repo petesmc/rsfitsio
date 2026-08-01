@@ -3451,7 +3451,6 @@ pub fn ffgcf_safe(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::NullValue;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
@@ -3461,7 +3460,7 @@ mod tests {
         ULONG_IMG, USHORT_IMG, fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
-    use bytemuck::{cast_slice, cast_slice_mut};
+    use bytemuck::cast_slice_mut;
     use libc::{c_char, c_int, c_long, c_void};
 
     /// Make a NUL-terminated `Vec<c_char>` from a `&str`.

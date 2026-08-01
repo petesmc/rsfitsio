@@ -1439,12 +1439,11 @@ pub(crate) fn ffs1fstr(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_BTABLE_FORMAT, BAD_DIMEN, BINARY_TBL, BYTE_IMG, LONGLONG, NUM_OVERFLOW,
         READONLY, SBYTE_IMG, SHORT_IMG, TBYTE, TDOUBLE, TFLOAT, TLONG, TLONGLONG, TSBYTE, TSHORT,
-        TSTRING, TULONG, TUSHORT, fitsfile,
+        TULONG, TUSHORT, fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use bytemuck::cast_slice_mut;

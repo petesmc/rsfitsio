@@ -3,7 +3,7 @@ mod common;
 #[cfg(test)]
 mod tests {
     use crate::common::with_temp_file;
-    use bytemuck::{cast_slice, cast_slice_mut};
+    use bytemuck::cast_slice;
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::c_types::{c_char, c_int, c_long};
     use rsfitsio::fitsio::fitsfile;

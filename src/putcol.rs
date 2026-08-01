@@ -3957,7 +3957,7 @@ pub fn ffiter_safe(
 mod tests {
     use super::*;
     use crate::NullValue;
-    use crate::aliases::rust_api::*;
+
     use crate::fitsio::{
         BINARY_TBL, BYTE_IMG, DOUBLE_IMG, FLOAT_IMG, LONG_IMG, LONGLONG, LONGLONG_IMG, READONLY,
         SBYTE_IMG, SHORT_IMG, TBYTE, TCOMPLEX, TDBLCOMPLEX, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG,

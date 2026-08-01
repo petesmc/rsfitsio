@@ -5060,7 +5060,6 @@ pub(crate) fn fffstri8(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_DIMEN, BINARY_TBL, BYTE_IMG, LONG_IMG, LONGLONG, LONGLONG_IMG, READONLY,

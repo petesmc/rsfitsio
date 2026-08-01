@@ -2838,7 +2838,6 @@ pub(crate) fn fffstri1(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{BAD_COL_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, READONLY, fitsfile};
     use crate::helpers::testhelpers::{to_buf, with_temp_file};

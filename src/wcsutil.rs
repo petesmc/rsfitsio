@@ -805,7 +805,6 @@ pub fn ffxypx_safe(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use libc::{c_char, c_int};
 

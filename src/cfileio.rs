@@ -10019,8 +10019,7 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token1");
         assert_eq!(isanumber, 0);
@@ -10043,22 +10042,19 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 3);
         assert_eq!(from_buf(&token), "123");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 7);
         assert_eq!(from_buf(&token), "456.789");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "1.5D10");
         assert_eq!(isanumber, 1); // D notation for doubles
@@ -10071,8 +10067,7 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "spaced");
     }

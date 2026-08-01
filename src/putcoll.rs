@@ -586,14 +586,13 @@ pub fn ffpclx_safe(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         BAD_ELEM_NUM, BAD_ROW_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, NOT_LOGICAL_COL, READONLY,
         fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
-    use libc::{c_char, c_int, c_long};
+    use libc::{c_char, c_int};
 
     /// Make a NUL-terminated `Vec<c_char>` from a `&str`.
     fn cc(s: &str) -> Vec<c_char> {

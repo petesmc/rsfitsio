@@ -1572,7 +1572,6 @@ pub(crate) fn ffr4fstr(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_BTABLE_FORMAT, BAD_DIMEN, BINARY_TBL, BYTE_IMG, FLOAT_IMG, LONGLONG,

@@ -1,3 +1,7 @@
+// C: `for (; !status; hdupos++)` -- hdupos is only read before the loop, so
+// the increment is dead there too. Kept for fidelity with imcopy.c.
+#![allow(unused_assignments)]
+
 use std::ffi::CString;
 
 use std::process::ExitCode;

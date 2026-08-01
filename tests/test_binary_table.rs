@@ -902,6 +902,7 @@ fn test_read_table_where_tanh() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_erf() {
     let filename = get_filename();
 
@@ -914,6 +915,7 @@ fn test_read_table_where_erf() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_erfc() {
     let filename = get_filename();
 
@@ -926,6 +928,7 @@ fn test_read_table_where_erfc() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_gamma() {
     let filename = get_filename();
 
