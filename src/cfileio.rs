@@ -2095,8 +2095,7 @@ pub(crate) fn fits_already_open(
             } /* end if old fptr exists */
         } /* end loop over NMAXFILES */
 
-        if iMatch.is_some() {
-            let iMatch = iMatch.unwrap();
+        if let Some(iMatch) = iMatch {
             let oldFptr = FPTR_TABLE[iMatch];
 
             // HEAP ALLOCATION
@@ -5107,8 +5106,8 @@ pub(crate) fn fits_register_driver(
         return BAD_URL_PREFIX;
     }
 
-    if init.is_some() {
-        status = (init.unwrap())(); /* initialize the driver */
+    if let Some(init) = init {
+        status = init(); /* initialize the driver */
         if status != 0 {
             return status;
         };
@@ -6126,8 +6125,7 @@ pub fn ffifile2_safe(
         ptr1 = strstr_safe(&rowfilter, cs!(c"[Bin")); /* search for "[Bin" */
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
+    if let Some(p1) = ptr1 {
         let mut p2 = p1 + 4; /* end of the '[bin' string */
         if rowfilter[p2] == bb(b'b')
             || rowfilter[p2] == bb(b'i')
@@ -6223,22 +6221,22 @@ pub fn ffifile2_safe(
 
             if rowfilter[p2] == bb(b'\\') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\')); /* Pre-existing colspec, append with ";" */
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("literal string in input file URL is missing closing single quote");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
             if rowfilter[p2] == bb(b'[') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("nested brackets in input file URL is missing closing bracket");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
 
@@ -6306,8 +6304,7 @@ pub fn ffifile2_safe(
     }
 
     let mut p2 = 0;
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
+    if let Some(p1) = ptr1 {
         p2 = p1 + 4; /* end of the '[pix' string */
 
         if rowfilter[p2] == bb(b'b')
@@ -6331,9 +6328,7 @@ pub fn ffifile2_safe(
         };
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
-
+    if let Some(p1) = ptr1 {
         while rowfilter[p2] != bb(b']') {
             if rowfilter[p2] == 0 {
                 ffpmsg_str("input file URL is missing closing bracket ']'"); /* copy the column specifier to output string */
@@ -6355,12 +6350,12 @@ pub fn ffifile2_safe(
 
             if rowfilter[p2] == bb(b'[') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("nested brackets in input file URL is missing closing bracket");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
 
@@ -6400,9 +6395,7 @@ pub fn ffifile2_safe(
         };
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
-
+    if let Some(p1) = ptr1 {
         /* found the compress string */
         if let Some(ref mut compspec_slice) = compspec {
             if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
@@ -6762,10 +6755,10 @@ pub fn ffrtnm_safe(url: &[c_char], rootname: &mut [c_char], status: &mut c_int) 
             *status = URL_PARSE_ERROR; /* error, no closing ) */
             return *status;
         }
-    } else if ptr2.is_some() && ptr2 < ptr3
+    } else if let Some(p2) = ptr2
+        && ptr2 < ptr3
     /* () enclose output name before bracket */
     {
-        let p2 = ptr2.unwrap();
         if p2 > FLEN_FILENAME - 1 {
             *status = URL_PARSE_ERROR;
             return *status;

@@ -5315,12 +5315,12 @@ pub(crate) fn ffgmf(
       into an absolute path
     */
 
-    if location.is_none() {
+    if location.is_none_or(|location| location[0] == 0) {
         tmpLocation[0] = 0;
-    } else if location.unwrap()[0] == 0 {
-        tmpLocation[0] = 0;
-    } else if fits_is_url_absolute(location.unwrap()) == 0 {
-        fits_path2url(location.unwrap(), FLEN_FILENAME, &mut tmpLocation, status);
+    } else if let Some(location) = location
+        && fits_is_url_absolute(location) == 0
+    {
+        fits_path2url(location, FLEN_FILENAME, &mut tmpLocation, status);
 
         if tmpLocation[0] != bb(b'/') {
             fits_get_cwd(&mut cwd, status);
@@ -5333,8 +5333,8 @@ pub(crate) fn ffgmf(
             strcat_safe(&mut cwd, &tmpLocation);
             fits_clean_url(&cwd, &mut tmpLocation, status);
         }
-    } else {
-        strcpy_safe(&mut tmpLocation, location.unwrap());
+    } else if let Some(location) = location {
+        strcpy_safe(&mut tmpLocation, location);
     }
 
     /*

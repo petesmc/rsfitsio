@@ -4224,7 +4224,10 @@ pub(crate) fn fits_make_histde(
         } /* End of loop over columns */
 
         /* Now initialize the iterator column data for the weighting */
-        if wtexpr.is_some() && wtexpr.unwrap()[0] != 0 && weight == DOUBLENULLVALUE {
+        if let Some(wtexpr) = wtexpr
+            && wtexpr[0] != 0
+            && weight == DOUBLENULLVALUE
+        {
             let mut wtdatatype: c_int = 0;
             let mut wtnaxis: c_int = 0;
             let mut wtnaxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
@@ -4234,7 +4237,7 @@ pub(crate) fn fits_make_histde(
             ffiprs(
                 fptr,
                 0,
-                wtexpr.unwrap(),
+                wtexpr,
                 MAXDIMS,
                 &mut wtdatatype,
                 &mut wtrepeat,
@@ -4960,12 +4963,12 @@ extern "C" fn ffcalchist(
             outcol = Some(&mut histData.iterCols[startCol as usize]);
         }
 
-        if outcol.is_some() {
+        if let Some(outcol) = outcol {
             /* Note that the 0th array element returned by the iterator is
             actually the null value!  This is actually rather a big
             undocumented "feature" of the iterator. However, "ii" below
             starts at a value of 1 which skips over the null value */
-            colptr[ii] = fits_iter_get_array_safe(outcol.unwrap()) as *mut f64;
+            colptr[ii] = fits_iter_get_array_safe(outcol) as *mut f64;
         }
     }
 

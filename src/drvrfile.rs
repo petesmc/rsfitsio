@@ -292,11 +292,10 @@ pub(crate) fn file_openfile(
         }
     }
 
-    if (file).is_err() {
+    match file {
         /* couldn't open file */
-        return FILE_NOT_OPENED;
-    } else {
-        *diskfile = Some(file.unwrap());
+        Err(_) => return FILE_NOT_OPENED,
+        Ok(file) => *diskfile = Some(file),
     }
 
     0

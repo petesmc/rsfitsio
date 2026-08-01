@@ -131,21 +131,10 @@ impl<'a> LZW_Compress<'a> {
     unsafe fn write_buf(&mut self, cnt: usize) {
         unsafe {
             let buf = &mut self.outbuf[..];
-            if self.realloc_fn.is_none() {
-                /* append buffer to file */
-
-                let mut cfile = CFile::from(self.ofd);
-
-                let last_write_len = cfile.write(&buf[..cnt]);
-
-                if last_write_len.is_err() || last_write_len.unwrap() != cnt {
-                    self.error("failed to write buffer to uncompressed output file (write_buf)");
-                    self.exit_code = ERROR;
-                }
-            } else {
+            if let Some(realloc_fn) = self.realloc_fn {
                 /* get more memory if current buffer is too small */
                 if self.bytes_out + cnt > *self.memsize {
-                    *self.memptr = self.realloc_fn.unwrap()(*self.memptr, self.bytes_out + cnt);
+                    *self.memptr = realloc_fn(*self.memptr, self.bytes_out + cnt);
                     *self.memsize = self.bytes_out + cnt; /* new memory buffer size */
 
                     if self.memptr.is_null() {
@@ -158,6 +147,17 @@ impl<'a> LZW_Compress<'a> {
                 let tmp_slice =
                     slice::from_raw_parts_mut((*self.memptr).add(self.bytes_out).cast::<u8>(), cnt);
                 tmp_slice.copy_from_slice(&buf[..cnt]);
+            } else {
+                /* append buffer to file */
+
+                let mut cfile = CFile::from(self.ofd);
+
+                let last_write_len = cfile.write(&buf[..cnt]);
+
+                if last_write_len.is_err() || last_write_len.unwrap() != cnt {
+                    self.error("failed to write buffer to uncompressed output file (write_buf)");
+                    self.exit_code = ERROR;
+                }
             }
         }
     }

@@ -812,8 +812,11 @@ pub fn ffphtb_safe(
             ffgabc_safe(tfields, tform, 1, &mut rowlen, &mut v, status);
         }
         tbcol_slice = &v;
+    } else if let Some(tbcol) = tbcol {
+        tbcol_slice = tbcol;
     } else {
-        tbcol_slice = tbcol.unwrap();
+        /* unreachable: the first arm above already handles tbcol == None */
+        tbcol_slice = &v;
     }
 
     ffpkys_safe(
@@ -1184,8 +1187,8 @@ pub fn ffphbn_safe(
 
             let cptr = strchr_safe(&tfmt, bb(b'A'));
 
-            if cptr.is_some() {
-                let c = cptr.unwrap() + 1;
+            if let Some(cptr) = cptr {
+                let c = cptr + 1;
 
                 // iread = sscanf_ld(&tfmt[c..], cs!(c"%ld"), &mut width);
                 let tmp: Result<c_long, ParseIntError> =
