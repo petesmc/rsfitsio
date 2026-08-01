@@ -169,6 +169,10 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
 }
 
 /// Helper: Read histogram values and verify sum
+// c_long is 64-bit on Linux/macOS but 32-bit on Windows, so the `.into()` and
+// `as i64` below are no-ops on some targets and load-bearing on others.
+// Do not let clippy talk you into removing them -- it breaks the Windows build.
+#[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
 fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;
@@ -216,7 +220,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             fptr_box,
             TLONG,
             1,
-            npixels,
+            npixels.into(),
             None,
             cast_slice_mut(&mut pixels),
             None,
@@ -229,7 +233,7 @@ fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
             return false;
         }
 
-        let sum: i64 = pixels.iter().copied().sum();
+        let sum: i64 = pixels.iter().map(|&x| x as i64).sum();
 
         if let Some(fptr_box) = fptr {
             fits_close_file(fptr_box, &mut status);
