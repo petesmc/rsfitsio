@@ -187,7 +187,7 @@ mod tests {
                     );
                 }
             } else {
-                assert!(false); // Should not happen
+                panic!("Should not happen");
             }
 
             fits_close_file(fptr.take().unwrap(), &mut status);
@@ -311,7 +311,7 @@ mod tests {
 
                 // Note: Values exceeding LONG range may not be clamped but converted directly
             } else {
-                assert!(false); // Should not happen
+                panic!("Should not happen");
             }
 
             if let Some(fptr) = fptr {

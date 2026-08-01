@@ -554,7 +554,6 @@ fn Alloc_Node(lParse: &mut ParseData) -> c_int {
 fn Free_Last_Node(lParse: &mut ParseData) {
     if lParse.nNodes != 0 {
         lParse.nNodes -= 1;
-        lParse.nNodes;
     }
 }
 
@@ -8814,7 +8813,6 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
                             (lParse.Nodes[this_node_idx]).value.data.lng += 1;
-                            (lParse.Nodes[this_node_idx]).value.data.lng;
                         }
                         sptr1 = sptr1.offset(1);
                     }
@@ -10846,7 +10844,6 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(ielem as isize) = 0;
                                 iaxis[0] += 1;
-                                iaxis[0];
                                 j = 0;
                                 while j < naxis {
                                     if iaxis[j as usize]
@@ -10857,7 +10854,6 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     iaxis[j as usize] = 1;
                                     if j < naxis - 1 {
                                         iaxis[(j + 1) as usize] += 1;
-                                        iaxis[(j + 1) as usize];
                                     }
                                     j += 1;
                                 }

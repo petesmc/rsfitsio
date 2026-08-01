@@ -1,3 +1,9 @@
+// The extern "C" entry points are #[deprecated] so that internal callers reach
+// for the _safe forms instead. These tests exercise the C ABI surface itself,
+// and fits_execute_template has no _safe counterpart, so the attribute is
+// expected here.
+#![allow(deprecated)]
+
 mod common;
 
 #[cfg(test)]
