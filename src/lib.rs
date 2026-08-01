@@ -9,6 +9,9 @@
     clippy::too_many_arguments,
     clippy::needless_range_loop,
     clippy::manual_range_contains,
+    // eval_tab.rs mirrors the bison-generated token enum from eval_tab.h;
+    // BOOLEAN/BITSTR/GTIFILTER/... must keep the grammar's spelling.
+    clippy::upper_case_acronyms,
     // The deg<->rad and pi literals are carried over verbatim from the
     // CFITSIO C; keep them as written rather than swapping in core::f64
     // constants, which would perturb the transpiled arithmetic.
