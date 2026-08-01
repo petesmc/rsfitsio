@@ -12222,7 +12222,7 @@ pub(crate) fn ffc2rr(
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
-    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+    if BYTESWAPPED {
         si = 1; /* point to MSBs */
     }
 
@@ -12326,7 +12326,7 @@ pub(crate) fn ffc2dd(
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
-    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+    if BYTESWAPPED {
         si = 3; /* point to MSBs */
     }
 

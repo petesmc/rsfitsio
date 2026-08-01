@@ -2176,7 +2176,7 @@ pub(crate) fn fffr4int(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2326,7 +2326,7 @@ pub(crate) fn fffr8int(
 
         let shortBuffer: &[c_short] = cast_slice(input);
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 

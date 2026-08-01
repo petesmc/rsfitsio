@@ -165,14 +165,7 @@ pub(crate) fn mem_create_comp_unsafe(
                 return FILE_NOT_CREATED;
             }
 
-            if CFITSIO_MACHINE == ALPHAVMS || CFITSIO_MACHINE == VAXVMS {
-                /* specify VMS record structure: fixed format, 2880 byte records */
-                /* but force stream mode access to enable random I/O access      */
-                todo!();
-                // diskfile = fopen(filename.as_ptr(), mode, (c"rfm=fix").as_ptr(), (c"mrs=2880).as_ptr()"), (c"ctx=stm").as_ptr());
-            } else {
-                diskfile = fopen(filename.as_ptr(), mode.as_ptr());
-            }
+            diskfile = fopen(filename.as_ptr(), mode.as_ptr());
 
             if diskfile.is_null() {
                 /* couldn't create file */

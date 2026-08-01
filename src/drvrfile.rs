@@ -185,10 +185,6 @@ pub(crate) fn file_openfile(
 ) -> c_int {
     let file: Result<File, std::io::Error>;
 
-    if CFITSIO_MACHINE == ALPHAVMS || CFITSIO_MACHINE == VAXVMS {
-        todo!();
-    }
-
     #[cfg(target_family = "windows")]
     {
         file = File::options().read(true).write(rwmode == READWRITE).open(
@@ -441,10 +437,6 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
     if diskfile.is_ok() {
         /* close file and exit with error */
         return FILE_NOT_CREATED;
-    }
-
-    if CFITSIO_MACHINE == ALPHAVMS || CFITSIO_MACHINE == VAXVMS {
-        todo!();
     }
 
     let diskfile = File::options()

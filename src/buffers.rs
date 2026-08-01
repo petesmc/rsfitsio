@@ -1261,32 +1261,7 @@ pub(crate) fn ffgr4b(
         ffgbytoff(fptr, 4, nvals, incre - 4, cast_slice_mut(values), status);
     }
 
-    if CFITSIO_MACHINE == VAXVMS {
-        todo!();
-        //let ii = nvals; /* call VAX macro routine to convert */
-        //ieevur(values, values, &ii); /* from  IEEE float -> F float       */
-    } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
-        todo!("ALPHAVMS && GFLOAT not implemented");
-
-        /*
-        ffswap2(cast_slice_mut(values), nvals * 2); /* swap pairs of bytes */
-
-        /* convert from IEEE float format to VMS GFLOAT float format */
-        let mut sptr = 0;
-
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
-        // TODO UNSAFE HACK
-        let shortBuffer: &[c_short] = slice::from_raw_parts(values.as_ptr() as *const c_short, nvals as usize * 4);
-
-        for ii in 0..(nvals as usize) {
-            if fnan(shortBuffer[sptr]) == 0 {
-                /* test for NaN or underflow */
-                values[ii] *= 4.0;
-            }
-            sptr += 2;
-        }
-        */
-    } else if BYTESWAPPED {
+    if BYTESWAPPED {
         ffswap4(cast_slice_mut(values), nvals); /* reverse order of bytes in values */
     }
 
@@ -1327,32 +1302,7 @@ pub(crate) fn ffgr8b(
         ffgbytoff(fptr, 8, nvals, incre - 8, cast_slice_mut(values), status);
     }
 
-    if CFITSIO_MACHINE == VAXVMS {
-        /* call VAX macro routine to convert */
-        todo!();
-        //ieevud(values, values, &ii); /* from  IEEE float -> D float       */
-    } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
-        todo!("ALPHAVMS && GFLOAT not implemented");
-
-        /*
-        ffswap2(cast_slice_mut(values), nvals * 4); /* swap pairs of bytes */
-
-        /* convert from IEEE float format to VMS GFLOAT float format */
-        let mut sptr = 0;
-
-        // Can't do cast_slice because purposely need to go around the borrow checker here...
-        // TODO UNSAFE HACK
-        let shortBuffer: &[c_short] = slice::from_raw_parts(values.as_ptr() as *const c_short, nvals as usize * 4);
-
-        for ii in 0..(nvals as usize) {
-            if dnan(shortBuffer[sptr]) == 0 {
-                /* test for NaN or underflow */
-                values[ii] *= 4.0;
-            }
-            sptr += 4;
-        }
-        */
-    } else if BYTESWAPPED {
+    if BYTESWAPPED {
         ffswap8(cast_slice_mut(values), nvals); /* reverse order of bytes in each value */
     }
 
@@ -1576,17 +1526,7 @@ pub(crate) fn ffpr4b(
     // Copy slice so that we don't change the original values
     let mut v: Vec<f32> = values.to_vec();
 
-    if CFITSIO_MACHINE == VAXVMS {
-        todo!(); /* call VAX macro routine to convert */
-    //ieevpr(values, values, &ii);     /* from F float -> IEEE float        */
-    } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
-        /* convert from VMS FFLOAT float format to IEEE float format */
-        for ii in 0..(nvals as usize) {
-            v[ii] *= 0.25;
-        }
-
-        ffswap2(cast_slice_mut(&mut v), nvals * 2); /* swap pairs of bytes */
-    } else if BYTESWAPPED {
+    if BYTESWAPPED {
         ffswap4(cast_slice_mut(&mut v), nvals); /* reverse order of bytes in values */
     }
 
@@ -1614,18 +1554,7 @@ pub(crate) fn ffpr8b(
     // Copy slice so that we don't change the original values
     let mut v: Vec<f64> = values.to_vec();
 
-    if CFITSIO_MACHINE == VAXVMS {
-        /* call VAX macro routine to convert */
-        todo!();
-    //ieevpd(values, values, &ii);     /* from D float -> IEEE float        */
-    } else if (CFITSIO_MACHINE == ALPHAVMS) && (FLOATTYPE == GFLOAT) {
-        /* convert from VMS GFLOAT float format to IEEE float format */
-        for ii in 0..(nvals as usize) {
-            v[ii] *= 0.25;
-        }
-
-        ffswap2(cast_slice_mut(&mut v), nvals * 4); /* swap pairs of bytes */
-    } else if BYTESWAPPED {
+    if BYTESWAPPED {
         ffswap8(cast_slice_mut(&mut v), nvals); /* reverse order of bytes in each value */
     }
 

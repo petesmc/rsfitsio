@@ -2120,7 +2120,7 @@ pub(crate) fn fffr4i4(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2268,7 +2268,7 @@ pub(crate) fn fffr8i4(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -4622,7 +4622,7 @@ pub(crate) fn fffr4i8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -4770,7 +4770,7 @@ pub(crate) fn fffr8i8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 

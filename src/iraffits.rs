@@ -1102,7 +1102,6 @@ fn getirafpixname(
 /* True if `c` is a directory separator.  CFITSIO only looks for '/', but on
  * Windows header pathnames arrive with '\' separators, so accept both there;
  * otherwise the directory prefix is stripped and the pixel file can't be found. */
-#[cfg(not(target_os = "vms"))]
 fn is_path_sep(c: c_char) -> bool {
     c == bb(b'/') || (cfg!(target_os = "windows") && c == bb(b'\\'))
 }
@@ -1143,12 +1142,7 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
-        #[cfg(not(target_os = "vms"))]
         while (len > 0) && !is_path_sep(newpixname[len - 1]) {
-            len -= 1;
-        }
-        #[cfg(target_os = "vms")]
-        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
 
@@ -1163,12 +1157,7 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
-        #[cfg(not(target_os = "vms"))]
         while (len > 0) && !is_path_sep(newpixname[len - 1]) {
-            len -= 1;
-        }
-        #[cfg(target_os = "vms")]
-        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
 

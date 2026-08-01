@@ -2214,7 +2214,7 @@ pub(crate) fn fffr4s1(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2363,7 +2363,7 @@ pub(crate) fn fffr8s1(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
