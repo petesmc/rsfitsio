@@ -19,7 +19,7 @@ use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 use errno::errno;
-use libc::{ERANGE, strtod};
+use libc::ERANGE;
 
 use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
@@ -7665,6 +7665,12 @@ pub unsafe extern "C" fn fits_get_token(
 
         raw_to_slice!(delimiter);
 
+        /* The token copied out is a prefix of the remaining input, so the
+        most this can write is strlen(*ptr) + 1 chars; the C contract
+        requires the caller's buffer to hold at least that. */
+        let token_len = CStr::from_ptr(*ptr).to_bytes().len() + 1;
+        let token = slice::from_raw_parts_mut(token, token_len);
+
         fits_get_token_safe(ptr, delimiter, token, isanumber)
     }
 }
@@ -7678,7 +7684,7 @@ pub unsafe extern "C" fn fits_get_token(
 pub fn fits_get_token_safe(
     ptr: &mut *mut c_char,
     delimiter: &[c_char],
-    token: *mut c_char,
+    token: &mut [c_char],
     isanumber: Option<&mut c_int>, /* O - is this token a number? */
 ) -> c_int {
     let mut loc: c_char = 0;
@@ -7688,61 +7694,59 @@ pub fn fits_get_token_safe(
     let mut ptr_idx = 0;
     let mut slen: usize = 0;
 
-    unsafe {
-        *token = 0;
+    token[0] = 0;
 
-        while input_str[0] == bb(b' ') {
-            /* skip over leading blanks */
-            ptr_idx += 1;
-            input_str = &input_str[1..];
-        }
+    while input_str[0] == bb(b' ') {
+        /* skip over leading blanks */
+        ptr_idx += 1;
+        input_str = &input_str[1..];
+    }
 
-        slen = strcspn_safe(cast_slice(input_str), delimiter) as usize; /* length of next token */
-        if slen != 0 {
-            strncat(token, input_str.as_ptr(), slen); /* copy token */
+    slen = strcspn_safe(input_str, delimiter); /* length of next token */
+    if slen != 0 {
+        strncat_safe(token, input_str, slen); /* copy token */
 
-            ptr_idx += slen; /* skip over the token */
-            input_str = &input_str[slen..];
+        ptr_idx += slen; /* skip over the token */
+        input_str = &input_str[slen..];
 
-            /* check if token is a number */
-            if let Some(isanumber) = isanumber {
-                *isanumber = 1;
+        /* check if token is a number */
+        if let Some(isanumber) = isanumber {
+            *isanumber = 1;
 
-                if !strchr(token, c_int::from(b'D')).is_null() {
-                    strncpy(tval.as_mut_ptr(), token, 72);
-                    tval[72] = 0;
+            if strchr_safe(token, bb(b'D')).is_some() {
+                strncpy_safe(&mut tval, token, 72);
+                tval[72] = 0;
 
-                    /*  The C language does not support a 'D'; replace with 'E' */
-                    let tmp_loc = strchr_safe(&tval, bb(b'D'));
-                    if let Some(tmp_loc) = tmp_loc
-                        && tmp_loc != 0
-                    {
-                        tval[tmp_loc] = bb(b'E');
-                    }
-
-                    let mut tmp_loc = 0;
-                    let _ = strtod_safe(&tval, &mut tmp_loc);
-                    loc = tval[tmp_loc];
-                } else {
-                    let mut tmp_loc: *mut c_char = ptr::null_mut();
-                    strtod(token, &mut tmp_loc);
-                    loc = *tmp_loc;
+                /*  The C language does not support a 'D'; replace with 'E' */
+                let tmp_loc = strchr_safe(&tval, bb(b'D'));
+                if let Some(tmp_loc) = tmp_loc
+                    && tmp_loc != 0
+                {
+                    tval[tmp_loc] = bb(b'E');
                 }
 
-                /* check for read error, or junk following the value */
-                if loc != 0 && loc != bb(b' ') {
-                    *isanumber = 0;
-                }
+                let mut tmp_loc = 0;
+                let _ = strtod_safe(&tval, &mut tmp_loc);
+                loc = tval[tmp_loc];
+            } else {
+                let mut tmp_loc = 0;
+                let _ = strtod_safe(token, &mut tmp_loc);
+                loc = token[tmp_loc];
+            }
 
-                if errno().0 == ERANGE {
-                    *isanumber = 0;
-                }
+            /* check for read error, or junk following the value */
+            if loc != 0 && loc != bb(b' ') {
+                *isanumber = 0;
+            }
+
+            if errno().0 == ERANGE {
+                *isanumber = 0;
             }
         }
-
-        /* increment *ptr to the end of the token (past leading blanks + token) */
-        *ptr = (*ptr).add(ptr_idx);
     }
+
+    /* increment *ptr to the end of the token (past leading blanks + token) */
+    *ptr = unsafe { (*ptr).add(ptr_idx) };
 
     slen as c_int
 }
@@ -10016,18 +10020,18 @@ mod tests {
         let mut isanumber: c_int = 0;
 
         let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+            fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token1");
         assert_eq!(isanumber, 0);
 
         ptr = unsafe { ptr.add(1) }; // skip comma
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token2");
 
         ptr = unsafe { ptr.add(1) };
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token3");
     }
@@ -10040,21 +10044,21 @@ mod tests {
         let mut isanumber: c_int = 0;
 
         let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 3);
         assert_eq!(from_buf(&token), "123");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
         let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 7);
         assert_eq!(from_buf(&token), "456.789");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
         let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+            fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "1.5D10");
         assert_eq!(isanumber, 1); // D notation for doubles
@@ -10068,7 +10072,7 @@ mod tests {
         let mut isanumber: c_int = 0;
 
         let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+            fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "spaced");
     }
@@ -10079,7 +10083,7 @@ mod tests {
         let mut ptr = input.as_mut_ptr();
         let mut token = [0 as c_char; 80];
 
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 5);
         assert_eq!(from_buf(&token), "value");
     }

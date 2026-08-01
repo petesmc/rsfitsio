@@ -2134,7 +2134,7 @@ mod tests {
             assert!(hdr.contains("CRVAL1"));
             assert!(hdr.contains("CRVAL2"));
 
-            fits_free_memory(header as *mut c_void, &mut status);
+            unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -2181,7 +2181,7 @@ mod tests {
             assert_ne!(status, 0, "ffgiwcs should fail on a table");
 
             if !header.is_null() {
-                fits_free_memory(header as *mut c_void, &mut status);
+                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);
@@ -2319,7 +2319,7 @@ mod tests {
             assert!(hdr.contains("CRVAL1"));
             assert!(hdr.contains("END"));
 
-            fits_free_memory(header as *mut c_void, &mut status);
+            unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -2345,7 +2345,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail on an image");
 
             if !header.is_null() {
-                fits_free_memory(header as *mut c_void, &mut status);
+                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);
@@ -2389,7 +2389,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail for col 0");
 
             if !header.is_null() {
-                fits_free_memory(header as *mut c_void, &mut status);
+                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             }
             status = 0;
             header = ptr::null_mut();
@@ -2398,7 +2398,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail for col 99");
 
             if !header.is_null() {
-                fits_free_memory(header as *mut c_void, &mut status);
+                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);

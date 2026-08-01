@@ -6731,7 +6731,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7630,7 +7630,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7673,7 +7673,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -8065,7 +8065,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
