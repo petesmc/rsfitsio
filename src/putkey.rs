@@ -4446,11 +4446,9 @@ pub fn fftm2s_safe(
 
     datestr[0] = 0;
 
-    if year != 0 || month != 0 || day != 0 {
-        if ffverifydate_safe(year, month, day, status) > 0 {
-            ffpmsg_str("invalid date (fftm2s)");
-            return *status;
-        }
+    if (year != 0 || month != 0 || day != 0) && ffverifydate_safe(year, month, day, status) > 0 {
+        ffpmsg_str("invalid date (fftm2s)");
+        return *status;
     }
 
     if hour < 0 || hour > 23 {

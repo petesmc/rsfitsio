@@ -329,7 +329,7 @@ pub fn main() -> ExitCode {
 
         /* if error occurred, print out error message */
         if status != 0 {
-            fits_report_error(STDERR!() as *mut _ as *mut FILE, status);
+            fits_report_error(STDERR!() as *mut _, status);
         }
     }
 

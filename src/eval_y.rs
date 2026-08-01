@@ -8575,18 +8575,16 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                     free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                     return;
                 }
-            } else if rowOffset < 0 {
-                if rowOffset < LONG_MIN / nelem {
-                    fits_parser_yyerror(
-                        lParse,
-                        cs!(c"numerical underflow for row offset * nelem value"),
-                    );
-                    if lParse.status == 0 {
-                        lParse.status = PARSE_SYNTAX_ERR;
-                    }
-                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
-                    return;
+            } else if rowOffset < 0 && rowOffset < LONG_MIN / nelem {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"numerical underflow for row offset * nelem value"),
+                );
+                if lParse.status == 0 {
+                    lParse.status = PARSE_SYNTAX_ERR;
                 }
+                free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                return;
             }
 
             nRowOverlap = lParse.nRows - nRowReload;
@@ -10163,6 +10161,13 @@ pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
     }
 }
 
+// The `!(a > b)` partition tests below are transcribed from the C and their
+// NaN behaviour is load-bearing: `>` is false for NaN, so the negation breaks
+// the loop rather than running off the end of the array. Rewriting them via
+// partial_cmp would change that, and this quickselect has already been the
+// source of one reproducibility bug, so leave the comparisons exactly as the
+// C has them.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
     unsafe {
         let mut low: c_int = 0;
@@ -10260,12 +10265,7 @@ pub(crate) fn angsep_calc(
     a = sdec * sdec + (dec1 * DEG).cos() * (dec2 * DEG).cos() * sra * sra;
 
     /* Sanity checking to avoid a range error in the sqrt()'s below */
-    if a < 0.0 {
-        a = 0.0;
-    }
-    if a > 1.0 {
-        a = 1.0;
-    }
+    a = a.clamp(0.0, 1.0);
 
     2.0 * atan2((a).sqrt(), (1.0 - a).sqrt()) / DEG
 }

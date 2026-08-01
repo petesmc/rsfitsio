@@ -446,7 +446,7 @@ pub fn ffgtch_safe(
     let mut ttypeBuff: [[c_char; 17]; 6] = [[0; 17]; 6];
     let mut tformBuff: [[c_char; 9]; 6] = [[0; 9]; 6];
 
-    let charNull: [c_uchar; 1] = [b'\0']; /* unsigned char charNull[1] = {'\0'}; */
+    let charNull: [c_uchar; 1] = *b"\0"; /* unsigned char charNull[1] = {'\0'}; */
 
     let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -1841,7 +1841,7 @@ pub fn ffgtam_safe(
     calls; the safe wrappers want a FLEN_COMMENT buffer, so use a separate one */
     let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
-    let charNull: [c_uchar; 1] = [b'\0'];
+    let charNull: [c_uchar; 1] = *b"\0";
 
     /* the member HDU pointer used internally: either the caller's mfptr or, when
     only an HDU position was supplied, a re-opened copy of the grouping table */
@@ -2161,7 +2161,7 @@ pub fn ffgtam_safe(
         are the same, then assume these refer to the same file.
         */
         if files_differ(tmpfptr, gfptr, status) {
-            groupExtver = -1 * groupExtver;
+            groupExtver = -groupExtver;
         }
 
         /* retrieve the number of group members */
@@ -2599,10 +2599,8 @@ pub fn ffgtam_safe(
 
     /* close the tmpfptr pointer if it was opened in this function */
 
-    if mfptr_is_null {
-        if let Some(f) = reopened.take() {
-            *status = fits_close_file(f, status);
-        }
+    if mfptr_is_null && let Some(f) = reopened.take() {
+        *status = fits_close_file(f, status);
     }
 
     *status = if 0 == *status { parentStatus } else { *status };
@@ -3507,10 +3505,10 @@ pub fn ffgmop_safe(
         break 'outer;
     } // while(0)
 
-    if *status != 0 && mfptr.is_some() {
-        if let Some(f) = mfptr.take() {
-            fits_close_file(f, status);
-        }
+    if *status != 0
+        && let Some(f) = mfptr.take()
+    {
+        fits_close_file(f, status);
     }
 
     *status
@@ -4420,10 +4418,8 @@ pub fn ffgmrm_safe(
         break 'outer;
     } //while(0)
 
-    if mfptr.is_some() {
-        if let Some(f) = mfptr.take() {
-            fits_close_file(f, status);
-        }
+    if let Some(f) = mfptr.take() {
+        fits_close_file(f, status);
     }
 
     *status

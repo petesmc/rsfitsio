@@ -648,10 +648,9 @@ fn fmt_f64(num: f64, precision: usize, exp_pad: usize) -> String {
     // Safe to `unwrap` as `num` is guaranteed to contain `'e'`
     let exp = num.split_off(num.find('E').unwrap());
 
-    let (sign, exp) = if exp.starts_with("E-") {
-        ('-', &exp[2..])
-    } else {
-        ('+', &exp[1..])
+    let (sign, exp) = match exp.strip_prefix("E-") {
+        Some(rest) => ('-', rest),
+        None => ('+', &exp[1..]),
     };
     num.push_str(&format!("E{sign}{exp:0>exp_pad$}"));
 

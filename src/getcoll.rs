@@ -768,8 +768,7 @@ pub fn ffgcxui_safe(
             let rshift: c_int = 7 - endbit;
             let lshift: c_int = nbits - numbits;
 
-            array[ii as usize] =
-                ((colbyte[bytenum as usize] >> rshift) << lshift) | array[ii as usize];
+            array[ii as usize] |= (colbyte[bytenum as usize] >> rshift) << lshift;
 
             nbits -= numbits;
             firstbit += numbits;
@@ -966,8 +965,7 @@ pub fn ffgcxuk_safe(
             let rshift: c_int = 7 - endbit;
             let lshift: c_int = nbits - numbits;
 
-            array[ii as usize] =
-                ((colbyte[bytenum as usize] >> rshift) << lshift) | array[ii as usize];
+            array[ii as usize] |= (colbyte[bytenum as usize] >> rshift) << lshift;
 
             nbits -= numbits;
             firstbit += numbits;

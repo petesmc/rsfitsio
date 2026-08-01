@@ -284,9 +284,7 @@ pub fn fits_set_tile_dim_safe(
         return *status;
     }
 
-    for ii in 0..(ndim as usize) {
-        fptr.Fptr.request_tilesize[ii] = dims[ii];
-    }
+    fptr.Fptr.request_tilesize[..(ndim as usize)].copy_from_slice(&dims[..(ndim as usize)]);
 
     *status
 }
@@ -776,9 +774,7 @@ pub unsafe fn fits_get_tile_dim_safer(
         return *status;
     }
 
-    for ii in 0..(ndim as usize) {
-        dims[ii] = (fptr.Fptr).request_tilesize[ii];
-    }
+    dims[..(ndim as usize)].copy_from_slice(&(fptr.Fptr).request_tilesize[..(ndim as usize)]);
 
     *status
 }
@@ -2452,15 +2448,15 @@ unsafe fn imcomp_compress_tile(
             columns other than the first, used the wrong element stride). */
             let key = &raw const outfptr.Fptr as usize;
             let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-            if let Some(tilestruct) = tilestruct_lock.get_mut(&key) {
-                if c_long::from(tilestruct.tilerow[tilecol as usize]) == row {
-                    tilestruct.tiledata[tilecol as usize] = Vec::new();
-                    tilestruct.tilenullarray[tilecol as usize] = Vec::new();
-                    tilestruct.tilerow[tilecol as usize] = 0;
-                    tilestruct.tiledatasize[tilecol as usize] = 0;
-                    tilestruct.tiletype[tilecol as usize] = 0;
-                    tilestruct.tileanynull[tilecol as usize] = 0;
-                }
+            if let Some(tilestruct) = tilestruct_lock.get_mut(&key)
+                && c_long::from(tilestruct.tilerow[tilecol as usize]) == row
+            {
+                tilestruct.tiledata[tilecol as usize] = Vec::new();
+                tilestruct.tilenullarray[tilecol as usize] = Vec::new();
+                tilestruct.tilerow[tilecol as usize] = 0;
+                tilestruct.tiledatasize[tilecol as usize] = 0;
+                tilestruct.tiletype[tilecol as usize] = 0;
+                tilestruct.tileanynull[tilecol as usize] = 0;
             }
         }
 
