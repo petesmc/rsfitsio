@@ -7736,7 +7736,7 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
     let mut this_node_idx: usize = vecNode as usize;
     n = 0;
     while n < (lParse.Nodes[this_node_idx]).nSubNodes {
-        let mut subnode = lParse.Nodes[this_node_idx].SubNodes[n as usize];
+        let mut subnode = lParse.Nodes[this_node_idx].SubNodes[n as usize] as c_int;
         if ((lParse.Nodes)[subnode as usize]).ntype != (lParse.Nodes[this_node_idx]).ntype {
             /* New_Unary may change the lParse->Nodes pointer if
             it performs a realloc. Therefore reset 'this' just in case. */
@@ -7746,16 +7746,14 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
                 (lParse.Nodes[this_node_idx]).ntype,
                 0,
                 (lParse.Nodes[this_node_idx]).SubNodes[n as usize] as c_int,
-            )
-            .try_into()
-            .unwrap();
+            );
 
             if subnode < 0 {
                 return -(1);
             }
 
             this_node_idx = vecNode as usize;
-            lParse.Nodes[this_node_idx].SubNodes[n as usize] = subnode;
+            lParse.Nodes[this_node_idx].SubNodes[n as usize] = subnode as usize;
         }
         nelem = (c_long::from(nelem)
             + ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[n as usize] as usize])

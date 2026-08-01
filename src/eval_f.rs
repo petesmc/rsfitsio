@@ -1114,9 +1114,6 @@ pub fn ffcalc_rng_safe(
                 }
             }
         }
-    } else if *status != 0 {
-        ffcprs(&mut lParse);
-        return *status;
     } else {
         /********************************************************/
         /*  Check if a TDIM keyword should be written/updated.  */

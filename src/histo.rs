@@ -1222,7 +1222,6 @@ pub(crate) fn ffhist2e(
 
             weight = DOUBLENULLVALUE;
             wtrepeat = nelem;
-            wtdatatype = wtdatatype;
         } else {
             weight = weightin;
             wtrepeat = vectorRepeat;
