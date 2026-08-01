@@ -8,6 +8,11 @@
     unreachable_code,
     clippy::too_many_arguments,
     clippy::needless_range_loop,
+    // C declares its locals at the top of the function and drives loops with
+    // an explicit counter; TRANSPILING.md keeps that layout so the Rust can be
+    // read side by side with the original.
+    clippy::needless_late_init,
+    clippy::explicit_counter_loop,
     clippy::manual_range_contains,
     // eval_tab.rs mirrors the bison-generated token enum from eval_tab.h;
     // BOOLEAN/BITSTR/GTIFILTER/... must keep the grammar's spelling.

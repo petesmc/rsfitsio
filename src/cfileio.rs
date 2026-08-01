@@ -2420,43 +2420,23 @@ fn find_paren(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
@@ -2478,43 +2458,23 @@ fn find_bracket(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
@@ -2536,43 +2496,23 @@ fn find_curlybracket(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
