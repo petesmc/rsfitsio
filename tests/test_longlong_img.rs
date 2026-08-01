@@ -814,6 +814,10 @@ mod tests {
                 // on 64-bit and wrongly clamp every positive value — that mirrors
                 // the same conversion bug fixed in fffi8u4.)
                 for i in 0..nelements {
+                    // The `as u64` on c_ulong::MAX is a no-op where c_ulong is
+                    // 64-bit but is load-bearing on targets where it is 32-bit,
+                    // so the comparison is not always-false everywhere.
+                    #[allow(clippy::unnecessary_cast, clippy::absurd_extreme_comparisons)]
                     let expected = if write_data[i] < 0 {
                         0
                     } else if (write_data[i] as u64) > c_ulong::MAX as u64 {

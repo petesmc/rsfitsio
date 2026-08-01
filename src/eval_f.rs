@@ -120,6 +120,9 @@ static DEBUG_PIXFILTER: c_int = 0;
 macro_rules! FREE {
     ($x:expr) => {
         if !$x.is_null() {
+            // Every current expansion sits inside an unsafe fn or block, but
+            // keep the block so the macro stays usable from safe code.
+            #[allow(unused_unsafe)]
             unsafe {
                 libc::free($x as *mut libc::c_void);
             }
@@ -1642,17 +1645,15 @@ pub(crate) fn fits_parser_workfn_safe(
         let mut ntodo: c_long = 0;
         let mut result: &mut Node;
         let mut outcol: &mut iteratorCol;
-        let lParse: &mut ParseData = unsafe {
-            userPtr
-                .cast::<parseInfo>()
-                .as_mut()
-                .unwrap()
-                .parseData
-                .as_mut()
-                .unwrap()
-        };
+        let lParse: &mut ParseData = userPtr
+            .cast::<parseInfo>()
+            .as_mut()
+            .unwrap()
+            .parseData
+            .as_mut()
+            .unwrap();
         let pv: &mut ParseStatusVariables =
-            unsafe { &mut userPtr.cast::<parseInfo>().as_mut().unwrap().parseVariables };
+            &mut userPtr.cast::<parseInfo>().as_mut().unwrap().parseVariables;
 
         /* declare variables static to preserve their values between calls */
         let mut zeros: [c_long; 4] = [0, 0, 0, 0];
@@ -2620,19 +2621,15 @@ fn ffcvtn(
                         }
                     }
                     TSHORT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<c_short>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<c_short>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_uchar>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_uchar>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffi2i1(
                             input_slice,
@@ -2671,19 +2668,15 @@ fn ffcvtn(
                         return *status;
                     }
                     TFLOAT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_uchar>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_uchar>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr4i1(
                             input_slice,
@@ -2699,19 +2692,15 @@ fn ffcvtn(
                         );
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_uchar>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_uchar>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8i1(
                             input_slice,
@@ -2780,19 +2769,15 @@ fn ffcvtn(
                         return *status;
                     }
                     TFLOAT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_short>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_short>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr4i2(
                             input_slice,
@@ -2808,19 +2793,15 @@ fn ffcvtn(
                         );
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_short>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_short>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8i2(
                             input_slice,
@@ -2868,19 +2849,15 @@ fn ffcvtn(
                         }
                     }
                     TFLOAT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_int>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_int>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr4int(
                             input_slice,
@@ -2896,19 +2873,15 @@ fn ffcvtn(
                         );
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_int>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_int>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8int(
                             input_slice,
@@ -2956,19 +2929,15 @@ fn ffcvtn(
                         }
                     }
                     TFLOAT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_long>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_long>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr4i4(
                             input_slice,
@@ -2984,19 +2953,15 @@ fn ffcvtn(
                         );
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<c_long>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<c_long>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8i4(
                             input_slice,
@@ -3048,19 +3013,15 @@ fn ffcvtn(
                         }
                     }
                     TFLOAT => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<LONGLONG>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<LONGLONG>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr4i8(
                             input_slice,
@@ -3076,19 +3037,15 @@ fn ffcvtn(
                         );
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<LONGLONG>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<LONGLONG>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8i8(
                             input_slice,
@@ -3144,19 +3101,15 @@ fn ffcvtn(
                         }
                     }
                     TDOUBLE => {
-                        let input_slice = unsafe {
-                            core::slice::from_raw_parts(
-                                input.cast::<f64>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let input_slice = core::slice::from_raw_parts(
+                            input.cast::<f64>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
-                        let output_slice = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                output.cast::<f32>(),
-                                ntodo.try_into().unwrap(),
-                            )
-                        };
+                        let output_slice = core::slice::from_raw_parts_mut(
+                            output.cast::<f32>(),
+                            ntodo.try_into().unwrap(),
+                        );
 
                         fffr8r4(
                             input_slice,
@@ -3974,22 +3927,20 @@ pub fn fits_pixel_filter_safer(
             return *status;
         }
 
-        unsafe {
-            if filter.tag.is_null() || (*filter.tag).is_null() || **filter.tag == 0 {
-                filter.tag = default_tags.as_ptr() as *mut *mut c_char;
-                if debug_pixfilter != 0 {
-                    println!("using default tag '{}'", **filter.tag);
-                }
+        if filter.tag.is_null() || (*filter.tag).is_null() || **filter.tag == 0 {
+            filter.tag = default_tags.as_ptr() as *mut *mut c_char;
+            if debug_pixfilter != 0 {
+                println!("using default tag '{}'", **filter.tag);
             }
         }
 
-        let infptr: *mut fitsfile = unsafe { *filter.ifptr };
+        let infptr: *mut fitsfile = *filter.ifptr;
         let outfptr: *mut fitsfile = filter.ofptr;
         lParse.pixFilter = filter;
 
         let filter_expr = cast_slice(CStr::from_ptr(filter.expression).to_bytes_with_nul());
         if ffiprs(
-            unsafe { infptr.as_mut().unwrap() },
+            infptr.as_mut().unwrap(),
             0,
             filter_expr,
             MAXDIMS,
@@ -4049,7 +4000,7 @@ pub fn fits_pixel_filter_safer(
         }
 
         if fits_get_img_param(
-            unsafe { infptr.as_mut().unwrap() },
+            infptr.as_mut().unwrap(),
             MAXDIMS,
             Some(&mut bitpix),
             Some(&mut naxis),
@@ -4082,15 +4033,13 @@ pub fn fits_pixel_filter_safer(
             println!("output bitpix {}", bitpix);
         }
 
-        if unsafe {
-            fits_create_img(
-                outfptr.as_mut().unwrap(),
-                bitpix,
-                naxis,
-                &naxes[..naxis as usize],
-                status,
-            )
-        } != 0
+        if fits_create_img(
+            outfptr.as_mut().unwrap(),
+            bitpix,
+            naxis,
+            &naxes[..naxis as usize],
+            status,
+        ) != 0
         {
             ffpmsg_str("pixel_filter: unable to create output image");
             ffcprs(&mut lParse);
@@ -4102,7 +4051,7 @@ pub fn fits_pixel_filter_safer(
             let mut ncards: c_int = 0;
             let mut more: c_int = 0;
             if fits_get_hdrspace(
-                unsafe { infptr.as_mut().unwrap() },
+                infptr.as_mut().unwrap(),
                 Some(&mut ncards),
                 Some(&mut more),
                 status,
@@ -4117,13 +4066,7 @@ pub fn fits_pixel_filter_safer(
                 let mut keyclass: c_int = 0;
                 let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-                if fits_read_record(
-                    unsafe { infptr.as_mut().unwrap() },
-                    i,
-                    Some(&mut card),
-                    status,
-                ) != 0
-                {
+                if fits_read_record(infptr.as_mut().unwrap(), i, Some(&mut card), status) != 0 {
                     int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
 
                     ffpmsg_slice(&msg);
@@ -4140,9 +4083,7 @@ pub fn fits_pixel_filter_safer(
                     // do not transfer BLANK to real output image
                 } else if keyclass == TYP_SCAL_KEY && bitpix < 0 {
                     // do not transfer BZERO, BSCALE to real output image
-                } else if fits_write_record(unsafe { outfptr.as_mut().unwrap() }, &card, status)
-                    != 0
-                {
+                } else if fits_write_record(outfptr.as_mut().unwrap(), &card, status) != 0 {
                     int_snprintf!(
                         &mut msg,
                         256,
@@ -4198,7 +4139,7 @@ pub fn fits_pixel_filter_safer(
             if filter.blank == 0 {
                 let mut tstatus: c_int = 0;
                 if fits_read_key_lng(
-                    unsafe { infptr.as_mut().unwrap() },
+                    infptr.as_mut().unwrap(),
                     cs!(c"BLANK"),
                     &mut null_val,
                     None,
@@ -4226,17 +4167,13 @@ pub fn fits_pixel_filter_safer(
                 filter.blank = null_val;
             }
 
-            fits_set_imgnull(
-                unsafe { outfptr.as_mut().unwrap() },
-                filter.blank as LONGLONG,
-                status,
-            );
+            fits_set_imgnull(outfptr.as_mut().unwrap(), filter.blank as LONGLONG, status);
             if debug_pixfilter != 0 {
                 println!("using blank {}", null_val);
             }
         }
 
-        if unsafe { *filter.keyword.as_ptr() } == 0 {
+        if *filter.keyword.as_ptr() == 0 {
             /*************************************/
             /* Create new iterator Output Column */
             /*************************************/
@@ -4248,12 +4185,12 @@ pub fn fits_pixel_filter_safer(
             lParse.nCols += 1;
 
             let colIter: &mut iteratorCol = &mut lParse.colData[col_cnt as usize];
-            unsafe { colIter.fptr = filter.ofptr };
-            unsafe { colIter.iotype = OUTPUT_COL };
+            colIter.fptr = filter.ofptr;
+            colIter.iotype = OUTPUT_COL;
 
             set_image_col_types(
                 &mut lParse.status,
-                unsafe { colIter.fptr.as_mut().unwrap() },
+                colIter.fptr.as_mut().unwrap(),
                 cs!(c"CREATED"),
                 bitpix,
                 &mut lParse.varData[col_cnt as usize],
@@ -4285,7 +4222,7 @@ pub fn fits_pixel_filter_safer(
             if info.anyNull != 0 {
                 if write_blank_kwd != 0 {
                     fits_update_key_lng(
-                        unsafe { outfptr.as_mut().unwrap() },
+                        outfptr.as_mut().unwrap(),
                         cs!(c"BLANK"),
                         filter.blank as LONGLONG,
                         Some(cs!(c"NULL pixel value")),
@@ -4307,7 +4244,7 @@ pub fn fits_pixel_filter_safer(
             }
         } else {
             // Put constant result into keyword
-            let par_name = unsafe { &filter.keyword };
+            let par_name = &filter.keyword;
             let par_info: Option<&[c_char]> = if filter.comment[0] == 0 {
                 None
             } else {
@@ -4345,12 +4282,10 @@ pub fn fits_pixel_filter_safer(
                     );
                 }
                 TBIT | TSTRING => {
-                    let str_val = unsafe {
-                        core::slice::from_raw_parts(
-                            result.value.data.astr.as_ptr(),
-                            strlen_safe(&result.value.data.astr),
-                        )
-                    };
+                    let str_val = core::slice::from_raw_parts(
+                        result.value.data.astr.as_ptr(),
+                        strlen_safe(&result.value.data.astr),
+                    );
                     ffukys_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
@@ -4784,31 +4719,25 @@ fn find_keywd(
                 // 'C' as c_char
                 fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
                 ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(unsafe { thelval.astr.as_mut_ptr() }, keyvalue.as_ptr());
+                strcpy(thelval.astr.as_mut_ptr(), keyvalue.as_ptr());
             }
             b'L' => {
                 // 'L' as c_char
                 fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
                 ktype = fits_parser_yytokentype::BOOLEAN as c_int;
-                unsafe {
-                    thelval.log = bval as c_char;
-                }
+                thelval.log = bval as c_char;
             }
             b'I' => {
                 // 'I' as c_char
                 fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
                 ktype = fits_parser_yytokentype::LONG as c_int;
-                unsafe {
-                    thelval.lng = ival;
-                }
+                thelval.lng = ival;
             }
             b'F' => {
                 // 'F' as c_char
                 fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
                 ktype = fits_parser_yytokentype::DOUBLE as c_int;
-                unsafe {
-                    thelval.dbl = rval;
-                }
+                thelval.dbl = rval;
             }
             _ => {
                 ktype = P_ERROR;
@@ -4884,12 +4813,12 @@ fn load_column(
             /* This test would need to be on a per varNum basis to support
              * cross HDU operations */
             fits_read_imgnull(
-                unsafe { &mut *var.fptr },
+                &mut *var.fptr,
                 var.datatype,
                 fRow as LONGLONG,
                 nRows as LONGLONG,
-                unsafe { core::slice::from_raw_parts_mut(data.cast::<u8>(), (nRows * 8) as usize) }, // Assuming 8 bytes per element
-                unsafe { core::slice::from_raw_parts_mut(undef, nRows as usize) },
+                core::slice::from_raw_parts_mut(data.cast::<u8>(), (nRows * 8) as usize), // Assuming 8 bytes per element
+                core::slice::from_raw_parts_mut(undef, nRows as usize),
                 Some(&mut anynul),
                 &mut status,
             );
@@ -4908,7 +4837,7 @@ fn load_column(
                     let mut bytes = vec![0; nbytes as usize];
 
                     ffgcvb_safe(
-                        unsafe { &mut *var.fptr },
+                        &mut *var.fptr,
                         var.colnum,
                         fRow as LONGLONG,
                         1,
@@ -4925,23 +4854,17 @@ fn load_column(
                         idx = (row) * ((nelem + 7) / 8) + 1;
                         for len in 0..nelem {
                             if bytes[idx as usize] & (1 << (7 - len % 8)) != 0 {
-                                unsafe {
-                                    *(*bitStrs.wrapping_add(row as usize))
-                                        .wrapping_add(len as usize) = b'1' as c_char;
-                                }
+                                *(*bitStrs.wrapping_add(row as usize)).wrapping_add(len as usize) =
+                                    b'1' as c_char;
                             } else {
-                                unsafe {
-                                    *(*bitStrs.wrapping_add(row as usize))
-                                        .wrapping_add(len as usize) = b'0' as c_char;
-                                }
+                                *(*bitStrs.wrapping_add(row as usize)).wrapping_add(len as usize) =
+                                    b'0' as c_char;
                             }
                             if len % 8 == 7 {
                                 idx += 1;
                             }
                         }
-                        unsafe {
-                            *(*bitStrs.wrapping_add(row as usize)).wrapping_add(len as usize) = 0;
-                        }
+                        *(*bitStrs.wrapping_add(row as usize)).wrapping_add(len as usize) = 0;
                     }
                 }
                 TSTRING => {
@@ -4949,17 +4872,15 @@ fn load_column(
                     let data_ptr_array = data.cast::<*mut c_char>();
                     let mut string_vec = Vec::new();
                     for i in 0..nRows {
-                        let str_ptr = unsafe { *data_ptr_array.wrapping_add(i as usize) };
+                        let str_ptr = *data_ptr_array.wrapping_add(i as usize);
                         let str_len = strlen(str_ptr as *const c_char);
-                        let str_slice =
-                            unsafe { core::slice::from_raw_parts_mut(str_ptr, str_len + 1) };
+                        let str_slice = core::slice::from_raw_parts_mut(str_ptr, str_len + 1);
                         string_vec.push(str_slice);
                     }
-                    let undef_slice =
-                        unsafe { core::slice::from_raw_parts_mut(undef, nRows as usize) };
+                    let undef_slice = core::slice::from_raw_parts_mut(undef, nRows as usize);
 
                     ffgcfs_safe(
-                        unsafe { &mut *var.fptr },
+                        &mut *var.fptr,
                         var.colnum,
                         fRow as LONGLONG,
                         1,
@@ -4971,14 +4892,12 @@ fn load_column(
                     );
                 }
                 TLOGICAL => {
-                    let data_slice = unsafe {
-                        core::slice::from_raw_parts_mut(data.cast::<c_char>(), nelem as usize)
-                    };
-                    let undef_slice =
-                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) };
+                    let data_slice =
+                        core::slice::from_raw_parts_mut(data.cast::<c_char>(), nelem as usize);
+                    let undef_slice = core::slice::from_raw_parts_mut(undef, nelem as usize);
 
                     ffgcfl_safe(
-                        unsafe { &mut *var.fptr },
+                        &mut *var.fptr,
                         var.colnum,
                         fRow as LONGLONG,
                         1,
@@ -4996,23 +4915,19 @@ fn load_column(
                         fRow as LONGLONG,
                         1,
                         nelem as LONGLONG,
-                        unsafe {
-                            core::slice::from_raw_parts_mut(data.cast::<c_long>(), nelem as usize)
-                        },
-                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) },
+                        core::slice::from_raw_parts_mut(data.cast::<c_long>(), nelem as usize),
+                        core::slice::from_raw_parts_mut(undef, nelem as usize),
                         Some(&mut anynul),
                         &mut status,
                     );
                 }
                 TDOUBLE => {
-                    let data_slice = unsafe {
-                        core::slice::from_raw_parts_mut(data.cast::<f64>(), nelem as usize)
-                    };
-                    let undef_slice =
-                        unsafe { core::slice::from_raw_parts_mut(undef, nelem as usize) };
+                    let data_slice =
+                        core::slice::from_raw_parts_mut(data.cast::<f64>(), nelem as usize);
+                    let undef_slice = core::slice::from_raw_parts_mut(undef, nelem as usize);
 
                     ffgcfd_safe(
-                        unsafe { &mut *var.fptr },
+                        &mut *var.fptr,
                         var.colnum,
                         fRow as LONGLONG,
                         1,

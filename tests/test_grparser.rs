@@ -19,7 +19,7 @@ mod tests {
         with_temp_file(|temp_path| {
             // Write template content
             {
-                let mut file = fs::File::create(&temp_path).unwrap();
+                let mut file = fs::File::create(temp_path).unwrap();
                 file.write_all(content.as_bytes()).unwrap();
             }
 

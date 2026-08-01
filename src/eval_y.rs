@@ -9789,7 +9789,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
 
 fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
     let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
-    let undef = unsafe { (lParse.Nodes[node_idx]).value.undef };
+    let undef = (lParse.Nodes[node_idx]).value.undef;
 
     if data.is_null()
         || (data.addr()) < PARSER_VECTOR_MIN_ADDR
