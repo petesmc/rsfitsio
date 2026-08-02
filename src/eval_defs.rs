@@ -2,7 +2,6 @@ use core::ffi::c_void;
 
 use crate::c_types::{c_char, c_int, c_long};
 
-use crate::eval_l::yyguts_t;
 use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
@@ -14,7 +13,6 @@ pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
-pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
 #[derive(Debug)]
 pub(crate) struct DataInfo {
@@ -111,8 +109,6 @@ pub(crate) struct ParseData {
     pub parCol: c_int,
     pub valCol: c_int,
     pub expr: Option<Box<[u8]>>,
-    pub index: c_int,
-    pub is_eobuf: c_int,
     pub Nodes: Vec<Node>,
     pub nNodes: c_int,
     pub nNodesAlloc: c_int,
@@ -146,8 +142,6 @@ impl ParseData {
         self.parCol = Default::default();
         self.valCol = Default::default();
         self.expr = Default::default();
-        self.index = Default::default();
-        self.is_eobuf = Default::default();
         self.Nodes = Default::default();
         self.nNodes = Default::default();
         self.nNodesAlloc = Default::default();

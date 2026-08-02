@@ -1,24 +1,56 @@
 # CFITSIO Row-Filter / Calculator Expression Language — Formal Specification
 
-This document specifies the language currently implemented by
-`src/eval_l.rs` + `src/eval_y.rs` (mechanical transpilations of the *generated*
-`eval_l.c` / `eval_y.c`, themselves produced by `flex` / `bison` from
-`~/code/cfitsio/eval.l` and `~/code/cfitsio/eval.y`).
+This document specifies the row-filter / calculator expression language that
+CFITSIO defines in `~/code/cfitsio/eval.l` and `eval.y`, and that rsfitsio
+implements in `src/parser/`.
 
 It is written to be complete enough to re-implement the parser from scratch
 without reading the flex/bison sources. Every behavioural claim marked
 **[verified]** was checked against the real `libcfitsio.so` via an oracle
 harness (see `PARSER_MIGRATION.md` §7), not inferred from the grammar.
 
-> **Baseline:** this spec describes `~/code/cfitsio` at commit `47359ca`
-> (branch `eval_bugs`), which fixed the two lexer defects in §6.1 and §6.2.
-> **rsfitsio has not yet been updated** — it still exhibits the pre-fix
-> behaviour for uppercase `0x` literals and for a bare `.`. Everything else in
-> this document applies to both. See [`BUGS_TO_FIX.md`](BUGS_TO_FIX.md).
+> **Status:** rsfitsio no longer uses flex or bison. The front end is
+> hand-written safe Rust in `src/parser/` — see
+> [`PARSER_MIGRATION.md`](PARSER_MIGRATION.md). **The language described here is
+> unchanged**, and `tests/test_eval_corpus.rs` holds 503 expressions checked
+> against output captured from the flex/bison parser before it was removed.
+> Section 1 below describes the pre-migration layout and is kept as a record of
+> what the generated code looked like; everything else describes the language
+> as it is today.
+>
+> The two lexer defects in §6.1 and §6.2 are fixed in both rsfitsio and in
+> `~/code/cfitsio` at commit `47359ca`.
 
 ---
 
-## 1. Architecture as it exists today
+## 1. Architecture
+
+### 1.0 Today
+
+| Layer | Rust file | Lines | Role |
+|---|---|---|---|
+| Public API | `src/eval_f.rs` | ~10,100 | `ffcalc`, `fffrow`, `ffsrow`, `ffcrow`, `fftexp`, `ffffrw`, `fffrwc`, `fits_pixel_filter`; `ffiprs` sets up `ParseData`, `ffcprs` tears down; column and keyword lookup callbacks. |
+| Tokenizer | `src/parser/lexer.rs` | ~800 | `nom` patterns plus flex's longest-match / declaration-order rule. |
+| Name resolution | `src/parser/resolve.rs` | ~100 | Resolves every name token in source order, truncating on failure. |
+| Parser | `src/parser/grammar.rs` | ~640 | Pratt / precedence climbing over an untyped `Ast`. |
+| Lowering | `src/parser/lower.rs` | ~1,330 | `Ast` → `Node` arena: sorts, promotions, dimension checks, function dispatch. |
+| Evaluation engine | `src/eval_y.rs` | ~8,900 | `New_*` node builders and the `Do_*` per-row evaluators. Unchanged from the C. |
+| Shared types | `src/eval_defs.rs`, `src/eval_tab.rs` | 245 + 103 | `ParseData`, `Node`, `lval`, `funcOp`, token ids. |
+
+Data flow:
+
+```
+user expr (char*)
+  → ffiprs: copy into ParseData.expr, append '\n'
+  → parser::parse_expression
+        ↳ lexer::tokenize          bytes  -> [Spanned<Tok>]
+        ↳ resolve::resolve_names   names  -> (token kind, value), in source order
+        ↳ grammar::parse           tokens -> Ast
+        ↳ lower::Lowerer::lower    Ast    -> Nodes[], resultNode
+  → Evaluate_Parser(lParse, firstRow, nRows) walks Nodes bottom-up per row-chunk
+```
+
+### 1.1 Before the migration (historical)
 
 | Layer | C source | Rust file | Lines | Role |
 |---|---|---|---|---|
@@ -27,7 +59,7 @@ harness (see `PARSER_MIGRATION.md` §7), not inferred from the grammar.
 | Parser + evaluator | `eval.y` → `eval_y.c` | `src/eval_y.rs` | 15,305 | Bison LALR tables + driver + semantic actions (build `Node` tree), then the whole run-time evaluation engine. |
 | Shared types | `eval_defs.h`, `eval_tab.h` | `src/eval_defs.rs`, `src/eval_tab.rs` | 248 + 103 | `ParseData`, `Node`, `lval`, `funcOp`, token ids. |
 
-### 1.1 Breakdown of `src/eval_y.rs`
+#### Breakdown of the old `src/eval_y.rs`
 
 | Line range | Contents | Fate under migration |
 |---|---|---|
@@ -43,7 +75,7 @@ harness (see `PARSER_MIGRATION.md` §7), not inferred from the grammar.
 **Replaceable surface = 1,688 (all of `eval_l.rs`) + ~6,300 (`eval_y.rs` tables +
 driver + debug) ≈ 8,000 lines.** Everything else stays.
 
-### 1.2 Data flow
+#### Old data flow
 
 ```
 user expr (char*)
@@ -529,12 +561,12 @@ lengths are all checked against it at parse time.
 
 ## 6. Defects
 
-§6.1 and §6.2 are **fixed** in the C library as of `~/code/cfitsio` commit
-`47359ca` (branch `eval_bugs`), which also added `test_ffcrow_hex_constant_case`
-and `test_fftexp_bare_dot_rejected` to `tests/test_eval.c`. **They are still
-present in rsfitsio** — see [`BUGS_TO_FIX.md`](BUGS_TO_FIX.md) for the port.
-The rest of §6 is unfixed everywhere and remains a set of decision points for
-the migration.
+§6.1 and §6.2 are **fixed** in both rsfitsio and the C library (the latter as
+of `~/code/cfitsio` commit `47359ca`, which also added
+`test_ffcrow_hex_constant_case` and `test_fftexp_bare_dot_rejected` to
+`tests/test_eval.c`). §6.3–§6.7 described the *generated* code and no longer
+apply to rsfitsio, which has none of it; they are retained because they still
+describe upstream CFITSIO.
 
 ### 6.1 Uppercase hex literals were miscomputed — **fixed** **[verified]**
 
@@ -560,8 +592,8 @@ int c = (unsigned char)*p;
 int v = (isdigit(c) ? (c - '0') : (tolower(c) - 'a' + 10));
 ```
 
-**rsfitsio still has the old form** in the `7 => {` arm of
-`fits_parser_yylex` in `src/eval_l.rs`.
+In rsfitsio this is `Rule::HexConst` in `src/parser/lexer.rs`, which folds
+case via `to_digit(16)`.
 
 ### 6.2 A bare `.` lexed as `DOUBLE 0.0` — **fixed** **[verified]**
 
@@ -570,10 +602,8 @@ matched and `..` yielded two `DOUBLE` tokens. It is now `[0-9]+"."`, so a lone
 dot falls through to the `.` catch-all rule and the parser rejects it with
 `PARSE_SYNTAX_ERR`. `1.`, `.5`, `12.`, `1.5e3` are unaffected (§2.6).
 
-**rsfitsio still has the old behaviour.** The Rust file holds the compiled DFA
-rather than the pattern, and the fix is a single table entry —
-`YY_ACCEPT[15]`, `10` → `29`. See `BUGS_TO_FIX.md` for why, and for the three
-other `10` entries that must *not* change.
+In rsfitsio this is the `trailing_dot` branch of `m_real` in
+`src/parser/lexer.rs`, which requires `digit1` before the point.
 
 ### 6.3 Dead trailing-space stripping in bit/oct/hex rules
 

@@ -624,3 +624,67 @@ definitions block verbatim, replace every action with
 `main(){ yylex(); }`. This reproduces flex's exact longest-match/rule-order
 behaviour with no `ParseData` dependency, and is what produced the §2.6 table
 in `PARSER_SPEC.md`.
+
+---
+
+## 9. Outcome
+
+The migration is **complete**. What was actually built, and where it differed
+from this plan:
+
+| Plan | Outcome |
+|---|---|
+| `nom` for the lexer, hand-written Pratt parser | As planned. `nom` 8.0, one new dependency, no proc macros or build script. |
+| ~8,000 lines of generated code removed | `src/eval_l.rs` deleted (1,688 lines); `src/eval_y.rs` 15,305 → ~8,950. All 11 DFA/LALR tables gone. |
+| New front end ~2,500 lines | 3,180 lines across `src/parser/` (7 files), including ~700 lines of unit tests. |
+| Phase 0 oracle + corpus | `tests/test_eval_corpus.rs` + `tests/fixtures/eval_corpus.{txt,golden}` — 503 expressions, golden captured from the flex/bison parser before removal. All 503 match. |
+| `NOT` binding power (§4.4 option (a)) | Worked. `BP_NOT_OPERAND = 10` reproduces every discriminating case in the corpus. `lalrpop` was not needed. |
+| Feature-flagged landing | Skipped. The corpus made the cutover verifiable in one step, so the flag would have been dead weight. |
+
+### 9.1 What the plan underestimated
+
+Three behaviours cost more than the estimate, all of them consequences of
+moving name resolution out of the lexer (risk **R3**, which was real):
+
+1. **Status codes, not just accept/reject.** `find_column` set `lParse.status`
+   and returned `pERROR` (-1); bison treats any token `<= YYEOF` as
+   end-of-input, so the parse *succeeded* on the truncated prefix and `ffiprs`
+   reported the resolver's status. `NOSUCHCOL` is therefore a `COL_NOT_FOUND`
+   (202), not a syntax error. 26 corpus lines depended on this.
+
+2. **Truncation semantics.** The same mechanism means a failed lookup silently
+   cuts the token stream — including the terminating newline. Since
+   `line: expr '\n'` requires that newline, `1.e5` (which lexes as `1.` then
+   the unresolvable name `e5`) is a *syntax* error, while a bare `NOSUCHCOL`
+   is not. This is reproduced by `src/parser/resolve.rs`, a pre-pass that
+   resolves every name in source order and truncates at the first failure —
+   which also preserves column registration order for free.
+
+3. **`BOOLEAN` is not `expr`.** A boolean-valued node is a `bexpr`, a different
+   nonterminal, so most arithmetic and comparison productions reject it:
+   `INTCOL + BOOLCOL` and `1<2==1` are syntax errors, while `INTCOL * BOOLCOL`
+   is fine because `expr '*' bexpr` exists. The lowering pass distinguishes
+   `is_expr` (LONG/DOUBLE) from `is_numeric` (adds BOOLEAN) for exactly this.
+
+### 9.2 One nom trap worth recording
+
+`digit0` followed by `digit1` does not backtrack. The `{real}` exponent branch
+`[0-9]*"."*[0-9]+[eEdD]…` fails on `1e308` under naive translation, because
+`digit0` eats the `1` and `digit1` then has nothing. A regex engine backtracks;
+nom does not. `m_real::expo` splits the mantissa by hand. This is the only
+place the impedance mismatch bit, but it would have been silent without the
+corpus.
+
+### 9.3 Deferred
+
+* **`ACCUM(BOOLCOL)` / `ACCUM(BITS)` crash.** The grammar lowers these to a
+  `LONG` binop over a char-valued operand, so `Do_BinOp_lng` reads a `char`
+  buffer through a `*long`. CFITSIO returns garbage (`ACCUM(bool)` → 65537);
+  the Rust debug build traps on the misaligned read. This is a defect in the
+  *evaluation engine*, which this migration deliberately did not touch, so the
+  two expressions are excluded from the corpus with a comment. Worth fixing
+  separately, upstream and here.
+* **Fuzzing** (§4.6). The corpus and the depth guard are in; a `cargo-fuzz`
+  target over `parse_expression` is still worth adding.
+* **Error-message quality** (§8). The parser now carries byte spans, but
+  `ffpmsg` output is still one line. The machinery to do better is in place.

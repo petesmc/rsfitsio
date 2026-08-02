@@ -1,10 +1,16 @@
 # Pending rsfitsio fixes: expression lexer defects
 
+> **DONE.** Both fixes landed in rsfitsio in commit `7a97251`, together with
+> the differential corpus. `src/eval_l.rs` has since been deleted entirely by
+> the `nom` migration (see [`PARSER_MIGRATION.md`](PARSER_MIGRATION.md)), so the
+> file and line references below are historical. Kept as a record of the
+> analysis; nothing here is outstanding.
+
 Two defects in the transpiled expression lexer (`src/eval_l.rs`), inherited
-verbatim from CFITSIO's `eval.l`. **Both are already fixed upstream** in
+verbatim from CFITSIO's `eval.l`. Both were fixed upstream in
 `~/code/cfitsio` commit `47359ca` ("Fix hex literal case handling and bare '.'
 in expression lexer"), which also added C regression tests to
-`tests/test_eval.c`. This document ports those fixes to rsfitsio.
+`tests/test_eval.c`. This document ported those fixes to rsfitsio.
 
 Background and verified behaviour: [`PARSER_SPEC.md`](PARSER_SPEC.md) §6.1, §6.2.
 

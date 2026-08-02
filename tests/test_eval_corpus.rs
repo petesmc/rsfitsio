@@ -19,7 +19,10 @@
 mod tests {
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::c_types::{c_char, c_int, c_long};
-    use rsfitsio::fitsio::{BINARY_TBL, BYTE_IMG, LONGLONG, TDOUBLE, TSTRING, fitsfile};
+    use rsfitsio::fitsio::{
+        BINARY_TBL, BYTE_IMG, LONGLONG, TBYTE, TDOUBLE, TINT, TLOGICAL, TLONG, TLONGLONG, TSHORT,
+        TSTRING, fitsfile,
+    };
     use std::fmt::Write as _;
 
     const CORPUS: &str = include_str!("fixtures/eval_corpus.txt");
@@ -157,33 +160,56 @@ mod tests {
         }
 
         let n = nelem.clamp(1, MAX_ELEM);
-        let mut results = vec![0.0f64; (n * NROWS) as usize];
         let mut anynul = 0;
         let mut st = 0;
-        fits_calc_rows(
-            f,
-            TDOUBLE,
-            &cc(expr),
-            1,
-            n * NROWS,
-            core::ptr::null(),
-            as_bytes_mut(&mut results),
-            &mut anynul,
-            &mut st,
-        );
+
+        /* Integer-valued expressions are read back as LONGLONG so that large
+        magnitudes stay exact; f64 cannot distinguish i64::MAX from 2^63. */
+        let integral = matches!(datatype, TLOGICAL | TBYTE | TSHORT | TINT | TLONG | TLONGLONG);
+        let rendered = if integral {
+            let mut results = vec![0 as LONGLONG; (n * NROWS) as usize];
+            fits_calc_rows(
+                f,
+                TLONGLONG,
+                &cc(expr),
+                1,
+                n * NROWS,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut st,
+            );
+            results
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            let mut results = vec![0.0f64; (n * NROWS) as usize];
+            fits_calc_rows(
+                f,
+                TDOUBLE,
+                &cc(expr),
+                1,
+                n * NROWS,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut st,
+            );
+            results
+                .iter()
+                .map(|v| format!("{v:.6}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
         if st != 0 {
             fits_clear_errmsg();
             let _ = write!(out, " | EVALERR {st}");
             return out;
         }
-        out.push_str(" | [");
-        for (i, v) in results.iter().enumerate() {
-            if i > 0 {
-                out.push_str(", ");
-            }
-            let _ = write!(out, "{v:.6}");
-        }
-        out.push(']');
+        let _ = write!(out, " | [{rendered}]");
         if anynul != 0 {
             out.push_str(" (null)");
         }

@@ -2,6 +2,13 @@
 /*                                                                      */
 /*                       CFITSIO Lexical Parser                         */
 /*                                                                      */
+/* NOTE (rsfitsio): the flex scanner and the bison LALR driver described     */
+/* below no longer exist.  The front end is hand-written safe Rust in       */
+/* src/parser/ -- a nom-based tokenizer, a Pratt parser over an untyped     */
+/* syntax tree, and a lowering pass that builds the same Node arena.  The   */
+/* language is unchanged; see PARSER_SPEC.md and PARSER_MIGRATION.md.  The  */
+/* evaluation engine below (New_*, Do_*) is the original code.             */
+/*                                                                          */
 /* This file is one of 3 files containing code which parses an          */
 /* arithmetic expression and evaluates it in the context of an input    */
 /* FITS file table extension.  The CFITSIO lexical parser is divided    */
@@ -70,11 +77,8 @@ use crate::eval_defs::{
     CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
     ParseStatusVariables, data_union, parseInfo,
 };
-use crate::eval_l::{
-    fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
-};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT, fits_parser_yyparse};
+use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -1455,18 +1459,11 @@ pub(crate) fn ffiprs(
         vec.push(0);
         lParse.expr = Some(vec.into_boxed_slice());
     }
-    lParse.index = 0;
-    lParse.is_eobuf = 0;
 
     /*  Parse the expression, building the Nodes and determing  */
     /*  which columns are needed and what data type is returned  */
 
-    let mut yylex_scanner: Option<Box<yyguts_t>> = None; /* Used internally by FLEX lexer */
-
-    fits_parser_yylex_init_extra(lParse, &mut yylex_scanner);
-    fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
-    *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
-    fits_parser_yylex_destroy(yylex_scanner.unwrap());
+    *status = crate::parser::parse_expression(lParse);
 
     if *status != 0 {
         *status = PARSE_SYNTAX_ERR;
