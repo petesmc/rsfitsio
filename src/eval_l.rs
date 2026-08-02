@@ -19,7 +19,7 @@ use crate::wrappers::{isdigit_safe, strcat_safe, strcpy_safe, strncat_safe};
 use crate::{STDIN, STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
-    wrappers::{strcpy, strlen, strncat, strncpy, toupper},
+    wrappers::{strcpy, strlen, strncat, strncpy, tolower, toupper},
 };
 
 const OCT_0: &str = "000";
@@ -226,7 +226,7 @@ fn find_variable(lParse: &mut ParseData, varName: &[c_char]) -> c_int {
 }
 
 static YY_ACCEPT: [flex_int16_t; 174] = [
-    0, 0, 0, 31, 29, 1, 28, 18, 29, 29, 29, 29, 29, 29, 29, 10, 8, 8, 24, 29, 23, 13, 13, 13, 13,
+    0, 0, 0, 31, 29, 1, 28, 18, 29, 29, 29, 29, 29, 29, 29, 29, 8, 8, 24, 29, 23, 13, 13, 13, 13,
     9, 13, 13, 13, 13, 13, 17, 13, 13, 13, 13, 13, 13, 13, 29, 1, 22, 0, 12, 0, 11, 0, 13, 20, 0,
     0, 0, 0, 0, 0, 0, 17, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 8, 0, 0, 0, 0, 26,
     21, 25, 13, 13, 13, 2, 13, 13, 13, 4, 13, 13, 13, 13, 3, 13, 27, 13, 13, 13, 13, 13, 13, 13,
@@ -758,7 +758,7 @@ pub(crate) fn fits_parser_yylex(
                                     let v: c_int = if isdigit_safe(*p_1) {
                                         c_int::from(*p_1) - '0' as i32
                                     } else {
-                                        c_int::from(*p_1) - 'a' as i32 + 10 as c_int
+                                        c_int::from(tolower(*p_1)) - 'a' as i32 + 10 as c_int
                                     };
                                     constval_1 = constval_1 << 4 as c_int | c_long::from(v);
                                     p_1 = p_1.offset(1);

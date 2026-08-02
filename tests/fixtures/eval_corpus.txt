@@ -1,0 +1,573 @@
+# Differential corpus for the CFITSIO expression parser.
+#
+# One expression per line. Blank lines and lines starting with '#' are ignored;
+# there is no way to write a comment on the same line as an expression, and no
+# expression may contain a leading '#' (use the constant forms below, which are
+# listed with a leading space-free '#' only inside a larger expression).
+#
+# Table schema (see tests/test_eval_corpus.rs), 3 rows:
+#   INTCOL   1J    7, -3, 10
+#   FLOATCOL 1E    2.5, 4.0, 0.5
+#   STRCOL   10A   "abc", "de", "fghij"
+#   BOOLCOL  1L    T, F, T
+#   DBLCOL   1D    1.25, -2.5, 8.0
+#   VECCOL   3E    {1,2,3} {4,5,6} {7,8,9}
+#   BITS     8X    0xF0, 0x0F, 0xAA
+#   MATRIX   6E    2x3, 1..6 / 11..16 / 21..26
+# keywords: INTKEY=42, DBLKEY=2.5, LOGKEY=T, STRKEY='hello'
+
+# ===================================================================
+# 1. Literals and the lexer (PARSER_SPEC 2.3-2.6)
+# ===================================================================
+42
+0
+13245
+2.5
+.5
+1.
+12.
+0.
+1.5
+1.5e3
+1.5E3
+1.5e+3
+1.5e-3
+1.5d3
+1.5D3
+1.5d-3
+3.14159
+t
+f
+T
+F
+0b01001
+0b1011
+0o1373
+0o17
+0x12f3
+0x10
+0x0
+0x1f
+0x1F
+0xff
+0xFF
+0xFf
+0xa
+0xA
+0xabcdef
+0xABCDEF
+b101
+b11110000
+b1111xxxx
+bxxxx0000
+B01x
+bx
+o360
+o17
+oxx
+h1f
+hF0
+hf0
+hxx
+'abc'
+"abc"
+''
+""
+'a b c'
+#PI
+#pi
+#E
+#e
+#DEG
+#deg
+#ROW
+#row
+#NULL
+#SNULL
+#INTKEY
+#DBLKEY
+#LOGKEY
+#STRKEY
+#$INTKEY$
+#BADKEY
+
+# --- lexer quirks that must not regress (spec 2.6) ---
+b1x0y
+TT
+false
+.
+..
+1.2.3
+1..2
+.5.5
+1.e5
+.e5
+1.5e
+0x
+0b
+0o
+0b2
+0xg
+12abc
+oct123
+1e
+e5
+X(1)
+a (
+(int )x
+$MY COL$
+$a$b$
+a.Ne.b
+aNE.b
+not .a
+a***b
+1***2
+"unterminated
+INTCOL + .
+. + 1
+
+# ===================================================================
+# 2. Operator precedence and associativity (PARSER_SPEC 3.1)
+# ===================================================================
+2+3*4
+2*3+4
+10-3-2
+10/2/5
+2**3**2
+2^3^2
+2**3*2
+2*3**2
+-2**2
+(-2)**2
+-2^2
++2**2
+7%3
+-7%3
+7%3+1
+1+7%3
+1|2*3
+2*3|1
+1+2|4
+6|1+1
+1&3+4
+5^^3+1
+1|2&3
+1&2|3
+1^^2|3
+1+2>2
+1+2==3
+1==2||1==1
+1>0&&0>1||1>0
+1<2==1
+(int)2.7*2
+(int)(2.7*2)
+(float)3/2
+(int)3.9+1
+INTCOL+1>5
+2*INTCOL>5
+INTCOL>1&&INTCOL<10
+1==1&&1==1
+0||1&&0
+1&&0||1
+
+# --- unary / prefix binding ---
+-INTCOL
++INTCOL
+--INTCOL
+-(-INTCOL)
+-INTCOL+1
+-INTCOL*2
+(int)-2.7
+(int)INTCOL
+(INT)FLOATCOL
+(float)INTCOL
+(FLOAT)INTCOL
+(double)INTCOL
+(DOUBLE)INTCOL
+(int)BOOLCOL
+(float)BOOLCOL
+
+# --- NOT: type-directed reach (PARSER_SPEC 3.5) ---
+!BOOLCOL
+!BOOLCOL||BOOLCOL
+!BOOLCOL&&BOOLCOL
+!BOOLCOL&&1>2
+!(BOOLCOL&&1>2)
+!(BOOLCOL||BOOLCOL)
+!BOOLCOL==BOOLCOL
+!BOOLCOL!=BOOLCOL
+!INTCOL>5
+!INTCOL>10
+!(INTCOL>5)
+!INTCOL+1>5
+!INTCOL>5||BOOLCOL
+!INTCOL>5&&BOOLCOL
+.not.BOOLCOL
+NOT.BOOLCOL
+.NOT.BOOLCOL
+not.BOOLCOL
+.not. (INTCOL .gt. 5)
+!(INTCOL > 5)
+!BITS
+(!BITS) == b00001111
+
+# --- alternate spellings ---
+INTCOL .gt. 5
+INTCOL .GT. 5
+INTCOL gt. 5
+INTCOL GT. 5
+INTCOL .lt. 5
+INTCOL .ge. 5
+INTCOL .le. 5
+INTCOL .eq. 5
+INTCOL .ne. 5
+INTCOL >= 5
+INTCOL => 5
+INTCOL <= 5
+INTCOL =< 5
+INTCOL != 5
+INTCOL == 5
+BOOLCOL .and. T
+BOOLCOL .AND. T
+BOOLCOL and. T
+BOOLCOL .or. T
+BOOLCOL .OR. T
+BOOLCOL or. T
+INTCOL .xor. 3
+INTCOL .XOR. 3
+INTCOL ^^ 3
+INTCOL ~ 5
+FLOATCOL ~ 1.5
+FLOATCOL ~ (1.5 + 1.0e-9)
+FLOATCOL ~ (1.5 + 1.0e-5)
+
+# ===================================================================
+# 3. Grammar productions (PARSER_SPEC 3.3)
+# ===================================================================
+INTCOL
+FLOATCOL
+DBLCOL
+BOOLCOL
+STRCOL
+BITS
+VECCOL
+MATRIX
+(INTCOL)
+(BOOLCOL)
+(STRCOL)
+(BITS)
+INTCOL{1}
+INTCOL{-1}
+INTCOL{2}
+BOOLCOL{1}
+STRCOL{1}
+BITS{1}
+DEFNULL(INTCOL{2}, -99)
+DEFNULL(INTCOL{-1}, -99)
+
+# --- arithmetic ---
+INTCOL + 1
+INTCOL - 1
+INTCOL * 2
+INTCOL / 2
+INTCOL % 2
+INTCOL ** 2
+INTCOL ^ 2
+INTCOL + FLOATCOL
+FLOATCOL - INTCOL
+FLOATCOL / INTCOL
+FLOATCOL * 2.5
+DBLCOL / 2
+INTCOL & 1
+INTCOL | 16
+INTCOL ^^ 3
+INTCOL & FLOATCOL
+INTCOL | FLOATCOL
+INTCOL ^^ FLOATCOL
+
+# --- comparison ---
+INTCOL > 5
+INTCOL < 5
+INTCOL >= 5
+INTCOL <= 5
+INTCOL == 5
+INTCOL != 5
+FLOATCOL < 5.0
+INTCOL = 3:7
+INTCOL = 7:3
+FLOATCOL = 2:8
+(INTCOL = 3:7)
+(INTCOL = 3:7) && BOOLCOL
+(FLOATCOL = INTCOL:INTCOL+1)
+INTCOL = 1:2:3
+1:2
+
+# --- boolean ---
+BOOLCOL && BOOLCOL
+BOOLCOL || BOOLCOL
+BOOLCOL == BOOLCOL
+BOOLCOL != BOOLCOL
+BOOLCOL == T
+BOOLCOL != T
+INTCOL > 3 && INTCOL < 8
+INTCOL == 1 || INTCOL == 10
+
+# --- strings ---
+STRCOL == 'abc'
+STRCOL != 'abc'
+STRCOL > 'abc'
+STRCOL >= 'abc'
+STRCOL < 'abc'
+STRCOL <= 'abc'
+STRCOL + '!'
+'a' + 'b'
+(STRCOL + '!') == 'abc!'
+#SNULL
+
+# --- bit strings ---
+BITS == b11110000
+BITS != b00001111
+BITS == b1111xxxx
+BITS == bxxxx0000
+BITS == hf0
+BITS == hF0
+BITS == o360
+BITS > b00000000
+BITS >= b11110000
+BITS < b11111111
+BITS <= b11111111
+BITS & b10000001
+BITS | b00000001
+BITS + BITS
+(BITS & b10000001) == b10000000
+(BITS | b00000001) == b11110001
+(BITS + BITS) == b1111000011110000
+b101 & b110
+b101 | b110
+b101 + b110
+
+# --- ternary and vectors ---
+BOOLCOL ? 1 : 2
+BOOLCOL ? INTCOL : FLOATCOL
+BOOLCOL ? BOOLCOL : 1
+BOOLCOL ? 1 : BOOLCOL
+BOOLCOL ? BOOLCOL : BOOLCOL
+BOOLCOL ? 'a' : 'b'
+BOOLCOL ? STRCOL : 'zz'
+BOOLCOL ? BITS : BITS
+BOOLCOL ? BOOLCOL ? 1 : 2 : 3
+INTCOL > 0 ? INTCOL > 5 ? 1 : 2 : 3
+BOOLCOL ? 1=2:3 : 4
+BOOLCOL ? INTCOL=1:2 : DBLCOL
+{1,2}
+{1,2,3}
+{1,2}+{3,4}
+{BOOLCOL,BOOLCOL}
+{1,BOOLCOL}
+{BOOLCOL,1}
+{1,2,3,4,5,6,7,8,9,10,11,12}
+{1.5,2,3}
+{1,2}[2]
+{1,2,3}[1]
+
+# --- dereference ---
+VECCOL[1]
+VECCOL[2]
+VECCOL[3]
+VECCOL[1+1]
+VECCOL[4]
+VECCOL[0]
+MATRIX[1,1]
+MATRIX[2,3]
+MATRIX[1,1,1]
+INTCOL[1]
+STRCOL[1]
+BOOLCOL[1]
+BITS[1]
+
+# ===================================================================
+# 4. Function catalogue (PARSER_SPEC 4)
+# ===================================================================
+SUM(VECCOL)
+SUM(BOOLCOL)
+SUM(BITS)
+AVERAGE(VECCOL)
+STDDEV(VECCOL)
+MEDIAN(VECCOL)
+NELEM(VECCOL)
+NELEM(STRCOL)
+NELEM(BITS)
+NELEM(BOOLCOL)
+NELEM('abc')
+NVALID(VECCOL)
+NVALID(STRCOL)
+NVALID(BITS)
+ACCUM(INTCOL)
+ACCUM(FLOATCOL)
+# ACCUM(BOOLCOL) and ACCUM(BITS) are omitted: the grammar lowers them to a
+# LONG binop over a char-valued operand, so Do_BinOp_lng reads a char buffer
+# through a *long pointer.  CFITSIO returns garbage (ACCUM(bool) -> 65537) and
+# the Rust debug build traps on the misaligned read.  Pre-existing defect in
+# the evaluation engine, unrelated to the parser -- see the migration notes.
+SEQDIFF(INTCOL)
+SEQDIFF(FLOATCOL)
+ABS(INTCOL)
+ABS(-INTCOL)
+ABS(FLOATCOL)
+MIN(VECCOL)
+MAX(VECCOL)
+MIN(BITS)
+MAX(BITS)
+MIN(INTCOL,3)
+MAX(INTCOL,3)
+MIN(INTCOL,FLOATCOL)
+ELEMENTNUM(VECCOL)
+ELEMENTNUM(MATRIX)
+NAXIS(VECCOL)
+NAXIS(MATRIX)
+NAXES(MATRIX,1)
+NAXES(MATRIX,2)
+NAXES(MATRIX,0)
+AXISELEM(VECCOL,1)
+AXISELEM(MATRIX,1)
+AXISELEM(MATRIX,2)
+ARRAY(3,4)
+ARRAY(INTCOL,3)
+ARRAY(0,{2,3,1})
+SIN(0)
+COS(0)
+TAN(0)
+SIN(FLOATCOL)
+COS(FLOATCOL)
+TAN(FLOATCOL)
+ARCSIN(1)
+ASIN(0)
+ARCCOS(0)
+ACOS(1)
+ARCTAN(1)
+ATAN(0)
+SINH(1)
+COSH(0)
+COSH(1)
+TANH(1)
+EXP(0)
+EXP(1)
+LOG(1)
+LOG10(100)
+SQRT(4)
+SQRT(INTCOL)
+ROUND(2.5)
+ROUND(FLOATCOL)
+FLOOR(FLOATCOL)
+CEIL(FLOATCOL)
+ARCTAN2(1, 1)
+ARCTAN2(FLOATCOL, INTCOL)
+ANGSEP(0,0,0,90)
+ANGSEP(0,0,90,0)
+ANGSEP(10,20,10,20)
+ANGSEP(0,60,1,60)
+DEFNULL(INTCOL, 0)
+DEFNULL(BOOLCOL, T)
+DEFNULL(STRCOL, 'zz')
+DEFNULL(BITS, BITS)
+SETNULL(3,INTCOL)
+DEFNULL(SETNULL(3,INTCOL), -99)
+ISNULL(INTCOL)
+ISNULL(STRCOL)
+ISNULL(BOOLCOL)
+ISNULL(BITS)
+ISNULL(SETNULL(3,INTCOL))
+NEAR(INTCOL, FLOATCOL, 1)
+CIRCLE(0, 0, 5, INTCOL, FLOATCOL)
+BOX(0, 0, 8, 8, 0, INTCOL, FLOATCOL)
+ELLIPSE(0, 0, 5, 5, 0, INTCOL, FLOATCOL)
+STRSTR(STRCOL,'a')
+STRSTR('abc','b')
+STRSTR('abc','z')
+DEFNULL(STRSTR(STRCOL,'a'), -1)
+STRMID(STRCOL,1,3)
+STRMID('abcdef',2,3)
+RANDOM()
+RANDOMN()
+RANDOM(INTCOL)
+RANDOMN(INTCOL)
+RANDOMP(FLOATCOL)
+SIN()
+NOSUCHFUNC(1)
+NELEM()
+ABS(1,2)
+MIN(1,2,3)
+
+# --- GTI / region filters (files do not exist: parse must still succeed) ---
+GTIFILTER()
+GTIFILTER('nosuch.gti')
+GTIFILTER('nosuch.gti',INTCOL)
+GTIFILTER('nosuch.gti',INTCOL,'*START*','*STOP*')
+GTIFILTER(STRCOL)
+GTIFIND()
+GTIFIND('nosuch.gti')
+GTIFIND('nosuch.gti',INTCOL)
+GTIOVERLAP('nosuch.gti',INTCOL,FLOATCOL)
+REGFILTER('nosuch.reg')
+REGFILTER('nosuch.reg',INTCOL,FLOATCOL)
+REGFILTER(STRCOL)
+
+# ===================================================================
+# 5. Structural constraints that must stay REJECTED (PARSER_SPEC 3.4)
+# ===================================================================
+(INTCOL){1}
+(INTCOL+1){1}
+INTCOL{FLOATCOL}
+INTCOL{INTCOL}
+!INTCOL
+.not.INTCOL
+BOOLCOL ? BITS : BITS
+INTCOL + BOOLCOL
+BOOLCOL + BOOLCOL
+INTCOL - BOOLCOL
+INTCOL * BOOLCOL
+BOOLCOL * INTCOL
+ISNULL(BITS)
+DEFNULL(BITS,BITS)
+STRCOL[1]
+INTCOL = 1:2:3
+INTCOL +
++
+(INTCOL
+INTCOL)
+{1,2
+1,2}
+INTCOL[
+INTCOL[]
+NOSUCHCOL
+NOSUCHCOL + 1
+1 + NOSUCHCOL
+INTCOL <> 1
+INTCOL <=> 1
+&&
+||
+?:
+INTCOL ? 1 : 2
+STRCOL ? 1 : 2
+BITS ? 1 : 2
+STRCOL + 1
+1 + STRCOL
+STRCOL > 1
+BITS + 1
+BITS == 1
+BITS && BITS
+STRCOL && STRCOL
+
+# ===================================================================
+# 6. Nesting / stress
+# ===================================================================
+((((((((((1))))))))))
+((((((((((((((((((((1))))))))))))))))))))
+!!!!BOOLCOL
+------1
+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1
+((1+2)*(3+4))-((5+6)*(7+8))
+SIN(COS(TAN(SQRT(ABS(FLOATCOL)))))
+DEFNULL(DEFNULL(DEFNULL(INTCOL,1),2),3)
+{{1,2},{3,4}}
+VECCOL[VECCOL[1]]
