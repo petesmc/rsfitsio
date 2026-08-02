@@ -243,12 +243,27 @@ mod tests {
             .collect()
     }
 
+    /// Floor on the corpus size.
+    ///
+    /// The test reports a diff per line, so a *truncated* corpus would still be
+    /// caught by the golden being longer — but if both files shrank together
+    /// (a bad merge, a stray editor save) it would pass while testing far less
+    /// than it claims. Raise this when the corpus grows meaningfully.
+    const MIN_CORPUS: usize = 1800;
+
     #[test]
     fn eval_corpus_matches_golden() {
+        let exprs = corpus_lines();
+        assert!(
+            exprs.len() >= MIN_CORPUS,
+            "corpus has shrunk to {} expressions, expected at least {MIN_CORPUS}",
+            exprs.len()
+        );
+
         let mut status = 0;
         let mut f = create_corpus_table();
         let mut actual = String::new();
-        for expr in corpus_lines() {
+        for expr in exprs {
             let _ = writeln!(actual, "{expr}\t{}", probe(&mut f, expr));
         }
         fits_close_file(f, &mut status);

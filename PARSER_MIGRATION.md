@@ -731,3 +731,21 @@ filter expression:
 The lesson is that the systematic grids paid for themselves: none of these
 were found by the 503-line corpus, the 2,300-test unit suite, or code review,
 and three of them were crashes on inputs a user can type.
+
+### 9.5 Upstream status
+
+Two of the CFITSIO defects this work turned up are pending upstream:
+
+| PR | Defect | Where it shows here |
+|---|---|---|
+| [cfitsio#152](https://github.com/HEASARC/cfitsio/pull/152) | `angsep_fct` falls through to `min1_fct` in `New_Func` for lack of a `break`, so a fully-constant `ANGSEP` returns its first argument | the only 5 lines where `tests/oracle` still differs |
+| [cfitsio#153](https://github.com/HEASARC/cfitsio/pull/153) | uppercase `0x` literals miscomputed; a bare `.` lexes as `0.0` | §6.1 and §6.2 of `PARSER_SPEC.md`, fixed here first |
+
+When #152 merges and CFITSIO is rebuilt, `make -C tests/oracle check` should
+report no differences at all, and the "Known divergences" section of
+`tests/oracle/README.md` can be deleted.
+
+The other defects found here are rsfitsio-only transpilation errors
+(`ffdtyp`'s quote test, `ffgcrd_safe`'s underflow) and do not apply upstream.
+The `ACCUM(BOOLCOL)` type confusion in §9.3 *does* apply upstream and has not
+been reported.

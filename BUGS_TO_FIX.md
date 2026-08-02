@@ -7,10 +7,10 @@
 > analysis; nothing here is outstanding.
 
 Two defects in the transpiled expression lexer (`src/eval_l.rs`), inherited
-verbatim from CFITSIO's `eval.l`. Both were fixed upstream in
-`~/code/cfitsio` commit `47359ca` ("Fix hex literal case handling and bare '.'
-in expression lexer"), which also added C regression tests to
-`tests/test_eval.c`. This document ported those fixes to rsfitsio.
+verbatim from CFITSIO's `eval.l`. Both were fixed in `~/code/cfitsio` commit
+`47359ca` and submitted upstream as [cfitsio#153](https://github.com/HEASARC/cfitsio/pull/153), which also adds C
+regression tests to `tests/test_eval.c`. This document ported those fixes to
+rsfitsio.
 
 Background and verified behaviour: [`PARSER_SPEC.md`](PARSER_SPEC.md) §6.1, §6.2.
 

@@ -18,8 +18,8 @@ harness (see `PARSER_MIGRATION.md` §7), not inferred from the grammar.
 > what the generated code looked like; everything else describes the language
 > as it is today.
 >
-> The two lexer defects in §6.1 and §6.2 are fixed in both rsfitsio and in
-> `~/code/cfitsio` at commit `47359ca`.
+> The two lexer defects in §6.1 and §6.2 are fixed in rsfitsio and submitted
+> upstream as [cfitsio#153](https://github.com/HEASARC/cfitsio/pull/153).
 
 ---
 
@@ -561,10 +561,9 @@ lengths are all checked against it at parse time.
 
 ## 6. Defects
 
-§6.1 and §6.2 are **fixed** in both rsfitsio and the C library (the latter as
-of `~/code/cfitsio` commit `47359ca`, which also added
-`test_ffcrow_hex_constant_case` and `test_fftexp_bare_dot_rejected` to
-`tests/test_eval.c`). §6.3–§6.7 described the *generated* code and no longer
+§6.1 and §6.2 are **fixed** in rsfitsio and submitted upstream as
+[cfitsio#153](https://github.com/HEASARC/cfitsio/pull/153), which also adds `test_ffcrow_hex_constant_case` and
+`test_fftexp_bare_dot_rejected` to `tests/test_eval.c`. §6.3–§6.7 described the *generated* code and no longer
 apply to rsfitsio, which has none of it; they are retained because they still
 describe upstream CFITSIO.
 

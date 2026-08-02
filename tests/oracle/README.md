@@ -7,6 +7,8 @@ deciding whether a difference is a bug.
 
 Nothing here is built or run by `cargo test`. It needs a C compiler, `flex`,
 and a **built** CFITSIO source tree, none of which CI is guaranteed to have.
+The corpus itself *is* run by `cargo test`, against the checked-in golden file;
+these tools are what validate that golden against upstream.
 
 ---
 
@@ -158,7 +160,9 @@ argument instead of the separation. With a non-constant argument
 (`ANGSEP(0.0*INTCOL,0.0,0.0,90.0)`) both agree.
 
 rsfitsio fixes this; see `test_ffcrow_angsep_constant_arguments` in
-`src/eval_f.rs`. Fix submitted upstream.
+`src/eval_f.rs`. Submitted upstream as [cfitsio#152](https://github.com/HEASARC/cfitsio/pull/152) — **once that
+merges and you rebuild CFITSIO, `make check` should report no differences at
+all**, and this section can go.
 
 ### A caution about bulk runs
 
