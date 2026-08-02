@@ -14,6 +14,14 @@
 //! ```text
 //! UPDATE_EVAL_GOLDEN=1 cargo test --test test_eval_corpus
 //! ```
+//!
+//! and then check the result against the real CFITSIO parser — see
+//! `tests/oracle/README.md`.  To find which expression is responsible when the
+//! evaluation engine crashes:
+//!
+//! ```text
+//! CORPUS_TRACE=1 cargo test --test test_eval_corpus -- --nocapture
+//! ```
 
 #[cfg(test)]
 mod tests {
@@ -126,6 +134,11 @@ mod tests {
 
     /// Render one corpus line's behaviour as a single deterministic string.
     fn probe(f: &mut fitsfile, expr: &str) -> String {
+        /* CORPUS_TRACE=1 ... -- --nocapture names each expression before it is
+        evaluated, so a crash inside the engine can be pinned to a line. */
+        if std::env::var_os("CORPUS_TRACE").is_some() {
+            eprintln!("PROBE {expr}");
+        }
         let mut datatype = 0;
         let mut nelem: c_long = 0;
         let mut naxis = 0;

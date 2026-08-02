@@ -370,6 +370,13 @@ impl Lowerer<'_> {
                 }
                 New_Unary(self.p, t, T::UMINUS as c_int, n)
             }
+            /* `'+' expr { $$ = $2; }` -- no node, but the sort still matters */
+            UnOp::Plus => {
+                if !is_expr(t) {
+                    return Err(ParseError::syntax("unary '+' needs a number", at, b"+"));
+                }
+                return Ok(n);
+            }
             /* spec 3.4 (3): `NOT bexpr` and `NOT bits` only */
             UnOp::Not => match t {
                 BOOLEAN => New_Unary(self.p, BOOLEAN, T::NOT as c_int, n),
@@ -606,6 +613,27 @@ impl Lowerer<'_> {
         self.test(r)
     }
 
+    /// `FUNCTION expr …` productions accept only `expr` operands. Without this
+    /// a string or bit-string argument reaches `Do_Func`, which reads the
+    /// buffer through a `*long` and segfaults.
+    fn require_expr(&self, n: NodeId, name: &[u8]) -> Result<(), ParseError> {
+        if is_expr(self.ntype(n)) {
+            Ok(())
+        } else {
+            Err(unsupported("expr", name))
+        }
+    }
+
+    /// `FUNCTION (expr|bexpr) …`: the first argument of AXISELEM / NAXES /
+    /// ARRAY may also be boolean.
+    fn require_numeric(&self, n: NodeId, name: &[u8]) -> Result<(), ParseError> {
+        if is_numeric(self.ntype(n)) {
+            Ok(())
+        } else {
+            Err(unsupported("expr", name))
+        }
+    }
+
     fn bad_operands(&self, op: &str, at: usize) -> ParseError {
         ParseError::syntax(
             format!("operands of '{op}' have incompatible types"),
@@ -840,6 +868,9 @@ impl Lowerer<'_> {
     /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to DOUBLE, all
     /// dimensions pairwise compatible, then propagate the largest shape.
     fn region_fct(&mut self, op: funcOp, ns: &[NodeId], what: &str) -> LRes {
+        for &n in ns {
+            self.require_expr(n, what.as_bytes())?;
+        }
         let ds: Vec<NodeId> = ns.iter().map(|&n| self.as_double(n)).collect();
         for w in ds.windows(2) {
             if !self.dims_ok(w[0], w[1]) {
@@ -904,7 +935,10 @@ impl Lowerer<'_> {
                     self.test(n)
                 }
                 b"ACCUM" => self.accum(a, LONG, T::ACCUM as c_int),
-                _ => self.func1_numeric(name, a),
+                /* `FUNCTION bexpr ')'` supports only SUM, NELEM and ACCUM.
+                Falling through to the numeric list would accept `ABS(BOOLCOL)`
+                and then hand Do_Func a char buffer to read through a *long. */
+                _ => Err(unsupported("bool", name)),
             },
             STRING => match name {
                 b"NVALID" => {
@@ -1049,6 +1083,13 @@ impl Lowerer<'_> {
                     }
                     return Ok(n);
                 }
+                self.require_numeric(a, name)?;
+                self.require_numeric(b, name)?;
+                /* `FUNCTION expr ',' expr` and `FUNCTION bexpr ',' bexpr` are
+                separate productions; there is no mixed form */
+                if (ta == BOOLEAN) != (tb == BOOLEAN) {
+                    return Err(unsupported("expr,expr", name));
+                }
                 if !(self.size(a) >= self.size(b) && self.dims_ok(a, b)) {
                     return Err(ParseError::semantic(
                         "Dimensions of DEFNULL arguments are not compatible",
@@ -1062,6 +1103,8 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"ARCTAN2" => {
+                self.require_expr(a, name)?;
+                self.require_expr(b, name)?;
                 let a = self.as_double(a);
                 let b = self.as_double(b);
                 if !self.dims_ok(a, b) {
@@ -1075,6 +1118,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"MIN" | b"MAX" => {
+                self.require_expr(a, name)?;
+                self.require_expr(b, name)?;
                 let (mut a, mut b) = (a, b);
                 self.promote(&mut a, &mut b);
                 if !self.dims_ok(a, b) {
@@ -1090,6 +1135,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"SETNULL" => {
+                self.require_expr(a, name)?;
+                self.require_expr(b, name)?;
                 if !self.is_const(a) || self.size(a) != 1 {
                     return Err(ParseError::semantic(
                         "SETNULL first argument must be a scalar constant",
@@ -1105,6 +1152,8 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"AXISELEM" => {
+                self.require_numeric(a, name)?;
+                self.require_expr(b, name)?;
                 if !self.is_const(b) || self.size(b) != 1 {
                     return Err(ParseError::semantic(
                         "AXISELEM second argument must be a scalar constant",
@@ -1121,6 +1170,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"NAXES" => {
+                self.require_numeric(a, name)?;
+                self.require_expr(b, name)?;
                 if !self.is_const(b) || self.size(b) != 1 {
                     return Err(ParseError::semantic(
                         "NAXES second argument must be a scalar constant",
@@ -1145,6 +1196,8 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"ARRAY" => {
+                self.require_numeric(a, name)?;
+                self.require_expr(b, name)?;
                 let n = New_Array(self.p, a, b);
                 self.test(n)
             }
@@ -1184,6 +1237,9 @@ impl Lowerer<'_> {
     fn func4(&mut self, name: &[u8], ns: &[NodeId]) -> LRes {
         if name != b"ANGSEP" {
             return Err(unsupported("expr,expr,expr,expr", name));
+        }
+        for &n in ns {
+            self.require_expr(n, name)?;
         }
         let ds: Vec<NodeId> = ns.iter().map(|&n| self.as_double(n)).collect();
         for w in ds.windows(2) {
@@ -1233,10 +1289,12 @@ impl Lowerer<'_> {
             2 => {
                 fname = self.literal_str(&args[0], name)?;
                 node1 = self.lower(&args[1])?;
+                self.require_expr(node1, name)?;
             }
             4 => {
                 fname = self.literal_str(&args[0], name)?;
                 node1 = self.lower(&args[1])?;
+                self.require_expr(node1, name)?;
                 start = self.literal_str(&args[2], name)?;
                 stop = self.literal_str(&args[3], name)?;
             }
@@ -1279,6 +1337,8 @@ impl Lowerer<'_> {
         let mut fname = self.literal_str(&args[0], name)?;
         let n1 = self.lower(&args[1])?;
         let n2 = self.lower(&args[2])?;
+        self.require_expr(n1, name)?;
+        self.require_expr(n2, name)?;
         if args.len() == 5 {
             start = self.literal_str(&args[3], name)?;
             stop = self.literal_str(&args[4], name)?;
@@ -1313,6 +1373,8 @@ impl Lowerer<'_> {
         if args.len() >= 3 {
             nx = self.lower(&args[1])?;
             ny = self.lower(&args[2])?;
+            self.require_expr(nx, name)?;
+            self.require_expr(ny, name)?;
         }
         if args.len() == 4 {
             cols = self.literal_str(&args[3], name)?;

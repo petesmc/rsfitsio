@@ -873,7 +873,11 @@ pub fn ffgcrd_safe(
     nkeys = n_k as isize;
     nextkey = nk as isize;
 
-    namelenminus1 = cmp::max(namelen - 1, 1) as c_int;
+    /* The C computes maxvalue(namelen - 1, 1) in signed int, so an empty name
+    gives max(-1, 1) = 1. `namelen` is unsigned here, so subtract saturating —
+    plain `namelen - 1` panics on an empty keyword name, which a filter
+    expression can reach through the `$…$` variable form. */
+    namelenminus1 = namelen.saturating_sub(1).max(1) as c_int;
     ntodo = nkeys + 1 - nextkey; /* first, read from next keyword to end */
 
     let mut jj: usize = 0;

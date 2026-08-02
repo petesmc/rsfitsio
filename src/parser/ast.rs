@@ -18,6 +18,10 @@ use crate::c_types::c_long;
 pub(crate) enum UnOp {
     /// Unary `-`
     Neg,
+    /// Unary `+`. `eval.y`'s action is `$$ = $2`, but the production is
+    /// `'+' expr`, so the operand still has to be numeric — `+BOOLCOL` and
+    /// `+STRCOL` are syntax errors.
+    Plus,
     /// `!`, `.not.`
     Not,
     /// `(int)`

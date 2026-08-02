@@ -9126,6 +9126,72 @@ mod tests {
     }
 
     #[test]
+    fn test_fffrow_string_keyword_reference() {
+        /* '#KEY' where the keyword's value is a quoted string resolves to a
+        string constant.  ffdtyp tested cval[0] against a backslash instead of
+        a single quote, so quoted values were classified as integers and
+        find_keywd reported BAD_C2I. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            fits_write_key_str(&mut f, &cc("STRKEY"), &cc("gamma"), None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut datatype = 0;
+            let mut nelem: c_long = 0;
+            let mut naxis = 0;
+            let mut naxes = [0 as c_long; 5];
+            fits_test_expr(
+                &mut f,
+                &cc("#STRKEY"),
+                5,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TSTRING);
+
+            /* and it is usable as a string operand */
+            assert_eq!(count_rows(&mut f, "STRCOL == #STRKEY").0, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_empty_variable_name() {
+        /* '$$' lexes as a variable with an empty name.  The lookup walks the
+        header with namelen == 0, which used to underflow `namelen - 1` in
+        ffgcrd_safe and panic; it must simply fail to find the column. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            for expr in ["$$", "$$ + 1", "$$ > 1"] {
+                status = 0;
+                fits_find_rows(
+                    &mut f,
+                    &cc(expr),
+                    1,
+                    10,
+                    &mut n_good_rows,
+                    &mut row_status,
+                    &mut status,
+                );
+                assert_ne!(status, 0, "expr should be rejected: {expr}");
+            }
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
     fn test_ffcrow_hex_constant_case() {
         /* 0x literals must be case-insensitive.  The lexer used to convert
         non-digits with (*p - 'a' + 10) without folding case, so uppercase

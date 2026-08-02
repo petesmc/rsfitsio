@@ -395,10 +395,15 @@ impl<'a> Parser<'a> {
                 self.expect_char(b'}')?;
                 AstKind::Vector(items)
             }
-            /* `%prec UMINUS`: unary plus is the identity, unary minus negates */
+            /* `%prec UMINUS`: unary plus is the identity, unary minus negates.
+            Plus still gets a node so that lowering can reject a non-numeric
+            operand, which the `'+' expr` production does by construction. */
             Tok::Char(b'+') => {
                 self.bump();
-                return self.expr(BP_UNARY_OPERAND);
+                AstKind::Unary {
+                    op: UnOp::Plus,
+                    arg: Box::new(self.expr(BP_UNARY_OPERAND)?),
+                }
             }
             Tok::Char(b'-') => {
                 self.bump();

@@ -637,7 +637,7 @@ from this plan:
 | `nom` for the lexer, hand-written Pratt parser | As planned. `nom` 8.0, one new dependency, no proc macros or build script. |
 | ~8,000 lines of generated code removed | `src/eval_l.rs` deleted (1,688 lines); `src/eval_y.rs` 15,305 → ~8,950. All 11 DFA/LALR tables gone. |
 | New front end ~2,500 lines | 3,180 lines across `src/parser/` (7 files), including ~700 lines of unit tests. |
-| Phase 0 oracle + corpus | `tests/test_eval_corpus.rs` + `tests/fixtures/eval_corpus.{txt,golden}` — 503 expressions, golden captured from the flex/bison parser before removal. All 503 match. |
+| Phase 0 oracle + corpus | `tests/test_eval_corpus.rs` + `tests/fixtures/eval_corpus.{txt,golden}`. Started at 503 expressions (golden captured from the flex/bison parser before removal), later expanded to 1,852 and validated line-by-line against CFITSIO. The oracle itself is checked in under `tests/oracle/`. |
 | `NOT` binding power (§4.4 option (a)) | Worked. `BP_NOT_OPERAND = 10` reproduces every discriminating case in the corpus. `lalrpop` was not needed. |
 | Feature-flagged landing | Skipped. The corpus made the cutover verifiable in one step, so the flag would have been dead weight. |
 
@@ -688,3 +688,46 @@ corpus.
   target over `parse_expression` is still worth adding.
 * **Error-message quality** (§8). The parser now carries byte spans, but
   `ffpmsg` output is still one line. The machinery to do better is in place.
+
+### 9.4 What the corpus expansion found
+
+The corpus was later grown from 503 to 1,852 expressions, mostly as systematic
+grids: every binary operator against every pair of operand sorts, every unary
+operator against every sort, every `?:` branch combination, function arities 0
+to 5, the `MAXSUBS` vector-chunking boundary, and a block of malformed input.
+Every line was then checked against CFITSIO with `tests/oracle`.
+
+That found **four real bugs in the new parser**, three of which were memory
+unsafety rather than a wrong answer:
+
+1. `ABS(BOOLCOL)` — the `BOOLEAN` arm of `func1` fell through to the numeric
+   function list. `FUNCTION bexpr ')'` supports only `SUM`, `NELEM` and
+   `ACCUM`; the others handed `Do_Func` a `char` buffer to read through a
+   `*long`. **Segfault.**
+2. `ARCTAN2(INTCOL,BITS)`, `MIN(INTCOL,STRCOL)`, `SETNULL(1,STRCOL)` … — the
+   two-argument functions did not check operand sorts at all. Same crash.
+   Fixed with a `require_expr` / `require_numeric` guard applied uniformly to
+   the 2-, 4- and region-function paths and to the GTI/region node arguments.
+3. `ANGSEP` and the region functions had the same gap.
+4. `+BOOLCOL` — unary `+` is `$$ = $2` in `eval.y`, so it was implemented as a
+   pass-through with no node and therefore no sort check. But the production
+   is `'+' expr`, so `+BOOLCOL`, `+STRCOL` and `+BITS` are syntax errors. Now
+   modelled as `UnOp::Plus`, which checks and then returns its operand.
+
+and **two pre-existing bugs elsewhere in the crate**, both reachable from a
+filter expression:
+
+5. `ffdtyp` (`fits_get_keytype`) tested `cval[0]` against a backslash where the
+   C tests against a single quote — `'\''` had been transpiled as `'\\'`. Every
+   quoted keyword value was classified as an integer, so `#STRKEY` reported
+   `BAD_C2I`, as did `ffc2x` / `ffc2r` / `ffc2d` for any string. The extern
+   wrapper had a second copy of the same body; it now delegates to
+   `ffdtyp_safe` per the crate convention.
+6. `ffgcrd_safe` computed `namelen - 1` on a `usize`. The C does it in `int`,
+   where an empty name gives `max(-1, 1) = 1`; in Rust it underflowed and
+   **panicked**. Reachable from `$$`, which lexes as a variable with an empty
+   name.
+
+The lesson is that the systematic grids paid for themselves: none of these
+were found by the 503-line corpus, the 2,300-test unit suite, or code review,
+and three of them were crashes on inputs a user can type.
