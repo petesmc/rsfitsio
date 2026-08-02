@@ -178,7 +178,10 @@ mod tests {
 
         /* Integer-valued expressions are read back as LONGLONG so that large
         magnitudes stay exact; f64 cannot distinguish i64::MAX from 2^63. */
-        let integral = matches!(datatype, TLOGICAL | TBYTE | TSHORT | TINT | TLONG | TLONGLONG);
+        let integral = matches!(
+            datatype,
+            TLOGICAL | TBYTE | TSHORT | TINT | TLONG | TLONGLONG
+        );
         let rendered = if integral {
             let mut results = vec![0 as LONGLONG; (n * NROWS) as usize];
             fits_calc_rows(
@@ -290,7 +293,8 @@ mod tests {
                 if x != y {
                     diffs += 1;
                     if diffs <= 40 {
-                        let _ = writeln!(msg, "  line {}:\n    golden: {y}\n    actual: {x}", i + 1);
+                        let _ =
+                            writeln!(msg, "  line {}:\n    golden: {y}\n    actual: {x}", i + 1);
                     }
                 }
             }
