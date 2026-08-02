@@ -22,36 +22,19 @@
 use std::collections::HashMap;
 
 use super::token::{Spanned, Tok};
-use crate::c_types::{c_char, c_int};
-use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype as T};
-use crate::eval_defs::ParseData;
+use crate::c_types::c_char;
+use crate::eval_defs::{ParseData, ParserValue};
 use crate::eval_y::fits_parser_yyGetVariable;
 use crate::fitsio::PARSE_SYNTAX_ERR;
 
-/// What a name resolved to: the token kind the lexer would have returned, plus
-/// its semantic value. Keyed by the name token's byte offset, which is unique.
-pub(crate) type Resolutions = HashMap<usize, (c_int, FITS_PARSER_YYSTYPE)>;
+/// What each name resolved to, keyed by the name token's byte offset (unique,
+/// since two tokens cannot start at the same place).
+pub(crate) type Resolutions = HashMap<usize, ParserValue>;
 
 fn cstr(b: &[u8]) -> Vec<c_char> {
     let mut v: Vec<c_char> = b.iter().map(|&c| c as c_char).collect();
     v.push(0);
     v
-}
-
-/// Is `dtype` one of the token kinds a name may resolve to?
-pub(crate) fn token_of(v: c_int) -> Option<T> {
-    match v {
-        x if x == T::BOOLEAN as c_int => Some(T::BOOLEAN),
-        x if x == T::LONG as c_int => Some(T::LONG),
-        x if x == T::DOUBLE as c_int => Some(T::DOUBLE),
-        x if x == T::STRING as c_int => Some(T::STRING),
-        x if x == T::BITSTR as c_int => Some(T::BITSTR),
-        x if x == T::COLUMN as c_int => Some(T::COLUMN),
-        x if x == T::BCOLUMN as c_int => Some(T::BCOLUMN),
-        x if x == T::SCOLUMN as c_int => Some(T::SCOLUMN),
-        x if x == T::BITCOL as c_int => Some(T::BITCOL),
-        _ => None,
-    }
 }
 
 /// Resolve every name token, left to right.
@@ -74,26 +57,25 @@ pub(crate) fn resolve_names(lParse: &mut ParseData, toks: &mut Vec<Spanned>) -> 
         };
 
         let cname = cstr(&name);
-        let mut lval = FITS_PARSER_YYSTYPE { Node: 0 };
-        let dtype = if bare {
+        let resolved = if bare {
             /* `{variable}`: registered columns first, then getData */
-            fits_parser_yyGetVariable(lParse, &cname, &mut lval)
+            fits_parser_yyGetVariable(lParse, &cname)
         } else if let Some(get) = lParse.getData {
             /* `{constant}`: straight to the keyword lookup */
-            get(lParse, &cname, &mut lval)
+            get(lParse, &cname)
         } else {
             if lParse.status == 0 {
                 lParse.status = PARSE_SYNTAX_ERR;
             }
-            -1
+            None
         };
 
-        if token_of(dtype).is_none() {
+        let Some(value) = resolved else {
             /* the resolver has set lParse.status; the parse stops here */
             toks.truncate(i);
             break;
-        }
-        out.insert(toks[i].at, (dtype, lval));
+        };
+        out.insert(toks[i].at, value);
     }
 
     out

@@ -1,77 +1,65 @@
-use crate::{
-    c_types::{c_char, c_double, c_int, c_long},
-    eval_defs::MAX_STRLEN,
-};
+//! Numeric tags shared between the parser and the evaluation engine.
+//!
+//! This was `eval_tab.h`, bison's token-number header. The parser no longer
+//! produces tokens — `crate::parser::token::Tok` does, with no numbering — so
+//! what survives here are the two roles those numbers still play inside
+//! `Node`:
+//!
+//! * **sort tags** (`BOOLEAN` … `BITSTR`), stored in `Node::ntype` and
+//!   `DataInfo::dtype`. The first three are ordered so that numeric promotion
+//!   is a `>` comparison, which is why the values matter and must not be
+//!   renumbered.
+//! * **operator codes** (`OR` … `DIFF`), stored in `Node::operation` and
+//!   dispatched on by the `Do_*` routines.
+//!
+//! The lexer-token variants that used to sit between them — `FUNCTION`,
+//! `GTIFILTER`, `COLUMN`, `ROWREF` and the rest — are gone: function
+//! classification is now `parser::token::CallKind`, and a resolved column is
+//! `eval_defs::ColumnSort`. Their numbers are left as gaps rather than reused,
+//! so the surviving values still line up with upstream's `eval_tab.h`.
+
+use crate::c_types::c_int;
 
 #[repr(i32)]
 pub(crate) enum fits_parser_yytokentype {
-    FITS_PARSER_YYEMPTY = -2,
-    FITS_PARSER_YYEOF = 0,     /* "end of file"  */
-    FITS_PARSER_YYerror = 256, /* error  */
-    FITS_PARSER_YYUNDEF = 257, /* "invalid token"  */
-    BOOLEAN = 258,             /* BOOLEAN  */
-    LONG = 259,                /* LONG  */
-    DOUBLE = 260,              /* DOUBLE  */
-    STRING = 261,              /* STRING  */
-    BITSTR = 262,              /* BITSTR  */
-    FUNCTION = 263,            /* FUNCTION  */
-    BFUNCTION = 264,           /* BFUNCTION  */
-    IFUNCTION = 265,           /* IFUNCTION  */
-    GTIFILTER = 266,           /* GTIFILTER  */
-    GTIOVERLAP = 267,          /* GTIOVERLAP  */
-    GTIFIND = 268,             /* GTIFIND  */
-    REGFILTER = 269,           /* REGFILTER  */
-    COLUMN = 270,              /* COLUMN  */
-    BCOLUMN = 271,             /* BCOLUMN  */
-    SCOLUMN = 272,             /* SCOLUMN  */
-    BITCOL = 273,              /* BITCOL  */
-    ROWREF = 274,              /* ROWREF  */
-    NULLREF = 275,             /* NULLREF  */
-    SNULLREF = 276,            /* SNULLREF  */
-    OR = 277,                  /* OR  */
-    AND = 278,                 /* AND  */
-    EQ = 279,                  /* EQ  */
-    NE = 280,                  /* NE  */
-    GT = 281,                  /* GT  */
-    LT = 282,                  /* LT  */
-    LTE = 283,                 /* LTE  */
-    GTE = 284,                 /* GTE  */
-    XOR = 285,                 /* XOR  */
-    POWER = 286,               /* POWER  */
-    NOT = 287,                 /* NOT  */
-    INTCAST = 288,             /* INTCAST  */
-    FLTCAST = 289,             /* FLTCAST  */
-    UMINUS = 290,              /* UMINUS  */
-    ACCUM = 291,               /* ACCUM  */
-    DIFF = 292,                /* DIFF  */
+    /* value sorts -- ordered for promotion */
+    BOOLEAN = 258,
+    LONG = 259,
+    DOUBLE = 260,
+    STRING = 261,
+    BITSTR = 262,
+
+    /* operator codes stored in Node::operation */
+    OR = 277,
+    AND = 278,
+    EQ = 279,
+    NE = 280,
+    GT = 281,
+    LT = 282,
+    LTE = 283,
+    GTE = 284,
+    XOR = 285,
+    POWER = 286,
+    NOT = 287,
+    INTCAST = 288,
+    FLTCAST = 289,
+    UMINUS = 290,
+    ACCUM = 291,
+    DIFF = 292,
 }
 
 impl From<c_int> for fits_parser_yytokentype {
+    /// Callers convert both `Node::ntype` / `DataInfo::dtype` (a sort) and
+    /// `Node::operation` (an operator code), so every surviving variant has to
+    /// round-trip. `Node::operation` also holds raw operator characters and
+    /// `funcOp` values, which are matched before this is reached.
     fn from(value: c_int) -> Self {
         match value {
-            -2 => Self::FITS_PARSER_YYEMPTY,
-            0 => Self::FITS_PARSER_YYEOF,
-            256 => Self::FITS_PARSER_YYerror,
-            257 => Self::FITS_PARSER_YYUNDEF,
             258 => Self::BOOLEAN,
             259 => Self::LONG,
             260 => Self::DOUBLE,
             261 => Self::STRING,
             262 => Self::BITSTR,
-            263 => Self::FUNCTION,
-            264 => Self::BFUNCTION,
-            265 => Self::IFUNCTION,
-            266 => Self::GTIFILTER,
-            267 => Self::GTIOVERLAP,
-            268 => Self::GTIFIND,
-            269 => Self::REGFILTER,
-            270 => Self::COLUMN,
-            271 => Self::BCOLUMN,
-            272 => Self::SCOLUMN,
-            273 => Self::BITCOL,
-            274 => Self::ROWREF,
-            275 => Self::NULLREF,
-            276 => Self::SNULLREF,
             277 => Self::OR,
             278 => Self::AND,
             279 => Self::EQ,
@@ -88,16 +76,7 @@ impl From<c_int> for fits_parser_yytokentype {
             290 => Self::UMINUS,
             291 => Self::ACCUM,
             292 => Self::DIFF,
-            _ => panic!(),
+            _ => panic!("not a parser sort or operator code: {value}"),
         }
     }
-}
-
-#[derive(Copy, Clone)]
-pub(crate) union FITS_PARSER_YYSTYPE {
-    pub(crate) Node: c_int,                         /* Index of Node */
-    pub(crate) dbl: c_double,                       /* real value    */
-    pub(crate) lng: c_long,                         /* integer value */
-    pub(crate) log: c_char,                         /* logical value */
-    pub(crate) astr: [c_char; MAX_STRLEN as usize], /* string value  */
 }

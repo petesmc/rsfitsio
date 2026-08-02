@@ -1,8 +1,7 @@
 use core::ffi::c_void;
 
-use crate::c_types::{c_char, c_int, c_long};
+use crate::c_types::{c_char, c_double, c_int, c_long};
 
-use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
 pub const MAXDIMS: c_int = 5;
@@ -85,9 +84,47 @@ pub(crate) struct Node {
     pub value: lval,
 }
 
+/// The sort of a table column, as the parser sees it.
+///
+/// These were the `COLUMN` / `BCOLUMN` / `SCOLUMN` / `BITCOL` lexer tokens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ColumnSort {
+    /// Integer or floating point.
+    Numeric,
+    Boolean,
+    String,
+    Bits,
+}
+
+/// What a name in an expression resolves to.
+///
+/// This replaces bison's `%union YYSTYPE` together with the parallel `c_int`
+/// token kind that [`GetDataFn`] used to return beside it. Two things follow
+/// from making it an enum: the variant *is* the kind, so the value and the tag
+/// can no longer disagree, and reading it needs no `unsafe`.
+///
+/// The union also had a `Node` arm for the parser's own stack, which no longer
+/// exists, and could in principle hold a bit-string constant, which no resolver
+/// ever produced. Neither is representable here.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ParserValue {
+    /// A table column, by index into [`ParseData::varData`].
+    Column { index: c_int, sort: ColumnSort },
+    /// A header keyword that resolved to an integer.
+    Long(c_long),
+    /// A header keyword that resolved to a float.
+    Double(c_double),
+    /// A header keyword that resolved to `T` or `F`.
+    Boolean(bool),
+    /// A header keyword that resolved to a quoted string, NUL-terminated.
+    Str(Vec<c_char>),
+}
+
 /// Fetches a single named value for the parser (ffcalc's keyword lookup).
-pub(crate) type GetDataFn =
-    fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int;
+///
+/// Returns `None` when the name cannot be resolved, having already recorded a
+/// status in [`ParseData::status`] and a message on the error stack.
+pub(crate) type GetDataFn = fn(p: &mut ParseData, dataName: &[c_char]) -> Option<ParserValue>;
 
 /// Loads a row range of one parser variable into the caller's buffers.
 pub(crate) type LoadDataFn = fn(

@@ -74,10 +74,11 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
+    ColumnSort, CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR,
+    ParseData, ParserValue,
     ParseStatusVariables, data_union, parseInfo,
 };
-use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
+use crate::eval_tab::fits_parser_yytokentype;
 use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
@@ -4379,18 +4380,13 @@ fn set_image_col_types(
 
 *************************************************************************/
 
-fn find_column(
-    lParse: &mut ParseData,
-    colName: &[c_char],
-    itslval: &mut FITS_PARSER_YYSTYPE,
-) -> c_int {
+fn find_column(lParse: &mut ParseData, colName: &[c_char]) -> Option<ParserValue> {
     unsafe {
-        let thelval = itslval;
 
         let mut status: c_int;
         let mut colnum: c_int = 0;
         let mut typecode: c_int = 0;
-        let mut ktype: c_int = 0;
+        let mut sort = ColumnSort::Numeric;
         let mut repeat: c_long = 0;
         let mut width: c_long = 0;
         let mut fptr: *mut fitsfile;
@@ -4409,7 +4405,7 @@ fn find_column(
         }
 
         if colName[0] == b'#' as c_char {
-            return find_keywd(lParse, &colName[1..], thelval);
+            return find_keywd(lParse, &colName[1..]);
         }
 
         fptr = lParse.def_fptr;
@@ -4422,7 +4418,7 @@ fn find_column(
             if lParse.pixFilter.is_null() {
                 lParse.status = COL_NOT_FOUND;
                 ffpmsg_str("find_column: IMAGE_HDU but no PixelFilter");
-                return P_ERROR;
+                return None;
             }
 
             colnum = -1;
@@ -4448,13 +4444,13 @@ fn find_column(
                 );
                 ffpmsg_slice(&temp);
                 lParse.status = COL_NOT_FOUND;
-                return P_ERROR;
+                return None;
             }
 
             let mut tstatus = 0;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
-                return P_ERROR;
+                return None;
             }
             lParse.status = tstatus;
 
@@ -4464,7 +4460,7 @@ fn find_column(
             if (*lParse.pixFilter).ifptr.add(colnum as usize).is_null() {
                 ffpmsg_str("find_column: PixelFilter missing image pointer");
                 lParse.status = COL_NOT_FOUND;
-                return P_ERROR;
+                return None;
             }
 
             fptr = (*lParse.pixFilter)
@@ -4482,7 +4478,7 @@ fn find_column(
             );
 
             varInfo.nelem = 1;
-            ktype = fits_parser_yytokentype::COLUMN as c_int;
+            sort = ColumnSort::Numeric;
 
             if set_image_col_types(
                 &mut lParse.status,
@@ -4493,7 +4489,7 @@ fn find_column(
                 colIter,
             ) != 0
             {
-                return P_ERROR;
+                return None;
             }
             colIter.fptr = fptr;
             colIter.iotype = INPUT_COL;
@@ -4510,14 +4506,14 @@ fn find_column(
             ) != 0
             {
                 if status == COL_NOT_FOUND {
-                    ktype = find_keywd(lParse, colName, thelval);
-                    if ktype != P_ERROR {
+                    let kv = find_keywd(lParse, colName);
+                    if kv.is_some() {
                         ffcmsg_safe();
                     }
-                    return ktype;
+                    return kv;
                 }
                 lParse.status = status;
-                return P_ERROR;
+                return None;
             }
 
             if fits_get_coltype(
@@ -4530,13 +4526,13 @@ fn find_column(
             ) != 0
             {
                 lParse.status = status;
-                return P_ERROR;
+                return None;
             }
 
             let mut tstatus = 0;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
-                return P_ERROR;
+                return None;
             }
             lParse.status = tstatus;
 
@@ -4555,7 +4551,7 @@ fn find_column(
                 TBIT => {
                     varInfo.dtype = fits_parser_yytokentype::BITSTR as c_int;
                     colIter.datatype = TBYTE;
-                    ktype = fits_parser_yytokentype::BITCOL as c_int;
+                    sort = ColumnSort::Bits;
                 }
                 TBYTE | TSHORT | TLONG => {
                     /* The datatype of column with TZERO and TSCALE keywords might be
@@ -4584,7 +4580,7 @@ fn find_column(
                         varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
                         colIter.datatype = TDOUBLE;
                     }
-                    ktype = fits_parser_yytokentype::COLUMN as c_int;
+                    sort = ColumnSort::Numeric;
                 }
                 /*
                   For now, treat 8-byte integer columns as type double.
@@ -4594,17 +4590,17 @@ fn find_column(
                 TLONGLONG | TFLOAT | TDOUBLE => {
                     varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
                     colIter.datatype = TDOUBLE;
-                    ktype = fits_parser_yytokentype::COLUMN as c_int;
+                    sort = ColumnSort::Numeric;
                 }
                 TLOGICAL => {
                     varInfo.dtype = fits_parser_yytokentype::BOOLEAN as c_int;
                     colIter.datatype = TLOGICAL;
-                    ktype = fits_parser_yytokentype::BCOLUMN as c_int;
+                    sort = ColumnSort::Boolean;
                 }
                 TSTRING => {
                     varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
                     colIter.datatype = TSTRING;
-                    ktype = fits_parser_yytokentype::SCOLUMN as c_int;
+                    sort = ColumnSort::String;
                     if width >= c_long::from(MAX_STRLEN) {
                         int_snprintf!(
                             &mut temp,
@@ -4615,7 +4611,7 @@ fn find_column(
                         );
                         ffpmsg_slice(&temp);
                         lParse.status = PARSE_LRG_VECTOR;
-                        return P_ERROR;
+                        return None;
                     }
                     if lParse.hdutype == ASCII_TBL {
                         repeat = width;
@@ -4632,7 +4628,7 @@ fn find_column(
                         ffpmsg_slice(&temp);
                     }
                     lParse.status = PARSE_BAD_TYPE;
-                    return P_ERROR;
+                    return None;
                 }
             }
             varInfo.nelem = repeat;
@@ -4648,7 +4644,7 @@ fn find_column(
                 ) != 0
                 {
                     lParse.status = status;
-                    return P_ERROR;
+                    return None;
                 }
             } else {
                 varInfo.naxis = 1;
@@ -4656,101 +4652,83 @@ fn find_column(
             }
         }
         lParse.nCols += 1;
-        thelval.lng = c_long::from(col_cnt);
 
-        ktype
+        Some(ParserValue::Column {
+            index: col_cnt,
+            sort,
+        })
     }
 }
 
-fn find_keywd(
-    lParse: &mut ParseData,
-    keyname: &[c_char],
-    itslval: &mut FITS_PARSER_YYSTYPE,
-) -> c_int {
-    unsafe {
-        let thelval = itslval;
+fn find_keywd(lParse: &mut ParseData, keyname: &[c_char]) -> Option<ParserValue> {
+    let mut status: c_int = 0;
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut dtype: c_char = 0;
 
-        let mut status: c_int = 0;
-        let mut ktype: c_int = 0;
+    let mut rval: c_double = 0.0;
+    let mut bval: c_int = 0;
+    let mut ival: c_long = 0;
 
-        let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut dtype: c_char = 0;
-
-        let mut rval: c_double = 0.0;
-        let mut bval: c_int = 0;
-        let mut ival: c_long = 0;
-
-        status = 0;
-
-        if lParse.def_fptr.is_null() {
-            ffpmsg_str("find_keywd: no default fitsfile defined");
-            lParse.status = P_ERROR;
-            return P_ERROR;
-        }
-
-        let fptr: &mut fitsfile = lParse.def_fptr.as_mut().expect(NULL_MSG);
-
-        if fits_read_keyword(fptr, keyname, &mut keyvalue, None, &mut status) != 0 {
-            if status == KEY_NO_EXIST {
-                /*  Do this since ffgkey doesn't put an error message on stack  */
-                int_snprintf!(
-                    &mut keyvalue,
-                    FLEN_VALUE,
-                    "ffgkey could not find keyword: {}",
-                    CStr::from_bytes_until_nul(cast_slice(keyname))
-                        .unwrap()
-                        .to_str()
-                        .unwrap(),
-                );
-                ffpmsg_slice(&keyvalue);
-            }
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        if fits_get_keytype(&keyvalue, &mut dtype, &mut status) != 0 {
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        /* Read appropriate value type and set to CONST_OP */
-        match dtype as u8 {
-            b'C' => {
-                // 'C' as c_char
-                fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
-                ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(thelval.astr.as_mut_ptr(), keyvalue.as_ptr());
-            }
-            b'L' => {
-                // 'L' as c_char
-                fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
-                ktype = fits_parser_yytokentype::BOOLEAN as c_int;
-                thelval.log = bval as c_char;
-            }
-            b'I' => {
-                // 'I' as c_char
-                fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
-                ktype = fits_parser_yytokentype::LONG as c_int;
-                thelval.lng = ival;
-            }
-            b'F' => {
-                // 'F' as c_char
-                fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
-                ktype = fits_parser_yytokentype::DOUBLE as c_int;
-                thelval.dbl = rval;
-            }
-            _ => {
-                ktype = P_ERROR;
-            }
-        }
-
-        if status != 0 {
-            lParse.status = status;
-            return P_ERROR;
-        }
-
-        ktype
+    if lParse.def_fptr.is_null() {
+        ffpmsg_str("find_keywd: no default fitsfile defined");
+        lParse.status = P_ERROR;
+        return None;
     }
+
+    let fptr: &mut fitsfile = unsafe { lParse.def_fptr.as_mut().expect(NULL_MSG) };
+
+    if fits_read_keyword(fptr, keyname, &mut keyvalue, None, &mut status) != 0 {
+        if status == KEY_NO_EXIST {
+            /*  Do this since ffgkey doesn't put an error message on stack  */
+            int_snprintf!(
+                &mut keyvalue,
+                FLEN_VALUE,
+                "ffgkey could not find keyword: {}",
+                CStr::from_bytes_until_nul(cast_slice(keyname))
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            );
+            ffpmsg_slice(&keyvalue);
+        }
+        lParse.status = status;
+        return None;
+    }
+
+    if fits_get_keytype(&keyvalue, &mut dtype, &mut status) != 0 {
+        lParse.status = status;
+        return None;
+    }
+
+    /* Read appropriate value type and set to CONST_OP */
+    let value = match dtype as u8 {
+        b'C' => {
+            fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
+            let len = strlen_safe(&keyvalue);
+            ParserValue::Str(keyvalue[..=len].to_vec())
+        }
+        b'L' => {
+            fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
+            ParserValue::Boolean(bval != 0)
+        }
+        b'I' => {
+            fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
+            ParserValue::Long(ival)
+        }
+        b'F' => {
+            fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
+            ParserValue::Double(rval)
+        }
+        /* 'X' (complex) and anything else have no expression counterpart */
+        _ => return None,
+    };
+
+    if status != 0 {
+        lParse.status = status;
+        return None;
+    }
+
+    Some(value)
 }
 
 /// Allocates parser iterator column storage for 25 columns *more* than nCols

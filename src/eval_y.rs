@@ -81,8 +81,10 @@ use crate::c_types::{
     c_char, c_double, c_int, c_long, c_uint, c_ulong, c_void,
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
-use crate::eval_defs::{CONST_OP, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData, data_union, lval};
-use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
+use crate::eval_defs::{
+    ColumnSort, CONST_OP, MAXDIMS, MAXVARNAME, Node, ParseData, ParserValue, data_union, lval,
+};
+use crate::eval_tab::fits_parser_yytokentype;
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{
     ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe, fits_strncasecmp,
@@ -677,17 +679,16 @@ fn find_variable(lParse: &ParseData, varName: &[c_char]) -> c_int {
     -1
 }
 
-/// Resolve a name to the lexer token that describes it, filling `thelval` with
-/// the column number or the constant value.
+/// Resolve a name to a column or constant.
 ///
 /// This was `fits_parser_yyGetVariable` in the flex scanner, called during
-/// lexing; identifier resolution now happens while lowering, but `New_GTI` and
-/// `New_REG` still need it to find their default `TIME` / `X` / `Y` columns.
+/// lexing; identifier resolution now happens in `crate::parser::resolve`, but
+/// `New_GTI` and `New_REG` still need it to find their default `TIME` / `X` /
+/// `Y` columns.
 pub(crate) fn fits_parser_yyGetVariable(
     lParse: &mut ParseData,
     varName: &[c_char],
-    thelval: &mut FITS_PARSER_YYSTYPE,
-) -> c_int {
+) -> Option<ParserValue> {
     let varNum = find_variable(lParse, varName);
     if varNum < 0 {
         let Some(getData) = lParse.getData else {
@@ -696,38 +697,34 @@ pub(crate) fn fits_parser_yyGetVariable(
             strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
             ffpmsg_slice(&errMsg);
-            return P_ERROR;
+            return None;
         };
-        return getData(lParse, varName, thelval);
+        return getData(lParse, varName);
     }
 
     /*  Convert variable type into expression type  */
-    let dtype = match lParse.varData[varNum as usize].dtype {
+    let sort = match lParse.varData[varNum as usize].dtype {
         x if x == fits_parser_yytokentype::LONG as c_int
             || x == fits_parser_yytokentype::DOUBLE as c_int =>
         {
-            fits_parser_yytokentype::COLUMN as c_int
+            ColumnSort::Numeric
         }
-        x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
-            fits_parser_yytokentype::BCOLUMN as c_int
-        }
-        x if x == fits_parser_yytokentype::STRING as c_int => {
-            fits_parser_yytokentype::SCOLUMN as c_int
-        }
-        x if x == fits_parser_yytokentype::BITSTR as c_int => {
-            fits_parser_yytokentype::BITCOL as c_int
-        }
+        x if x == fits_parser_yytokentype::BOOLEAN as c_int => ColumnSort::Boolean,
+        x if x == fits_parser_yytokentype::STRING as c_int => ColumnSort::String,
+        x if x == fits_parser_yytokentype::BITSTR as c_int => ColumnSort::Bits,
         _ => {
             lParse.status = PARSE_SYNTAX_ERR;
             let mut errMsg: [c_char; MAXVARNAME + 25] = [0; MAXVARNAME + 25];
             strcpy_safe(&mut errMsg, cs!(c"Bad datatype for data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
             ffpmsg_slice(&errMsg);
-            P_ERROR
+            return None;
         }
     };
-    thelval.lng = c_long::from(varNum);
-    dtype
+    Some(ParserValue::Column {
+        index: varNum,
+        sort,
+    })
 }
 
 pub(crate) fn New_GTI(
@@ -742,7 +739,6 @@ pub(crate) fn New_GTI(
     unsafe {
         let mut fptr: *mut fitsfile = core::ptr::null_mut();
         let this_node_idx: usize;
-        let mut type_0: c_int = 0;
         let mut i: c_int = 0;
         let mut n: c_int = 0;
         let mut startCol: c_int = 0;
@@ -763,15 +759,17 @@ pub(crate) fn New_GTI(
         let mut timeSpan: c_double = 0.0;
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
-        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
 
         if (Op as c_uint == GTIFILT_FCT as c_int as c_uint
             || Op as c_uint == GTIFIND_FCT as c_int as c_uint)
             && Node1 == -99
         {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
-            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                Node1 = New_Column(lParse, colVal.lng as c_int);
+            if let Some(ParserValue::Column {
+                index,
+                sort: ColumnSort::Numeric,
+            }) = fits_parser_yyGetVariable(lParse, cs!(c"TIME"))
+            {
+                Node1 = New_Column(lParse, index);
             } else {
                 fits_parser_yyerror(
                     lParse,
@@ -1159,7 +1157,6 @@ pub(crate) fn New_REG(
     unsafe {
         let this_node_idx: usize;
         let mut that0: &mut Node;
-        let mut type_0: c_int = 0;
         let mut n: c_int = 0;
         let mut Node0: c_int = 0;
         let mut Xcol: c_int = 0;
@@ -1178,20 +1175,25 @@ pub(crate) fn New_REG(
         };
         let mut cX: *mut c_char = ptr::null_mut();
         let mut cY: *mut c_char = ptr::null_mut();
-        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
         if NodeX == -99 {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"X"), &mut colVal);
-            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeX = New_Column(lParse, colVal.lng as c_int);
+            if let Some(ParserValue::Column {
+                index,
+                sort: ColumnSort::Numeric,
+            }) = fits_parser_yyGetVariable(lParse, cs!(c"X"))
+            {
+                NodeX = New_Column(lParse, index);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build X column for REGFILTER"));
                 return -(1);
             }
         }
         if NodeY == -99 {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"Y"), &mut colVal);
-            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeY = New_Column(lParse, colVal.lng as c_int);
+            if let Some(ParserValue::Column {
+                index,
+                sort: ColumnSort::Numeric,
+            }) = fits_parser_yyGetVariable(lParse, cs!(c"Y"))
+            {
+                NodeY = New_Column(lParse, index);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build Y column for REGFILTER"));
                 return -(1);

@@ -17,11 +17,11 @@
 
 use super::ast::{Ast, AstKind, BinOp, UnOp};
 use super::error::ParseError;
-use super::resolve::{Resolutions, token_of};
+use super::resolve::Resolutions;
 use super::token::CallKind;
 use crate::c_types::{c_char, c_double, c_int, c_long, c_void};
-use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, ParseData};
-use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype as T};
+use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, ParseData, ParserValue};
+use crate::eval_tab::fits_parser_yytokentype as T;
 use crate::eval_y::{
     ABS_FCT, ACOS_FCT, ANGSEP_FCT, ASIN_FCT, ATAN2_FCT, ATAN_FCT, AVERAGE_FCT,
     AXISELEM_FCT, BOX_FCT, CEIL_FCT, CIRCLE_FCT, COS_FCT, COSH_FCT, Close_Vec, Copy_Dims,
@@ -221,59 +221,51 @@ impl Lowerer<'_> {
     /// The pre-pass resolved every name before parsing began and truncated the
     /// stream at the first failure, so a name that reaches lowering always has
     /// an entry.
-    fn resolve_token(
-        &mut self,
-        name: &[u8],
-        at: usize,
-    ) -> Result<(c_int, FITS_PARSER_YYSTYPE), ParseError> {
-        match self.names.get(&at) {
-            Some(&(dtype, lval)) => Ok((dtype, lval)),
-            None => Err(ParseError::syntax("unknown column or keyword", at, name)),
-        }
+    fn resolved(&self, name: &[u8], at: usize) -> Result<ParserValue, ParseError> {
+        self.names
+            .get(&at)
+            .cloned()
+            .ok_or_else(|| ParseError::syntax("unknown column or keyword", at, name))
     }
 
     /// Build the node the grammar would have built for a resolved name.
     fn resolve(&mut self, name: &[u8], at: usize) -> LRes {
-        let (dtype, lval) = self.resolve_token(name, at)?;
-        unsafe {
-            let n = match token_of(dtype) {
-                Some(T::COLUMN | T::BCOLUMN | T::SCOLUMN | T::BITCOL) => {
-                    New_Column(self.p, lval.lng as c_int)
-                }
-                Some(T::LONG) => self.const_long(lval.lng),
-                Some(T::DOUBLE) => self.const_double(lval.dbl),
-                Some(T::BOOLEAN) => New_Const(
+        let n = match self.resolved(name, at)? {
+            ParserValue::Column { index, .. } => New_Column(self.p, index),
+            ParserValue::Long(v) => self.const_long(v),
+            ParserValue::Double(v) => self.const_double(v),
+            ParserValue::Boolean(v) => {
+                let b: c_char = c_char::from(v);
+                New_Const(
                     self.p,
                     BOOLEAN,
-                    (&raw const lval.log).cast::<c_void>(),
+                    (&raw const b).cast::<c_void>(),
                     size_of::<c_char>() as c_long,
-                ),
-                Some(t @ (T::STRING | T::BITSTR)) => {
-                    let tag = if matches!(t, T::STRING) { STRING } else { BITSTR };
-                    let len = lval.astr.iter().position(|&c| c == 0).unwrap_or(0);
-                    let n = New_Const(
-                        self.p,
-                        tag,
-                        lval.astr.as_ptr().cast::<c_void>(),
-                        len as c_long + 1,
-                    );
-                    let n = self.test(n)?;
-                    self.set_size(n, len as c_long);
-                    n
-                }
-                /* getData has already set lParse.status and pushed a message */
-                _ => return Err(ParseError::syntax("unknown column or keyword", at, name)),
-            };
-            self.test(n)
-        }
+                )
+            }
+            ParserValue::Str(text) => {
+                /* `Str` is NUL-terminated; SIZE is the length without it */
+                let len = text.len() - 1;
+                let n = New_Const(
+                    self.p,
+                    STRING,
+                    text.as_ptr().cast::<c_void>(),
+                    len as c_long + 1,
+                );
+                let n = self.test(n)?;
+                self.set_size(n, len as c_long);
+                n
+            }
+        };
+        self.test(n)
     }
 
     /// Resolve a name that must be a *column*, for the `NAME{offset}` form.
     fn resolve_column(&mut self, name: &[u8], at: usize) -> Result<c_int, ParseError> {
-        let (dtype, lval) = self.resolve_token(name, at)?;
-        match token_of(dtype) {
-            /* spec 3.4 (1): the offset form exists only for column tokens */
-            Some(T::COLUMN | T::BCOLUMN | T::SCOLUMN | T::BITCOL) => unsafe { Ok(lval.lng as c_int) },
+        /* spec 3.4 (1): the offset form exists only for columns, not for a
+        keyword that happens to resolve to a constant */
+        match self.resolved(name, at)? {
+            ParserValue::Column { index, .. } => Ok(index),
             _ => Err(ParseError::syntax(
                 "row offsets are only allowed on a column",
                 at,
