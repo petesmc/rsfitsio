@@ -13,5 +13,6 @@
 //! reviewable and the tests are meaningful on their own.
 #![allow(dead_code)]
 
+pub(crate) mod expr;
 pub(crate) mod kernel;
 pub(crate) mod value;
