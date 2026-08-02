@@ -7,7 +7,6 @@ use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 pub const MAXDIMS: c_int = 5;
 pub const MAXSUBS: c_int = 10;
 pub const MAXVARNAME: usize = 80;
-pub const CONST_OP: c_int = -1000;
 pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
@@ -37,11 +36,322 @@ impl Default for DataInfo {
     }
 }
 
+/// The function a `Node` computes, stored in `Node::operation` for nodes whose
+/// `DoOp` is `Do_Func`.
+///
+/// The C had these as a `typedef enum FuncOp` in `eval_defs.h`; the
+/// transpilation flattened them to bare integers, so `Do_Func` was a match over
+/// fifty numeric literals. The values are unchanged from the C.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum FuncOp {
+    /// `rnd_fct`
+    Rnd = 1001,
+    /// `sum_fct`
+    Sum = 1002,
+    /// `nelem_fct`
+    Nelem = 1003,
+    /// `sin_fct`
+    Sin = 1004,
+    /// `cos_fct`
+    Cos = 1005,
+    /// `tan_fct`
+    Tan = 1006,
+    /// `asin_fct`
+    Asin = 1007,
+    /// `acos_fct`
+    Acos = 1008,
+    /// `atan_fct`
+    Atan = 1009,
+    /// `sinh_fct`
+    Sinh = 1010,
+    /// `cosh_fct`
+    Cosh = 1011,
+    /// `tanh_fct`
+    Tanh = 1012,
+    /// `exp_fct`
+    Exp = 1013,
+    /// `log_fct`
+    Log = 1014,
+    /// `log10_fct`
+    Log10 = 1015,
+    /// `sqrt_fct`
+    Sqrt = 1016,
+    /// `abs_fct`
+    Abs = 1017,
+    /// `atan2_fct`
+    Atan2 = 1018,
+    /// `ceil_fct`
+    Ceil = 1019,
+    /// `floor_fct`
+    Floor = 1020,
+    /// `round_fct`
+    Round = 1021,
+    /// `min1_fct`
+    Min1 = 1022,
+    /// `min2_fct`
+    Min2 = 1023,
+    /// `max1_fct`
+    Max1 = 1024,
+    /// `max2_fct`
+    Max2 = 1025,
+    /// `near_fct`
+    Near = 1026,
+    /// `circle_fct`
+    Circle = 1027,
+    /// `box_fct`
+    Box = 1028,
+    /// `elps_fct`
+    Ellipse = 1029,
+    /// `isnull_fct`
+    IsNull = 1030,
+    /// `defnull_fct`
+    DefNull = 1031,
+    /// `gtifilt_fct`
+    GtiFilt = 1032,
+    /// `regfilt_fct`
+    RegFilt = 1033,
+    /// `ifthenelse_fct`
+    IfThenElse = 1034,
+    /// `row_fct`
+    Row = 1035,
+    /// `null_fct`
+    Null = 1036,
+    /// `median_fct`
+    Median = 1037,
+    /// `average_fct`
+    Average = 1038,
+    /// `stddev_fct`
+    Stddev = 1039,
+    /// `nonnull_fct`
+    NonNull = 1040,
+    /// `angsep_fct`
+    AngSep = 1041,
+    /// `gasrnd_fct`
+    GasRnd = 1042,
+    /// `poirnd_fct`
+    PoiRnd = 1043,
+    /// `strmid_fct`
+    StrMid = 1044,
+    /// `strpos_fct`
+    StrPos = 1045,
+    /// `setnull_fct`
+    SetNull = 1046,
+    /// `gtiover_fct`
+    GtiOver = 1047,
+    /// `gtifind_fct`
+    GtiFind = 1048,
+    /// `elemnum_fct`
+    ElemNum = 1049,
+    /// `axiselem_fct`
+    AxisElem = 1050,
+    /// `array_fct`
+    Array = 1051,
+}
+
+impl FuncOp {
+    /// The `Node::operation` encoding.
+    pub(crate) fn code(self) -> c_int {
+        self as c_int
+    }
+
+    /// Recover the function from a `Node::operation` value.
+    ///
+    /// `operation` also encodes column indices, `CONST_OP` and operator
+    /// characters, so this returns `None` for anything that is not a function.
+    pub(crate) fn from_code(v: c_int) -> Option<FuncOp> {
+        Some(match v {
+            1001 => FuncOp::Rnd,
+            1002 => FuncOp::Sum,
+            1003 => FuncOp::Nelem,
+            1004 => FuncOp::Sin,
+            1005 => FuncOp::Cos,
+            1006 => FuncOp::Tan,
+            1007 => FuncOp::Asin,
+            1008 => FuncOp::Acos,
+            1009 => FuncOp::Atan,
+            1010 => FuncOp::Sinh,
+            1011 => FuncOp::Cosh,
+            1012 => FuncOp::Tanh,
+            1013 => FuncOp::Exp,
+            1014 => FuncOp::Log,
+            1015 => FuncOp::Log10,
+            1016 => FuncOp::Sqrt,
+            1017 => FuncOp::Abs,
+            1018 => FuncOp::Atan2,
+            1019 => FuncOp::Ceil,
+            1020 => FuncOp::Floor,
+            1021 => FuncOp::Round,
+            1022 => FuncOp::Min1,
+            1023 => FuncOp::Min2,
+            1024 => FuncOp::Max1,
+            1025 => FuncOp::Max2,
+            1026 => FuncOp::Near,
+            1027 => FuncOp::Circle,
+            1028 => FuncOp::Box,
+            1029 => FuncOp::Ellipse,
+            1030 => FuncOp::IsNull,
+            1031 => FuncOp::DefNull,
+            1032 => FuncOp::GtiFilt,
+            1033 => FuncOp::RegFilt,
+            1034 => FuncOp::IfThenElse,
+            1035 => FuncOp::Row,
+            1036 => FuncOp::Null,
+            1037 => FuncOp::Median,
+            1038 => FuncOp::Average,
+            1039 => FuncOp::Stddev,
+            1040 => FuncOp::NonNull,
+            1041 => FuncOp::AngSep,
+            1042 => FuncOp::GasRnd,
+            1043 => FuncOp::PoiRnd,
+            1044 => FuncOp::StrMid,
+            1045 => FuncOp::StrPos,
+            1046 => FuncOp::SetNull,
+            1047 => FuncOp::GtiOver,
+            1048 => FuncOp::GtiFind,
+            1049 => FuncOp::ElemNum,
+            1050 => FuncOp::AxisElem,
+            1051 => FuncOp::Array,
+            _ => return None,
+        })
+    }
+}
+/// What a computed node does, stored in [`Operation::Op`].
+///
+/// `eval.y` used the operator character for the arithmetic and bitwise cases
+/// and a token number for the rest, and the transpilation left both as bare
+/// integers -- so `Do_BinOp_lng` matched on `43` for `+` and `279` for `==`.
+/// The discriminants are unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum OpCode {
+    /* spelled as the character eval.y wrote */
+    Mod = 37,
+    BitAnd = 38,
+    Mul = 42,
+    Add = 43,
+    Sub = 45,
+    Div = 47,
+    BitXor = 94,
+    BitOr = 124,
+    /// `~`, approximate equality
+    Approx = 126,
+    /// `[`, a subscript node built by `New_Deref`
+    Deref = 91,
+    /// `{`, a vector literal built by `New_Vector`
+    Vector = 123,
+
+    /* a conversion's opcode is its target sort */
+    ToBoolean = 258,
+    ToLong = 259,
+    ToDouble = 260,
+
+    Or = 277,
+    And = 278,
+    Eq = 279,
+    Ne = 280,
+    Gt = 281,
+    Lt = 282,
+    Lte = 283,
+    Gte = 284,
+    Power = 286,
+    Not = 287,
+    IntCast = 288,
+    FltCast = 289,
+    UMinus = 290,
+    /// `ACCUM()`, a running total
+    Accum = 291,
+    /// `SEQDIFF()`, a running difference
+    Diff = 292,
+}
+
+impl OpCode {
+    pub(crate) fn code(self) -> c_int {
+        self as c_int
+    }
+
+    pub(crate) fn from_code(v: c_int) -> Option<OpCode> {
+        use OpCode::*;
+        Some(match v {
+            37 => Mod,
+            38 => BitAnd,
+            42 => Mul,
+            43 => Add,
+            45 => Sub,
+            47 => Div,
+            94 => BitXor,
+            124 => BitOr,
+            126 => Approx,
+            258 => ToBoolean,
+            259 => ToLong,
+            260 => ToDouble,
+            277 => Or,
+            278 => And,
+            279 => Eq,
+            280 => Ne,
+            281 => Gt,
+            282 => Lt,
+            283 => Lte,
+            284 => Gte,
+            286 => Power,
+            287 => Not,
+            288 => IntCast,
+            289 => FltCast,
+            290 => UMinus,
+            291 => Accum,
+            292 => Diff,
+            _ => return None,
+        })
+    }
+}
+
+/// What a [`Node`] is.
+///
+/// The C packed all four cases into one `int`: a constant was the sentinel
+/// -1000, a column was the *negated* index of its entry in `colData`, and
+/// anything positive was either an operator character, a token number or a
+/// `funcOp`. Tests like `operation > 0` meaning "has sub-nodes to evaluate"
+/// only made sense with that layout in mind.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Operation {
+    /// A constant folded at parse time; was `CONST_OP`.
+    #[default]
+    Const,
+    /// A leaf reading `colData[index]`; was a negated index.
+    Column(c_int),
+    /// A unary or binary operator.
+    Op(OpCode),
+    /// A function call.
+    Func(FuncOp),
+}
+
+impl Operation {
+    /// True for nodes with sub-nodes to evaluate first; was `operation > 0`.
+    pub(crate) fn is_computed(self) -> bool {
+        matches!(self, Operation::Op(_) | Operation::Func(_))
+    }
+
+    /// The column index, for a column leaf.
+    pub(crate) fn column(self) -> Option<c_int> {
+        match self {
+            Operation::Column(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn op(self) -> Option<OpCode> {
+        match self {
+            Operation::Op(o) => Some(o),
+            _ => None,
+        }
+    }
+}
+
 /// The sort of a parser value: which of `eval.y`'s four nonterminals a node
 /// belongs to.
 ///
 /// The transpilation stored this as a bare `c_int` holding a lexer token id, so
-/// every test read `node.ntype == fits_parser_yytokentype::DOUBLE as c_int`.
+/// every test read `node.ntype == <token> as c_int`.
 ///
 /// The discriminants are the original token numbers, and the derived `Ord` is
 /// the numeric promotion order that `eval.y` depended on -- its `%token`
@@ -277,7 +587,7 @@ pub(crate) struct lval {
 
 #[derive(Default, Debug, Copy, Clone)]
 pub(crate) struct Node {
-    pub operation: c_int,
+    pub operation: Operation,
     pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
     pub nSubNodes: c_int,
     pub SubNodes: [usize; MAXSUBS as usize],

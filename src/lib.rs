@@ -14,8 +14,6 @@
     clippy::needless_late_init,
     clippy::explicit_counter_loop,
     clippy::manual_range_contains,
-    // eval_tab.rs mirrors the bison-generated token enum from eval_tab.h;
-    // BOOLEAN/BITSTR/GTIFILTER/... must keep the grammar's spelling.
     clippy::upper_case_acronyms,
     // C integer widths are target-dependent -- c_long is 64-bit on Linux/macOS
     // and 32-bit on Windows -- so a cast or Into that clippy sees as a no-op
@@ -78,7 +76,6 @@ pub mod drvrsmem;
 pub mod editcol;
 pub mod eval_defs;
 pub mod eval_f;
-pub mod eval_tab;
 pub mod eval_y;
 pub mod fits_hcompress;
 pub mod fits_hdecompress;

@@ -74,10 +74,10 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, ColumnSort, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, P_ERROR,
-    ParseData, ParseStatusVariables, ParserValue, ValueSort, parseInfo,
+    ColumnSort, DataInfo, FuncOp, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, Operation,
+    P_ERROR, ParseData, ParseStatusVariables, ParserValue, ValueSort, parseInfo,
 };
-use crate::eval_y::{Evaluate_Parser, FuncOp};
+use crate::eval_y::Evaluate_Parser;
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -1519,7 +1519,7 @@ pub(crate) fn ffiprs(
     lParse.datatype = *datatype;
     lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
 
-    if result.operation == CONST_OP {
+    if result.operation == Operation::Const {
         *nelem = -*nelem;
     }
     *status
@@ -1564,11 +1564,13 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             node = lParse.nNodes;
             while node != 0 {
                 node -= 1;
-                if (lParse.Nodes[node as usize]).operation == FuncOp::GtiFilt as c_int {
+                if (lParse.Nodes[node as usize]).operation == Operation::Func(FuncOp::GtiFilt) {
                     i = lParse.Nodes[node as usize].SubNodes[0];
                     /* the START/STOP array New_GTI attached to the node */
                     (lParse.Nodes[i]).value.data.free_buffer();
-                } else if (lParse.Nodes[node as usize]).operation == FuncOp::RegFilt as c_int {
+                } else if (lParse.Nodes[node as usize]).operation
+                    == Operation::Func(FuncOp::RegFilt)
+                {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     if !(lParse.Nodes[i]).value.data.raw().is_null() {
                         fits_free_region(Box::from_raw(
@@ -1886,7 +1888,7 @@ pub(crate) fn fits_parser_workfn_safe(
             /*  Copy results into data array  */
 
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
+            if result.operation == Operation::Const {
                 constant = 1;
             }
 
@@ -2013,7 +2015,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                 }
                             }
                         }
-                        if result.operation > 0 {
+                        if result.operation.is_computed() {
                             result.value.data.free_buffer();
                         }
                     }
@@ -2121,7 +2123,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             lParse.status = PARSE_BAD_TYPE;
                         }
                     }
-                    if result.operation > 0 {
+                    if result.operation.is_computed() {
                         /* the row-pointer array and the block it indexes */
                         FREE!(*(result.value.data.str_buf()));
                         result.value.data.free_buffer();
@@ -2160,7 +2162,7 @@ pub(crate) fn fits_parser_workfn_safe(
                         ffpmsg_str("Cannot convert string expression to desired type.");
                         lParse.status = PARSE_BAD_TYPE;
                     }
-                    if result.operation > 0 {
+                    if result.operation.is_computed() {
                         /* the row-pointer array and the block it indexes */
                         FREE!(*(result.value.data.str_buf()));
                         result.value.data.free_buffer();
@@ -3838,7 +3840,7 @@ pub(crate) fn ffffrw_work_safe(
 
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
+            if result.operation == Operation::Const {
                 if result.value.data.log() != 0 {
                     *(workData.prownum) = firstrow;
                     return -1;

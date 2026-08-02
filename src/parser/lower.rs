@@ -21,11 +21,10 @@ use super::resolve::Resolutions;
 use super::token::CallKind;
 use crate::c_types::{c_char, c_double, c_int, c_long};
 use crate::eval_defs::{
-    CONST_OP, MAX_STRLEN, MAXSUBS, NodeValue, ParseData, ParserValue, ValueSort,
+    FuncOp, MAX_STRLEN, MAXSUBS, NodeValue, OpCode, Operation, ParseData, ParserValue, ValueSort,
 };
-use crate::eval_tab::fits_parser_yytokentype as T;
 use crate::eval_y::{
-    Close_Vec, Copy_Dims, FuncOp, New_Array, New_BinOp, New_Column, New_Const, New_Deref, New_Func,
+    Close_Vec, Copy_Dims, New_Array, New_BinOp, New_Column, New_Const, New_Deref, New_Func,
     New_FuncSize, New_GTI, New_Offset, New_REG, New_Unary, New_Vector, Test_Dims,
 };
 
@@ -87,7 +86,7 @@ impl Lowerer<'_> {
         self.p.Nodes[n as usize].value.nelem = v;
     }
     fn is_const(&self, n: NodeId) -> bool {
-        self.p.Nodes[n as usize].operation == CONST_OP
+        self.p.Nodes[n as usize].operation == Operation::Const
     }
     /// The value of a node already known to be a `ValueSort::Long` constant.
     fn const_lng(&self, n: NodeId) -> c_long {
@@ -109,9 +108,9 @@ impl Lowerer<'_> {
     fn promote(&mut self, a: &mut NodeId, b: &mut NodeId) {
         let (ta, tb) = (self.ntype(*a), self.ntype(*b));
         if ta > tb {
-            *b = New_Unary(self.p, ta, 0, *b);
+            *b = New_Unary(self.p, ta, None, *b);
         } else if ta < tb {
-            *a = New_Unary(self.p, tb, 0, *a);
+            *a = New_Unary(self.p, tb, None, *a);
         }
     }
 
@@ -199,7 +198,7 @@ impl Lowerer<'_> {
     /// `if( TYPE(n) != ValueSort::Double ) n = New_Unary(ValueSort::Double, 0, n);`
     fn as_double(&mut self, n: NodeId) -> NodeId {
         if self.ntype(n) != ValueSort::Double {
-            New_Unary(self.p, ValueSort::Double, 0, n)
+            New_Unary(self.p, ValueSort::Double, None, n)
         } else {
             n
         }
@@ -208,7 +207,7 @@ impl Lowerer<'_> {
     /// `if( TYPE(n) != ValueSort::Long ) n = New_Unary(ValueSort::Long, 0, n);`
     fn as_long(&mut self, n: NodeId) -> NodeId {
         if self.ntype(n) != ValueSort::Long {
-            New_Unary(self.p, ValueSort::Long, 0, n)
+            New_Unary(self.p, ValueSort::Long, None, n)
         } else {
             n
         }
@@ -330,7 +329,7 @@ impl Lowerer<'_> {
                 if !is_expr(t) {
                     return Err(ParseError::syntax("unary '-' needs a number", at, b"-"));
                 }
-                New_Unary(self.p, t, T::UMINUS as c_int, n)
+                New_Unary(self.p, t, Some(OpCode::UMinus), n)
             }
             /* `'+' expr { $$ = $2; }` -- no node, but the sort still matters */
             UnOp::Plus => {
@@ -341,8 +340,8 @@ impl Lowerer<'_> {
             }
             /* spec 3.4 (3): `NOT bexpr` and `NOT bits` only */
             UnOp::Not => match t {
-                ValueSort::Boolean => New_Unary(self.p, ValueSort::Boolean, T::NOT as c_int, n),
-                ValueSort::Bits => New_Unary(self.p, ValueSort::Bits, T::NOT as c_int, n),
+                ValueSort::Boolean => New_Unary(self.p, ValueSort::Boolean, Some(OpCode::Not), n),
+                ValueSort::Bits => New_Unary(self.p, ValueSort::Bits, Some(OpCode::Not), n),
                 _ => {
                     return Err(ParseError::syntax(
                         "'!' needs a boolean or bit-string operand",
@@ -355,13 +354,13 @@ impl Lowerer<'_> {
                 if !is_numeric(t) {
                     return Err(ParseError::syntax("(int) needs a number", at, b"(int)"));
                 }
-                New_Unary(self.p, ValueSort::Long, T::INTCAST as c_int, n)
+                New_Unary(self.p, ValueSort::Long, Some(OpCode::IntCast), n)
             }
             UnOp::FltCast => {
                 if !is_numeric(t) {
                     return Err(ParseError::syntax("(float) needs a number", at, b"(float)"));
                 }
-                New_Unary(self.p, ValueSort::Double, T::FLTCAST as c_int, n)
+                New_Unary(self.p, ValueSort::Double, Some(OpCode::FltCast), n)
             }
         };
         self.test(r)
@@ -380,9 +379,9 @@ impl Lowerer<'_> {
         self.promote(&mut v, &mut l);
         self.promote(&mut v, &mut h);
         self.promote(&mut l, &mut h);
-        let lo_le = New_BinOp(self.p, ValueSort::Boolean, l, T::LTE as c_int, v);
-        let le_hi = New_BinOp(self.p, ValueSort::Boolean, v, T::LTE as c_int, h);
-        let r = New_BinOp(self.p, ValueSort::Boolean, lo_le, T::AND as c_int, le_hi);
+        let lo_le = New_BinOp(self.p, ValueSort::Boolean, l, OpCode::Lte, v);
+        let le_hi = New_BinOp(self.p, ValueSort::Boolean, v, OpCode::Lte, h);
+        let r = New_BinOp(self.p, ValueSort::Boolean, lo_le, OpCode::And, le_hi);
         self.test(r)
     }
 
@@ -492,28 +491,28 @@ impl Lowerer<'_> {
                             "Combined bit string size exceeds 255 bits"
                         }));
                     }
-                    let n = New_BinOp(self.p, ta, a, i32::from(b'+'), b);
+                    let n = New_BinOp(self.p, ta, a, OpCode::Add, b);
                     let n = self.test(n)?;
                     self.set_size(n, total);
                     return Ok(n);
                 }
-                _ if is_expr(ta) && is_expr(tb) => self.arith(a, b, b'+')?,
+                _ if is_expr(ta) && is_expr(tb) => self.arith(a, b, OpCode::Add)?,
                 _ => return Err(self.bad_operands("+", at)),
             },
-            BinOp::Sub => self.numeric_only(a, b, b'-', at)?,
-            BinOp::Div => self.numeric_only(a, b, b'/', at)?,
-            BinOp::Mod => self.numeric_only(a, b, b'%', at)?,
+            BinOp::Sub => self.numeric_only(a, b, OpCode::Sub, at)?,
+            BinOp::Div => self.numeric_only(a, b, OpCode::Div, at)?,
+            BinOp::Mod => self.numeric_only(a, b, OpCode::Mod, at)?,
             BinOp::Mul => match (ta, tb) {
                 /* `expr '*' bexpr` and `bexpr '*' expr` coerce the boolean */
                 (x, ValueSort::Boolean) if is_expr(x) => {
-                    b = New_Unary(self.p, ta, 0, b);
-                    New_BinOp(self.p, ta, a, i32::from(b'*'), b)
+                    b = New_Unary(self.p, ta, None, b);
+                    New_BinOp(self.p, ta, a, OpCode::Mul, b)
                 }
                 (ValueSort::Boolean, y) if is_expr(y) => {
-                    a = New_Unary(self.p, tb, 0, a);
-                    New_BinOp(self.p, tb, a, i32::from(b'*'), b)
+                    a = New_Unary(self.p, tb, None, a);
+                    New_BinOp(self.p, tb, a, OpCode::Mul, b)
                 }
-                _ => self.numeric_only(a, b, b'*', at)?,
+                _ => self.numeric_only(a, b, OpCode::Mul, at)?,
             },
             BinOp::Pow => {
                 if !is_expr(ta) || !is_expr(tb) {
@@ -521,14 +520,18 @@ impl Lowerer<'_> {
                 }
                 self.promote(&mut a, &mut b);
                 let t = self.ntype(a);
-                New_BinOp(self.p, t, a, T::POWER as c_int, b)
+                New_BinOp(self.p, t, a, OpCode::Power, b)
             }
 
             /* `bits & bits` / `bits | bits`, or integer bitwise */
             BinOp::BitAnd | BinOp::BitOr => {
-                let ch = if op == BinOp::BitAnd { b'&' } else { b'|' };
+                let ch = if op == BinOp::BitAnd {
+                    OpCode::BitAnd
+                } else {
+                    OpCode::BitOr
+                };
                 if ta == ValueSort::Bits && tb == ValueSort::Bits {
-                    let n = New_BinOp(self.p, ValueSort::Bits, a, i32::from(ch), b);
+                    let n = New_BinOp(self.p, ValueSort::Bits, a, ch, b);
                     let n = self.test(n)?;
                     let sz = self.size(a).max(self.size(b));
                     self.set_size(n, sz);
@@ -539,7 +542,7 @@ impl Lowerer<'_> {
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
                     ));
                 }
-                New_BinOp(self.p, ta, a, i32::from(ch), b)
+                New_BinOp(self.p, ta, a, ch, b)
             }
             BinOp::BitXor => {
                 if ta != ValueSort::Long || tb != ValueSort::Long {
@@ -547,7 +550,7 @@ impl Lowerer<'_> {
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
                     ));
                 }
-                New_BinOp(self.p, ta, a, i32::from(b'^'), b)
+                New_BinOp(self.p, ta, a, OpCode::BitXor, b)
             }
 
             BinOp::And | BinOp::Or => {
@@ -555,9 +558,9 @@ impl Lowerer<'_> {
                     return Err(self.bad_operands(if op == BinOp::And { "&&" } else { "||" }, at));
                 }
                 let code = if op == BinOp::And {
-                    T::AND as c_int
+                    OpCode::And
                 } else {
-                    T::OR as c_int
+                    OpCode::Or
                 };
                 New_BinOp(self.p, ValueSort::Boolean, a, code, b)
             }
@@ -570,7 +573,7 @@ impl Lowerer<'_> {
                     return Err(self.bad_operands("~", at));
                 }
                 self.promote(&mut a, &mut b);
-                New_BinOp(self.p, ValueSort::Boolean, a, i32::from(b'~'), b)
+                New_BinOp(self.p, ValueSort::Boolean, a, OpCode::Approx, b)
             }
         };
         self.test(r)
@@ -607,18 +610,15 @@ impl Lowerer<'_> {
 
     /// `expr OP expr` with numeric promotion, the shape of most `eval.y`
     /// arithmetic actions.
-    fn arith(&mut self, mut a: NodeId, mut b: NodeId, ch: u8) -> LRes {
+    fn arith(&mut self, mut a: NodeId, mut b: NodeId, ch: OpCode) -> LRes {
         self.promote(&mut a, &mut b);
         let t = self.ntype(a);
-        Ok(New_BinOp(self.p, t, a, i32::from(ch), b))
+        Ok(New_BinOp(self.p, t, a, ch, b))
     }
 
-    fn numeric_only(&mut self, a: NodeId, b: NodeId, ch: u8, at: usize) -> LRes {
+    fn numeric_only(&mut self, a: NodeId, b: NodeId, ch: OpCode, at: usize) -> LRes {
         if !is_expr(self.ntype(a)) || !is_expr(self.ntype(b)) {
-            return Err(self.bad_operands(
-                core::str::from_utf8(core::slice::from_ref(&ch)).unwrap_or("?"),
-                at,
-            ));
+            return Err(self.bad_operands(&format!("{ch:?}"), at));
         }
         self.arith(a, b, ch)
     }
@@ -626,12 +626,12 @@ impl Lowerer<'_> {
     fn lower_compare(&mut self, op: BinOp, mut a: NodeId, mut b: NodeId, at: usize) -> LRes {
         let (ta, tb) = (self.ntype(a), self.ntype(b));
         let code = match op {
-            BinOp::Eq => T::EQ as c_int,
-            BinOp::Ne => T::NE as c_int,
-            BinOp::Gt => T::GT as c_int,
-            BinOp::Lt => T::LT as c_int,
-            BinOp::Gte => T::GTE as c_int,
-            BinOp::Lte => T::LTE as c_int,
+            BinOp::Eq => OpCode::Eq,
+            BinOp::Ne => OpCode::Ne,
+            BinOp::Gt => OpCode::Gt,
+            BinOp::Lt => OpCode::Lt,
+            BinOp::Gte => OpCode::Gte,
+            BinOp::Lte => OpCode::Lte,
             _ => unreachable!(),
         };
 
@@ -902,7 +902,7 @@ impl Lowerer<'_> {
                     let n = self.func(Some(ValueSort::Long), FuncOp::Sum, &[a]);
                     self.test(n)
                 }
-                b"ACCUM" => self.accum(a, ValueSort::Long, T::ACCUM as c_int),
+                b"ACCUM" => self.accum(a, ValueSort::Long, OpCode::Accum),
                 /* `FUNCTION bexpr ')'` supports only SUM, NELEM and ACCUM.
                 Falling through to the numeric list would accept `ABS(BOOLCOL)`
                 and then hand Do_Func a char buffer to read through a *long. */
@@ -938,14 +938,14 @@ impl Lowerer<'_> {
                     self.set_size(n, 1);
                     Ok(n)
                 }
-                b"ACCUM" => self.accum(a, ValueSort::Long, T::ACCUM as c_int),
+                b"ACCUM" => self.accum(a, ValueSort::Long, OpCode::Accum),
                 _ => Err(unsupported("bits", name)),
             },
             _ => self.func1_numeric(name, a),
         }
     }
 
-    fn accum(&mut self, a: NodeId, ret: ValueSort, code: c_int) -> LRes {
+    fn accum(&mut self, a: NodeId, ret: ValueSort, code: OpCode) -> LRes {
         let zero = if ret == ValueSort::Double {
             self.const_double(0.0)
         } else {
@@ -965,16 +965,16 @@ impl Lowerer<'_> {
             b"MEDIAN" => self.func(Some(t), FuncOp::Median, &[a]),
             b"NVALID" => self.func(Some(ValueSort::Long), FuncOp::NonNull, &[a]),
             b"ACCUM" if t == ValueSort::Long => {
-                return self.accum(a, ValueSort::Long, T::ACCUM as c_int);
+                return self.accum(a, ValueSort::Long, OpCode::Accum);
             }
             b"ACCUM" if t == ValueSort::Double => {
-                return self.accum(a, ValueSort::Double, T::ACCUM as c_int);
+                return self.accum(a, ValueSort::Double, OpCode::Accum);
             }
             b"SEQDIFF" if t == ValueSort::Long => {
-                return self.accum(a, ValueSort::Long, T::DIFF as c_int);
+                return self.accum(a, ValueSort::Long, OpCode::Diff);
             }
             b"SEQDIFF" if t == ValueSort::Double => {
-                return self.accum(a, ValueSort::Double, T::DIFF as c_int);
+                return self.accum(a, ValueSort::Double, OpCode::Diff);
             }
             b"ABS" => self.func(None, FuncOp::Abs, &[a]),
             b"MIN" => self.func(Some(t), FuncOp::Min1, &[a]),
@@ -1132,7 +1132,7 @@ impl Lowerer<'_> {
                 }
                 /* make the sentinel the same sort as the value */
                 let a = if ta != tb {
-                    New_Unary(self.p, tb, 0, a)
+                    New_Unary(self.p, tb, None, a)
                 } else {
                     a
                 };
