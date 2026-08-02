@@ -12,7 +12,6 @@ pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
-
 #[derive(Debug)]
 pub(crate) struct DataInfo {
     pub name: [c_char; MAXVARNAME + 1],
@@ -38,31 +37,188 @@ impl Default for DataInfo {
     }
 }
 
-#[derive(Copy, Clone)]
-pub(crate) union data_union {
-    pub dbl: f64,
-    pub lng: c_long,
-    pub log: c_char,
-    pub astr: [c_char; MAX_STRLEN as usize],
-    pub dblptr: *mut f64,
-    pub lngptr: *mut c_long,
-    pub logptr: *mut c_char,
-    pub strptr: *mut *mut c_char,
-    pub ptr: *mut c_void,
+/// Which element type a [`NodeValue::Buffer`] holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BufferKind {
+    Long,
+    Double,
+    Logical,
+    /// An array of row pointers into one contiguous character block.
+    Text,
+    /// Not an element array at all: a single owned object the engine stashes
+    /// in the node, such as the `SAORegion` built by `New_REG`. Only ever read
+    /// back through [`NodeValue::raw`].
+    Opaque,
 }
 
-impl core::fmt::Debug for data_union {
+/// The value carried by a [`Node`].
+///
+/// A node holds either a constant folded at parse time, or a buffer with one
+/// element per (row x element) that the `Do_*` routines fill in.
+///
+/// This was an untagged union, which is how `ACCUM(BOOLCOL)` came to read a
+/// `char` buffer through a `*long`: nothing checked that the arm being read
+/// matched the node's sort. The accessors below assert it, so that class of
+/// mistake is a panic in a debug build instead of undefined behaviour.
+///
+/// The buffer is still a raw allocation rather than a `Vec`. The `Do_*`
+/// routines read two operand buffers while writing a third, all indexed out of
+/// `ParseData::Nodes`; owning the storage would make that a borrow conflict,
+/// and untangling it is a separate change from tagging the union.
+/// The `Text` arm makes this 264 bytes where the others need 16. That is the
+/// union's own footprint, so it is not a regression, and boxing it is not an
+/// option while `lval` and `Node` are `Copy` and get copied by value all
+/// through the engine.
+#[allow(clippy::large_enum_variant)]
+#[derive(Copy, Clone, Default)]
+pub(crate) enum NodeValue {
+    /// A freshly allocated node, or one whose buffer has been freed.
+    #[default]
+    Empty,
+    Long(c_long),
+    Double(f64),
+    Logical(c_char),
+    /// A string or bit-string scalar, NUL-terminated within the array. Also
+    /// used as the scratch buffer for a scalar string result.
+    Text([c_char; MAX_STRLEN as usize]),
+    /// A row buffer, allocated by `Allocate_Ptrs` and released by
+    /// `free_node_buffer`.
+    Buffer {
+        kind: BufferKind,
+        ptr: *mut c_void,
+    },
+}
+
+impl core::fmt::Debug for NodeValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "data_union {{ long: {:?} }}", unsafe { self.lng })
-    }
-}
-
-impl Default for data_union {
-    fn default() -> Self {
-        data_union {
-            ptr: core::ptr::null_mut(),
+        match self {
+            NodeValue::Empty => write!(f, "Empty"),
+            NodeValue::Long(v) => write!(f, "Long({v})"),
+            NodeValue::Double(v) => write!(f, "Double({v})"),
+            NodeValue::Logical(v) => write!(f, "Logical({v})"),
+            NodeValue::Text(_) => write!(f, "Text(..)"),
+            NodeValue::Buffer { kind, ptr } => write!(f, "Buffer({kind:?}, {ptr:?})"),
         }
     }
+}
+
+impl NodeValue {
+    /// The scalar integer value. Panics in debug if the node holds something
+    /// else, which means an operator was applied to the wrong sort.
+    pub(crate) fn lng(&self) -> c_long {
+        match self {
+            NodeValue::Long(v) => *v,
+            other => wrong_arm("Long", other),
+        }
+    }
+
+    pub(crate) fn dbl(&self) -> f64 {
+        match self {
+            NodeValue::Double(v) => *v,
+            other => wrong_arm("Double", other),
+        }
+    }
+
+    pub(crate) fn log(&self) -> c_char {
+        match self {
+            NodeValue::Logical(v) => *v,
+            other => wrong_arm("Logical", other),
+        }
+    }
+
+    /// The scalar string, as the fixed-size array the C code indexes.
+    pub(crate) fn text(&self) -> &[c_char; MAX_STRLEN as usize] {
+        match self {
+            NodeValue::Text(v) => v,
+            other => wrong_arm("Text", other),
+        }
+    }
+
+    /// A writable pointer to the scalar string buffer.
+    ///
+    /// The C wrote into `data.str` of a node that had no value yet, so this
+    /// installs an empty `Text` first when the node holds something else.
+    pub(crate) fn text_mut_ptr(&mut self) -> *mut c_char {
+        if !matches!(self, NodeValue::Text(_)) {
+            *self = NodeValue::Text([0; MAX_STRLEN as usize]);
+        }
+        match self {
+            NodeValue::Text(v) => v.as_mut_ptr(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn buffer(&self, want: BufferKind) -> *mut c_void {
+        match self {
+            NodeValue::Buffer { kind, ptr } if *kind == want => *ptr,
+            /* an unallocated node reads as a null buffer, as the union did */
+            NodeValue::Empty => core::ptr::null_mut(),
+            other => wrong_arm("Buffer", other),
+        }
+    }
+
+    pub(crate) fn lng_buf(&self) -> *mut c_long {
+        self.buffer(BufferKind::Long).cast()
+    }
+    pub(crate) fn dbl_buf(&self) -> *mut f64 {
+        self.buffer(BufferKind::Double).cast()
+    }
+    pub(crate) fn log_buf(&self) -> *mut c_char {
+        self.buffer(BufferKind::Logical).cast()
+    }
+    pub(crate) fn str_buf(&self) -> *mut *mut c_char {
+        self.buffer(BufferKind::Text).cast()
+    }
+
+    /// The buffer pointer whatever its element type, for the paths that only
+    /// allocate or free it.
+    pub(crate) fn raw(&self) -> *mut c_void {
+        match self {
+            NodeValue::Buffer { ptr, .. } => *ptr,
+            _ => core::ptr::null_mut(),
+        }
+    }
+
+    pub(crate) fn set_buffer(&mut self, kind: BufferKind, ptr: *mut c_void) {
+        *self = NodeValue::Buffer { kind, ptr };
+    }
+
+    /// A pointer to the scalar payload, for the conversion helpers that take a
+    /// `void *` and a datatype.
+    ///
+    /// The union put the payload at offset 0, so the C could simply cast the
+    /// whole thing; an enum has a discriminant in front, so the address has to
+    /// come from the variant. Borrow-wise this is a pointer *into `self`*, so
+    /// it lives exactly as long as the borrow.
+    pub(crate) fn scalar_ptr(&self) -> *const c_void {
+        match self {
+            NodeValue::Long(v) => (v as *const c_long).cast(),
+            NodeValue::Double(v) => (v as *const f64).cast(),
+            NodeValue::Logical(v) => (v as *const c_char).cast(),
+            NodeValue::Text(v) => v.as_ptr().cast(),
+            NodeValue::Empty | NodeValue::Buffer { .. } => core::ptr::null(),
+        }
+    }
+
+    /// Release a row buffer and mark the node empty.
+    ///
+    /// # Safety
+    /// The buffer must have come from `malloc`/`calloc` and must not be
+    /// referenced elsewhere.
+    pub(crate) unsafe fn free_buffer(&mut self) {
+        if let NodeValue::Buffer { ptr, .. } = *self
+            && !ptr.is_null()
+        {
+            unsafe { libc::free(ptr) };
+        }
+        *self = NodeValue::Empty;
+    }
+}
+
+#[cold]
+#[track_caller]
+fn wrong_arm(want: &str, got: &NodeValue) -> ! {
+    panic!("node value is {got:?}, expected {want}");
 }
 
 #[derive(Default, Debug, Copy, Clone)]
@@ -71,7 +227,7 @@ pub(crate) struct lval {
     pub naxis: c_int,
     pub naxes: [c_long; MAXDIMS as usize],
     pub undef: *mut c_char,
-    pub data: data_union,
+    pub data: NodeValue,
 }
 
 #[derive(Default, Debug, Copy, Clone)]

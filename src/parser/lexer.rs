@@ -9,7 +9,6 @@
 //! semantically significant: `b101` is a bit string but `b1x0y` is a variable,
 //! `T` is a boolean but `TT` is a variable. See `PARSER_SPEC.md` §2.6.
 
-
 use nom::{
     Parser,
     bytes::complete::{tag, take_while, take_while1},
@@ -263,9 +262,7 @@ fn m_variable(i: &[u8]) -> Option<usize> {
 fn m_function(i: &[u8]) -> Option<usize> {
     len_of(
         recognize((
-            one_of(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            ),
+            one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"),
             take_while1(|c: u8| c.is_ascii_alphanumeric()),
             nchar('('),
         )),
@@ -653,7 +650,11 @@ mod tests {
     use super::*;
 
     fn toks(s: &str) -> Vec<Tok> {
-        tokenize(s.as_bytes()).unwrap().into_iter().map(|t| t.tok).collect()
+        tokenize(s.as_bytes())
+            .unwrap()
+            .into_iter()
+            .map(|t| t.tok)
+            .collect()
     }
 
     fn ident(s: &str) -> Tok {
@@ -710,11 +711,11 @@ mod tests {
 
     #[test]
     fn function_needs_two_name_chars_and_no_space() {
+        assert_eq!(toks("ab("), [Tok::Call(CallKind::Function, b"AB".to_vec())]);
         assert_eq!(
-            toks("ab("),
-            [Tok::Call(CallKind::Function, b"AB".to_vec())]
+            toks("X(1)"),
+            [ident("X"), Tok::Char(b'('), Tok::Long(1), Tok::Char(b')')]
         );
-        assert_eq!(toks("X(1)"), [ident("X"), Tok::Char(b'('), Tok::Long(1), Tok::Char(b')')]);
         assert_eq!(toks("a ("), [ident("a"), Tok::Char(b'(')]);
         assert_eq!(
             toks("ISNULL("),
@@ -730,10 +731,7 @@ mod tests {
     fn dollar_forms_differ_in_greediness() {
         /* '#$…$' runs to the last '$'; '$…$' stops at the first */
         assert_eq!(toks("#$a$b$"), [Tok::Keyword(b"a$b".to_vec())]);
-        assert_eq!(
-            toks("$a$b$"),
-            [ident("a"), ident("b"), Tok::Char(b'$')]
-        );
+        assert_eq!(toks("$a$b$"), [ident("a"), ident("b"), Tok::Char(b'$')]);
         assert_eq!(toks("$MY COL$"), [ident("MY COL")]);
     }
 
@@ -775,10 +773,7 @@ mod tests {
 
     #[test]
     fn unterminated_string_degrades_to_characters() {
-        assert_eq!(
-            toks("\"abc"),
-            [Tok::Char(b'"'), ident("abc")]
-        );
+        assert_eq!(toks("\"abc"), [Tok::Char(b'"'), ident("abc")]);
     }
 
     #[test]

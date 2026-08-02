@@ -175,9 +175,7 @@ impl<'a> Parser<'a> {
 
         loop {
             /* postfix: subscripting binds tighter than every infix operator */
-            if BP_SUBSCRIPT >= min_bp
-                && self.peek().is_some_and(|t| t.is_char(b'['))
-            {
+            if BP_SUBSCRIPT >= min_bp && self.peek().is_some_and(|t| t.is_char(b'[')) {
                 lhs = self.subscript(lhs)?;
                 continue;
             }
@@ -617,7 +615,11 @@ mod tests {
         let deep = format!("{}1{}", "(".repeat(500), ")".repeat(500));
         assert!(fails(&deep));
         assert!(fails(&format!("{}1", "!".repeat(500))));
-        assert!(fails(&format!("{}1{}", "SIN(".repeat(500), ")".repeat(500))));
+        assert!(fails(&format!(
+            "{}1{}",
+            "SIN(".repeat(500),
+            ")".repeat(500)
+        )));
 
         /* ordinary nesting still works ... */
         let ok = format!("{}1{}", "(".repeat(50), ")".repeat(50));

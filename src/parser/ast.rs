@@ -73,7 +73,10 @@ pub(crate) enum AstKind {
     /// `NAME{offset}`. The base is a bare name by construction: the parser only
     /// builds this immediately after an identifier, which is how
     /// `(INTCOL){1}` stays a syntax error (`PARSER_SPEC.md` §3.4 item 1).
-    Offset { name: Vec<u8>, off: Box<Ast> },
+    Offset {
+        name: Vec<u8>,
+        off: Box<Ast>,
+    },
     Unary {
         op: UnOp,
         arg: Box<Ast>,
@@ -96,7 +99,10 @@ pub(crate) enum AstKind {
         hi: Box<Ast>,
     },
     /// `base[i1, … i5]`, 1 to 5 subscripts.
-    Deref { base: Box<Ast>, idx: Vec<Ast> },
+    Deref {
+        base: Box<Ast>,
+        idx: Vec<Ast>,
+    },
     /// `{ e1, e2, … }`
     Vector(Vec<Ast>),
     Call {

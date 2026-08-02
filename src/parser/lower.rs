@@ -19,19 +19,18 @@ use super::ast::{Ast, AstKind, BinOp, UnOp};
 use super::error::ParseError;
 use super::resolve::Resolutions;
 use super::token::CallKind;
-use crate::c_types::{c_char, c_double, c_int, c_long, c_void};
-use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, ParseData, ParserValue};
+use crate::c_types::{c_char, c_double, c_int, c_long};
+use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, NodeValue, ParseData, ParserValue};
 use crate::eval_tab::fits_parser_yytokentype as T;
 use crate::eval_y::{
-    ABS_FCT, ACOS_FCT, ANGSEP_FCT, ASIN_FCT, ATAN2_FCT, ATAN_FCT, AVERAGE_FCT,
-    AXISELEM_FCT, BOX_FCT, CEIL_FCT, CIRCLE_FCT, COS_FCT, COSH_FCT, Close_Vec, Copy_Dims,
-    DEFNULL_FCT, ELEMNUM_FCT, ELPS_FCT, EXP_FCT, FLOOR_FCT, GASRND_FCT, GTIFILT_FCT, GTIFIND_FCT,
-    GTIOVER_FCT, IFTHENELSE_FCT, ISNULL_FCT, LOG10_FCT, LOG_FCT, MAX1_FCT, MAX2_FCT, MEDIAN_FCT,
-    MIN1_FCT, MIN2_FCT, NEAR_FCT, NONNULL_FCT, NULL_FCT, New_Array, New_BinOp, New_Column,
-    New_Const, New_Deref, New_Func, New_FuncSize, New_GTI, New_Offset, New_REG, New_Unary,
-    New_Vector, POIRND_FCT, RND_FCT, ROUND_FCT, ROW_FCT, SETNULL_FCT, SIN_FCT, SINH_FCT, SQRT_FCT,
-    STDDEV_FCT, STRMID_FCT, STRPOS_FCT, SUM_FCT, TAN_FCT, TANH_FCT, Test_Dims,
-    funcOp,
+    ABS_FCT, ACOS_FCT, ANGSEP_FCT, ASIN_FCT, ATAN_FCT, ATAN2_FCT, AVERAGE_FCT, AXISELEM_FCT,
+    BOX_FCT, CEIL_FCT, CIRCLE_FCT, COS_FCT, COSH_FCT, Close_Vec, Copy_Dims, DEFNULL_FCT,
+    ELEMNUM_FCT, ELPS_FCT, EXP_FCT, FLOOR_FCT, GASRND_FCT, GTIFILT_FCT, GTIFIND_FCT, GTIOVER_FCT,
+    IFTHENELSE_FCT, ISNULL_FCT, LOG_FCT, LOG10_FCT, MAX1_FCT, MAX2_FCT, MEDIAN_FCT, MIN1_FCT,
+    MIN2_FCT, NEAR_FCT, NONNULL_FCT, NULL_FCT, New_Array, New_BinOp, New_Column, New_Const,
+    New_Deref, New_Func, New_FuncSize, New_GTI, New_Offset, New_REG, New_Unary, New_Vector,
+    POIRND_FCT, RND_FCT, ROUND_FCT, ROW_FCT, SETNULL_FCT, SIN_FCT, SINH_FCT, SQRT_FCT, STDDEV_FCT,
+    STRMID_FCT, STRPOS_FCT, SUM_FCT, TAN_FCT, TANH_FCT, Test_Dims, funcOp,
 };
 
 /// A node index in `ParseData::Nodes`.
@@ -104,7 +103,7 @@ impl Lowerer<'_> {
     }
     /// The value of a node already known to be a `LONG` constant.
     fn const_lng(&self, n: NodeId) -> c_long {
-        unsafe { self.p.Nodes[n as usize].value.data.lng }
+        self.p.Nodes[n as usize].value.data.lng()
     }
 
     /// `TEST(a)`: a negative index means the builder failed.
@@ -177,21 +176,26 @@ impl Lowerer<'_> {
     }
 
     fn const_long(&mut self, v: c_long) -> NodeId {
-        New_Const(
-            self.p,
-            LONG,
-            (&raw const v).cast::<c_void>(),
-            size_of::<c_long>() as c_long,
-        )
+        New_Const(self.p, LONG, NodeValue::Long(v))
     }
 
     fn const_double(&mut self, v: c_double) -> NodeId {
-        New_Const(
-            self.p,
-            DOUBLE,
-            (&raw const v).cast::<c_void>(),
-            size_of::<c_double>() as c_long,
-        )
+        New_Const(self.p, DOUBLE, NodeValue::Double(v))
+    }
+
+    fn const_bool(&mut self, v: bool) -> NodeId {
+        New_Const(self.p, BOOLEAN, NodeValue::Logical(c_char::from(v)))
+    }
+
+    /// A string or bit-string constant. `text` is the content without a NUL.
+    fn const_text(&mut self, tag: c_int, text: &[c_char]) -> LRes {
+        let mut buf = [0 as c_char; MAX_STRLEN as usize];
+        let len = text.len().min(buf.len() - 1);
+        buf[..len].copy_from_slice(&text[..len]);
+        let n = New_Const(self.p, tag, NodeValue::Text(buf));
+        let n = self.test(n)?;
+        self.set_size(n, len as c_long);
+        Ok(n)
     }
 
     /// `if( TYPE(n) != DOUBLE ) n = New_Unary(DOUBLE, 0, n);`
@@ -234,27 +238,10 @@ impl Lowerer<'_> {
             ParserValue::Column { index, .. } => New_Column(self.p, index),
             ParserValue::Long(v) => self.const_long(v),
             ParserValue::Double(v) => self.const_double(v),
-            ParserValue::Boolean(v) => {
-                let b: c_char = c_char::from(v);
-                New_Const(
-                    self.p,
-                    BOOLEAN,
-                    (&raw const b).cast::<c_void>(),
-                    size_of::<c_char>() as c_long,
-                )
-            }
+            ParserValue::Boolean(v) => self.const_bool(v),
             ParserValue::Str(text) => {
-                /* `Str` is NUL-terminated; SIZE is the length without it */
-                let len = text.len() - 1;
-                let n = New_Const(
-                    self.p,
-                    STRING,
-                    text.as_ptr().cast::<c_void>(),
-                    len as c_long + 1,
-                );
-                let n = self.test(n)?;
-                self.set_size(n, len as c_long);
-                n
+                /* `Str` is NUL-terminated; the node size excludes it */
+                return self.const_text(STRING, &text[..text.len() - 1]);
             }
         };
         self.test(n)
@@ -291,13 +278,7 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             AstKind::Boolean(v) => {
-                let b: c_char = c_char::from(*v);
-                let n = New_Const(
-                    self.p,
-                    BOOLEAN,
-                    (&raw const b).cast::<c_void>(),
-                    size_of::<c_char>() as c_long,
-                );
+                let n = self.const_bool(*v);
                 self.test(n)
             }
             AstKind::Str(s) => self.new_text_const(s, STRING),
@@ -337,19 +318,10 @@ impl Lowerer<'_> {
         }
     }
 
-    /// `New_Const` for a string or bit-string literal, with `SIZE` set to the
-    /// length rather than the length-with-NUL that `New_Const` records.
+    /// `New_Const` for a string or bit-string literal.
     fn new_text_const(&mut self, s: &[u8], tag: c_int) -> LRes {
-        let buf = cstr(s);
-        let n = New_Const(
-            self.p,
-            tag,
-            buf.as_ptr().cast::<c_void>(),
-            s.len() as c_long + 1,
-        );
-        let n = self.test(n)?;
-        self.set_size(n, s.len() as c_long);
-        Ok(n)
+        let text: Vec<c_char> = s.iter().map(|&c| c as c_char).collect();
+        self.const_text(tag, &text)
     }
 
     fn lower_unary(&mut self, op: UnOp, arg: &Ast, at: usize) -> LRes {
@@ -420,7 +392,11 @@ impl Lowerer<'_> {
         let b = self.lower(base)?;
         /* spec 3.4 (2): expr, bexpr and bits subscript; sexpr does not */
         if self.ntype(b) == STRING {
-            return Err(ParseError::syntax("strings cannot be subscripted", at, b"["));
+            return Err(ParseError::syntax(
+                "strings cannot be subscripted",
+                at,
+                b"[",
+            ));
         }
         let mut dims = [0 as NodeId; 5];
         for (slot, e) in dims.iter_mut().zip(idx) {
@@ -578,10 +554,7 @@ impl Lowerer<'_> {
 
             BinOp::And | BinOp::Or => {
                 if ta != BOOLEAN || tb != BOOLEAN {
-                    return Err(self.bad_operands(
-                        if op == BinOp::And { "&&" } else { "||" },
-                        at,
-                    ));
+                    return Err(self.bad_operands(if op == BinOp::And { "&&" } else { "||" }, at));
                 }
                 let code = if op == BinOp::And {
                     T::AND as c_int
@@ -992,7 +965,11 @@ impl Lowerer<'_> {
             b"MIN" => self.func(t, MIN1_FCT, &[a]),
             b"MAX" => self.func(t, MAX1_FCT, &[a]),
             b"RANDOM" | b"RANDOMN" => {
-                let op = if name == b"RANDOM" { RND_FCT } else { GASRND_FCT };
+                let op = if name == b"RANDOM" {
+                    RND_FCT
+                } else {
+                    GASRND_FCT
+                };
                 let n = self.func(0, op, &[a]);
                 let n = self.test(n)?;
                 self.set_ntype(n, DOUBLE);
@@ -1371,14 +1348,7 @@ impl Lowerer<'_> {
         if args.len() == 4 {
             cols = self.literal_str(&args[3], name)?;
         }
-        let n = New_REG(
-            self.p,
-            fname.as_mut_ptr(),
-            nx,
-            ny,
-            cols.as_mut_ptr(),
-        );
+        let n = New_REG(self.p, fname.as_mut_ptr(), nx, ny, cols.as_mut_ptr());
         self.test(n)
     }
 }
-
