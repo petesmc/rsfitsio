@@ -75,9 +75,8 @@ use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
     CONST_OP, ColumnSort, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, P_ERROR,
-    ParseData, ParseStatusVariables, ParserValue, parseInfo,
+    ParseData, ParseStatusVariables, ParserValue, ValueSort, parseInfo,
 };
-use crate::eval_tab::fits_parser_yytokentype;
 use crate::eval_y::{Evaluate_Parser, FuncOp};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
@@ -1507,22 +1506,15 @@ pub(crate) fn ffiprs(
     }
 
     match result.ntype {
-        val if val == fits_parser_yytokentype::BOOLEAN as c_int => *datatype = TLOGICAL,
+        ValueSort::Boolean => *datatype = TLOGICAL,
 
-        val if val == fits_parser_yytokentype::LONG as c_int => *datatype = TLONG,
+        ValueSort::Long => *datatype = TLONG,
 
-        val if val == fits_parser_yytokentype::DOUBLE as c_int => *datatype = TDOUBLE,
+        ValueSort::Double => *datatype = TDOUBLE,
 
-        val if val == fits_parser_yytokentype::BITSTR as c_int => *datatype = TBIT,
+        ValueSort::Bits => *datatype = TBIT,
 
-        val if val == fits_parser_yytokentype::STRING as c_int => *datatype = TSTRING,
-
-        _ => {
-            *datatype = 0;
-            ffpmsg_str("Bad return data type");
-            lParse.status = PARSE_BAD_TYPE;
-            *status = lParse.status;
-        }
+        ValueSort::String => *datatype = TSTRING,
     }
     lParse.datatype = *datatype;
     lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
@@ -1553,7 +1545,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                     continue;
                 }
 
-                if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
+                if lParse.varData[col as usize].dtype == ValueSort::Bits {
                     let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
                     let mut first_ptr = *data_ptr;
                     FREE!(first_ptr);
@@ -1790,14 +1782,14 @@ pub(crate) fn fits_parser_workfn_safe(
             /* Determine the size of each element of the calculated result */
             /*   (only matters for numeric/logical data)                   */
 
-            match lParse.Nodes[lParse.resultNode as usize].ntype.into() {
-                fits_parser_yytokentype::BOOLEAN => {
+            match lParse.Nodes[lParse.resultNode as usize].ntype {
+                ValueSort::Boolean => {
                     (pv.resDataSize) = size_of::<c_char>() as c_long;
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     (pv.resDataSize) = size_of::<c_long>() as c_long;
                 }
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     (pv.resDataSize) = size_of::<f64>() as c_long;
                 }
                 _ => {}
@@ -1898,10 +1890,8 @@ pub(crate) fn fits_parser_workfn_safe(
                 constant = 1;
             }
 
-            match result.ntype.into() {
-                fits_parser_yytokentype::BOOLEAN
-                | fits_parser_yytokentype::LONG
-                | fits_parser_yytokentype::DOUBLE => {
+            match result.ntype {
+                ValueSort::Boolean | ValueSort::Long | ValueSort::Double => {
                     if constant != 0 {
                         let undef: c_char = 0;
                         for kk in 0..ntodo {
@@ -2035,7 +2025,7 @@ pub(crate) fn fits_parser_workfn_safe(
                     }
                 }
 
-                fits_parser_yytokentype::BITSTR => {
+                ValueSort::Bits => {
                     match (*(pv.userInfo)).datatype {
                         TBYTE => {
                             idx = -1;
@@ -2137,7 +2127,7 @@ pub(crate) fn fits_parser_workfn_safe(
                         result.value.data.free_buffer();
                     }
                 }
-                fits_parser_yytokentype::STRING => {
+                ValueSort::String => {
                     if (*(pv.userInfo)).datatype == TSTRING {
                         if constant != 0 {
                             for jj in 0..ntodo {
@@ -2176,7 +2166,6 @@ pub(crate) fn fits_parser_workfn_safe(
                         result.value.data.free_buffer();
                     }
                 }
-                _ => {}
             }
 
             if lParse.status != 0 {
@@ -2185,9 +2174,7 @@ pub(crate) fn fits_parser_workfn_safe(
 
             /*  Increment Data to point to where the next block should go  */
 
-            if result.ntype == fits_parser_yytokentype::BITSTR as c_int
-                && (*(pv.userInfo)).datatype == TBYTE
-            {
+            if result.ntype == ValueSort::Bits && (*(pv.userInfo)).datatype == TBYTE {
                 (pv.Data) = pv
                     .Data
                     .cast::<c_char>()
@@ -2197,7 +2184,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             .unwrap(),
                     )
                     .cast::<c_void>();
-            } else if result.ntype == fits_parser_yytokentype::STRING as c_int {
+            } else if result.ntype == ValueSort::String {
                 (pv.Data) = pv
                     .Data
                     .cast::<c_char>()
@@ -2311,7 +2298,7 @@ fn Setup_DataArrays(
         let mut barray: *mut c_char = core::ptr::null_mut();
         let mut iarray: *mut c_long = core::ptr::null_mut();
         let mut rarray: *mut c_double = core::ptr::null_mut();
-        let mut msg: [c_char; 80] = [0; 80];
+        let msg: [c_char; 80] = [0; 80];
         let mut do_realloc: c_int = 0;
 
         lParse.firstDataRow = fRow;
@@ -2333,8 +2320,8 @@ fn Setup_DataArrays(
             nelem = varData.nelem;
             len = nelem * nRows;
 
-            match varData.dtype.into() {
-                fits_parser_yytokentype::BITSTR => {
+            match varData.dtype {
+                ValueSort::Bits => {
                     /* No need for UNDEF array, but must make string DATA array */
                     len = (nelem + 1) * nRows; /* Count '\0' */
                     bitStrs = varData.data.cast::<*mut c_char>();
@@ -2387,7 +2374,7 @@ fn Setup_DataArrays(
                     varData.data = bitStrs.cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::STRING => {
+                ValueSort::String => {
                     sptr = icol.array.cast::<*mut c_char>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2421,7 +2408,7 @@ fn Setup_DataArrays(
                     varData.data = sptr.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     barray = icol.array.cast::<c_char>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2447,7 +2434,7 @@ fn Setup_DataArrays(
                     varData.data = barray.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     iarray = icol.array.cast::<c_long>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2473,7 +2460,7 @@ fn Setup_DataArrays(
                     varData.data = iarray.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     rarray = icol.array.cast::<c_double>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2499,16 +2486,6 @@ fn Setup_DataArrays(
                     }
                     varData.data = rarray.add(1).cast::<c_void>();
                 }
-
-                _ => {
-                    int_snprintf!(
-                        &mut msg,
-                        80,
-                        "SetupDataArrays, unhandled type {}\n",
-                        varData.dtype
-                    );
-                    ffpmsg_slice(&msg);
-                }
             }
 
             if lParse.status != 0 {
@@ -2517,7 +2494,7 @@ fn Setup_DataArrays(
                 while j > 0 {
                     j -= 1;
                     let varData = &mut lParse.varData[j];
-                    if varData.dtype == fits_parser_yytokentype::BITSTR as c_int {
+                    if varData.dtype == ValueSort::Bits {
                         FREE!(*varData.data.cast::<*mut c_char>().add(0));
                     }
                     varData.undef = None;
@@ -4338,14 +4315,14 @@ fn set_image_col_types(
             }
 
             if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                varInfo.dtype = ValueSort::Long;
                 colIter.datatype = TLONG;
             } else {
-                varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                varInfo.dtype = ValueSort::Double;
                 colIter.datatype = TDOUBLE;
                 if DEBUG_PIXFILTER != 0 {
                     println!(
-                        "usefits_parser_yytokentype::DOUBLE as c_int for {} with BSCALE={}/BZERO={}",
+                        "use DOUBLE for {} with BSCALE={}/BZERO={}",
                         str::from_utf8(cast_slice(name)).unwrap(),
                         tscale,
                         tzero,
@@ -4354,7 +4331,7 @@ fn set_image_col_types(
             }
         }
         LONGLONG_IMG | FLOAT_IMG | DOUBLE_IMG => {
-            varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+            varInfo.dtype = ValueSort::Double;
             colIter.datatype = TDOUBLE;
         }
         _ => {
@@ -4547,7 +4524,7 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char]) -> Option<ParserValue
         if lParse.hdutype != IMAGE_HDU {
             match typecode {
                 TBIT => {
-                    varInfo.dtype = fits_parser_yytokentype::BITSTR as c_int;
+                    varInfo.dtype = ValueSort::Bits;
                     colIter.datatype = TBYTE;
                     sort = ColumnSort::Bits;
                 }
@@ -4566,16 +4543,16 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char]) -> Option<ParserValue
                         tscale = 1.0;
                     }
                     if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                        varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                        varInfo.dtype = ValueSort::Long;
                         colIter.datatype = TLONG;
                     /*    Reading an unsigned long column as a long can cause overflow errors.
                          Treat the column as a double instead.
                          } else if (tscale == 1.0 &&  tzero == 2147483648.0 ) {
-                             (*varInfo).dtype     =fits_parser_yytokentype::LONG as c_int;
+                             (*varInfo).dtype     =ValueSort::Long;
                              (*colIter).datatype = TULONG;
                     */
                     } else {
-                        varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                        varInfo.dtype = ValueSort::Double;
                         colIter.datatype = TDOUBLE;
                     }
                     sort = ColumnSort::Numeric;
@@ -4586,17 +4563,17 @@ fn find_column(lParse: &mut ParseData, colName: &[c_char]) -> Option<ParserValue
                   will be to add support for TLONGLONG as a separate datatype.
                 */
                 TLONGLONG | TFLOAT | TDOUBLE => {
-                    varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                    varInfo.dtype = ValueSort::Double;
                     colIter.datatype = TDOUBLE;
                     sort = ColumnSort::Numeric;
                 }
                 TLOGICAL => {
-                    varInfo.dtype = fits_parser_yytokentype::BOOLEAN as c_int;
+                    varInfo.dtype = ValueSort::Boolean;
                     colIter.datatype = TLOGICAL;
                     sort = ColumnSort::Boolean;
                 }
                 TSTRING => {
-                    varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
+                    varInfo.dtype = ValueSort::String;
                     colIter.datatype = TSTRING;
                     sort = ColumnSort::String;
                     if width >= c_long::from(MAX_STRLEN) {

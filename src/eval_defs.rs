@@ -15,7 +15,7 @@ pub const MAX_STRLEN_S: &str = "255";
 #[derive(Debug)]
 pub(crate) struct DataInfo {
     pub name: [c_char; MAXVARNAME + 1],
-    pub dtype: c_int,
+    pub dtype: ValueSort,
     pub nelem: c_long,
     pub naxis: c_int,
     pub naxes: [c_long; MAXDIMS as usize],
@@ -27,13 +27,58 @@ impl Default for DataInfo {
     fn default() -> Self {
         DataInfo {
             name: [0; MAXVARNAME + 1],
-            dtype: 0,
+            dtype: ValueSort::default(),
             nelem: 0,
             naxis: 0,
             naxes: [0; MAXDIMS as usize],
             undef: None,
             data: core::ptr::null_mut(),
         }
+    }
+}
+
+/// The sort of a parser value: which of `eval.y`'s four nonterminals a node
+/// belongs to.
+///
+/// The transpilation stored this as a bare `c_int` holding a lexer token id, so
+/// every test read `node.ntype == fits_parser_yytokentype::DOUBLE as c_int`.
+///
+/// The discriminants are the original token numbers, and the derived `Ord` is
+/// the numeric promotion order that `eval.y` depended on -- its `%token`
+/// block carries the comment *"First 3 must be in order of increasing
+/// promotion"*, which is why `PROMOTE` could be a `>` comparison. Keeping the
+/// order here makes that explicit rather than accidental.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(i32)]
+pub(crate) enum ValueSort {
+    #[default]
+    Boolean = 258,
+    Long = 259,
+    Double = 260,
+    String = 261,
+    Bits = 262,
+}
+
+impl ValueSort {
+    /// The token number, for the places that still round-trip through `c_int`.
+    pub(crate) fn code(self) -> c_int {
+        self as c_int
+    }
+
+    pub(crate) fn from_code(v: c_int) -> Option<ValueSort> {
+        Some(match v {
+            258 => ValueSort::Boolean,
+            259 => ValueSort::Long,
+            260 => ValueSort::Double,
+            261 => ValueSort::String,
+            262 => ValueSort::Bits,
+            _ => return None,
+        })
+    }
+
+    /// True for the sorts `eval.y` calls `expr`; `Boolean` is a `bexpr`.
+    pub(crate) fn is_expr(self) -> bool {
+        matches!(self, ValueSort::Long | ValueSort::Double)
     }
 }
 
@@ -236,7 +281,14 @@ pub(crate) struct Node {
     pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
     pub nSubNodes: c_int,
     pub SubNodes: [usize; MAXSUBS as usize],
-    pub ntype: c_int,
+    pub ntype: ValueSort,
+    /// Only meaningful on the START/STOP node `New_GTI` builds: whether the
+    /// GTI rows are fully time-ordered, which `GTIOVERLAP` requires and
+    /// `Search_GTI` uses to pick a binary search over a linear one.
+    ///
+    /// The C stashed this in `ntype`, which every other node uses for its
+    /// value sort.
+    pub gti_ordered: bool,
     pub value: lval,
 }
 

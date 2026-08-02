@@ -20,7 +20,9 @@ use super::error::ParseError;
 use super::resolve::Resolutions;
 use super::token::CallKind;
 use crate::c_types::{c_char, c_double, c_int, c_long};
-use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, NodeValue, ParseData, ParserValue};
+use crate::eval_defs::{
+    CONST_OP, MAX_STRLEN, MAXSUBS, NodeValue, ParseData, ParserValue, ValueSort,
+};
 use crate::eval_tab::fits_parser_yytokentype as T;
 use crate::eval_y::{
     Close_Vec, Copy_Dims, FuncOp, New_Array, New_BinOp, New_Column, New_Const, New_Deref, New_Func,
@@ -31,28 +33,20 @@ use crate::eval_y::{
 type NodeId = c_int;
 type LRes = Result<NodeId, ParseError>;
 
-/* Sort tags. These double as token ids and as `Node::ntype`, and the first
-three are ordered so that numeric promotion is a `>` comparison. */
-const BOOLEAN: c_int = T::BOOLEAN as c_int;
-const LONG: c_int = T::LONG as c_int;
-const DOUBLE: c_int = T::DOUBLE as c_int;
-const STRING: c_int = T::STRING as c_int;
-const BITSTR: c_int = T::BITSTR as c_int;
-
 /// Sentinel the GTI/region builders use for an omitted node argument.
 const NO_NODE: NodeId = -99;
 
-/// True for the sorts that `eval.y` calls `expr`. `BOOLEAN` is deliberately
+/// True for the sorts that `eval.y` calls `expr`. `Boolean` is deliberately
 /// excluded: a boolean-valued node is a `bexpr`, a *different* nonterminal, and
 /// most arithmetic and comparison productions accept only `expr`. That is why
 /// `INTCOL + BOOLCOL` and `1<2==1` are syntax errors.
-fn is_expr(t: c_int) -> bool {
-    t == LONG || t == DOUBLE
+fn is_expr(t: ValueSort) -> bool {
+    t.is_expr()
 }
 
 /// `expr` or `bexpr` — the sorts the casts and vector literals accept.
-fn is_numeric(t: c_int) -> bool {
-    t == BOOLEAN || is_expr(t)
+fn is_numeric(t: ValueSort) -> bool {
+    t == ValueSort::Boolean || is_expr(t)
 }
 
 /// Convert a byte slice to a NUL-terminated `c_char` buffer.
@@ -80,10 +74,10 @@ impl Lowerer<'_> {
     // Node accessors, mirroring eval.y's TYPE / OPER / SIZE macros
     // -----------------------------------------------------------------
 
-    fn ntype(&self, n: NodeId) -> c_int {
+    fn ntype(&self, n: NodeId) -> ValueSort {
         self.p.Nodes[n as usize].ntype
     }
-    fn set_ntype(&mut self, n: NodeId, t: c_int) {
+    fn set_ntype(&mut self, n: NodeId, t: ValueSort) {
         self.p.Nodes[n as usize].ntype = t;
     }
     fn size(&self, n: NodeId) -> c_long {
@@ -95,7 +89,7 @@ impl Lowerer<'_> {
     fn is_const(&self, n: NodeId) -> bool {
         self.p.Nodes[n as usize].operation == CONST_OP
     }
-    /// The value of a node already known to be a `LONG` constant.
+    /// The value of a node already known to be a `ValueSort::Long` constant.
     fn const_lng(&self, n: NodeId) -> c_long {
         self.p.Nodes[n as usize].value.data.lng()
     }
@@ -111,7 +105,7 @@ impl Lowerer<'_> {
         }
     }
 
-    /// `PROMOTE(a,b)`: raise whichever side is lower on BOOLEAN < LONG < DOUBLE.
+    /// `PROMOTE(a,b)`: raise whichever side is lower on ValueSort::Boolean < ValueSort::Long < ValueSort::Double.
     fn promote(&mut self, a: &mut NodeId, b: &mut NodeId) {
         let (ta, tb) = (self.ntype(*a), self.ntype(*b));
         if ta > tb {
@@ -132,7 +126,7 @@ impl Lowerer<'_> {
         }
     }
 
-    fn func(&mut self, ret: c_int, op: FuncOp, args: &[NodeId]) -> NodeId {
+    fn func(&mut self, ret: Option<ValueSort>, op: FuncOp, args: &[NodeId]) -> NodeId {
         let mut a = [0 as NodeId; 7];
         a[..args.len()].copy_from_slice(args);
         New_Func(
@@ -150,7 +144,13 @@ impl Lowerer<'_> {
         )
     }
 
-    fn func_size(&mut self, ret: c_int, op: FuncOp, args: &[NodeId], size: c_int) -> NodeId {
+    fn func_size(
+        &mut self,
+        ret: Option<ValueSort>,
+        op: FuncOp,
+        args: &[NodeId],
+        size: c_int,
+    ) -> NodeId {
         let mut a = [0 as NodeId; 7];
         a[..args.len()].copy_from_slice(args);
         New_FuncSize(
@@ -170,19 +170,23 @@ impl Lowerer<'_> {
     }
 
     fn const_long(&mut self, v: c_long) -> NodeId {
-        New_Const(self.p, LONG, NodeValue::Long(v))
+        New_Const(self.p, ValueSort::Long, NodeValue::Long(v))
     }
 
     fn const_double(&mut self, v: c_double) -> NodeId {
-        New_Const(self.p, DOUBLE, NodeValue::Double(v))
+        New_Const(self.p, ValueSort::Double, NodeValue::Double(v))
     }
 
     fn const_bool(&mut self, v: bool) -> NodeId {
-        New_Const(self.p, BOOLEAN, NodeValue::Logical(c_char::from(v)))
+        New_Const(
+            self.p,
+            ValueSort::Boolean,
+            NodeValue::Logical(c_char::from(v)),
+        )
     }
 
     /// A string or bit-string constant. `text` is the content without a NUL.
-    fn const_text(&mut self, tag: c_int, text: &[c_char]) -> LRes {
+    fn const_text(&mut self, tag: ValueSort, text: &[c_char]) -> LRes {
         let mut buf = [0 as c_char; MAX_STRLEN as usize];
         let len = text.len().min(buf.len() - 1);
         buf[..len].copy_from_slice(&text[..len]);
@@ -192,19 +196,19 @@ impl Lowerer<'_> {
         Ok(n)
     }
 
-    /// `if( TYPE(n) != DOUBLE ) n = New_Unary(DOUBLE, 0, n);`
+    /// `if( TYPE(n) != ValueSort::Double ) n = New_Unary(ValueSort::Double, 0, n);`
     fn as_double(&mut self, n: NodeId) -> NodeId {
-        if self.ntype(n) != DOUBLE {
-            New_Unary(self.p, DOUBLE, 0, n)
+        if self.ntype(n) != ValueSort::Double {
+            New_Unary(self.p, ValueSort::Double, 0, n)
         } else {
             n
         }
     }
 
-    /// `if( TYPE(n) != LONG ) n = New_Unary(LONG, 0, n);`
+    /// `if( TYPE(n) != ValueSort::Long ) n = New_Unary(ValueSort::Long, 0, n);`
     fn as_long(&mut self, n: NodeId) -> NodeId {
-        if self.ntype(n) != LONG {
-            New_Unary(self.p, LONG, 0, n)
+        if self.ntype(n) != ValueSort::Long {
+            New_Unary(self.p, ValueSort::Long, 0, n)
         } else {
             n
         }
@@ -235,7 +239,7 @@ impl Lowerer<'_> {
             ParserValue::Boolean(v) => self.const_bool(v),
             ParserValue::Str(text) => {
                 /* `Str` is NUL-terminated; the node size excludes it */
-                return self.const_text(STRING, &text[..text.len() - 1]);
+                return self.const_text(ValueSort::String, &text[..text.len() - 1]);
             }
         };
         self.test(n)
@@ -275,18 +279,18 @@ impl Lowerer<'_> {
                 let n = self.const_bool(*v);
                 self.test(n)
             }
-            AstKind::Str(s) => self.new_text_const(s, STRING),
-            AstKind::BitStr(s) => self.new_text_const(s, BITSTR),
+            AstKind::Str(s) => self.new_text_const(s, ValueSort::String),
+            AstKind::BitStr(s) => self.new_text_const(s, ValueSort::Bits),
             AstKind::RowRef => {
-                let n = self.func(LONG, FuncOp::Row, &[]);
+                let n = self.func(Some(ValueSort::Long), FuncOp::Row, &[]);
                 self.test(n)
             }
             AstKind::NullRef => {
-                let n = self.func(LONG, FuncOp::Null, &[]);
+                let n = self.func(Some(ValueSort::Long), FuncOp::Null, &[]);
                 self.test(n)
             }
             AstKind::SNullRef => {
-                let n = self.func(STRING, FuncOp::Null, &[]);
+                let n = self.func(Some(ValueSort::String), FuncOp::Null, &[]);
                 self.test(n)
             }
             AstKind::Ident(name) => self.resolve(name, a.at),
@@ -294,7 +298,7 @@ impl Lowerer<'_> {
             AstKind::Offset { name, off } => {
                 let col = self.resolve_column(name, a.at)?;
                 let o = self.lower(off)?;
-                if self.ntype(o) != LONG || !self.is_const(o) {
+                if self.ntype(o) != ValueSort::Long || !self.is_const(o) {
                     return Err(ParseError::semantic(
                         "Offset argument must be a constant integer",
                     ));
@@ -313,7 +317,7 @@ impl Lowerer<'_> {
     }
 
     /// `New_Const` for a string or bit-string literal.
-    fn new_text_const(&mut self, s: &[u8], tag: c_int) -> LRes {
+    fn new_text_const(&mut self, s: &[u8], tag: ValueSort) -> LRes {
         let text: Vec<c_char> = s.iter().map(|&c| c as c_char).collect();
         self.const_text(tag, &text)
     }
@@ -337,8 +341,8 @@ impl Lowerer<'_> {
             }
             /* spec 3.4 (3): `NOT bexpr` and `NOT bits` only */
             UnOp::Not => match t {
-                BOOLEAN => New_Unary(self.p, BOOLEAN, T::NOT as c_int, n),
-                BITSTR => New_Unary(self.p, BITSTR, T::NOT as c_int, n),
+                ValueSort::Boolean => New_Unary(self.p, ValueSort::Boolean, T::NOT as c_int, n),
+                ValueSort::Bits => New_Unary(self.p, ValueSort::Bits, T::NOT as c_int, n),
                 _ => {
                     return Err(ParseError::syntax(
                         "'!' needs a boolean or bit-string operand",
@@ -351,13 +355,13 @@ impl Lowerer<'_> {
                 if !is_numeric(t) {
                     return Err(ParseError::syntax("(int) needs a number", at, b"(int)"));
                 }
-                New_Unary(self.p, LONG, T::INTCAST as c_int, n)
+                New_Unary(self.p, ValueSort::Long, T::INTCAST as c_int, n)
             }
             UnOp::FltCast => {
                 if !is_numeric(t) {
                     return Err(ParseError::syntax("(float) needs a number", at, b"(float)"));
                 }
-                New_Unary(self.p, DOUBLE, T::FLTCAST as c_int, n)
+                New_Unary(self.p, ValueSort::Double, T::FLTCAST as c_int, n)
             }
         };
         self.test(r)
@@ -376,16 +380,16 @@ impl Lowerer<'_> {
         self.promote(&mut v, &mut l);
         self.promote(&mut v, &mut h);
         self.promote(&mut l, &mut h);
-        let lo_le = New_BinOp(self.p, BOOLEAN, l, T::LTE as c_int, v);
-        let le_hi = New_BinOp(self.p, BOOLEAN, v, T::LTE as c_int, h);
-        let r = New_BinOp(self.p, BOOLEAN, lo_le, T::AND as c_int, le_hi);
+        let lo_le = New_BinOp(self.p, ValueSort::Boolean, l, T::LTE as c_int, v);
+        let le_hi = New_BinOp(self.p, ValueSort::Boolean, v, T::LTE as c_int, h);
+        let r = New_BinOp(self.p, ValueSort::Boolean, lo_le, T::AND as c_int, le_hi);
         self.test(r)
     }
 
     fn lower_deref(&mut self, base: &Ast, idx: &[Ast], at: usize) -> LRes {
         let b = self.lower(base)?;
         /* spec 3.4 (2): expr, bexpr and bits subscript; sexpr does not */
-        if self.ntype(b) == STRING {
+        if self.ntype(b) == ValueSort::String {
             return Err(ParseError::syntax(
                 "strings cannot be subscripted",
                 at,
@@ -433,12 +437,12 @@ impl Lowerer<'_> {
             let Some(mut v) = vec_node else {
                 let v = New_Vector(self.p, e);
                 let v = self.test(v)?;
-                all_bool = te == BOOLEAN;
+                all_bool = te == ValueSort::Boolean;
                 vec_node = Some(v);
                 continue;
             };
 
-            if te != BOOLEAN {
+            if te != ValueSort::Boolean {
                 if all_bool {
                     /* `bvector ',' expr`: the literal turns numeric */
                     self.set_ntype(v, te);
@@ -479,10 +483,10 @@ impl Lowerer<'_> {
 
         let r = match op {
             BinOp::Add => match (ta, tb) {
-                (STRING, STRING) | (BITSTR, BITSTR) => {
+                (ValueSort::String, ValueSort::String) | (ValueSort::Bits, ValueSort::Bits) => {
                     let total = self.size(a) + self.size(b);
                     if total >= c_long::from(MAX_STRLEN) {
-                        return Err(ParseError::semantic(if ta == STRING {
+                        return Err(ParseError::semantic(if ta == ValueSort::String {
                             "Combined string size exceeds 255 characters"
                         } else {
                             "Combined bit string size exceeds 255 bits"
@@ -501,11 +505,11 @@ impl Lowerer<'_> {
             BinOp::Mod => self.numeric_only(a, b, b'%', at)?,
             BinOp::Mul => match (ta, tb) {
                 /* `expr '*' bexpr` and `bexpr '*' expr` coerce the boolean */
-                (x, BOOLEAN) if is_expr(x) => {
+                (x, ValueSort::Boolean) if is_expr(x) => {
                     b = New_Unary(self.p, ta, 0, b);
                     New_BinOp(self.p, ta, a, i32::from(b'*'), b)
                 }
-                (BOOLEAN, y) if is_expr(y) => {
+                (ValueSort::Boolean, y) if is_expr(y) => {
                     a = New_Unary(self.p, tb, 0, a);
                     New_BinOp(self.p, tb, a, i32::from(b'*'), b)
                 }
@@ -523,14 +527,14 @@ impl Lowerer<'_> {
             /* `bits & bits` / `bits | bits`, or integer bitwise */
             BinOp::BitAnd | BinOp::BitOr => {
                 let ch = if op == BinOp::BitAnd { b'&' } else { b'|' };
-                if ta == BITSTR && tb == BITSTR {
-                    let n = New_BinOp(self.p, BITSTR, a, i32::from(ch), b);
+                if ta == ValueSort::Bits && tb == ValueSort::Bits {
+                    let n = New_BinOp(self.p, ValueSort::Bits, a, i32::from(ch), b);
                     let n = self.test(n)?;
                     let sz = self.size(a).max(self.size(b));
                     self.set_size(n, sz);
                     return Ok(n);
                 }
-                if ta != LONG || tb != LONG {
+                if ta != ValueSort::Long || tb != ValueSort::Long {
                     return Err(ParseError::semantic(
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
                     ));
@@ -538,7 +542,7 @@ impl Lowerer<'_> {
                 New_BinOp(self.p, ta, a, i32::from(ch), b)
             }
             BinOp::BitXor => {
-                if ta != LONG || tb != LONG {
+                if ta != ValueSort::Long || tb != ValueSort::Long {
                     return Err(ParseError::semantic(
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
                     ));
@@ -547,7 +551,7 @@ impl Lowerer<'_> {
             }
 
             BinOp::And | BinOp::Or => {
-                if ta != BOOLEAN || tb != BOOLEAN {
+                if ta != ValueSort::Boolean || tb != ValueSort::Boolean {
                     return Err(self.bad_operands(if op == BinOp::And { "&&" } else { "||" }, at));
                 }
                 let code = if op == BinOp::And {
@@ -555,7 +559,7 @@ impl Lowerer<'_> {
                 } else {
                     T::OR as c_int
                 };
-                New_BinOp(self.p, BOOLEAN, a, code, b)
+                New_BinOp(self.p, ValueSort::Boolean, a, code, b)
             }
 
             BinOp::Eq | BinOp::Ne | BinOp::Gt | BinOp::Lt | BinOp::Gte | BinOp::Lte => {
@@ -566,7 +570,7 @@ impl Lowerer<'_> {
                     return Err(self.bad_operands("~", at));
                 }
                 self.promote(&mut a, &mut b);
-                New_BinOp(self.p, BOOLEAN, a, i32::from(b'~'), b)
+                New_BinOp(self.p, ValueSort::Boolean, a, i32::from(b'~'), b)
             }
         };
         self.test(r)
@@ -632,22 +636,27 @@ impl Lowerer<'_> {
         };
 
         /* `bits CMP bits` and `sexpr CMP sexpr` force a scalar result */
-        if (ta == BITSTR && tb == BITSTR) || (ta == STRING && tb == STRING) {
-            let n = New_BinOp(self.p, BOOLEAN, a, code, b);
+        if (ta == ValueSort::Bits && tb == ValueSort::Bits)
+            || (ta == ValueSort::String && tb == ValueSort::String)
+        {
+            let n = New_BinOp(self.p, ValueSort::Boolean, a, code, b);
             let n = self.test(n)?;
             self.set_size(n, 1);
             return Ok(n);
         }
         /* `bexpr EQ bexpr` and `bexpr NE bexpr` — no ordering on booleans */
-        if ta == BOOLEAN && tb == BOOLEAN && matches!(op, BinOp::Eq | BinOp::Ne) {
-            let n = New_BinOp(self.p, BOOLEAN, a, code, b);
+        if ta == ValueSort::Boolean
+            && tb == ValueSort::Boolean
+            && matches!(op, BinOp::Eq | BinOp::Ne)
+        {
+            let n = New_BinOp(self.p, ValueSort::Boolean, a, code, b);
             return self.test(n);
         }
         if !is_expr(ta) || !is_expr(tb) {
             return Err(self.bad_operands("comparison", at));
         }
         self.promote(&mut a, &mut b);
-        let n = New_BinOp(self.p, BOOLEAN, a, code, b);
+        let n = New_BinOp(self.p, ValueSort::Boolean, a, code, b);
         self.test(n)
     }
 
@@ -657,7 +666,7 @@ impl Lowerer<'_> {
 
     fn lower_ternary(&mut self, cond: &Ast, then: &Ast, els: &Ast, at: usize) -> LRes {
         let c = self.lower(cond)?;
-        if self.ntype(c) != BOOLEAN {
+        if self.ntype(c) != ValueSort::Boolean {
             return Err(ParseError::syntax(
                 "the condition of '?:' must be boolean",
                 at,
@@ -669,7 +678,7 @@ impl Lowerer<'_> {
         let (tx, ty) = (self.ntype(x), self.ntype(y));
 
         /* spec 3.4 (5): there is no `bexpr '?' bits ':' bits` */
-        if tx == BITSTR || ty == BITSTR {
+        if tx == ValueSort::Bits || ty == ValueSort::Bits {
             return Err(ParseError::syntax(
                 "'?:' is not defined for bit strings",
                 at,
@@ -677,7 +686,7 @@ impl Lowerer<'_> {
             ));
         }
 
-        if tx == STRING || ty == STRING {
+        if tx == ValueSort::String || ty == ValueSort::String {
             if tx != ty {
                 return Err(ParseError::syntax(
                     "'?:' branches have incompatible types",
@@ -690,13 +699,13 @@ impl Lowerer<'_> {
             }
             /* the output size must be known up front to avoid an overflow */
             let out = self.size(x).max(self.size(y)) as c_int;
-            let n = self.func_size(0, FuncOp::IfThenElse, &[x, y, c], out);
+            let n = self.func_size(None, FuncOp::IfThenElse, &[x, y, c], out);
             let n = self.test(n)?;
             self.copy_dims_if(n, x, y);
             return Ok(n);
         }
 
-        let both_bool = tx == BOOLEAN && ty == BOOLEAN;
+        let both_bool = tx == ValueSort::Boolean && ty == ValueSort::Boolean;
         if !both_bool {
             self.promote(&mut x, &mut y);
         }
@@ -705,7 +714,7 @@ impl Lowerer<'_> {
                 "Incompatible dimensions in '?:' arguments",
             ));
         }
-        let n = self.func(0, FuncOp::IfThenElse, &[x, y, c]);
+        let n = self.func(None, FuncOp::IfThenElse, &[x, y, c]);
         let n = self.test(n)?;
         self.copy_dims_if(n, x, y);
 
@@ -721,7 +730,7 @@ impl Lowerer<'_> {
             let tx2 = self.ntype(x);
             self.set_ntype(c, tx2);
             let ok = self.dims_ok(c, n);
-            self.set_ntype(c, BOOLEAN);
+            self.set_ntype(c, ValueSort::Boolean);
             if !ok {
                 return Err(ParseError::semantic(
                     "Incompatible dimensions in '?:' condition",
@@ -747,10 +756,10 @@ impl Lowerer<'_> {
             CallKind::IFunction => {
                 /* STRSTR(sexpr, sexpr) */
                 let [s, sub] = self.lower_n::<2>(args, name, at)?;
-                if self.ntype(s) != STRING || self.ntype(sub) != STRING {
+                if self.ntype(s) != ValueSort::String || self.ntype(sub) != ValueSort::String {
                     return Err(unsupported("string,string", name));
                 }
-                let n = self.func(LONG, FuncOp::StrPos, &[s, sub]);
+                let n = self.func(Some(ValueSort::Long), FuncOp::StrPos, &[s, sub]);
                 self.test(n)
             }
             CallKind::BFunction => self.lower_bfunction(name, args, at),
@@ -793,17 +802,17 @@ impl Lowerer<'_> {
             (b"ISNULL", 1) => {
                 let a = ns[0];
                 match self.ntype(a) {
-                    STRING => {
-                        let n = self.func(BOOLEAN, FuncOp::IsNull, &[a]);
+                    ValueSort::String => {
+                        let n = self.func(Some(ValueSort::Boolean), FuncOp::IsNull, &[a]);
                         self.test(n)
                     }
                     /* spec 3.4 (7): ISNULL is not defined for bit strings */
-                    BITSTR => Err(unsupported("bits", name)),
+                    ValueSort::Bits => Err(unsupported("bits", name)),
                     _ => {
-                        let n = self.func(0, FuncOp::IsNull, &[a]);
+                        let n = self.func(None, FuncOp::IsNull, &[a]);
                         let n = self.test(n)?;
-                        /* keep the argument's size but return BOOLEAN */
-                        self.set_ntype(n, BOOLEAN);
+                        /* keep the argument's size but return ValueSort::Boolean */
+                        self.set_ntype(n, ValueSort::Boolean);
                         Ok(n)
                     }
                 }
@@ -824,7 +833,7 @@ impl Lowerer<'_> {
         }
     }
 
-    /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to DOUBLE, all
+    /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to ValueSort::Double, all
     /// dimensions pairwise compatible, then propagate the largest shape.
     fn region_fct(&mut self, op: FuncOp, ns: &[NodeId], what: &str) -> LRes {
         for &n in ns {
@@ -838,7 +847,7 @@ impl Lowerer<'_> {
                 )));
             }
         }
-        let n = self.func(BOOLEAN, op, &ds);
+        let n = self.func(Some(ValueSort::Boolean), op, &ds);
         let n = self.test(n)?;
         self.copy_dims_if(n, n, ds[0]);
         for w in ds.windows(2) {
@@ -852,11 +861,11 @@ impl Lowerer<'_> {
         match ns.len() {
             0 => match name {
                 b"RANDOM" => {
-                    let n = self.func(DOUBLE, FuncOp::Rnd, &[]);
+                    let n = self.func(Some(ValueSort::Double), FuncOp::Rnd, &[]);
                     self.test(n)
                 }
                 b"RANDOMN" => {
-                    let n = self.func(DOUBLE, FuncOp::GasRnd, &[]);
+                    let n = self.func(Some(ValueSort::Double), FuncOp::GasRnd, &[]);
                     self.test(n)
                 }
                 _ => Err(unsupported("", name)),
@@ -888,32 +897,32 @@ impl Lowerer<'_> {
         }
 
         match t {
-            BOOLEAN => match name {
+            ValueSort::Boolean => match name {
                 b"SUM" => {
-                    let n = self.func(LONG, FuncOp::Sum, &[a]);
+                    let n = self.func(Some(ValueSort::Long), FuncOp::Sum, &[a]);
                     self.test(n)
                 }
-                b"ACCUM" => self.accum(a, LONG, T::ACCUM as c_int),
+                b"ACCUM" => self.accum(a, ValueSort::Long, T::ACCUM as c_int),
                 /* `FUNCTION bexpr ')'` supports only SUM, NELEM and ACCUM.
                 Falling through to the numeric list would accept `ABS(BOOLCOL)`
                 and then hand Do_Func a char buffer to read through a *long. */
                 _ => Err(unsupported("bool", name)),
             },
-            STRING => match name {
+            ValueSort::String => match name {
                 b"NVALID" => {
-                    let n = self.func(LONG, FuncOp::NonNull, &[a]);
+                    let n = self.func(Some(ValueSort::Long), FuncOp::NonNull, &[a]);
                     self.test(n)
                 }
                 _ => Err(unsupported("str", name)),
             },
-            BITSTR => match name {
+            ValueSort::Bits => match name {
                 /* bit arrays have no NULLs, so NVALID is the element count */
                 b"NVALID" => {
                     let n = self.const_long(sz);
                     self.test(n)
                 }
                 b"SUM" => {
-                    let n = self.func(LONG, FuncOp::Sum, &[a]);
+                    let n = self.func(Some(ValueSort::Long), FuncOp::Sum, &[a]);
                     self.test(n)
                 }
                 b"MIN" | b"MAX" => {
@@ -922,22 +931,22 @@ impl Lowerer<'_> {
                     } else {
                         FuncOp::Max1
                     };
-                    let n = self.func(t, op, &[a]);
+                    let n = self.func(Some(t), op, &[a]);
                     let n = self.test(n)?;
                     /* a is a vector, so the result is never constant and it is
                     safe to force the size */
                     self.set_size(n, 1);
                     Ok(n)
                 }
-                b"ACCUM" => self.accum(a, LONG, T::ACCUM as c_int),
+                b"ACCUM" => self.accum(a, ValueSort::Long, T::ACCUM as c_int),
                 _ => Err(unsupported("bits", name)),
             },
             _ => self.func1_numeric(name, a),
         }
     }
 
-    fn accum(&mut self, a: NodeId, ret: c_int, code: c_int) -> LRes {
-        let zero = if ret == DOUBLE {
+    fn accum(&mut self, a: NodeId, ret: ValueSort, code: c_int) -> LRes {
+        let zero = if ret == ValueSort::Double {
             self.const_double(0.0)
         } else {
             self.const_long(0)
@@ -950,27 +959,35 @@ impl Lowerer<'_> {
         let t = self.ntype(a);
         let sz = self.size(a);
         let n = match name {
-            b"SUM" => self.func(t, FuncOp::Sum, &[a]),
-            b"AVERAGE" => self.func(DOUBLE, FuncOp::Average, &[a]),
-            b"STDDEV" => self.func(DOUBLE, FuncOp::Stddev, &[a]),
-            b"MEDIAN" => self.func(t, FuncOp::Median, &[a]),
-            b"NVALID" => self.func(LONG, FuncOp::NonNull, &[a]),
-            b"ACCUM" if t == LONG => return self.accum(a, LONG, T::ACCUM as c_int),
-            b"ACCUM" if t == DOUBLE => return self.accum(a, DOUBLE, T::ACCUM as c_int),
-            b"SEQDIFF" if t == LONG => return self.accum(a, LONG, T::DIFF as c_int),
-            b"SEQDIFF" if t == DOUBLE => return self.accum(a, DOUBLE, T::DIFF as c_int),
-            b"ABS" => self.func(0, FuncOp::Abs, &[a]),
-            b"MIN" => self.func(t, FuncOp::Min1, &[a]),
-            b"MAX" => self.func(t, FuncOp::Max1, &[a]),
+            b"SUM" => self.func(Some(t), FuncOp::Sum, &[a]),
+            b"AVERAGE" => self.func(Some(ValueSort::Double), FuncOp::Average, &[a]),
+            b"STDDEV" => self.func(Some(ValueSort::Double), FuncOp::Stddev, &[a]),
+            b"MEDIAN" => self.func(Some(t), FuncOp::Median, &[a]),
+            b"NVALID" => self.func(Some(ValueSort::Long), FuncOp::NonNull, &[a]),
+            b"ACCUM" if t == ValueSort::Long => {
+                return self.accum(a, ValueSort::Long, T::ACCUM as c_int);
+            }
+            b"ACCUM" if t == ValueSort::Double => {
+                return self.accum(a, ValueSort::Double, T::ACCUM as c_int);
+            }
+            b"SEQDIFF" if t == ValueSort::Long => {
+                return self.accum(a, ValueSort::Long, T::DIFF as c_int);
+            }
+            b"SEQDIFF" if t == ValueSort::Double => {
+                return self.accum(a, ValueSort::Double, T::DIFF as c_int);
+            }
+            b"ABS" => self.func(None, FuncOp::Abs, &[a]),
+            b"MIN" => self.func(Some(t), FuncOp::Min1, &[a]),
+            b"MAX" => self.func(Some(t), FuncOp::Max1, &[a]),
             b"RANDOM" | b"RANDOMN" => {
                 let op = if name == b"RANDOM" {
                     FuncOp::Rnd
                 } else {
                     FuncOp::GasRnd
                 };
-                let n = self.func(0, op, &[a]);
+                let n = self.func(None, op, &[a]);
                 let n = self.test(n)?;
-                self.set_ntype(n, DOUBLE);
+                self.set_ntype(n, ValueSort::Double);
                 return Ok(n);
             }
             b"ELEMENTNUM" => {
@@ -978,9 +995,9 @@ impl Lowerer<'_> {
                     let n = self.const_long(1);
                     return self.test(n);
                 }
-                let n = self.func(0, FuncOp::ElemNum, &[a]);
+                let n = self.func(None, FuncOp::ElemNum, &[a]);
                 let n = self.test(n)?;
-                self.set_ntype(n, LONG);
+                self.set_ntype(n, ValueSort::Long);
                 return Ok(n);
             }
             b"NAXIS" => {
@@ -994,7 +1011,7 @@ impl Lowerer<'_> {
                 return self.test(n);
             }
             _ => {
-                /* everything else takes a DOUBLE */
+                /* everything else takes a ValueSort::Double */
                 let d = self.as_double(a);
                 let op = match name {
                     b"SIN" => FuncOp::Sin,
@@ -1014,14 +1031,14 @@ impl Lowerer<'_> {
                     b"FLOOR" => FuncOp::Floor,
                     b"CEIL" => FuncOp::Ceil,
                     b"RANDOMP" => {
-                        let n = self.func(0, FuncOp::PoiRnd, &[d]);
+                        let n = self.func(None, FuncOp::PoiRnd, &[d]);
                         let n = self.test(n)?;
-                        self.set_ntype(n, LONG);
+                        self.set_ntype(n, ValueSort::Long);
                         return Ok(n);
                     }
                     _ => return Err(unsupported("expr", name)),
                 };
-                self.func(0, op, &[d])
+                self.func(None, op, &[d])
             }
         };
         let _ = sz;
@@ -1034,15 +1051,15 @@ impl Lowerer<'_> {
         match name {
             b"DEFNULL" => {
                 /* spec 3.4 (8): no DEFNULL over bit strings */
-                if ta == BITSTR || tb == BITSTR {
+                if ta == ValueSort::Bits || tb == ValueSort::Bits {
                     return Err(unsupported("bits,bits", name));
                 }
-                if ta == STRING || tb == STRING {
+                if ta == ValueSort::String || tb == ValueSort::String {
                     if ta != tb {
                         return Err(unsupported("string,expr", name));
                     }
                     let out = self.size(a).max(self.size(b)) as c_int;
-                    let n = self.func_size(0, FuncOp::DefNull, &[a, b], out);
+                    let n = self.func_size(None, FuncOp::DefNull, &[a, b], out);
                     let n = self.test(n)?;
                     if self.size(b) > self.size(a) {
                         let sb = self.size(b);
@@ -1054,7 +1071,7 @@ impl Lowerer<'_> {
                 self.require_numeric(b, name)?;
                 /* `FUNCTION expr ',' expr` and `FUNCTION bexpr ',' bexpr` are
                 separate productions; there is no mixed form */
-                if (ta == BOOLEAN) != (tb == BOOLEAN) {
+                if (ta == ValueSort::Boolean) != (tb == ValueSort::Boolean) {
                     return Err(unsupported("expr,expr", name));
                 }
                 if !(self.size(a) >= self.size(b) && self.dims_ok(a, b)) {
@@ -1063,10 +1080,10 @@ impl Lowerer<'_> {
                     ));
                 }
                 let (mut a, mut b) = (a, b);
-                if !(ta == BOOLEAN && tb == BOOLEAN) {
+                if !(ta == ValueSort::Boolean && tb == ValueSort::Boolean) {
                     self.promote(&mut a, &mut b);
                 }
-                let n = self.func(0, FuncOp::DefNull, &[a, b]);
+                let n = self.func(None, FuncOp::DefNull, &[a, b]);
                 self.test(n)
             }
             b"ARCTAN2" => {
@@ -1079,7 +1096,7 @@ impl Lowerer<'_> {
                         "Dimensions of arctan2 arguments are not compatible",
                     ));
                 }
-                let n = self.func(0, FuncOp::Atan2, &[a, b]);
+                let n = self.func(None, FuncOp::Atan2, &[a, b]);
                 let n = self.test(n)?;
                 self.copy_dims_if(n, a, b);
                 Ok(n)
@@ -1100,7 +1117,7 @@ impl Lowerer<'_> {
                 } else {
                     FuncOp::Max2
                 };
-                let n = self.func(0, op, &[a, b]);
+                let n = self.func(None, op, &[a, b]);
                 let n = self.test(n)?;
                 self.copy_dims_if(n, a, b);
                 Ok(n)
@@ -1119,7 +1136,7 @@ impl Lowerer<'_> {
                 } else {
                     a
                 };
-                let n = self.func(0, FuncOp::SetNull, &[b, a]);
+                let n = self.func(None, FuncOp::SetNull, &[b, a]);
                 self.test(n)
             }
             b"AXISELEM" => {
@@ -1135,9 +1152,9 @@ impl Lowerer<'_> {
                     return self.test(n);
                 }
                 let b = self.as_long(b);
-                let n = self.func(0, FuncOp::AxisElem, &[a, b]);
+                let n = self.func(None, FuncOp::AxisElem, &[a, b]);
                 let n = self.test(n)?;
-                self.set_ntype(n, LONG);
+                self.set_ntype(n, ValueSort::Long);
                 Ok(n)
             }
             b"NAXES" => {
@@ -1180,12 +1197,12 @@ impl Lowerer<'_> {
         if name != b"STRMID" {
             return Err(unsupported("expr,expr,expr", name));
         }
-        if self.ntype(s) != STRING {
+        if self.ntype(s) != ValueSort::String {
             return Err(unsupported("string,expr,expr", name));
         }
-        if self.ntype(pos) != LONG
+        if self.ntype(pos) != ValueSort::Long
             || self.size(pos) != 1
-            || self.ntype(len) != LONG
+            || self.ntype(len) != ValueSort::Long
             || self.size(len) != 1
         {
             return Err(ParseError::semantic(
@@ -1201,7 +1218,7 @@ impl Lowerer<'_> {
         if n_chars <= 0 || n_chars >= c_long::from(MAX_STRLEN) {
             return Err(ParseError::semantic("STRMID(S,P,N), N must be 1-255"));
         }
-        let n = self.func_size(0, FuncOp::StrMid, &[s, pos, len], n_chars as c_int);
+        let n = self.func_size(None, FuncOp::StrMid, &[s, pos, len], n_chars as c_int);
         self.test(n)
     }
 
@@ -1220,7 +1237,7 @@ impl Lowerer<'_> {
                 ));
             }
         }
-        let n = self.func(0, FuncOp::AngSep, &ds);
+        let n = self.func(None, FuncOp::AngSep, &ds);
         let n = self.test(n)?;
         for w in ds.windows(2) {
             self.copy_dims_if(n, w[0], w[1]);
