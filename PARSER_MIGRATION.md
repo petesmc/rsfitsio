@@ -749,3 +749,68 @@ The other defects found here are rsfitsio-only transpilation errors
 (`ffdtyp`'s quote test, `ffgcrd_safe`'s underflow) and do not apply upstream.
 The `ACCUM(BOOLCOL)` type confusion in §9.3 *does* apply upstream and has not
 been reported.
+
+---
+
+## 10. Replacing the evaluation engine
+
+The parser migration left an `Ast` between the front end and the `Node` arena.
+That seam is what makes the engine replaceable without touching the parser.
+
+### 10.1 What is wrong with the arena
+
+Measured, not asserted:
+
+| | |
+|---|---|
+| `lParse.Nodes[…]` lookups in `eval_y.rs` | 1,371 |
+| scalar-versus-vector special cases | 57 |
+| `DoOp` | `Option<fn(&mut ParseData, usize)>` |
+
+`DoOp` is a hand-rolled vtable whose `self` is an *index*, so no operation can
+hold a reference to its own node — hence the 1,371 lookups, and hence the raw
+pointers, because `&mut Nodes[this]` together with `&Nodes[that]` is exactly
+what the borrow checker forbids.
+
+**The root cause is that nodes own their output buffers.** Every alternative
+fixes it the same way: separate value storage from expression structure.
+
+Two more consequences worth naming:
+
+* the 57 scalar-versus-vector sites are one concept — "is this operand a single
+  value or a column" — written out 57 times;
+* `undef` is a null mask, but it is a `*mut c_char` aliasing into the *tail of
+  the data allocation*, so the two cannot be separated without changing the
+  allocation layout.
+
+### 10.2 The target
+
+What this has always been is a **vectorized expression evaluator over column
+batches with null masks**, row-chunked by `ffiter`. The shape is right; the
+type erasure and the manual memory are not. So:
+
+* `ColumnarValue` — `Scalar | Null | Array`, where the `Scalar` arm *is* the 57
+  special cases;
+* `Array` — owned `Vec` per sort, owning its own null mask;
+* kernels — `fn(op, &ColumnarValue, &ColumnarValue) -> Result<ColumnarValue>`,
+  sort dispatch done once instead of once per `Do_BinOp_*` variant;
+* `Expr` — an owned tree evaluated recursively, so children return values and
+  the aliasing problem never arises.
+
+### 10.3 Status
+
+**Step 1 is done**: `src/eval/value.rs` and `src/eval/kernel.rs` hold the value
+model and the arithmetic and comparison kernels, with 21 tests covering
+broadcasting, promotion, null propagation, integer division by zero, C's
+truncated `%`, and the relative tolerance of `~`. Nothing calls into it yet.
+
+**Step 2 is the port**: `Ast -> Expr` lowering, the remaining kernels (string,
+bit-string, the ~50 functions now split out into `eval_y/func.rs`), then
+retarget `ffiprs`/`Evaluate_Parser` and delete the arena. Do it one kernel
+family at a time behind a feature flag, running `tests/test_eval_corpus.rs`
+after each — two evaluators, one corpus, diff. That is the same play that made
+the parser migration safe, and the corpus already exists.
+
+The prerequisite that is also already done: `Do_Func` was one 3,310-line
+function and is now 84 named kernels in `src/eval_y/func.rs`, which is the
+granularity the port needs.

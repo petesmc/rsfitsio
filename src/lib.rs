@@ -74,6 +74,7 @@ pub mod drvrnet;
 pub mod drvrsmem;
 
 pub mod editcol;
+pub(crate) mod eval;
 pub mod eval_defs;
 pub mod eval_f;
 pub mod eval_y;
