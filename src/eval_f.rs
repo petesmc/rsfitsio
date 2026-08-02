@@ -78,7 +78,7 @@ use crate::eval_defs::{
     ParseData, ParseStatusVariables, ParserValue, parseInfo,
 };
 use crate::eval_tab::fits_parser_yytokentype;
-use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT};
+use crate::eval_y::{Evaluate_Parser, FuncOp};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -1572,11 +1572,11 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             node = lParse.nNodes;
             while node != 0 {
                 node -= 1;
-                if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
+                if (lParse.Nodes[node as usize]).operation == FuncOp::GtiFilt as c_int {
                     i = lParse.Nodes[node as usize].SubNodes[0];
                     /* the START/STOP array New_GTI attached to the node */
                     (lParse.Nodes[i]).value.data.free_buffer();
-                } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
+                } else if (lParse.Nodes[node as usize]).operation == FuncOp::RegFilt as c_int {
                     i = (lParse.Nodes[node as usize]).SubNodes[0];
                     if !(lParse.Nodes[i]).value.data.raw().is_null() {
                         fits_free_region(Box::from_raw(

@@ -23,14 +23,8 @@ use crate::c_types::{c_char, c_double, c_int, c_long};
 use crate::eval_defs::{CONST_OP, MAX_STRLEN, MAXSUBS, NodeValue, ParseData, ParserValue};
 use crate::eval_tab::fits_parser_yytokentype as T;
 use crate::eval_y::{
-    ABS_FCT, ACOS_FCT, ANGSEP_FCT, ASIN_FCT, ATAN_FCT, ATAN2_FCT, AVERAGE_FCT, AXISELEM_FCT,
-    BOX_FCT, CEIL_FCT, CIRCLE_FCT, COS_FCT, COSH_FCT, Close_Vec, Copy_Dims, DEFNULL_FCT,
-    ELEMNUM_FCT, ELPS_FCT, EXP_FCT, FLOOR_FCT, GASRND_FCT, GTIFILT_FCT, GTIFIND_FCT, GTIOVER_FCT,
-    IFTHENELSE_FCT, ISNULL_FCT, LOG_FCT, LOG10_FCT, MAX1_FCT, MAX2_FCT, MEDIAN_FCT, MIN1_FCT,
-    MIN2_FCT, NEAR_FCT, NONNULL_FCT, NULL_FCT, New_Array, New_BinOp, New_Column, New_Const,
-    New_Deref, New_Func, New_FuncSize, New_GTI, New_Offset, New_REG, New_Unary, New_Vector,
-    POIRND_FCT, RND_FCT, ROUND_FCT, ROW_FCT, SETNULL_FCT, SIN_FCT, SINH_FCT, SQRT_FCT, STDDEV_FCT,
-    STRMID_FCT, STRPOS_FCT, SUM_FCT, TAN_FCT, TANH_FCT, Test_Dims, funcOp,
+    Close_Vec, Copy_Dims, FuncOp, New_Array, New_BinOp, New_Column, New_Const, New_Deref, New_Func,
+    New_FuncSize, New_GTI, New_Offset, New_REG, New_Unary, New_Vector, Test_Dims,
 };
 
 /// A node index in `ParseData::Nodes`.
@@ -138,7 +132,7 @@ impl Lowerer<'_> {
         }
     }
 
-    fn func(&mut self, ret: c_int, op: funcOp, args: &[NodeId]) -> NodeId {
+    fn func(&mut self, ret: c_int, op: FuncOp, args: &[NodeId]) -> NodeId {
         let mut a = [0 as NodeId; 7];
         a[..args.len()].copy_from_slice(args);
         New_Func(
@@ -156,7 +150,7 @@ impl Lowerer<'_> {
         )
     }
 
-    fn func_size(&mut self, ret: c_int, op: funcOp, args: &[NodeId], size: c_int) -> NodeId {
+    fn func_size(&mut self, ret: c_int, op: FuncOp, args: &[NodeId], size: c_int) -> NodeId {
         let mut a = [0 as NodeId; 7];
         a[..args.len()].copy_from_slice(args);
         New_FuncSize(
@@ -284,15 +278,15 @@ impl Lowerer<'_> {
             AstKind::Str(s) => self.new_text_const(s, STRING),
             AstKind::BitStr(s) => self.new_text_const(s, BITSTR),
             AstKind::RowRef => {
-                let n = self.func(LONG, ROW_FCT, &[]);
+                let n = self.func(LONG, FuncOp::Row, &[]);
                 self.test(n)
             }
             AstKind::NullRef => {
-                let n = self.func(LONG, NULL_FCT, &[]);
+                let n = self.func(LONG, FuncOp::Null, &[]);
                 self.test(n)
             }
             AstKind::SNullRef => {
-                let n = self.func(STRING, NULL_FCT, &[]);
+                let n = self.func(STRING, FuncOp::Null, &[]);
                 self.test(n)
             }
             AstKind::Ident(name) => self.resolve(name, a.at),
@@ -696,7 +690,7 @@ impl Lowerer<'_> {
             }
             /* the output size must be known up front to avoid an overflow */
             let out = self.size(x).max(self.size(y)) as c_int;
-            let n = self.func_size(0, IFTHENELSE_FCT, &[x, y, c], out);
+            let n = self.func_size(0, FuncOp::IfThenElse, &[x, y, c], out);
             let n = self.test(n)?;
             self.copy_dims_if(n, x, y);
             return Ok(n);
@@ -711,7 +705,7 @@ impl Lowerer<'_> {
                 "Incompatible dimensions in '?:' arguments",
             ));
         }
-        let n = self.func(0, IFTHENELSE_FCT, &[x, y, c]);
+        let n = self.func(0, FuncOp::IfThenElse, &[x, y, c]);
         let n = self.test(n)?;
         self.copy_dims_if(n, x, y);
 
@@ -746,8 +740,8 @@ impl Lowerer<'_> {
 
     fn lower_call(&mut self, kind: CallKind, name: &[u8], args: &[Ast], at: usize) -> LRes {
         match kind {
-            CallKind::GtiFilter => self.lower_gti(GTIFILT_FCT, name, args, at),
-            CallKind::GtiFind => self.lower_gti(GTIFIND_FCT, name, args, at),
+            CallKind::GtiFilter => self.lower_gti(FuncOp::GtiFilt, name, args, at),
+            CallKind::GtiFind => self.lower_gti(FuncOp::GtiFind, name, args, at),
             CallKind::GtiOverlap => self.lower_gti_overlap(name, args, at),
             CallKind::RegFilter => self.lower_regfilter(name, args, at),
             CallKind::IFunction => {
@@ -756,7 +750,7 @@ impl Lowerer<'_> {
                 if self.ntype(s) != STRING || self.ntype(sub) != STRING {
                     return Err(unsupported("string,string", name));
                 }
-                let n = self.func(LONG, STRPOS_FCT, &[s, sub]);
+                let n = self.func(LONG, FuncOp::StrPos, &[s, sub]);
                 self.test(n)
             }
             CallKind::BFunction => self.lower_bfunction(name, args, at),
@@ -800,13 +794,13 @@ impl Lowerer<'_> {
                 let a = ns[0];
                 match self.ntype(a) {
                     STRING => {
-                        let n = self.func(BOOLEAN, ISNULL_FCT, &[a]);
+                        let n = self.func(BOOLEAN, FuncOp::IsNull, &[a]);
                         self.test(n)
                     }
                     /* spec 3.4 (7): ISNULL is not defined for bit strings */
                     BITSTR => Err(unsupported("bits", name)),
                     _ => {
-                        let n = self.func(0, ISNULL_FCT, &[a]);
+                        let n = self.func(0, FuncOp::IsNull, &[a]);
                         let n = self.test(n)?;
                         /* keep the argument's size but return BOOLEAN */
                         self.set_ntype(n, BOOLEAN);
@@ -814,10 +808,10 @@ impl Lowerer<'_> {
                     }
                 }
             }
-            (b"NEAR", 3) => self.region_fct(NEAR_FCT, &ns, "NEAR"),
-            (b"CIRCLE", 5) => self.region_fct(CIRCLE_FCT, &ns, "CIRCLE"),
-            (b"BOX", 7) => self.region_fct(BOX_FCT, &ns, "BOX or ELLIPSE"),
-            (b"ELLIPSE", 7) => self.region_fct(ELPS_FCT, &ns, "BOX or ELLIPSE"),
+            (b"NEAR", 3) => self.region_fct(FuncOp::Near, &ns, "NEAR"),
+            (b"CIRCLE", 5) => self.region_fct(FuncOp::Circle, &ns, "CIRCLE"),
+            (b"BOX", 7) => self.region_fct(FuncOp::Box, &ns, "BOX or ELLIPSE"),
+            (b"ELLIPSE", 7) => self.region_fct(FuncOp::Ellipse, &ns, "BOX or ELLIPSE"),
             _ => Err(ParseError::syntax(
                 format!(
                     "Boolean Function {}() with {} argument(s) not supported",
@@ -832,7 +826,7 @@ impl Lowerer<'_> {
 
     /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to DOUBLE, all
     /// dimensions pairwise compatible, then propagate the largest shape.
-    fn region_fct(&mut self, op: funcOp, ns: &[NodeId], what: &str) -> LRes {
+    fn region_fct(&mut self, op: FuncOp, ns: &[NodeId], what: &str) -> LRes {
         for &n in ns {
             self.require_expr(n, what.as_bytes())?;
         }
@@ -858,11 +852,11 @@ impl Lowerer<'_> {
         match ns.len() {
             0 => match name {
                 b"RANDOM" => {
-                    let n = self.func(DOUBLE, RND_FCT, &[]);
+                    let n = self.func(DOUBLE, FuncOp::Rnd, &[]);
                     self.test(n)
                 }
                 b"RANDOMN" => {
-                    let n = self.func(DOUBLE, GASRND_FCT, &[]);
+                    let n = self.func(DOUBLE, FuncOp::GasRnd, &[]);
                     self.test(n)
                 }
                 _ => Err(unsupported("", name)),
@@ -896,7 +890,7 @@ impl Lowerer<'_> {
         match t {
             BOOLEAN => match name {
                 b"SUM" => {
-                    let n = self.func(LONG, SUM_FCT, &[a]);
+                    let n = self.func(LONG, FuncOp::Sum, &[a]);
                     self.test(n)
                 }
                 b"ACCUM" => self.accum(a, LONG, T::ACCUM as c_int),
@@ -907,7 +901,7 @@ impl Lowerer<'_> {
             },
             STRING => match name {
                 b"NVALID" => {
-                    let n = self.func(LONG, NONNULL_FCT, &[a]);
+                    let n = self.func(LONG, FuncOp::NonNull, &[a]);
                     self.test(n)
                 }
                 _ => Err(unsupported("str", name)),
@@ -919,11 +913,15 @@ impl Lowerer<'_> {
                     self.test(n)
                 }
                 b"SUM" => {
-                    let n = self.func(LONG, SUM_FCT, &[a]);
+                    let n = self.func(LONG, FuncOp::Sum, &[a]);
                     self.test(n)
                 }
                 b"MIN" | b"MAX" => {
-                    let op = if name == b"MIN" { MIN1_FCT } else { MAX1_FCT };
+                    let op = if name == b"MIN" {
+                        FuncOp::Min1
+                    } else {
+                        FuncOp::Max1
+                    };
                     let n = self.func(t, op, &[a]);
                     let n = self.test(n)?;
                     /* a is a vector, so the result is never constant and it is
@@ -952,23 +950,23 @@ impl Lowerer<'_> {
         let t = self.ntype(a);
         let sz = self.size(a);
         let n = match name {
-            b"SUM" => self.func(t, SUM_FCT, &[a]),
-            b"AVERAGE" => self.func(DOUBLE, AVERAGE_FCT, &[a]),
-            b"STDDEV" => self.func(DOUBLE, STDDEV_FCT, &[a]),
-            b"MEDIAN" => self.func(t, MEDIAN_FCT, &[a]),
-            b"NVALID" => self.func(LONG, NONNULL_FCT, &[a]),
+            b"SUM" => self.func(t, FuncOp::Sum, &[a]),
+            b"AVERAGE" => self.func(DOUBLE, FuncOp::Average, &[a]),
+            b"STDDEV" => self.func(DOUBLE, FuncOp::Stddev, &[a]),
+            b"MEDIAN" => self.func(t, FuncOp::Median, &[a]),
+            b"NVALID" => self.func(LONG, FuncOp::NonNull, &[a]),
             b"ACCUM" if t == LONG => return self.accum(a, LONG, T::ACCUM as c_int),
             b"ACCUM" if t == DOUBLE => return self.accum(a, DOUBLE, T::ACCUM as c_int),
             b"SEQDIFF" if t == LONG => return self.accum(a, LONG, T::DIFF as c_int),
             b"SEQDIFF" if t == DOUBLE => return self.accum(a, DOUBLE, T::DIFF as c_int),
-            b"ABS" => self.func(0, ABS_FCT, &[a]),
-            b"MIN" => self.func(t, MIN1_FCT, &[a]),
-            b"MAX" => self.func(t, MAX1_FCT, &[a]),
+            b"ABS" => self.func(0, FuncOp::Abs, &[a]),
+            b"MIN" => self.func(t, FuncOp::Min1, &[a]),
+            b"MAX" => self.func(t, FuncOp::Max1, &[a]),
             b"RANDOM" | b"RANDOMN" => {
                 let op = if name == b"RANDOM" {
-                    RND_FCT
+                    FuncOp::Rnd
                 } else {
-                    GASRND_FCT
+                    FuncOp::GasRnd
                 };
                 let n = self.func(0, op, &[a]);
                 let n = self.test(n)?;
@@ -980,7 +978,7 @@ impl Lowerer<'_> {
                     let n = self.const_long(1);
                     return self.test(n);
                 }
-                let n = self.func(0, ELEMNUM_FCT, &[a]);
+                let n = self.func(0, FuncOp::ElemNum, &[a]);
                 let n = self.test(n)?;
                 self.set_ntype(n, LONG);
                 return Ok(n);
@@ -999,24 +997,24 @@ impl Lowerer<'_> {
                 /* everything else takes a DOUBLE */
                 let d = self.as_double(a);
                 let op = match name {
-                    b"SIN" => SIN_FCT,
-                    b"COS" => COS_FCT,
-                    b"TAN" => TAN_FCT,
-                    b"ARCSIN" | b"ASIN" => ASIN_FCT,
-                    b"ARCCOS" | b"ACOS" => ACOS_FCT,
-                    b"ARCTAN" | b"ATAN" => ATAN_FCT,
-                    b"SINH" => SINH_FCT,
-                    b"COSH" => COSH_FCT,
-                    b"TANH" => TANH_FCT,
-                    b"EXP" => EXP_FCT,
-                    b"LOG" => LOG_FCT,
-                    b"LOG10" => LOG10_FCT,
-                    b"SQRT" => SQRT_FCT,
-                    b"ROUND" => ROUND_FCT,
-                    b"FLOOR" => FLOOR_FCT,
-                    b"CEIL" => CEIL_FCT,
+                    b"SIN" => FuncOp::Sin,
+                    b"COS" => FuncOp::Cos,
+                    b"TAN" => FuncOp::Tan,
+                    b"ARCSIN" | b"ASIN" => FuncOp::Asin,
+                    b"ARCCOS" | b"ACOS" => FuncOp::Acos,
+                    b"ARCTAN" | b"ATAN" => FuncOp::Atan,
+                    b"SINH" => FuncOp::Sinh,
+                    b"COSH" => FuncOp::Cosh,
+                    b"TANH" => FuncOp::Tanh,
+                    b"EXP" => FuncOp::Exp,
+                    b"LOG" => FuncOp::Log,
+                    b"LOG10" => FuncOp::Log10,
+                    b"SQRT" => FuncOp::Sqrt,
+                    b"ROUND" => FuncOp::Round,
+                    b"FLOOR" => FuncOp::Floor,
+                    b"CEIL" => FuncOp::Ceil,
                     b"RANDOMP" => {
-                        let n = self.func(0, POIRND_FCT, &[d]);
+                        let n = self.func(0, FuncOp::PoiRnd, &[d]);
                         let n = self.test(n)?;
                         self.set_ntype(n, LONG);
                         return Ok(n);
@@ -1044,7 +1042,7 @@ impl Lowerer<'_> {
                         return Err(unsupported("string,expr", name));
                     }
                     let out = self.size(a).max(self.size(b)) as c_int;
-                    let n = self.func_size(0, DEFNULL_FCT, &[a, b], out);
+                    let n = self.func_size(0, FuncOp::DefNull, &[a, b], out);
                     let n = self.test(n)?;
                     if self.size(b) > self.size(a) {
                         let sb = self.size(b);
@@ -1068,7 +1066,7 @@ impl Lowerer<'_> {
                 if !(ta == BOOLEAN && tb == BOOLEAN) {
                     self.promote(&mut a, &mut b);
                 }
-                let n = self.func(0, DEFNULL_FCT, &[a, b]);
+                let n = self.func(0, FuncOp::DefNull, &[a, b]);
                 self.test(n)
             }
             b"ARCTAN2" => {
@@ -1081,7 +1079,7 @@ impl Lowerer<'_> {
                         "Dimensions of arctan2 arguments are not compatible",
                     ));
                 }
-                let n = self.func(0, ATAN2_FCT, &[a, b]);
+                let n = self.func(0, FuncOp::Atan2, &[a, b]);
                 let n = self.test(n)?;
                 self.copy_dims_if(n, a, b);
                 Ok(n)
@@ -1097,7 +1095,11 @@ impl Lowerer<'_> {
                         String::from_utf8_lossy(name).to_lowercase()
                     )));
                 }
-                let op = if name == b"MIN" { MIN2_FCT } else { MAX2_FCT };
+                let op = if name == b"MIN" {
+                    FuncOp::Min2
+                } else {
+                    FuncOp::Max2
+                };
                 let n = self.func(0, op, &[a, b]);
                 let n = self.test(n)?;
                 self.copy_dims_if(n, a, b);
@@ -1117,7 +1119,7 @@ impl Lowerer<'_> {
                 } else {
                     a
                 };
-                let n = self.func(0, SETNULL_FCT, &[b, a]);
+                let n = self.func(0, FuncOp::SetNull, &[b, a]);
                 self.test(n)
             }
             b"AXISELEM" => {
@@ -1133,7 +1135,7 @@ impl Lowerer<'_> {
                     return self.test(n);
                 }
                 let b = self.as_long(b);
-                let n = self.func(0, AXISELEM_FCT, &[a, b]);
+                let n = self.func(0, FuncOp::AxisElem, &[a, b]);
                 let n = self.test(n)?;
                 self.set_ntype(n, LONG);
                 Ok(n)
@@ -1199,7 +1201,7 @@ impl Lowerer<'_> {
         if n_chars <= 0 || n_chars >= c_long::from(MAX_STRLEN) {
             return Err(ParseError::semantic("STRMID(S,P,N), N must be 1-255"));
         }
-        let n = self.func_size(0, STRMID_FCT, &[s, pos, len], n_chars as c_int);
+        let n = self.func_size(0, FuncOp::StrMid, &[s, pos, len], n_chars as c_int);
         self.test(n)
     }
 
@@ -1218,7 +1220,7 @@ impl Lowerer<'_> {
                 ));
             }
         }
-        let n = self.func(0, ANGSEP_FCT, &ds);
+        let n = self.func(0, FuncOp::AngSep, &ds);
         let n = self.test(n)?;
         for w in ds.windows(2) {
             self.copy_dims_if(n, w[0], w[1]);
@@ -1246,7 +1248,7 @@ impl Lowerer<'_> {
         }
     }
 
-    fn lower_gti(&mut self, op: funcOp, name: &[u8], args: &[Ast], at: usize) -> LRes {
+    fn lower_gti(&mut self, op: FuncOp, name: &[u8], args: &[Ast], at: usize) -> LRes {
         let mut fname = cstr(b"");
         let mut start = cstr(b"*START*");
         let mut stop = cstr(b"*STOP*");
@@ -1314,7 +1316,7 @@ impl Lowerer<'_> {
         }
         let n = New_GTI(
             self.p,
-            GTIOVER_FCT,
+            FuncOp::GtiOver,
             fname.as_mut_ptr(),
             n1,
             n2,

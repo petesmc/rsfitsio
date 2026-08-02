@@ -105,58 +105,186 @@ use crate::{atoi, cs, int_snprintf};
 /// stored in a pointer field; `eval.y` uses the same 0x1000 floor.
 const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
-pub type funcOp = c_uint;
-pub const ARRAY_FCT: funcOp = 1051;
-pub const AXISELEM_FCT: funcOp = 1050;
-pub const ELEMNUM_FCT: funcOp = 1049;
-pub const GTIFIND_FCT: funcOp = 1048;
-pub const GTIOVER_FCT: funcOp = 1047;
-pub const SETNULL_FCT: funcOp = 1046;
-pub const STRPOS_FCT: funcOp = 1045;
-pub const STRMID_FCT: funcOp = 1044;
-pub const POIRND_FCT: funcOp = 1043;
-pub const GASRND_FCT: funcOp = 1042;
-pub const ANGSEP_FCT: funcOp = 1041;
-pub const NONNULL_FCT: funcOp = 1040;
-pub const STDDEV_FCT: funcOp = 1039;
-pub const AVERAGE_FCT: funcOp = 1038;
-pub const MEDIAN_FCT: funcOp = 1037;
-pub const NULL_FCT: funcOp = 1036;
-pub const ROW_FCT: funcOp = 1035;
-pub const IFTHENELSE_FCT: funcOp = 1034;
-pub const REGFILT_FCT: funcOp = 1033;
-pub const GTIFILT_FCT: funcOp = 1032;
-pub const DEFNULL_FCT: funcOp = 1031;
-pub const ISNULL_FCT: funcOp = 1030;
-pub const ELPS_FCT: funcOp = 1029;
-pub const BOX_FCT: funcOp = 1028;
-pub const CIRCLE_FCT: funcOp = 1027;
-pub const NEAR_FCT: funcOp = 1026;
-pub const MAX2_FCT: funcOp = 1025;
-pub const MAX1_FCT: funcOp = 1024;
-pub const MIN2_FCT: funcOp = 1023;
-pub const MIN1_FCT: funcOp = 1022;
-pub const ROUND_FCT: funcOp = 1021;
-pub const FLOOR_FCT: funcOp = 1020;
-pub const CEIL_FCT: funcOp = 1019;
-pub const ATAN2_FCT: funcOp = 1018;
-pub const ABS_FCT: funcOp = 1017;
-pub const SQRT_FCT: funcOp = 1016;
-pub const LOG10_FCT: funcOp = 1015;
-pub const LOG_FCT: funcOp = 1014;
-pub const EXP_FCT: funcOp = 1013;
-pub const TANH_FCT: funcOp = 1012;
-pub const COSH_FCT: funcOp = 1011;
-pub const SINH_FCT: funcOp = 1010;
-pub const ATAN_FCT: funcOp = 1009;
-pub const ACOS_FCT: funcOp = 1008;
-pub const ASIN_FCT: funcOp = 1007;
-pub const TAN_FCT: funcOp = 1006;
-pub const COS_FCT: funcOp = 1005;
-pub const SIN_FCT: funcOp = 1004;
-pub const NELEM_FCT: funcOp = 1003;
-pub const SUM_FCT: funcOp = 1002;
-pub const RND_FCT: funcOp = 1001;
+/// The function a `Node` computes, stored in `Node::operation` for nodes whose
+/// `DoOp` is `Do_Func`.
+///
+/// The C had these as a `typedef enum FuncOp` in `eval_defs.h`; the
+/// transpilation flattened them to bare integers, so `Do_Func` was a match over
+/// fifty numeric literals. The values are unchanged from the C.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum FuncOp {
+    /// `rnd_fct`
+    Rnd = 1001,
+    /// `sum_fct`
+    Sum = 1002,
+    /// `nelem_fct`
+    Nelem = 1003,
+    /// `sin_fct`
+    Sin = 1004,
+    /// `cos_fct`
+    Cos = 1005,
+    /// `tan_fct`
+    Tan = 1006,
+    /// `asin_fct`
+    Asin = 1007,
+    /// `acos_fct`
+    Acos = 1008,
+    /// `atan_fct`
+    Atan = 1009,
+    /// `sinh_fct`
+    Sinh = 1010,
+    /// `cosh_fct`
+    Cosh = 1011,
+    /// `tanh_fct`
+    Tanh = 1012,
+    /// `exp_fct`
+    Exp = 1013,
+    /// `log_fct`
+    Log = 1014,
+    /// `log10_fct`
+    Log10 = 1015,
+    /// `sqrt_fct`
+    Sqrt = 1016,
+    /// `abs_fct`
+    Abs = 1017,
+    /// `atan2_fct`
+    Atan2 = 1018,
+    /// `ceil_fct`
+    Ceil = 1019,
+    /// `floor_fct`
+    Floor = 1020,
+    /// `round_fct`
+    Round = 1021,
+    /// `min1_fct`
+    Min1 = 1022,
+    /// `min2_fct`
+    Min2 = 1023,
+    /// `max1_fct`
+    Max1 = 1024,
+    /// `max2_fct`
+    Max2 = 1025,
+    /// `near_fct`
+    Near = 1026,
+    /// `circle_fct`
+    Circle = 1027,
+    /// `box_fct`
+    Box = 1028,
+    /// `elps_fct`
+    Ellipse = 1029,
+    /// `isnull_fct`
+    IsNull = 1030,
+    /// `defnull_fct`
+    DefNull = 1031,
+    /// `gtifilt_fct`
+    GtiFilt = 1032,
+    /// `regfilt_fct`
+    RegFilt = 1033,
+    /// `ifthenelse_fct`
+    IfThenElse = 1034,
+    /// `row_fct`
+    Row = 1035,
+    /// `null_fct`
+    Null = 1036,
+    /// `median_fct`
+    Median = 1037,
+    /// `average_fct`
+    Average = 1038,
+    /// `stddev_fct`
+    Stddev = 1039,
+    /// `nonnull_fct`
+    NonNull = 1040,
+    /// `angsep_fct`
+    AngSep = 1041,
+    /// `gasrnd_fct`
+    GasRnd = 1042,
+    /// `poirnd_fct`
+    PoiRnd = 1043,
+    /// `strmid_fct`
+    StrMid = 1044,
+    /// `strpos_fct`
+    StrPos = 1045,
+    /// `setnull_fct`
+    SetNull = 1046,
+    /// `gtiover_fct`
+    GtiOver = 1047,
+    /// `gtifind_fct`
+    GtiFind = 1048,
+    /// `elemnum_fct`
+    ElemNum = 1049,
+    /// `axiselem_fct`
+    AxisElem = 1050,
+    /// `array_fct`
+    Array = 1051,
+}
+
+impl FuncOp {
+    /// The `Node::operation` encoding.
+    pub(crate) fn code(self) -> c_int {
+        self as c_int
+    }
+
+    /// Recover the function from a `Node::operation` value.
+    ///
+    /// `operation` also encodes column indices, `CONST_OP` and operator
+    /// characters, so this returns `None` for anything that is not a function.
+    pub(crate) fn from_code(v: c_int) -> Option<FuncOp> {
+        Some(match v {
+            1001 => FuncOp::Rnd,
+            1002 => FuncOp::Sum,
+            1003 => FuncOp::Nelem,
+            1004 => FuncOp::Sin,
+            1005 => FuncOp::Cos,
+            1006 => FuncOp::Tan,
+            1007 => FuncOp::Asin,
+            1008 => FuncOp::Acos,
+            1009 => FuncOp::Atan,
+            1010 => FuncOp::Sinh,
+            1011 => FuncOp::Cosh,
+            1012 => FuncOp::Tanh,
+            1013 => FuncOp::Exp,
+            1014 => FuncOp::Log,
+            1015 => FuncOp::Log10,
+            1016 => FuncOp::Sqrt,
+            1017 => FuncOp::Abs,
+            1018 => FuncOp::Atan2,
+            1019 => FuncOp::Ceil,
+            1020 => FuncOp::Floor,
+            1021 => FuncOp::Round,
+            1022 => FuncOp::Min1,
+            1023 => FuncOp::Min2,
+            1024 => FuncOp::Max1,
+            1025 => FuncOp::Max2,
+            1026 => FuncOp::Near,
+            1027 => FuncOp::Circle,
+            1028 => FuncOp::Box,
+            1029 => FuncOp::Ellipse,
+            1030 => FuncOp::IsNull,
+            1031 => FuncOp::DefNull,
+            1032 => FuncOp::GtiFilt,
+            1033 => FuncOp::RegFilt,
+            1034 => FuncOp::IfThenElse,
+            1035 => FuncOp::Row,
+            1036 => FuncOp::Null,
+            1037 => FuncOp::Median,
+            1038 => FuncOp::Average,
+            1039 => FuncOp::Stddev,
+            1040 => FuncOp::NonNull,
+            1041 => FuncOp::AngSep,
+            1042 => FuncOp::GasRnd,
+            1043 => FuncOp::PoiRnd,
+            1044 => FuncOp::StrMid,
+            1045 => FuncOp::StrPos,
+            1046 => FuncOp::SetNull,
+            1047 => FuncOp::GtiOver,
+            1048 => FuncOp::GtiFind,
+            1049 => FuncOp::ElemNum,
+            1050 => FuncOp::AxisElem,
+            1051 => FuncOp::Array,
+            _ => return None,
+        })
+    }
+}
 
 fn Alloc_Node(lParse: &mut ParseData) -> c_int {
     // If number of nodes == number allocated, then realloc
@@ -438,7 +566,7 @@ pub(crate) fn New_BinOp(
 pub(crate) fn New_Func(
     lParse: &mut ParseData,
     returnType: c_int,
-    Op: funcOp,
+    Op: FuncOp,
     nNodes: c_int,
     Node1: c_int,
     Node2: c_int,
@@ -456,7 +584,7 @@ pub(crate) fn New_Func(
 pub(crate) fn New_FuncSize(
     lParse: &mut ParseData,
     returnType: c_int,
-    Op: funcOp,
+    Op: FuncOp,
     nNodes: c_int,
     Node1: c_int,
     Node2: c_int,
@@ -495,7 +623,7 @@ pub(crate) fn New_FuncSize(
 
         i = constant; /* Functions with zero params are not const */
 
-        if Op as c_uint == POIRND_FCT as c_int as c_uint {
+        if Op == FuncOp::PoiRnd {
             constant = 0; /* Nor is Poisson deviate */
         }
 
@@ -726,7 +854,7 @@ pub(crate) fn fits_parser_yyGetVariable(
 
 pub(crate) fn New_GTI(
     lParse: &mut ParseData,
-    Op: funcOp,
+    Op: FuncOp,
     mut fname: *mut c_char,
     mut Node1: c_int,
     mut Node2: c_int,
@@ -757,10 +885,7 @@ pub(crate) fn New_GTI(
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
 
-        if (Op as c_uint == GTIFILT_FCT as c_int as c_uint
-            || Op as c_uint == GTIFIND_FCT as c_int as c_uint)
-            && Node1 == -99
-        {
+        if (Op == FuncOp::GtiFilt || Op == FuncOp::GtiFind) && Node1 == -99 {
             if let Some(ParserValue::Column {
                 index,
                 sort: ColumnSort::Numeric,
@@ -776,7 +901,7 @@ pub(crate) fn New_GTI(
             }
         }
 
-        if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
+        if Op == FuncOp::GtiOver {
             if Node1 == -99 || Node2 == -99 {
                 fits_parser_yyerror(
                     lParse,
@@ -971,11 +1096,11 @@ pub(crate) fn New_GTI(
             this_node_idx = n as usize;
             (lParse.Nodes[this_node_idx]).SubNodes[1] = Node1.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).operation = Op as c_int;
-            if Op as c_uint == GTIFILT_FCT as c_int as c_uint {
+            if Op == FuncOp::GtiFilt {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
                 (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
-            } else if Op as c_uint == GTIFIND_FCT as c_int as c_uint {
+            } else if Op == FuncOp::GtiFind {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
                 (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::LONG as c_int;
@@ -994,7 +1119,7 @@ pub(crate) fn New_GTI(
                     (lParse.Nodes[that1_idx]).value.naxes[i as usize];
                 i += 1;
             }
-            if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
+            if Op == FuncOp::GtiOver {
                 (lParse.Nodes[this_node_idx]).SubNodes[2] = Node2.try_into().unwrap();
                 let that2_idx = Node2 as usize;
                 if (lParse.Nodes[that1_idx]).value.nelem != (lParse.Nodes[that2_idx]).value.nelem {
@@ -1101,9 +1226,7 @@ pub(crate) fn New_GTI(
                 }
 
                 /* GTIOVERLAP() requires ordered GTI */
-                if (lParse.Nodes[that0_idx]).ntype != 1
-                    && Op as c_uint == GTIOVER_FCT as c_int as c_uint
-                {
+                if (lParse.Nodes[that0_idx]).ntype != 1 && Op == FuncOp::GtiOver {
                     let mut errmsg: [c_char; 120] = [0; 120];
                     int_snprintf!(
                         &mut errmsg,
@@ -1134,8 +1257,7 @@ pub(crate) fn New_GTI(
             /* If Node1 is constant (gtifilt_fct) or
             Node1 and Node2 are constant (gtiover_fct), then evaluate now */
             if ((lParse.Nodes)[Node1 as usize]).operation == CONST_OP
-                && (Op as c_uint == GTIFILT_FCT as c_int as c_uint
-                    || ((lParse.Nodes)[Node2 as usize]).operation == CONST_OP)
+                && (Op == FuncOp::GtiFilt || ((lParse.Nodes)[Node2 as usize]).operation == CONST_OP)
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
@@ -1225,7 +1347,7 @@ pub(crate) fn New_REG(
             (lParse.Nodes[this_node_idx]).SubNodes[0] = Node0.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[1] = NodeX.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[2] = NodeY.try_into().unwrap();
-            (lParse.Nodes[this_node_idx]).operation = REGFILT_FCT as c_int;
+            (lParse.Nodes[this_node_idx]).operation = FuncOp::RegFilt as c_int;
             (lParse.Nodes[this_node_idx]).DoOp = Some(Do_REG);
             (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
@@ -1536,7 +1658,7 @@ pub(crate) fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c
     n = Alloc_Node(lParse);
     if n >= 0 {
         this_node_idx = n as usize;
-        (lParse.Nodes[this_node_idx]).operation = ARRAY_FCT as c_int;
+        (lParse.Nodes[this_node_idx]).operation = FuncOp::Array as c_int;
         (lParse.Nodes[this_node_idx]).nSubNodes = 1;
         (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
         (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
@@ -3957,6 +4079,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
         let mut row: c_long = 0;
         let mut elem: c_long = 0;
         let mut nelem: c_long = 0;
+        /* Do_Func is only installed for function nodes, so `operation` is
+        always a FuncOp here. */
+        let Some(op) = FuncOp::from_code((lParse.Nodes[this_node_idx]).operation) else {
+            lParse.status = PARSE_SYNTAX_ERR;
+            return;
+        };
+
         i = (lParse.Nodes[this_node_idx]).nSubNodes;
         allConst = 1;
         loop {
@@ -4002,19 +4131,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
         if (lParse.Nodes[this_node_idx]).nSubNodes == 0 {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == POIRND_FCT as c_int {
+        if op == FuncOp::PoiRnd {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == GASRND_FCT as c_int {
+        if op == FuncOp::GasRnd {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == RND_FCT as c_int {
+        if op == FuncOp::Rnd {
             allConst = 0;
         }
         if allConst != 0 {
             let current_block_139: u64;
-            match (lParse.Nodes[this_node_idx]).operation as u32 {
-                1002 => {
+            match op {
+                FuncOp::Sum => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -4045,7 +4174,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1038 => {
+                FuncOp::Average => {
                     if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.data =
@@ -4058,11 +4187,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1039 => {
+                FuncOp::Stddev => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0);
                     current_block_139 = 7627602990488000394;
                 }
-                1037 => {
+                FuncOp::Median => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -4084,7 +4213,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1043 => {
+                FuncOp::PoiRnd => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -4098,7 +4227,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1017 => {
+                FuncOp::Abs => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -4112,15 +4241,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1040 => {
+                FuncOp::NonNull => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(1);
                     current_block_139 = 7627602990488000394;
                 }
-                1030 => {
+                FuncOp::IsNull => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(0);
                     current_block_139 = 7627602990488000394;
                 }
-                1031 => {
+                FuncOp::DefNull => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -4146,7 +4275,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1046 => {
+                FuncOp::SetNull => {
                     if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.data =
@@ -4159,22 +4288,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1004 => {
+                FuncOp::Sin => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(sin(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1005 => {
+                FuncOp::Cos => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(cos(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1006 => {
+                FuncOp::Tan => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(tan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1007 => {
+                FuncOp::Asin => {
                     dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
@@ -4183,7 +4312,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1008 => {
+                FuncOp::Acos => {
                     dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
@@ -4192,32 +4321,32 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1009 => {
+                FuncOp::Atan => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(atan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1010 => {
+                FuncOp::Sinh => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(sinh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1011 => {
+                FuncOp::Cosh => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(cosh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1012 => {
+                FuncOp::Tanh => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(tanh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1013 => {
+                FuncOp::Exp => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(exp(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1014 => {
+                FuncOp::Log => {
                     dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
@@ -4226,7 +4355,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1015 => {
+                FuncOp::Log10 => {
                     dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
@@ -4235,7 +4364,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1016 => {
+                FuncOp::Sqrt => {
                     dval = pVals[0].data.dbl();
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
@@ -4244,27 +4373,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1019 => {
+                FuncOp::Ceil => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(ceil(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1020 => {
+                FuncOp::Floor => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(floor(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1021 => {
+                FuncOp::Round => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(floor(pVals[0].data.dbl() + 0.5));
                     current_block_139 = 7627602990488000394;
                 }
-                1018 => {
+                FuncOp::Atan2 => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(atan2(pVals[0].data.dbl(), pVals[1].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                1041 => {
+                FuncOp::AngSep => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(angsep_calc(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -4279,10 +4408,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     non-constant path in Do_Func has always been correct. */
                     current_block_139 = 7627602990488000394;
                 }
-                1022 => {
+                FuncOp::Min1 => {
                     current_block_139 = 15934000668868306918;
                 }
-                1023 => {
+                FuncOp::Min2 => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -4304,7 +4433,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1024 => {
+                FuncOp::Max1 => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -4325,7 +4454,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1025 => {
+                FuncOp::Max2 => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -4347,7 +4476,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                1026 => {
+                FuncOp::Near => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bnear(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -4355,7 +4484,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                1027 => {
+                FuncOp::Circle => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(circle(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -4365,7 +4494,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                1028 => {
+                FuncOp::Box => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(saobox(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -4377,7 +4506,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                1029 => {
+                FuncOp::Ellipse => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(ellipse(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -4389,7 +4518,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                1034 => {
+                FuncOp::IfThenElse => {
                     match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
                             (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
@@ -4430,7 +4559,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                STRMID_FCT => {
+                FuncOp::StrMid => {
                     let dest_str = (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                     cstrmid(
@@ -4443,7 +4572,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     );
                     current_block_139 = 7627602990488000394;
                 }
-                1045 => {
+                FuncOp::StrPos => {
                     let res: *mut c_char =
                         strstr(pVals[0].data.text_mut_ptr(), pVals[1].data.text_mut_ptr());
                     if res.is_null() {
@@ -4482,8 +4611,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             row = lParse.nRows;
             elem = row * (lParse.Nodes[this_node_idx]).value.nelem;
             if lParse.status == 0 {
-                match (lParse.Nodes[this_node_idx]).operation as u32 {
-                    1035 => loop {
+                match op {
+                    FuncOp::Row => loop {
                         let fresh53 = row;
                         row -= 1;
                         if fresh53 == 0 {
@@ -4493,7 +4622,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(row as isize) = lParse.firstRow + row;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
                     },
-                    1036 => {
+                    FuncOp::Null => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -4525,7 +4654,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1050 => {
+                    FuncOp::AxisElem => {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
                         let ipos: c_long = pVals[1].data.lng() - 1;
@@ -4562,7 +4691,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1049 => {
+                    FuncOp::ElemNum => {
                         let mut ielem_0: c_long = 0;
                         let mut elemnum: c_long = 1;
                         let j_0: c_int = 0;
@@ -4579,7 +4708,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             ielem_0 += 1;
                         }
                     }
-                    1001 => loop {
+                    FuncOp::Rnd => loop {
                         let fresh56 = elem;
                         elem -= 1;
                         if fresh56 == 0 {
@@ -4589,7 +4718,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(elem as isize) = simplerng_getuniform();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    1042 => loop {
+                    FuncOp::GasRnd => loop {
                         let fresh57 = elem;
                         elem -= 1;
                         if fresh57 == 0 {
@@ -4599,7 +4728,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(elem as isize) = simplerng_getnorm();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    1043 => {
+                    FuncOp::PoiRnd => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
@@ -4709,7 +4838,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1002 => {
+                    FuncOp::Sum => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::BOOLEAN as c_int
@@ -4856,7 +4985,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1038 => {
+                    FuncOp::Average => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -4947,7 +5076,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1039 => {
+                    FuncOp::Stddev => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -5092,7 +5221,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1037 => {
+                    FuncOp::Median => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
@@ -5209,7 +5338,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1017 => {
+                    FuncOp::Abs => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
@@ -5246,7 +5375,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1040 => {
+                    FuncOp::NonNull => {
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::STRING as c_int
@@ -5285,7 +5414,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1030 => {
+                    FuncOp::IsNull => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::STRING as c_int
                         {
@@ -5303,7 +5432,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                         }
                     }
-                    1031 => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    FuncOp::DefNull => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => loop {
                             let fresh90 = row;
                             row -= 1;
@@ -5528,7 +5657,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    1046 => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    FuncOp::SetNull => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::LONG => loop {
                             let fresh101 = elem;
                             elem -= 1;
@@ -5581,7 +5710,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    1004 => loop {
+                    FuncOp::Sin => loop {
                         let fresh103 = elem;
                         elem -= 1;
                         if fresh103 == 0 {
@@ -5598,7 +5727,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    1005 => loop {
+                    FuncOp::Cos => loop {
                         let fresh105 = elem;
                         elem -= 1;
                         if fresh105 == 0 {
@@ -5615,7 +5744,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    1006 => loop {
+                    FuncOp::Tan => loop {
                         let fresh107 = elem;
                         elem -= 1;
                         if fresh107 == 0 {
@@ -5632,7 +5761,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    1007 => loop {
+                    FuncOp::Asin => loop {
                         let fresh109 = elem;
                         elem -= 1;
                         if fresh109 == 0 {
@@ -5656,7 +5785,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1008 => loop {
+                    FuncOp::Acos => loop {
                         let fresh111 = elem;
                         elem -= 1;
                         if fresh111 == 0 {
@@ -5680,7 +5809,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1009 => loop {
+                    FuncOp::Atan => loop {
                         let fresh113 = elem;
                         elem -= 1;
                         if fresh113 == 0 {
@@ -5697,7 +5826,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(elem as isize) = atan(dval);
                         }
                     },
-                    1010 => loop {
+                    FuncOp::Sinh => loop {
                         let fresh115 = elem;
                         elem -= 1;
                         if fresh115 == 0 {
@@ -5715,7 +5844,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1011 => loop {
+                    FuncOp::Cosh => loop {
                         let fresh117 = elem;
                         elem -= 1;
                         if fresh117 == 0 {
@@ -5733,7 +5862,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    TANH_FCT => loop {
+                    FuncOp::Tanh => loop {
                         let fresh119 = elem;
                         elem -= 1;
                         if fresh119 == 0 {
@@ -5751,7 +5880,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1013 => loop {
+                    FuncOp::Exp => loop {
                         let fresh121 = elem;
                         elem -= 1;
                         if fresh121 == 0 {
@@ -5768,7 +5897,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(elem as isize) = exp(dval);
                         }
                     },
-                    1014 => loop {
+                    FuncOp::Log => loop {
                         let fresh123 = elem;
                         elem -= 1;
                         if fresh123 == 0 {
@@ -5792,7 +5921,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1015 => loop {
+                    FuncOp::Log10 => loop {
                         let fresh125 = elem;
                         elem -= 1;
                         if fresh125 == 0 {
@@ -5816,7 +5945,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1016 => loop {
+                    FuncOp::Sqrt => loop {
                         let fresh127 = elem;
                         elem -= 1;
                         if fresh127 == 0 {
@@ -5840,7 +5969,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1019 => loop {
+                    FuncOp::Ceil => loop {
                         let fresh129 = elem;
                         elem -= 1;
                         if fresh129 == 0 {
@@ -5858,7 +5987,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1020 => loop {
+                    FuncOp::Floor => loop {
                         let fresh131 = elem;
                         elem -= 1;
                         if fresh131 == 0 {
@@ -5876,7 +6005,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1021 => loop {
+                    FuncOp::Round => loop {
                         let fresh133 = elem;
                         elem -= 1;
                         if fresh133 == 0 {
@@ -5895,7 +6024,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    1018 => loop {
+                    FuncOp::Atan2 => loop {
                         let fresh135 = row;
                         row -= 1;
                         if fresh135 == 0 {
@@ -5956,7 +6085,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1041 => loop {
+                    FuncOp::AngSep => loop {
                         let fresh139 = row;
                         row -= 1;
                         if fresh139 == 0 {
@@ -6020,7 +6149,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1022 => {
+                    FuncOp::Min1 => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -6157,7 +6286,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1023 => {
+                    FuncOp::Min2 => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -6320,7 +6449,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1024 => {
+                    FuncOp::Max1 => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -6457,7 +6586,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1025 => {
+                    FuncOp::Max2 => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -6620,7 +6749,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    1026 => loop {
+                    FuncOp::Near => loop {
                         let fresh165 = row;
                         row -= 1;
                         if fresh165 == 0 {
@@ -6682,7 +6811,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1027 => loop {
+                    FuncOp::Circle => loop {
                         let fresh169 = row;
                         row -= 1;
                         if fresh169 == 0 {
@@ -6748,7 +6877,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1028 => loop {
+                    FuncOp::Box => loop {
                         let fresh173 = row;
                         row -= 1;
                         if fresh173 == 0 {
@@ -6818,7 +6947,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1029 => loop {
+                    FuncOp::Ellipse => loop {
                         let fresh177 = row;
                         row -= 1;
                         if fresh177 == 0 {
@@ -6888,7 +7017,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    1034 => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    FuncOp::IfThenElse => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => loop {
                             let fresh181 = row;
                             row -= 1;
@@ -7187,7 +7316,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    STRMID_FCT => {
+                    FuncOp::StrMid => {
                         let strconst: c_int =
                             c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
                         let posconst: c_int =
@@ -7267,7 +7396,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 undef as c_char;
                         }
                     }
-                    1045 => {
+                    FuncOp::StrPos => {
                         let const1: c_int =
                             c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
                         let const2: c_int =
@@ -7794,7 +7923,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         let mut gti: c_long = 0;
         let mut ordered: c_int = 0;
         let dorow: c_int =
-            c_int::from((lParse.Nodes[this_node_idx]).operation == GTIFIND_FCT as c_int);
+            c_int::from((lParse.Nodes[this_node_idx]).operation == FuncOp::GtiFind.code());
 
         let theTimes = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let theExpr = (lParse.Nodes[this_node_idx]).SubNodes[1];
