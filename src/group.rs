@@ -144,7 +144,7 @@ pub fn ffgtcr_safe(
 
     *status = fits_insert_group(fptr, grpname, grouptype, status);
 
-    return *status;
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -214,6 +214,7 @@ pub fn ffgtis_safe(
 
     // `do { ... } while(0)` is modelled as a `loop { ...; break; }`; the C `continue`
     // statements (which fall through to the `while(0)` test) become `break`.
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /* set up the ttype and tform character buffers */
         // Each column is one row of the 2-D array; pass them to ffgtdc as mutable
@@ -445,7 +446,7 @@ pub fn ffgtch_safe(
     let mut ttypeBuff: [[c_char; 17]; 6] = [[0; 17]; 6];
     let mut tformBuff: [[c_char; 9]; 6] = [[0; 9]; 6];
 
-    let charNull: [c_uchar; 1] = [b'\0']; /* unsigned char charNull[1] = {'\0'}; */
+    let charNull: [c_uchar; 1] = *b"\0"; /* unsigned char charNull[1] = {'\0'}; */
 
     let mut keyword: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -457,6 +458,7 @@ pub fn ffgtch_safe(
 
     // `do { ... } while(0)` is modelled as a `loop { ...; break; }`; the C `continue`
     // statements (which fall through to the `while(0)` test) become `break`.
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /* retrieve positions of all Grouping table reserved columns */
 
@@ -1010,6 +1012,7 @@ pub fn ffgtmg_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         *status = fits_get_num_members(infptr, &mut nmembers, status);
 
@@ -1099,6 +1102,7 @@ pub fn ffgtcm_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         if cmopt as u64 != OPT_CMT_MBR && cmopt as u64 != OPT_CMT_MBR_DEL {
             *status = BAD_OPTION;
@@ -1236,6 +1240,7 @@ pub fn ffgtvf_safe(
 
     *firstfailed = 0;
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /*
         attempt to open all the members of the grouping table. We stop
@@ -1384,6 +1389,7 @@ pub fn ffgtop_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /* set the grouping table pointer to NULL for error checking later */
 
@@ -1434,6 +1440,7 @@ pub fn ffgtop_safe(
         file opening logic.
           */
 
+        #[allow(clippy::never_loop)] // transpiled do{}while(0)
         'inner: loop {
             if grpExtver > 0 {
                 /*
@@ -1834,7 +1841,7 @@ pub fn ffgtam_safe(
     calls; the safe wrappers want a FLEN_COMMENT buffer, so use a separate one */
     let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
 
-    let charNull: [c_uchar; 1] = [b'\0'];
+    let charNull: [c_uchar; 1] = *b"\0";
 
     /* the member HDU pointer used internally: either the caller's mfptr or, when
     only an HDU position was supplied, a re-opened copy of the grouping table */
@@ -1847,6 +1854,7 @@ pub fn ffgtam_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /*
         make sure the grouping table can be modified before proceeding
@@ -2153,13 +2161,14 @@ pub fn ffgtam_safe(
         are the same, then assume these refer to the same file.
         */
         if files_differ(tmpfptr, gfptr, status) {
-            groupExtver = -1 * groupExtver;
+            groupExtver = -groupExtver;
         }
 
         /* retrieve the number of group members */
 
         *status = fits_get_num_members(gfptr, &mut nmembers, status);
 
+        #[allow(clippy::never_loop)] // transpiled do{}while(0)
         'inner: loop {
             /*
             make sure the member HDU is not already an entry in the
@@ -2365,6 +2374,7 @@ pub fn ffgtam_safe(
         while i <= ngroups as c_int && found == 0 && *status == 0 {
             /* body wrapped in a loop so the C `continue` (which advances to the
             for-loop's `++i`) becomes a `break` */
+            #[allow(clippy::never_loop)] // transpiled do{}while(0)
             'forbody: loop {
                 int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPID{}", ngroups as c_int);
                 *status =
@@ -2589,10 +2599,8 @@ pub fn ffgtam_safe(
 
     /* close the tmpfptr pointer if it was opened in this function */
 
-    if mfptr_is_null {
-        if let Some(f) = reopened.take() {
-            *status = fits_close_file(f, status);
-        }
+    if mfptr_is_null && let Some(f) = reopened.take() {
+        *status = fits_close_file(f, status);
     }
 
     *status = if 0 == *status { parentStatus } else { *status };
@@ -2867,6 +2875,8 @@ pub unsafe extern "C" fn ffgmop(
 /// to the CWD is given, and (3) a path relative to the grouping table file
 /// but not relative to the CWD is given. If all of these fail then the
 /// error FILE_NOT_FOUND is returned.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgmop_safe(
     gfptr: &mut fitsfile, /* FITS file pointer to grouping table          */
     member: c_long,       /* member ID (row num) within grouping table    */
@@ -2902,6 +2912,7 @@ pub fn ffgmop_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /*
         retrieve the Grouping Convention reserved column positions within
@@ -3095,6 +3106,7 @@ pub fn ffgmop_safe(
                         Some(unsafe { Box::from_raw(raw) })
                     };
                 } else {
+                    #[allow(clippy::never_loop)] // transpiled do{}while(0)
                     'inner: loop {
                         /*
                         make sure the location specifiation is "URL"; we cannot
@@ -3493,10 +3505,10 @@ pub fn ffgmop_safe(
         break 'outer;
     } // while(0)
 
-    if *status != 0 && mfptr.is_some() {
-        if let Some(f) = mfptr.take() {
-            fits_close_file(f, status);
-        }
+    if *status != 0
+        && let Some(f) = mfptr.take()
+    {
+        fits_close_file(f, status);
     }
 
     *status
@@ -3581,6 +3593,7 @@ pub fn ffgmcp_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /* open the member HDU to be copied */
 
@@ -3949,6 +3962,7 @@ pub fn ffgmrm_safe(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /*
         make sure the grouping table can be modified before proceeding
@@ -4404,10 +4418,8 @@ pub fn ffgmrm_safe(
         break 'outer;
     } //while(0)
 
-    if mfptr.is_some() {
-        if let Some(f) = mfptr.take() {
-            fits_close_file(f, status);
-        }
+    if let Some(f) = mfptr.take() {
+        fits_close_file(f, status);
     }
 
     *status
@@ -4447,6 +4459,7 @@ pub(crate) fn ffgtgc(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /*
         if the HDU does not have an extname of "GROUPING" then it is not
@@ -4654,6 +4667,7 @@ pub(crate) fn ffvcfm(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         if xtensionCol != 0 {
             fits_get_coltype(
@@ -4989,6 +5003,7 @@ pub(crate) fn ffgmul(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /*
         determine location parameters of the member HDU; note that
@@ -5236,6 +5251,8 @@ pub(crate) fn ffgmul(
 /// match only if the grouping table type is GT_ID_POS_URI or GT_ID_POS. This
 /// is because the position information can become invalid much more
 /// easily then the reference information for a group member.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgmf(
     gfptr: &mut fitsfile,        /* pointer to grouping table HDU to search       */
     xtension: &[c_char],         /* XTENSION value for member HDU                */
@@ -5294,12 +5311,12 @@ pub(crate) fn ffgmf(
       into an absolute path
     */
 
-    if location.is_none() {
+    if location.is_none_or(|location| location[0] == 0) {
         tmpLocation[0] = 0;
-    } else if location.unwrap()[0] == 0 {
-        tmpLocation[0] = 0;
-    } else if fits_is_url_absolute(location.unwrap()) == 0 {
-        fits_path2url(location.unwrap(), FLEN_FILENAME, &mut tmpLocation, status);
+    } else if let Some(location) = location
+        && fits_is_url_absolute(location) == 0
+    {
+        fits_path2url(location, FLEN_FILENAME, &mut tmpLocation, status);
 
         if tmpLocation[0] != bb(b'/') {
             fits_get_cwd(&mut cwd, status);
@@ -5312,8 +5329,8 @@ pub(crate) fn ffgmf(
             strcat_safe(&mut cwd, &tmpLocation);
             fits_clean_url(&cwd, &mut tmpLocation, status);
         }
-    } else {
-        strcpy_safe(&mut tmpLocation, location.unwrap());
+    } else if let Some(location) = location {
+        strcpy_safe(&mut tmpLocation, location);
     }
 
     /*
@@ -5657,6 +5674,7 @@ pub(crate) fn ffgtrmr(
     while i > 0 && *status == 0 {
         /* the body is wrapped in a loop so the C `continue` (which advances to
         the for-loop's `--i`) becomes `break`, after which `i` is decremented */
+        #[allow(clippy::never_loop)] // transpiled do{}while(0)
         loop {
             /* open the member HDU */
 
@@ -5813,6 +5831,7 @@ pub(crate) fn ffgtcpr(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'outer: loop {
         /*
         create a new grouping table in the FITS file pointed to by outptr
@@ -5879,6 +5898,7 @@ pub(crate) fn ffgtcpr(
                 while (i as c_long) <= nmembers && *status == 0 {
                     /* body wrapped in a loop so the C `continue` (advancing the
                     for-loop's `++i`) becomes a `break` */
+                    #[allow(clippy::never_loop)] // transpiled do{}while(0)
                     'body: loop {
                         /* open the ith member */
 
@@ -6153,6 +6173,7 @@ pub(crate) fn fftsad(
     let mut filename1: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
     let mut filename2: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /* retrieve the HDU's position within the FITS file */
 
@@ -6745,6 +6766,8 @@ pub(crate) fn fits_get_cwd(
 ///
 /// It is assumed that the url string has enough room to hold the resulting
 /// URL, and the the accessType string has enough room to hold the access type.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn fits_get_url(
     fptr: &mut fitsfile,        /* I ptr to FITS file to evaluate    */
     realURL: &mut [c_char],     /* O URL of real FITS file           */
@@ -6768,6 +6791,7 @@ pub(crate) fn fits_get_url(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /*
         retrieve the member HDU's file name as opened by ffopen()
@@ -7204,6 +7228,7 @@ pub(crate) fn fits_url2relurl(
     /* initialize the relative URL string */
     relURL[0] = 0;
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /*
         refURL and absURL must be absolute to process
@@ -7328,6 +7353,7 @@ pub fn fits_relurl2url(
         return *status;
     }
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     loop {
         /*
         make a copy of the reference URL string refURL for parsing purposes

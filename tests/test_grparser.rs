@@ -1,9 +1,15 @@
+// The extern "C" entry points are #[deprecated] so that internal callers reach
+// for the _safe forms instead. These tests exercise the C ABI surface itself,
+// and fits_execute_template has no _safe counterpart, so the attribute is
+// expected here.
+#![allow(deprecated)]
+
 mod common;
 
 #[cfg(test)]
 mod tests {
     use crate::common::with_temp_file;
-    use bytemuck::{cast_slice, cast_slice_mut};
+    use bytemuck::cast_slice;
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::c_types::{c_char, c_int, c_long};
     use rsfitsio::fitsio::fitsfile;
@@ -19,7 +25,7 @@ mod tests {
         with_temp_file(|temp_path| {
             // Write template content
             {
-                let mut file = fs::File::create(&temp_path).unwrap();
+                let mut file = fs::File::create(temp_path).unwrap();
                 file.write_all(content.as_bytes()).unwrap();
             }
 

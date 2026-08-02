@@ -504,7 +504,6 @@ pub fn ffpcns_safe(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_COL_NUM, BAD_ROW_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, NOT_ASCII_COL,

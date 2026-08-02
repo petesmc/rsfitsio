@@ -928,7 +928,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
             of the original, now-freed one. */
             let is_reread = (parser_state.NGP_CURLINE.flags & NGP_LINE_REREAD) != 0;
 
-            match parser_state.NGP_CURLINE.line.get(0).copied().unwrap_or(0) as u8 {
+            match parser_state.NGP_CURLINE.line.first().copied().unwrap_or(0) as u8 {
                 0 => {
                     if 0 == ignore_blank_lines {
                         // break;
@@ -1394,7 +1394,7 @@ fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
             if NGP_TTYPE_STRING == token.type_ && !token.value.s.is_null() {
                 // Free by reconstructing the Box
                 let str_len = 1 + strlen(token.value.s);
-                drop(Box::from_raw(slice::from_raw_parts_mut(
+                drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
                     token.value.s,
                     str_len,
                 )));
@@ -1412,20 +1412,20 @@ fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
 /// insert new token to HDU structure
 fn ngp_hdu_insert_token(ngph: &mut NgpHdu, newtok: &mut NgpToken) -> c_int {
     unsafe {
-        (&mut *ngph).tok.push(*newtok);
+        ngph.tok.push(*newtok);
 
-        if NGP_TTYPE_STRING == (*newtok).type_ && !(*newtok).value.s.is_null() {
-            let last_idx = (&*ngph).tok.len() - 1;
-            let str_len = 1 + strlen((*newtok).value.s);
+        if NGP_TTYPE_STRING == newtok.type_ && !newtok.value.s.is_null() {
+            let last_idx = ngph.tok.len() - 1;
+            let str_len = 1 + strlen(newtok.value.s);
             let str_boxed = match ngp_alloc_boxed(str_len) {
                 Ok(b) => b,
                 Err(e) => return e,
             };
-            (&mut *ngph).tok[last_idx].value.s = Box::into_raw(str_boxed).cast::<c_char>();
-            strcpy((&*ngph).tok[last_idx].value.s, (*newtok).value.s);
+            ngph.tok[last_idx].value.s = Box::into_raw(str_boxed).cast::<c_char>();
+            strcpy(ngph.tok[last_idx].value.s, newtok.value.s);
         }
 
-        (*ngph).tokcnt += 1;
+        ngph.tokcnt += 1;
         NGP_OK
     }
 }
@@ -1441,7 +1441,7 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
         let mut my_ttype: *mut c_char;
         let mut ngph_ctmp: c_char = 0;
 
-        if 0 == (*ngph).tokcnt {
+        if 0 == ngph.tokcnt {
             return NGP_OK; /* nothing to do ! */
         }
 
@@ -1456,23 +1456,13 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
 
             i = 0;
             loop {
-                let token = &(&*ngph).tok[i as usize];
-                if 1 == sscanf_d_c(
-                    &mut token.name.clone(),
-                    cs!(c"TFORM%d%c"),
-                    &mut ngph_i,
-                    &mut ngph_ctmp,
-                ) {
+                let token = &ngph.tok[i as usize];
+                if 1 == sscanf_d_c(&token.name, cs!(c"TFORM%d%c"), &mut ngph_i, &mut ngph_ctmp) {
                     if (NGP_TTYPE_STRING == token.type_) && (ngph_i == (j + 1)) {
                         my_tform = token.value.s;
                     }
                 } else if 1
-                    == sscanf_d_c(
-                        &mut token.name.clone(),
-                        cs!(c"TTYPE%d%c"),
-                        &mut ngph_i,
-                        &mut ngph_ctmp,
-                    )
+                    == sscanf_d_c(&token.name, cs!(c"TTYPE%d%c"), &mut ngph_i, &mut ngph_ctmp)
                     && (NGP_TTYPE_STRING == token.type_)
                     && (ngph_i == (j + 1))
                 {
@@ -1483,7 +1473,7 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
                     break;
                 }
 
-                if i < ((*ngph).tokcnt - 1) {
+                if i < (ngph.tokcnt - 1) {
                     i += 1;
                     continue;
                 }
@@ -1673,13 +1663,7 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         ngph_extname = token.value.s;
                     }
-                } else if 1
-                    == sscanf_d_c(
-                        &mut token.name.clone(),
-                        cs!(c"NAXIS%d%c"),
-                        &mut j,
-                        &mut ngph_ctmp,
-                    )
+                } else if 1 == sscanf_d_c(&token.name, cs!(c"NAXIS%d%c"), &mut j, &mut ngph_ctmp)
                     && NGP_TTYPE_INT == token.type_
                     && (j >= 1)
                     && (j <= NGP_MAX_ARRAY_DIM as c_int)
@@ -1724,9 +1708,9 @@ fn ngp_read_xtension(
                         &mut r,
                     );
 
-                    let continue_match = true;
-
-                    while continue_match {
+                    /* the C `break`s below exit the enclosing switch case */
+                    #[allow(clippy::never_loop)]
+                    loop {
                         if NGP_OK != r {
                             break;
                         }
@@ -2069,10 +2053,10 @@ pub unsafe extern "C" fn fits_execute_template(
         // Extract directory from template path
         if let Ok(template_str) = CStr::from_ptr(ngp_template).to_str() {
             let template_path = Path::new(template_str);
-            if let Some(parent) = template_path.parent() {
-                if parent != Path::new("") {
-                    parser_state.NGP_MASTER_DIR = parent.to_path_buf();
-                }
+            if let Some(parent) = template_path.parent()
+                && parent != Path::new("")
+            {
+                parser_state.NGP_MASTER_DIR = parent.to_path_buf();
             }
         }
 
@@ -2186,8 +2170,10 @@ mod tests {
         value_int: c_int,
         comment: &str,
     ) -> NgpToken {
-        let mut token = NgpToken::default();
-        token.type_ = type_;
+        let mut token = NgpToken {
+            type_,
+            ..Default::default()
+        };
 
         // Copy name
         let name_bytes = name.as_bytes();
@@ -2240,7 +2226,7 @@ mod tests {
             if token.type_ == NGP_TTYPE_STRING && !token.value.s.is_null() {
                 // Free by reconstructing the Box
                 let str_len = 1 + strlen(token.value.s);
-                drop(Box::from_raw(slice::from_raw_parts_mut(
+                drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
                     token.value.s,
                     str_len,
                 )));

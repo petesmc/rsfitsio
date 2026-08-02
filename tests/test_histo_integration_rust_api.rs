@@ -1,3 +1,7 @@
+// Ported from the CFITSIO C test programs; indexed loops and the
+// operator-named test fns mirror the originals.
+#![allow(clippy::needless_range_loop)]
+
 mod common;
 
 /*
@@ -169,6 +173,10 @@ fn create_test_table(filename: &str, nrows: i32) -> c_int {
 }
 
 /// Helper: Read histogram values and verify sum
+// c_long is 64-bit on Linux/macOS but 32-bit on Windows, so the `.into()` and
+// `as i64` below are no-ops on some targets and load-bearing on others.
+// Do not let clippy talk you into removing them -- it breaks the Windows build.
+#[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
 fn verify_histogram_sum(filename: &str, expected_sum: i64) -> bool {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut status: c_int = 0;

@@ -881,9 +881,9 @@ pub fn ffgcdw_safe(
                 cp += 1;
             }
             testwidth = strtol_safe::<c_long>(&dispfmt[cp..]).unwrap().0;
-            if (testwidth >= (c_int::MIN as c_long) && testwidth <= (c_int::MAX as c_long)) {
+            if testwidth >= (c_int::MIN as c_long) && testwidth <= (c_int::MAX as c_long) {
                 *width = testwidth as c_int;
-                if (tcode >= TCOMPLEX) {
+                if tcode >= TCOMPLEX {
                     *width = (2 * (*width)) + 3;
                 }
             }
@@ -1001,6 +1001,8 @@ pub fn ffgcdw_safe(
 
 /*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcls2(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col) */
@@ -1303,7 +1305,6 @@ pub(crate) fn ffgcls2(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_COL_NUM, BINARY_TBL, BYTE_IMG, LONGLONG, READONLY, fitsfile,

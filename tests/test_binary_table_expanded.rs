@@ -263,6 +263,7 @@ fn test_expanded_table_bit_operations_not() {
 
 // Complex number column tests
 // #[test]
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_expanded_table_complex_position() {
     let filename = get_expanded_filename();
 
@@ -274,6 +275,7 @@ fn test_expanded_table_complex_position() {
 }
 
 // #[test]
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_expanded_table_complex_velocity() {
     let filename = get_expanded_filename();
 

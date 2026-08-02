@@ -4396,7 +4396,6 @@ pub fn ffshft_safe(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         BAD_BITPIX, BAD_NAXES, BAD_NAXIS, BINARY_TBL, BYTE_IMG, LONGLONG, LONGLONG_IMG, READONLY,
@@ -4499,7 +4498,7 @@ mod tests {
                 &mut simple,
                 &mut bitpix,
                 Some(&mut naxis),
-                naxes_out.as_mut_ptr(),
+                Some(&mut naxes_out),
                 &mut pcount,
                 &mut gcount,
                 &mut extend,
@@ -4577,7 +4576,7 @@ mod tests {
                 &mut simple,
                 &mut bitpix,
                 Some(&mut naxis),
-                naxes_out.as_mut_ptr(),
+                Some(&mut naxes_out),
                 &mut pcount,
                 &mut gcount,
                 &mut extend,
@@ -5395,7 +5394,7 @@ mod tests {
                 &mut simple,
                 &mut bitpix,
                 Some(&mut naxis),
-                core::ptr::null_mut(),
+                None,
                 &mut pcount,
                 &mut gcount,
                 &mut extend,

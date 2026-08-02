@@ -1500,7 +1500,6 @@ pub(crate) fn ffi1fstr(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_BTABLE_FORMAT, BAD_COL_NUM, BAD_DIMEN, BINARY_TBL, BYTE_IMG, LONGLONG,
@@ -3297,7 +3296,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status = 0;
             let name = to_buf(filename);
-            let data: [u8; 5] = [b'H', b'E', b'L', b'L', b'O'];
+            let data: [u8; 5] = *b"HELLO";
 
             let mut f = make_table(&name, BINARY_TBL, "STR", "5A", 1, &mut status);
             fits_write_col_byt(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);
@@ -3333,7 +3332,7 @@ mod tests {
         with_temp_file(|filename| {
             let mut status = 0;
             let name = to_buf(filename);
-            let data: [u8; 5] = [b'H', b'E', b'L', b'L', b'O'];
+            let data: [u8; 5] = *b"HELLO";
 
             let mut f = make_table(&name, ASCII_TBL, "STR", "A5", 1, &mut status);
             fits_write_col_byt(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &data, &mut status);

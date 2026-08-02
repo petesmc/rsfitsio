@@ -1335,6 +1335,8 @@ pub fn ffgcfc_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcle(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -2181,7 +2183,7 @@ pub(crate) fn fffr4r4(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2288,7 +2290,7 @@ pub(crate) fn fffr4r4_inplace(
         /* must check for null values */
         let anynull = anynull.unwrap();
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2417,7 +2419,7 @@ pub(crate) fn fffr8r4(
 
         let shortBuffer: &[c_short] = cast_slice(input);
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -2697,7 +2699,6 @@ pub(crate) fn fffstrr4(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_COL_NUM, BINARY_TBL, BYTE_IMG, DOUBLE_IMG, FLOAT_IMG, LONG_IMG, LONGLONG,

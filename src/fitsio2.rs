@@ -20,14 +20,27 @@ pub const MINDIRECT: i64 = 8640; /* minimum size for direct reads and writes */
 /*   it is useful to identify certain specific types of machines   */
 pub const NATIVE: u64 = 0; /* machine that uses non-byteswapped IEEE formats */
 pub const OTHERTYPE: u64 = 1; /* any other type of machine */
-pub const VAXVMS: u64 = 3; /* uses an odd floating point format */
-pub const ALPHAVMS: u64 = 4; /* uses an odd floating point format */
 pub const IBMPC: u64 = 5; /* used in drvrfile.c to work around a bug on PCs */
 pub const CRAY: u64 = 6; /* requires a special NaN test algorithm */
 
-pub const FLOATTYPE: u64 = IEEEFLOAT;
-pub const GFLOAT: u64 = 1; /* used for VMS */
-pub const IEEEFLOAT: u64 = 2; /* used for VMS */
+// VAXVMS (3) and ALPHAVMS (4) are deliberately absent, as are FLOATTYPE,
+// GFLOAT and IEEEFLOAT. rustc has no VMS target and dropped VAX and Alpha
+// support entirely, so CFITSIO_MACHINE could never take those values and
+// every branch guarded on them was unreachable. The affected code in
+// fitsio2.h / buffers.c / drvrfile.c / drvrmem.c / getcol*.c is:
+//
+//   - the G_FLOAT <-> IEEE conversions in ffgr4b/ffgr8b/ffpr4b/ffpr8b
+//     (buffers.c), which were transpiled as todo!() and are now gone
+//   - the `rfm=fix, mrs=2880, ctx=stm` fopen record-format arguments in
+//     file_openfile/file_create (drvrfile.c) and mem_createfile (drvrmem.c)
+//   - the MSB offset guards, which in C read
+//       `if (BYTESWAPPED && CFITSIO_MACHINE != VAXVMS
+//            && CFITSIO_MACHINE != ALPHAVMS)`
+//     and are now just `if BYTESWAPPED`
+//
+// iraffits.rs likewise dropped its `#[cfg(target_os = "vms")]` arms, which
+// searched for ']' and ':' path separators instead of '/'.
+// Restore from the C if a VMS target ever appears.
 
 /*  assume all other machine uses the same IEEE formats as used in FITS files */
 /*  e.g., Macs fall into this category  */

@@ -273,6 +273,7 @@ pub(crate) fn ffbinse(
     }
 
     // This look to used to emulate the goto getweight
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'getweight: loop {
         if ptr[0] == bb(b'(') {
             /* this must be the opening parenthesis around a list of column */
@@ -1222,7 +1223,6 @@ pub(crate) fn ffhist2e(
 
             weight = DOUBLENULLVALUE;
             wtrepeat = nelem;
-            wtdatatype = wtdatatype;
         } else {
             weight = weightin;
             wtrepeat = vectorRepeat;
@@ -4041,6 +4041,7 @@ pub(crate) fn fits_make_histde(
         .map(|s| s.as_ptr() as *mut c_char)
         .unwrap_or(ptr::null_mut());
 
+    #[allow(clippy::never_loop)] // transpiled do{}while(0)
     'cleanup: loop {
         /* Now make iterator columns for input, as well as any calculated values */
         numAllocCols = 5;
@@ -4223,7 +4224,10 @@ pub(crate) fn fits_make_histde(
         } /* End of loop over columns */
 
         /* Now initialize the iterator column data for the weighting */
-        if wtexpr.is_some() && wtexpr.unwrap()[0] != 0 && weight == DOUBLENULLVALUE {
+        if let Some(wtexpr) = wtexpr
+            && wtexpr[0] != 0
+            && weight == DOUBLENULLVALUE
+        {
             let mut wtdatatype: c_int = 0;
             let mut wtnaxis: c_int = 0;
             let mut wtnaxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
@@ -4233,7 +4237,7 @@ pub(crate) fn fits_make_histde(
             ffiprs(
                 fptr,
                 0,
-                wtexpr.unwrap(),
+                wtexpr,
                 MAXDIMS,
                 &mut wtdatatype,
                 &mut wtrepeat,
@@ -4959,12 +4963,12 @@ extern "C" fn ffcalchist(
             outcol = Some(&mut histData.iterCols[startCol as usize]);
         }
 
-        if outcol.is_some() {
+        if let Some(outcol) = outcol {
             /* Note that the 0th array element returned by the iterator is
             actually the null value!  This is actually rather a big
             undocumented "feature" of the iterator. However, "ii" below
             starts at a value of 1 which skips over the null value */
-            colptr[ii] = fits_iter_get_array_safe(outcol.unwrap()) as *mut f64;
+            colptr[ii] = fits_iter_get_array_safe(outcol) as *mut f64;
         }
     }
 
@@ -4977,7 +4981,7 @@ extern "C" fn ffcalchist(
          irow = pixel counter (1 .. totalnpix)
          elem = 1  (not applicable)
     */
-    if (!histData.tblptr.is_null() && (unsafe { &*histData.tblptr }.Fptr.hdutype != IMAGE_HDU)) {
+    if !histData.tblptr.is_null() && (unsafe { &*histData.tblptr }.Fptr.hdutype != IMAGE_HDU) {
         adjustedRepeat = histData.repeat;
     } else {
         adjustedRepeat = 1;

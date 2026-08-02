@@ -8,7 +8,27 @@
     unreachable_code,
     clippy::too_many_arguments,
     clippy::needless_range_loop,
-    clippy::manual_range_contains
+    // C declares its locals at the top of the function and drives loops with
+    // an explicit counter; TRANSPILING.md keeps that layout so the Rust can be
+    // read side by side with the original.
+    clippy::needless_late_init,
+    clippy::explicit_counter_loop,
+    clippy::manual_range_contains,
+    // eval_tab.rs mirrors the bison-generated token enum from eval_tab.h;
+    // BOOLEAN/BITSTR/GTIFILTER/... must keep the grammar's spelling.
+    clippy::upper_case_acronyms,
+    // C integer widths are target-dependent -- c_long is 64-bit on Linux/macOS
+    // and 32-bit on Windows -- so a cast or Into that clippy sees as a no-op
+    // here is load-bearing elsewhere. Taking these two lints has already
+    // broken the Windows build once. Verify with
+    //   cargo check --target i686-unknown-linux-gnu --all-targets
+    // before "simplifying" any conversion in this crate.
+    clippy::unnecessary_cast,
+    clippy::useless_conversion,
+    // The deg<->rad and pi literals are carried over verbatim from the
+    // CFITSIO C; keep them as written rather than swapping in core::f64
+    // constants, which would perturb the transpiled arithmetic.
+    clippy::approx_constant
 )]
 /*
 #![warn(
@@ -24,13 +44,11 @@
     clippy::char_lit_as_u8,
     clippy::ptr_as_ptr,
     clippy::cast,
-    // clippy::alloc_instead_of_core,
-    // clippy::std_instead_of_alloc,
-    //clippy::std_instead_of_core,
 )]
 */
 #![allow(deprecated)]
 #![deny(clippy::std_instead_of_core, clippy::std_instead_of_alloc)]
+// #![deny(clippy::unnecessary_cast)]
 
 extern crate alloc;
 
@@ -232,6 +250,15 @@ macro_rules! raw_to_slice {
     };
 }
 
+/// The borrowed (ttype, tform, tunit) column-keyword slices produced by
+/// [`TKeywords::tkeywords_to_vecs`]. tunit is optional because the C API
+/// allows a NULL tunit array.
+pub(crate) type TKeywordVecs<'a> = (
+    Vec<Option<&'a [c_char]>>,
+    Vec<&'a [c_char]>,
+    Option<Vec<Option<&'a [c_char]>>>,
+);
+
 pub(crate) struct TKeywords<'a> {
     tfields: c_int,              /* I - number of columns in the table           */
     ttype: *const *const c_char, /* I - name of each column                      */
@@ -256,13 +283,7 @@ impl<'a> TKeywords<'a> {
         }
     }
 
-    pub unsafe fn tkeywords_to_vecs(
-        &'a self,
-    ) -> (
-        Vec<Option<&'a [c_char]>>,
-        Vec<&'a [c_char]>,
-        Option<Vec<Option<&'a [c_char]>>>,
-    ) {
+    pub unsafe fn tkeywords_to_vecs(&'a self) -> TKeywordVecs<'a> {
         unsafe {
             // Handle case where tfields is 0 or pointers are null
             if self.tfields == 0 || self.ttype.is_null() || self.tform.is_null() {
@@ -630,10 +651,9 @@ fn fmt_f64(num: f64, precision: usize, exp_pad: usize) -> String {
     // Safe to `unwrap` as `num` is guaranteed to contain `'e'`
     let exp = num.split_off(num.find('E').unwrap());
 
-    let (sign, exp) = if exp.starts_with("E-") {
-        ('-', &exp[2..])
-    } else {
-        ('+', &exp[1..])
+    let (sign, exp) = match exp.strip_prefix("E-") {
+        Some(rest) => ('-', rest),
+        None => ('+', &exp[1..]),
     };
     num.push_str(&format!("E{sign}{exp:0>exp_pad$}"));
 

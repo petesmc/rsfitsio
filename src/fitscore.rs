@@ -8358,6 +8358,12 @@ pub unsafe extern "C" fn ffgdessll(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
+        /* the C contract is that length/heapaddr, when non-NULL, each point
+        at nrows elements */
+        let length = (!length.is_null()).then(|| slice::from_raw_parts_mut(length, nrows as usize));
+        let heapaddr =
+            (!heapaddr.is_null()).then(|| slice::from_raw_parts_mut(heapaddr, nrows as usize));
+
         ffgdessll_safe(
             &mut *fptr,
             colnum,
@@ -8375,23 +8381,13 @@ pub fn ffgdessll_safe(
     colnum: c_int,
     firstrow: LONGLONG,
     nrows: LONGLONG,
-    length: *mut LONGLONG,
-    heapaddr: *mut LONGLONG,
+    mut length: Option<&mut [LONGLONG]>,
+    mut heapaddr: Option<&mut [LONGLONG]>,
     status: &mut c_int,
 ) -> c_int {
     let mut ii: LONGLONG;
     let mut descript4: [INT32BIT; 2] = [0, 0];
     let mut descript8: [LONGLONG; 2] = [0, 0];
-
-    let mut length = match length.is_null() {
-        true => None,
-        false => unsafe { Some(slice::from_raw_parts_mut(length, nrows as usize)) },
-    };
-
-    let mut heapaddr = match heapaddr.is_null() {
-        true => None,
-        false => unsafe { Some(slice::from_raw_parts_mut(heapaddr, nrows as usize)) },
-    };
 
     if *status > 0 {
         return *status;
@@ -10710,6 +10706,8 @@ pub unsafe extern "C" fn ffgkcl(tcard: *mut c_char) -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
     let mut card: [c_char; 20] = [0; 20];
 
@@ -12224,7 +12222,7 @@ pub(crate) fn ffc2rr(
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
-    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+    if BYTESWAPPED {
         si = 1; /* point to MSBs */
     }
 
@@ -12328,7 +12326,7 @@ pub(crate) fn ffc2dd(
     let sptr: &[c_short] = cast_slice(val_bytes);
     let mut si = 0;
 
-    if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+    if BYTESWAPPED {
         si = 3; /* point to MSBs */
     }
 

@@ -284,9 +284,7 @@ pub fn fits_set_tile_dim_safe(
         return *status;
     }
 
-    for ii in 0..(ndim as usize) {
-        fptr.Fptr.request_tilesize[ii] = dims[ii];
-    }
+    fptr.Fptr.request_tilesize[..(ndim as usize)].copy_from_slice(&dims[..(ndim as usize)]);
 
     *status
 }
@@ -776,9 +774,7 @@ pub unsafe fn fits_get_tile_dim_safer(
         return *status;
     }
 
-    for ii in 0..(ndim as usize) {
-        dims[ii] = (fptr.Fptr).request_tilesize[ii];
-    }
+    dims[..(ndim as usize)].copy_from_slice(&(fptr.Fptr).request_tilesize[..(ndim as usize)]);
 
     *status
 }
@@ -2395,7 +2391,7 @@ unsafe fn imcomp_compress_tile(
         let mut flag: c_int = 1; // true by default; only = 0 if float data couldn't be quantized
         let mut intlength: c_int = 0; // size of integers to be compressed
 
-        let mut clen: usize; // size of cbuf
+        let clen: usize; // size of cbuf
         let mut cbuf: Vec<c_short> = Vec::new(); // compressed data
         let mut nelem: c_int = 0; // number of bytes
         let tilecol: c_int;
@@ -2452,15 +2448,15 @@ unsafe fn imcomp_compress_tile(
             columns other than the first, used the wrong element stride). */
             let key = &raw const outfptr.Fptr as usize;
             let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-            if let Some(tilestruct) = tilestruct_lock.get_mut(&key) {
-                if c_long::from(tilestruct.tilerow[tilecol as usize]) == row {
-                    tilestruct.tiledata[tilecol as usize] = Vec::new();
-                    tilestruct.tilenullarray[tilecol as usize] = Vec::new();
-                    tilestruct.tilerow[tilecol as usize] = 0;
-                    tilestruct.tiledatasize[tilecol as usize] = 0;
-                    tilestruct.tiletype[tilecol as usize] = 0;
-                    tilestruct.tileanynull[tilecol as usize] = 0;
-                }
+            if let Some(tilestruct) = tilestruct_lock.get_mut(&key)
+                && c_long::from(tilestruct.tilerow[tilecol as usize]) == row
+            {
+                tilestruct.tiledata[tilecol as usize] = Vec::new();
+                tilestruct.tilenullarray[tilecol as usize] = Vec::new();
+                tilestruct.tilerow[tilecol as usize] = 0;
+                tilestruct.tiledatasize[tilecol as usize] = 0;
+                tilestruct.tiletype[tilecol as usize] = 0;
+                tilestruct.tileanynull[tilecol as usize] = 0;
             }
         }
 
@@ -7041,7 +7037,7 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             return *status;
         }
 
-        if ((infptr.Fptr).znaxis[ii] == LONG_MIN)
+        if (infptr.Fptr).znaxis[ii] == LONG_MIN
         /* cannot subtract 1 from this */
         {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
@@ -7049,14 +7045,14 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
             return *status;
         }
         rowFactor = ((infptr.Fptr).znaxis[ii] - 1) / (infptr.Fptr).tilesize[ii] + 1;
-        if (expect_nrows > LONG_MAX / rowFactor) {
+        if expect_nrows > LONG_MAX / rowFactor {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
         }
         expect_nrows *= rowFactor;
 
-        if (maxtilelen > LONG_MAX / ((infptr.Fptr).tilesize[ii])) {
+        if maxtilelen > LONG_MAX / ((infptr.Fptr).tilesize[ii]) {
             ffpmsg_str("numerical overflow in imcomp_get_compressed_image_par");
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -7704,6 +7700,8 @@ unsafe fn imcomp_copy_prime2img(
 
 /*--------------------------------------------------------------------------*/
 /// This routine decompresses one tile of the image
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 fn imcomp_decompress_tile(
     infptr: &mut fitsfile,
     nrow: c_int,                    /* I - row of table to read and uncompress */

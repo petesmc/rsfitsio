@@ -2265,23 +2265,21 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn test_scanf_n_debug() {
         // Simple debug test for %n
-        unsafe {
-            let input = "42";
-            let format = "%d%n";
+        let input = "42";
+        let format = "%d%n";
 
-            let mut our_val: c_int = 0;
-            let mut our_n: c_int = -1;
-            let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-            valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+        let mut our_val: c_int = 0;
+        let mut our_n: c_int = -1;
+        let mut valist = CustomVaList::new();
+        valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+        valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
 
-            let input_cstr = to_c_string(input);
-            let format_cstr = to_c_string(format);
-            let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
+        let input_cstr = to_c_string(input);
+        let format_cstr = to_c_string(format);
+        let our_result = sscanf_internal(input_cstr.as_ptr(), format_cstr.as_ptr(), valist);
 
-            println!("Debug: result={our_result}, val={our_val}, n={our_n}");
-            println!("Expected: result=1, val=42, n=2");
-        }
+        println!("Debug: result={our_result}, val={our_val}, n={our_n}");
+        println!("Expected: result=1, val=42, n=2");
     }
 
     #[test]

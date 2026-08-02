@@ -1,3 +1,7 @@
+// C: `for (; !status; hdupos++)` -- hdupos is only read before the loop, so
+// the increment is dead there too. Kept for fidelity with imcopy.c.
+#![allow(unused_assignments)]
+
 use std::ffi::CString;
 
 use std::process::ExitCode;
@@ -325,7 +329,7 @@ pub fn main() -> ExitCode {
 
         /* if error occurred, print out error message */
         if status != 0 {
-            fits_report_error(STDERR!() as *mut _ as *mut FILE, status);
+            fits_report_error(STDERR!() as *mut _, status);
         }
     }
 

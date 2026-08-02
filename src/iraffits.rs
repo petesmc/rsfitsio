@@ -1102,7 +1102,6 @@ fn getirafpixname(
 /* True if `c` is a directory separator.  CFITSIO only looks for '/', but on
  * Windows header pathnames arrive with '\' separators, so accept both there;
  * otherwise the directory prefix is stripped and the pixel file can't be found. */
-#[cfg(not(target_os = "vms"))]
 fn is_path_sep(c: c_char) -> bool {
     c == bb(b'/') || (cfg!(target_os = "windows") && c == bb(b'\\'))
 }
@@ -1143,12 +1142,7 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
-        #[cfg(not(target_os = "vms"))]
         while (len > 0) && !is_path_sep(newpixname[len - 1]) {
-            len -= 1;
-        }
-        #[cfg(target_os = "vms")]
-        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
 
@@ -1163,12 +1157,7 @@ fn same_path(
         /* find the end of the pathname */
         let mut len = strlen_safe(&newpixname);
 
-        #[cfg(not(target_os = "vms"))]
         while (len > 0) && !is_path_sep(newpixname[len - 1]) {
-            len -= 1;
-        }
-        #[cfg(target_os = "vms")]
-        while (len > 0) && (newpixname[len - 1] != bb(b']')) && (newpixname[len - 1] != bb(b':')) {
             len -= 1;
         }
 
@@ -2035,12 +2024,10 @@ fn hputc(
             || strncmp_safe(keyword, cs!(c"HISTORY"), 7) == 0)
     {
         /* Find end of header */
-        let v1_tmp = ksearch(hstring, cs!(c"END"));
-        if v1_tmp.is_none() {
+        let Some(v1_tmp) = ksearch(hstring, cs!(c"END")) else {
             return; /* UB in original code */
-        } else {
-            v1 = v1_tmp.unwrap();
-        }
+        };
+        v1 = v1_tmp;
         v2 = v1 + 80;
 
         /* Move END down one line */
@@ -2070,20 +2057,19 @@ fn hputc(
         let v1_tmp = blsearch(hstring, cs!(c"END"));
 
         /*  Otherwise, create a space for it at the end of the header */
-        if v1_tmp.is_none() {
-            let ve_tmp = ksearch(hstring, cs!(c"END"));
-            if ve_tmp.is_none() {
+        if let Some(v1_tmp) = v1_tmp {
+            v1 = v1_tmp;
+            v2 = v1 + 80;
+        } else {
+            let Some(ve_tmp) = ksearch(hstring, cs!(c"END")) else {
                 return; // UB in original code
-            }
-            v1 = ve_tmp.unwrap();
+            };
+            v1 = ve_tmp;
             v2 = v1 + 80;
 
             let (h1, h2) = hstring.split_at_mut(v2);
             //strncpy_safe(&mut hstring[v2..], &hstring[v1..], 80);
             strncpy_safe(h2, &h1[v1..], 80);
-        } else {
-            v1 = v1_tmp.unwrap();
-            v2 = v1 + 80;
         }
         lcom = 0;
         newcom[0] = 0;
@@ -2193,12 +2179,10 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
             || strncmp_safe(keyword, cs!(c"HISTORY"), 7) == 0)
     {
         /* Find end of header */
-        let v1_tmp = ksearch(hstring, cs!(c"END"));
-        if v1_tmp.is_none() {
+        let Some(v1_tmp) = ksearch(hstring, cs!(c"END")) else {
             return; /* UB in original code */
-        } else {
-            v1 = v1_tmp.unwrap();
-        }
+        };
+        v1 = v1_tmp;
 
         v2 = v1 + 80;
 
@@ -2215,12 +2199,10 @@ fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
     } else {
         /* search header string for variable name */
 
-        let v1_tmp = ksearch(hstring, keyword);
-        if v1_tmp.is_none() {
+        let Some(v1_tmp) = ksearch(hstring, keyword) else {
             return; /* if parameter is not found, return without doing anything */
-        } else {
-            v1 = v1_tmp.unwrap();
-        }
+        };
+        v1 = v1_tmp;
 
         v2 = v1 + 80;
 

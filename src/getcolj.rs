@@ -1149,6 +1149,8 @@ pub fn ffgcfj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgclj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -2118,7 +2120,7 @@ pub(crate) fn fffr4i4(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2266,7 +2268,7 @@ pub(crate) fn fffr8i4(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -3706,6 +3708,8 @@ pub fn ffgcfjj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcljj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -4618,7 +4622,7 @@ pub(crate) fn fffr4i8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -4766,7 +4770,7 @@ pub(crate) fn fffr8i8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -5060,7 +5064,6 @@ pub(crate) fn fffstri8(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_DIMEN, BINARY_TBL, BYTE_IMG, LONG_IMG, LONGLONG, LONGLONG_IMG, READONLY,

@@ -3337,7 +3337,7 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        fits_free_memory(result as *mut c_void, status);
+        unsafe { fits_free_memory(result as *mut c_void, status) };
         s
     }
 

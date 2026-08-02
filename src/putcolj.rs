@@ -851,6 +851,8 @@ pub fn ffpclj_safe(
                 let formlen = strlen_safe(&cform);
 
                 let mut handled = false;
+                #[allow(clippy::collapsible_if)]
+                // Nested exactly as putcolj.c has it (see ffpclj/ffpcljj).
                 if hdutype == ASCII_TBL && formlen > 1 {
                     if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
                         ffi4fstr(
@@ -2242,6 +2244,8 @@ pub fn ffpcljj_safe(
                 let formlen = strlen_safe(&cform);
 
                 let mut handled = false;
+                #[allow(clippy::collapsible_if)]
+                // Nested exactly as putcolj.c has it (see ffpclj/ffpcljj).
                 if hdutype == ASCII_TBL && formlen > 1 {
                     if cform[formlen - 1] == bb(b'f') || cform[formlen - 1] == bb(b'E') {
                         ffi8fstr(
@@ -2843,7 +2847,6 @@ pub(crate) fn ffi8fstr(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_ATABLE_FORMAT, BAD_BTABLE_FORMAT, BAD_COL_NUM, BAD_DIMEN, BINARY_TBL,

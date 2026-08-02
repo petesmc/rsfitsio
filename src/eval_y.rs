@@ -70,7 +70,6 @@ use crate::c_types::{
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
-use crate::eval_tab::fits_parser_yytokentype::BITSTR;
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe};
@@ -555,7 +554,6 @@ fn Alloc_Node(lParse: &mut ParseData) -> c_int {
 fn Free_Last_Node(lParse: &mut ParseData) {
     if lParse.nNodes != 0 {
         lParse.nNodes -= 1;
-        lParse.nNodes;
     }
 }
 
@@ -1118,6 +1116,8 @@ fn New_FuncSize(
     n
 }
 
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
     unsafe {
         let mut current_block: u64;
@@ -7737,7 +7737,7 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
     let mut this_node_idx: usize = vecNode as usize;
     n = 0;
     while n < (lParse.Nodes[this_node_idx]).nSubNodes {
-        let mut subnode = lParse.Nodes[this_node_idx].SubNodes[n as usize];
+        let mut subnode = lParse.Nodes[this_node_idx].SubNodes[n as usize] as c_int;
         if ((lParse.Nodes)[subnode as usize]).ntype != (lParse.Nodes[this_node_idx]).ntype {
             /* New_Unary may change the lParse->Nodes pointer if
             it performs a realloc. Therefore reset 'this' just in case. */
@@ -7747,16 +7747,14 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
                 (lParse.Nodes[this_node_idx]).ntype,
                 0,
                 (lParse.Nodes[this_node_idx]).SubNodes[n as usize] as c_int,
-            )
-            .try_into()
-            .unwrap();
+            );
 
             if subnode < 0 {
                 return -(1);
             }
 
             this_node_idx = vecNode as usize;
-            lParse.Nodes[this_node_idx].SubNodes[n as usize] = subnode;
+            lParse.Nodes[this_node_idx].SubNodes[n as usize] = subnode as usize;
         }
         nelem = (c_long::from(nelem)
             + ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[n as usize] as usize])
@@ -8203,22 +8201,24 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
 }
 
 unsafe fn free_node_buffer(node: &mut Node) {
-    if (node.ntype == fits_parser_yytokentype::BITSTR as c_int
-        || node.ntype == fits_parser_yytokentype::STRING as c_int)
-    {
-        if (!node.value.data.strptr.is_null()) {
-            if (!(*node.value.data.strptr).is_null()) {
-                free((*node.value.data.strptr) as *mut c_void);
+    unsafe {
+        if node.ntype == fits_parser_yytokentype::BITSTR as c_int
+            || node.ntype == fits_parser_yytokentype::STRING as c_int
+        {
+            if !node.value.data.strptr.is_null() {
+                if !(*node.value.data.strptr).is_null() {
+                    free((*node.value.data.strptr) as *mut c_void);
+                }
+                free(node.value.data.strptr as *mut c_void);
+                node.value.data.strptr = ptr::null_mut();
             }
-            free(node.value.data.strptr as *mut c_void);
-            node.value.data.strptr = ptr::null_mut();
+        } else if !node.value.data.ptr.is_null() {
+            free(node.value.data.ptr);
+            node.value.data.ptr = ptr::null_mut();
         }
-    } else if (!node.value.data.ptr.is_null()) {
-        free(node.value.data.ptr);
-        node.value.data.ptr = ptr::null_mut();
-    }
 
-    node.value.undef = ptr::null_mut();
+        node.value.undef = ptr::null_mut();
+    }
 }
 
 fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
@@ -8502,14 +8502,14 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
 
         nelem = nRealElem;
 
-        if ((fRow >= 0 && (LONG_MAX - lParse.nRows < fRow))
-            || (fRow < 0 && (LONG_MIN + lParse.firstDataRow + 1 > fRow)))
+        if (fRow >= 0 && (LONG_MAX - lParse.nRows < fRow))
+            || (fRow < 0 && (LONG_MIN + lParse.firstDataRow + 1 > fRow))
         {
             fits_parser_yyerror(
                 lParse,
                 cs!(c"numerical underflow or overflow for row offset value"),
             );
-            if (lParse.status == 0) {
+            if lParse.status == 0 {
                 lParse.status = PARSE_SYNTAX_ERR;
             }
             free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
@@ -8563,30 +8563,28 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 fRow = lParse.firstDataRow + lParse.nDataRows;
             }
 
-            if (rowOffset > 0) {
-                if (rowOffset > LONG_MAX / nelem) {
+            if rowOffset > 0 {
+                if rowOffset > LONG_MAX / nelem {
                     fits_parser_yyerror(
                         lParse,
                         cs!(c"numerical overflow for row offset * nelem value"),
                     );
-                    if (lParse.status == 0) {
+                    if lParse.status == 0 {
                         lParse.status = PARSE_SYNTAX_ERR;
                     }
                     free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                     return;
                 }
-            } else if (rowOffset < 0) {
-                if (rowOffset < LONG_MIN / nelem) {
-                    fits_parser_yyerror(
-                        lParse,
-                        cs!(c"numerical underflow for row offset * nelem value"),
-                    );
-                    if (lParse.status == 0) {
-                        lParse.status = PARSE_SYNTAX_ERR;
-                    }
-                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
-                    return;
+            } else if rowOffset < 0 && rowOffset < LONG_MIN / nelem {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"numerical underflow for row offset * nelem value"),
+                );
+                if lParse.status == 0 {
+                    lParse.status = PARSE_SYNTAX_ERR;
                 }
+                free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
+                return;
             }
 
             nRowOverlap = lParse.nRows - nRowReload;
@@ -8813,7 +8811,6 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
                             (lParse.Nodes[this_node_idx]).value.data.lng += 1;
-                            (lParse.Nodes[this_node_idx]).value.data.lng;
                         }
                         sptr1 = sptr1.offset(1);
                     }
@@ -9790,7 +9787,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
 
 fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
     let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
-    let undef = unsafe { (lParse.Nodes[node_idx]).value.undef };
+    let undef = (lParse.Nodes[node_idx]).value.undef;
 
     if data.is_null()
         || (data.addr()) < PARSER_VECTOR_MIN_ADDR
@@ -9804,7 +9801,7 @@ fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
         return 0;
     }
 
-    return 1;
+    1
 }
 
 fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
@@ -10164,6 +10161,13 @@ pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
     }
 }
 
+// The `!(a > b)` partition tests below are transcribed from the C and their
+// NaN behaviour is load-bearing: `>` is false for NaN, so the negation breaks
+// the loop rather than running off the end of the array. Rewriting them via
+// partial_cmp would change that, and this quickselect has already been the
+// source of one reproducibility bug, so leave the comparisons exactly as the
+// C has them.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
     unsafe {
         let mut low: c_int = 0;
@@ -10261,12 +10265,7 @@ pub(crate) fn angsep_calc(
     a = sdec * sdec + (dec1 * DEG).cos() * (dec2 * DEG).cos() * sra * sra;
 
     /* Sanity checking to avoid a range error in the sqrt()'s below */
-    if a < 0.0 {
-        a = 0.0;
-    }
-    if a > 1.0 {
-        a = 1.0;
-    }
+    a = a.clamp(0.0, 1.0);
 
     2.0 * atan2((a).sqrt(), (1.0 - a).sqrt()) / DEG
 }
@@ -10845,7 +10844,6 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(ielem as isize) = 0;
                                 iaxis[0] += 1;
-                                iaxis[0];
                                 j = 0;
                                 while j < naxis {
                                     if iaxis[j as usize]
@@ -10856,7 +10854,6 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     iaxis[j as usize] = 1;
                                     if j < naxis - 1 {
                                         iaxis[(j + 1) as usize] += 1;
-                                        iaxis[(j + 1) as usize];
                                     }
                                     j += 1;
                                 }
@@ -14726,6 +14723,9 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
+// One arm per comparison operator, mirroring the C's switch; match guards
+// would make the operator table harder to scan.
+#[allow(clippy::collapsible_match, clippy::collapsible_if)]
 fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_char {
     unsafe {
         let mut val1: c_int = 0;

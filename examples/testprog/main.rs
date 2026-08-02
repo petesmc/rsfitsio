@@ -1,4 +1,7 @@
 #![allow(deprecated)]
+// Ported from the CFITSIO C test programs; indexed loops and the
+// operator-named test fns mirror the originals.
+#![allow(clippy::needless_range_loop)]
 
 use core::slice;
 use std::ffi::c_void;

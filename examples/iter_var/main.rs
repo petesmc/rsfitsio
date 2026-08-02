@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use std::process::exit;
 use std::ptr;
 
-use libc::{c_int, c_long, c_uchar};
+use libc::{c_int, c_long};
 use rsfitsio::STDERR;
 use rsfitsio::aliases::c_api::*;
 use rsfitsio::fitsio::{BINARY_TBL, INPUT_COL, READWRITE, fitsfile, iteratorCol};

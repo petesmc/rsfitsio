@@ -812,8 +812,11 @@ pub fn ffphtb_safe(
             ffgabc_safe(tfields, tform, 1, &mut rowlen, &mut v, status);
         }
         tbcol_slice = &v;
+    } else if let Some(tbcol) = tbcol {
+        tbcol_slice = tbcol;
     } else {
-        tbcol_slice = tbcol.unwrap();
+        /* unreachable: the first arm above already handles tbcol == None */
+        tbcol_slice = &v;
     }
 
     ffpkys_safe(
@@ -996,6 +999,8 @@ pub unsafe extern "C" fn ffphbn(
 
 /*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the Binary Table:
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub fn ffphbn_safe(
     fptr: &mut fitsfile,         /* I - FITS file pointer                        */
     naxis2: LONGLONG,            /* I - number of rows in the table              */
@@ -1182,8 +1187,8 @@ pub fn ffphbn_safe(
 
             let cptr = strchr_safe(&tfmt, bb(b'A'));
 
-            if cptr.is_some() {
-                let c = cptr.unwrap() + 1;
+            if let Some(cptr) = cptr {
+                let c = cptr + 1;
 
                 // iread = sscanf_ld(&tfmt[c..], cs!(c"%ld"), &mut width);
                 let tmp: Result<c_long, ParseIntError> =
@@ -4441,11 +4446,9 @@ pub fn fftm2s_safe(
 
     datestr[0] = 0;
 
-    if year != 0 || month != 0 || day != 0 {
-        if ffverifydate_safe(year, month, day, status) > 0 {
-            ffpmsg_str("invalid date (fftm2s)");
-            return *status;
-        }
+    if (year != 0 || month != 0 || day != 0) && ffverifydate_safe(year, month, day, status) > 0 {
+        ffpmsg_str("invalid date (fftm2s)");
+        return *status;
     }
 
     if hour < 0 || hour > 23 {
@@ -6731,7 +6734,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7630,7 +7633,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7673,7 +7676,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -8065,7 +8068,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            fits_free_memory(result as *mut libc::c_void, &mut status);
+            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }

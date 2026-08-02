@@ -19,7 +19,7 @@ use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 use errno::errno;
-use libc::{ERANGE, strtod};
+use libc::ERANGE;
 
 use crate::aliases::rust_api::fits_read_key_str;
 use crate::drvrfile::{
@@ -78,6 +78,17 @@ pub const MAX_DRIVERS: usize = 31; /* max number of file I/O drivers */
 
 pub(crate) trait Driver {}
 
+/// A driver's `checkfile` hook: given the parsed URL type it may rewrite the
+/// input and output file names before the file is opened.
+pub type CheckFileFn = fn(
+    urltype: &mut [c_char; MAX_PREFIX_LEN],
+    infile: &mut [c_char; FLEN_FILENAME],
+    outfile: &mut [c_char; FLEN_FILENAME],
+) -> c_int;
+
+/// A driver's `open` hook.
+pub type DriverOpenFn = fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int;
+
 pub struct fitsdriver {
     /* structure containing pointers to I/O driver functions */
     pub prefix: [c_char; MAX_PREFIX_LEN],
@@ -86,14 +97,8 @@ pub struct fitsdriver {
     pub setoptions: Option<fn(option: c_int) -> c_int>,
     pub getoptions: Option<fn(options: &mut c_int) -> c_int>,
     pub getversion: Option<fn(version: &mut c_int) -> c_int>,
-    pub checkfile: Option<
-        fn(
-            urltype: &mut [c_char; MAX_PREFIX_LEN],
-            infile: &mut [c_char; FLEN_FILENAME],
-            outfile: &mut [c_char; FLEN_FILENAME],
-        ) -> c_int,
-    >,
-    pub open: Option<fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int>,
+    pub checkfile: Option<CheckFileFn>,
+    pub open: Option<DriverOpenFn>,
     pub create:
         Option<fn(filename: &mut [c_char; FLEN_FILENAME], drivehandle: &mut c_int) -> c_int>,
     pub truncate: Option<fn(drivehandle: c_int, size: usize) -> c_int>,
@@ -2095,8 +2100,7 @@ pub(crate) fn fits_already_open(
             } /* end if old fptr exists */
         } /* end loop over NMAXFILES */
 
-        if iMatch.is_some() {
-            let iMatch = iMatch.unwrap();
+        if let Some(iMatch) = iMatch {
             let oldFptr = FPTR_TABLE[iMatch];
 
             // HEAP ALLOCATION
@@ -2421,43 +2425,23 @@ fn find_paren(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
@@ -2479,43 +2463,23 @@ fn find_bracket(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
@@ -2537,43 +2501,23 @@ fn find_curlybracket(string: &[c_char]) -> Option<usize> {
         } else if string[i] == bb(b'(') {
             /* found another level of parens */
             i += 1;
-            let p = find_paren(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_paren(&string[i..])?;
         } else if string[i] == bb(b'[') {
             /* found another level of parens */
             i += 1;
-            let p = find_bracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_bracket(&string[i..])?;
         } else if string[i] == bb(b'{') {
             /* found another level of parens */
             i += 1;
-            let p = find_curlybracket(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_curlybracket(&string[i..])?;
         } else if string[i] == bb(b'"') {
             /* found another level of parens */
             i += 1;
-            let p = find_doublequote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_doublequote(&string[i..])?;
         } else if string[i] == bb(b'\'') {
             /* found another level of parens */
             i += 1;
-            let p = find_quote(&string[i..]);
-            match p {
-                None => return None,
-                Some(x) => i += x,
-            }
+            i += find_quote(&string[i..])?;
         } else {
             i += 1;
         }
@@ -5079,14 +5023,8 @@ pub(crate) fn fits_register_driver(
     setoptions: Option<fn(option: c_int) -> c_int>,
     getoptions: Option<fn(options: &mut c_int) -> c_int>,
     getversion: Option<fn(version: &mut c_int) -> c_int>,
-    checkfile: Option<
-        fn(
-            urltype: &mut [c_char; MAX_PREFIX_LEN],
-            infile: &mut [c_char; FLEN_FILENAME],
-            outfile: &mut [c_char; FLEN_FILENAME],
-        ) -> c_int,
-    >,
-    open: Option<fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int>,
+    checkfile: Option<CheckFileFn>,
+    open: Option<DriverOpenFn>,
     create: Option<fn(filename: &mut [c_char; FLEN_FILENAME], drivehandle: &mut c_int) -> c_int>,
     truncate: Option<fn(drivehandle: c_int, size: usize) -> c_int>,
     close: fn(drivehandle: c_int) -> c_int,
@@ -5107,8 +5045,8 @@ pub(crate) fn fits_register_driver(
         return BAD_URL_PREFIX;
     }
 
-    if init.is_some() {
-        status = (init.unwrap())(); /* initialize the driver */
+    if let Some(init) = init {
+        status = init(); /* initialize the driver */
         if status != 0 {
             return status;
         };
@@ -6126,8 +6064,7 @@ pub fn ffifile2_safe(
         ptr1 = strstr_safe(&rowfilter, cs!(c"[Bin")); /* search for "[Bin" */
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
+    if let Some(p1) = ptr1 {
         let mut p2 = p1 + 4; /* end of the '[bin' string */
         if rowfilter[p2] == bb(b'b')
             || rowfilter[p2] == bb(b'i')
@@ -6223,22 +6160,22 @@ pub fn ffifile2_safe(
 
             if rowfilter[p2] == bb(b'\\') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b'\\')); /* Pre-existing colspec, append with ";" */
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("literal string in input file URL is missing closing single quote");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
             if rowfilter[p2] == bb(b'[') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("nested brackets in input file URL is missing closing bracket");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
 
@@ -6306,8 +6243,7 @@ pub fn ffifile2_safe(
     }
 
     let mut p2 = 0;
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
+    if let Some(p1) = ptr1 {
         p2 = p1 + 4; /* end of the '[pix' string */
 
         if rowfilter[p2] == bb(b'b')
@@ -6331,9 +6267,7 @@ pub fn ffifile2_safe(
         };
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
-
+    if let Some(p1) = ptr1 {
         while rowfilter[p2] != bb(b']') {
             if rowfilter[p2] == 0 {
                 ffpmsg_str("input file URL is missing closing bracket ']'"); /* copy the column specifier to output string */
@@ -6355,12 +6289,12 @@ pub fn ffifile2_safe(
 
             if rowfilter[p2] == bb(b'[') {
                 let _ptr2 = strchr_safe(&rowfilter[(p2 + 1)..], bb(b']'));
-                if _ptr2.is_none() {
+                if let Some(_ptr2) = _ptr2 {
+                    p2 += _ptr2;
+                } else {
                     ffpmsg_str("nested brackets in input file URL is missing closing bracket");
                     *status = URL_PARSE_ERROR;
                     return *status;
-                } else {
-                    p2 += _ptr2.unwrap();
                 }
             }
 
@@ -6400,9 +6334,7 @@ pub fn ffifile2_safe(
         };
     }
 
-    if ptr1.is_some() {
-        let p1 = ptr1.unwrap();
-
+    if let Some(p1) = ptr1 {
         /* found the compress string */
         if let Some(ref mut compspec_slice) = compspec {
             if strlen_safe(&rowfilter[(p1 + 1)..]) > FLEN_FILENAME - 1 {
@@ -6762,10 +6694,10 @@ pub fn ffrtnm_safe(url: &[c_char], rootname: &mut [c_char], status: &mut c_int) 
             *status = URL_PARSE_ERROR; /* error, no closing ) */
             return *status;
         }
-    } else if ptr2.is_some() && ptr2 < ptr3
+    } else if let Some(p2) = ptr2
+        && ptr2 < ptr3
     /* () enclose output name before bracket */
     {
-        let p2 = ptr2.unwrap();
         if p2 > FLEN_FILENAME - 1 {
             *status = URL_PARSE_ERROR;
             return *status;
@@ -7665,6 +7597,12 @@ pub unsafe extern "C" fn fits_get_token(
 
         raw_to_slice!(delimiter);
 
+        /* The token copied out is a prefix of the remaining input, so the
+        most this can write is strlen(*ptr) + 1 chars; the C contract
+        requires the caller's buffer to hold at least that. */
+        let token_len = CStr::from_ptr(*ptr).to_bytes().len() + 1;
+        let token = slice::from_raw_parts_mut(token, token_len);
+
         fits_get_token_safe(ptr, delimiter, token, isanumber)
     }
 }
@@ -7678,7 +7616,7 @@ pub unsafe extern "C" fn fits_get_token(
 pub fn fits_get_token_safe(
     ptr: &mut *mut c_char,
     delimiter: &[c_char],
-    token: *mut c_char,
+    token: &mut [c_char],
     isanumber: Option<&mut c_int>, /* O - is this token a number? */
 ) -> c_int {
     let mut loc: c_char = 0;
@@ -7688,61 +7626,59 @@ pub fn fits_get_token_safe(
     let mut ptr_idx = 0;
     let mut slen: usize = 0;
 
-    unsafe {
-        *token = 0;
+    token[0] = 0;
 
-        while input_str[0] == bb(b' ') {
-            /* skip over leading blanks */
-            ptr_idx += 1;
-            input_str = &input_str[1..];
-        }
+    while input_str[0] == bb(b' ') {
+        /* skip over leading blanks */
+        ptr_idx += 1;
+        input_str = &input_str[1..];
+    }
 
-        slen = strcspn_safe(cast_slice(input_str), delimiter) as usize; /* length of next token */
-        if slen != 0 {
-            strncat(token, input_str.as_ptr(), slen); /* copy token */
+    slen = strcspn_safe(input_str, delimiter); /* length of next token */
+    if slen != 0 {
+        strncat_safe(token, input_str, slen); /* copy token */
 
-            ptr_idx += slen; /* skip over the token */
-            input_str = &input_str[slen..];
+        ptr_idx += slen; /* skip over the token */
+        input_str = &input_str[slen..];
 
-            /* check if token is a number */
-            if let Some(isanumber) = isanumber {
-                *isanumber = 1;
+        /* check if token is a number */
+        if let Some(isanumber) = isanumber {
+            *isanumber = 1;
 
-                if !strchr(token, c_int::from(b'D')).is_null() {
-                    strncpy(tval.as_mut_ptr(), token, 72);
-                    tval[72] = 0;
+            if strchr_safe(token, bb(b'D')).is_some() {
+                strncpy_safe(&mut tval, token, 72);
+                tval[72] = 0;
 
-                    /*  The C language does not support a 'D'; replace with 'E' */
-                    let tmp_loc = strchr_safe(&tval, bb(b'D'));
-                    if let Some(tmp_loc) = tmp_loc
-                        && tmp_loc != 0
-                    {
-                        tval[tmp_loc] = bb(b'E');
-                    }
-
-                    let mut tmp_loc = 0;
-                    let _ = strtod_safe(&tval, &mut tmp_loc);
-                    loc = tval[tmp_loc];
-                } else {
-                    let mut tmp_loc: *mut c_char = ptr::null_mut();
-                    strtod(token, &mut tmp_loc);
-                    loc = *tmp_loc;
+                /*  The C language does not support a 'D'; replace with 'E' */
+                let tmp_loc = strchr_safe(&tval, bb(b'D'));
+                if let Some(tmp_loc) = tmp_loc
+                    && tmp_loc != 0
+                {
+                    tval[tmp_loc] = bb(b'E');
                 }
 
-                /* check for read error, or junk following the value */
-                if loc != 0 && loc != bb(b' ') {
-                    *isanumber = 0;
-                }
+                let mut tmp_loc = 0;
+                let _ = strtod_safe(&tval, &mut tmp_loc);
+                loc = tval[tmp_loc];
+            } else {
+                let mut tmp_loc = 0;
+                let _ = strtod_safe(token, &mut tmp_loc);
+                loc = token[tmp_loc];
+            }
 
-                if errno().0 == ERANGE {
-                    *isanumber = 0;
-                }
+            /* check for read error, or junk following the value */
+            if loc != 0 && loc != bb(b' ') {
+                *isanumber = 0;
+            }
+
+            if errno().0 == ERANGE {
+                *isanumber = 0;
             }
         }
-
-        /* increment *ptr to the end of the token (past leading blanks + token) */
-        *ptr = (*ptr).add(ptr_idx);
     }
+
+    /* increment *ptr to the end of the token (past leading blanks + token) */
+    *ptr = unsafe { (*ptr).add(ptr_idx) };
 
     slen as c_int
 }
@@ -8465,6 +8401,9 @@ pub fn pixel_filter_helper(
 
     /* copy any remaining HDUs to the output file */
     ii = hdunum + 1;
+    /* C: for (ii = hdunum + 1; !singleHDU; ii++) -- singleHDU is loop
+    invariant there too; the loop is exited by the ffmahd break below. */
+    #[allow(clippy::while_immutable_condition)]
     while singleHDU == 0 {
         if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
             break;
@@ -10012,19 +9951,18 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token1");
         assert_eq!(isanumber, 0);
 
         ptr = unsafe { ptr.add(1) }; // skip comma
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token2");
 
         ptr = unsafe { ptr.add(1) };
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "token3");
     }
@@ -10036,22 +9974,19 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 3);
         assert_eq!(from_buf(&token), "123");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 7);
         assert_eq!(from_buf(&token), "456.789");
         assert_eq!(isanumber, 1);
 
         ptr = unsafe { ptr.add(1) };
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(" "), token.as_mut_ptr(), Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(" "), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "1.5D10");
         assert_eq!(isanumber, 1); // D notation for doubles
@@ -10064,8 +9999,7 @@ mod tests {
         let mut token = [0 as c_char; 80];
         let mut isanumber: c_int = 0;
 
-        let slen =
-            fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), Some(&mut isanumber));
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, Some(&mut isanumber));
         assert_eq!(slen, 6);
         assert_eq!(from_buf(&token), "spaced");
     }
@@ -10076,7 +10010,7 @@ mod tests {
         let mut ptr = input.as_mut_ptr();
         let mut token = [0 as c_char; 80];
 
-        let slen = fits_get_token_safe(&mut ptr, &cc(","), token.as_mut_ptr(), None);
+        let slen = fits_get_token_safe(&mut ptr, &cc(","), &mut token, None);
         assert_eq!(slen, 5);
         assert_eq!(from_buf(&token), "value");
     }

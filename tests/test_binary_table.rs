@@ -1,3 +1,7 @@
+// Ported from the CFITSIO C test programs; indexed loops and the
+// operator-named test fns mirror the originals.
+#![allow(non_snake_case)]
+
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -902,6 +906,7 @@ fn test_read_table_where_tanh() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_erf() {
     let filename = get_filename();
 
@@ -914,6 +919,7 @@ fn test_read_table_where_erf() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_erfc() {
     let filename = get_filename();
 
@@ -926,6 +932,7 @@ fn test_read_table_where_erfc() {
 }
 
 // #[test] // Commented out - function not implemented (status 431)
+#[allow(dead_code)] // kept for when the feature lands; see the commented-out #[test]
 fn test_read_table_where_gamma() {
     let filename = get_filename();
 

@@ -1132,6 +1132,8 @@ pub fn ffgcfuj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgcluj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -2099,7 +2101,7 @@ pub(crate) fn fffr4u4(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -2249,7 +2251,7 @@ pixels are null, otherwise anynull will be returned with a value = 0;
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -3693,6 +3695,8 @@ pub fn ffgcfujj_safe(
 ///
 /// The output array of values will be converted from the datatype of the column
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
+#[allow(clippy::if_same_then_else)]
+// C dispatch chain: distinct conditions deliberately share an action.
 pub(crate) fn ffgclujj(
     fptr: &mut fitsfile,   /* I - FITS file pointer                       */
     colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
@@ -4584,7 +4588,7 @@ pub(crate) fn fffr4u8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 1; /* point to MSBs */
         }
 
@@ -4732,7 +4736,7 @@ pub(crate) fn fffr8u8(
 
         //sptr = (short *) input;
 
-        if BYTESWAPPED && CFITSIO_MACHINE != VAXVMS && CFITSIO_MACHINE != ALPHAVMS {
+        if BYTESWAPPED {
             sptr += 3; /* point to MSBs */
         }
 
@@ -5024,7 +5028,6 @@ pub(crate) fn fffstru8(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BAD_DIMEN, BINARY_TBL, BYTE_IMG, LONGLONG, NUM_OVERFLOW, READONLY, TRUE,

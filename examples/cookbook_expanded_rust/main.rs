@@ -1,4 +1,7 @@
 #![allow(deprecated)]
+// Ported from the CFITSIO C test programs; indexed loops and the
+// operator-named test fns mirror the originals.
+#![allow(clippy::needless_range_loop)]
 
 use std::ffi::{CStr, CString};
 use std::fs::remove_file;

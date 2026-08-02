@@ -63,11 +63,11 @@ const SIGMA_CLIP: f64 = 5.0;
 const NITER: i32 = 3; /* number of sigma-clipping iterations */
 
 pub trait SomeSet<T> {
-    fn is_some_set(self, v: T);
+    fn set_if_some(self, v: T);
 }
 
 impl<T> SomeSet<T> for Option<&mut T> {
-    fn is_some_set(self, v: T) {
+    fn set_if_some(self, v: T) {
         let s = self;
         if let Some(s) = s {
             *s = v;
@@ -1337,12 +1337,12 @@ fn FnNoise5_short(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise2.is_some_set(0.);
-        noise3.is_some_set(0.);
-        noise5.is_some_set(0.);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise2.set_if_some(0.);
+        noise3.set_if_some(0.);
+        noise5.set_if_some(0.);
 
         return *status;
     }
@@ -1715,12 +1715,12 @@ fn FnNoise5_short(
         xnoise2 = (diffs2[(nrows2 - 1) / 2] + diffs2[nrows2 / 2]) / 2.0;
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise2.is_some_set(1.0483579 * xnoise2);
-    noise3.is_some_set(0.6052697 * xnoise3);
-    noise5.is_some_set(0.1772048 * xnoise5);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise2.set_if_some(1.0483579 * xnoise2);
+    noise3.set_if_some(0.6052697 * xnoise3);
+    noise5.set_if_some(0.1772048 * xnoise5);
 
     *status
 }
@@ -1803,12 +1803,12 @@ fn FnNoise5_int(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise2.is_some_set(0.);
-        noise3.is_some_set(0.);
-        noise5.is_some_set(0.);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise2.set_if_some(0.);
+        noise3.set_if_some(0.);
+        noise5.set_if_some(0.);
 
         return *status;
     }
@@ -2186,12 +2186,12 @@ fn FnNoise5_int(
         xnoise2 = (diffs2[(nrows2 - 1) / 2] + diffs2[nrows2 / 2]) / 2.0;
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise2.is_some_set(1.0483579 * xnoise2);
-    noise3.is_some_set(0.6052697 * xnoise3);
-    noise5.is_some_set(0.1772048 * xnoise5);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise2.set_if_some(1.0483579 * xnoise2);
+    noise3.set_if_some(0.6052697 * xnoise3);
+    noise5.set_if_some(0.1772048 * xnoise5);
 
     *status
 }
@@ -2274,12 +2274,12 @@ fn FnNoise5_float(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise2.is_some_set(0.);
-        noise3.is_some_set(0.);
-        noise5.is_some_set(0.);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise2.set_if_some(0.);
+        noise3.set_if_some(0.);
+        noise5.set_if_some(0.);
 
         return *status;
     }
@@ -2636,12 +2636,12 @@ fn FnNoise5_float(
         xnoise2 = (diffs2[(nrows2 - 1) / 2] + diffs2[nrows2 / 2]) / 2.0;
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise2.is_some_set(1.0483579 * xnoise2);
-    noise3.is_some_set(0.6052697 * xnoise3);
-    noise5.is_some_set(0.1772048 * xnoise5);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise2.set_if_some(1.0483579 * xnoise2);
+    noise3.set_if_some(0.6052697 * xnoise3);
+    noise5.set_if_some(0.1772048 * xnoise5);
 
     *status
 }
@@ -2724,12 +2724,12 @@ fn FnNoise5_double(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise2.is_some_set(0.);
-        noise3.is_some_set(0.);
-        noise5.is_some_set(0.);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise2.set_if_some(0.);
+        noise3.set_if_some(0.);
+        noise5.set_if_some(0.);
 
         return *status;
     }
@@ -3086,12 +3086,12 @@ fn FnNoise5_double(
         xnoise2 = (diffs2[(nrows2 - 1) / 2] + diffs2[nrows2 / 2]) / 2.;
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise2.is_some_set(1.0483579 * xnoise2);
-    noise3.is_some_set(0.6052697 * xnoise3);
-    noise5.is_some_set(0.1772048 * xnoise5);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise2.set_if_some(1.0483579 * xnoise2);
+    noise3.set_if_some(0.6052697 * xnoise3);
+    noise5.set_if_some(0.1772048 * xnoise5);
 
     *status
 }
@@ -3165,10 +3165,10 @@ fn FnNoise3_short(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise.is_some_set(0.0);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise.set_if_some(0.0);
 
         return *status;
     }
@@ -3392,10 +3392,10 @@ fn FnNoise3_short(
         }
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise.is_some_set(0.6052697 * xnoise);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise.set_if_some(0.6052697 * xnoise);
 
     *status
 }
@@ -3469,10 +3469,10 @@ fn FnNoise3_int(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise.is_some_set(0.0);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise.set_if_some(0.0);
 
         return *status;
     }
@@ -3697,10 +3697,10 @@ fn FnNoise3_int(
         }
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise.is_some_set(0.6052697 * xnoise);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise.set_if_some(0.6052697 * xnoise);
 
     *status
 }
@@ -3773,10 +3773,10 @@ fn FnNoise3_float(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise.is_some_set(0.0);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise.set_if_some(0.0);
 
         return *status;
     }
@@ -3973,10 +3973,10 @@ fn FnNoise3_float(
         }
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise.is_some_set(0.6052697 * xnoise);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise.set_if_some(0.6052697 * xnoise);
 
     *status
 }
@@ -4049,10 +4049,10 @@ fn FnNoise3_double(
             }
         }
 
-        minval.is_some_set(xminval);
-        maxval.is_some_set(xmaxval);
-        ngood.is_some_set(ngoodpix);
-        noise.is_some_set(0.0);
+        minval.set_if_some(xminval);
+        maxval.set_if_some(xmaxval);
+        ngood.set_if_some(ngoodpix);
+        noise.set_if_some(0.0);
 
         return *status;
     }
@@ -4249,10 +4249,10 @@ fn FnNoise3_double(
         }
     }
 
-    minval.is_some_set(xminval);
-    maxval.is_some_set(xmaxval);
-    ngood.is_some_set(ngoodpix);
-    noise.is_some_set(0.6052697 * xnoise);
+    minval.set_if_some(xminval);
+    maxval.set_if_some(xmaxval);
+    ngood.set_if_some(ngoodpix);
+    noise.set_if_some(0.6052697 * xnoise);
 
     *status
 }

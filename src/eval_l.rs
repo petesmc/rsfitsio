@@ -549,7 +549,7 @@ pub(crate) fn fits_parser_yylex(
                                                 20,
                                             );
                                             strcat_safe(&mut errMsg, cs!(c"...'"));
-                                            ffpmsg_slice(&mut errMsg);
+                                            ffpmsg_slice(&errMsg);
                                             overflow = 1;
                                             break;
                                         }
@@ -700,7 +700,7 @@ pub(crate) fn fits_parser_yylex(
                                                 20,
                                             );
                                             strcat_safe(&mut errMsg, cs!(c"...'"));
-                                            ffpmsg_slice(&mut errMsg);
+                                            ffpmsg_slice(&errMsg);
                                             overflow = 1;
                                             break;
                                         }
@@ -1045,7 +1045,6 @@ pub(crate) fn fits_parser_yylex(
                                     1,
                                     yyscanner.yyout_r,
                                 );
-                                0;
                                 break '_yy_match;
                             }
                             32 => return 0,
@@ -1553,7 +1552,6 @@ pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
         (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)) = None;
         if yyscanner.yy_buffer_stack_top > 0 {
             yyscanner.yy_buffer_stack_top = (yyscanner.yy_buffer_stack_top).wrapping_sub(1);
-            yyscanner.yy_buffer_stack_top;
         }
 
         if (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).is_some() {

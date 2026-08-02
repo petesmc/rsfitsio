@@ -1954,7 +1954,13 @@ pub unsafe extern "C" fn fffree(
 /// Free memory allocated by FITS library functions.
 /// This function deallocates memory that was previously allocated by other
 /// FITS library functions and tracked in the global allocations map.
-pub fn fffree_safe(
+///
+/// # Safety
+///
+/// `value` must either be null or a pointer previously handed out by a CFITSIO
+/// allocating function (ffgkls, fits_hdr2str, ...) and not yet freed. Passing
+/// any other pointer, or freeing the same one twice, is undefined behaviour.
+pub unsafe fn fffree_safe(
     value: *mut c_void, /* I - pointer to keyword value  */
     status: &mut c_int, /* IO - error status             */
 ) -> c_int {
@@ -3910,6 +3916,10 @@ pub unsafe extern "C" fn ffghpr(
         let gcount = gcount.as_mut().expect(NULL_MSG);
         let extend = extend.as_mut().expect(NULL_MSG);
 
+        /* C declares this `long naxes[]`; ffghpr writes at most maxdim of
+        them, so that is the caller's guaranteed buffer length */
+        let naxes = (!naxes.is_null()).then(|| slice::from_raw_parts_mut(naxes, maxdim as usize));
+
         ffghpr_safe(
             fptr, maxdim, simple, bitpix, naxis, naxes, pcount, gcount, extend, status,
         )
@@ -3927,7 +3937,7 @@ pub fn ffghpr_safe(
     simple: &mut c_int,            /* O - does file conform to FITS standard? 1/0  */
     bitpix: &mut c_int,            /* O - number of bits per data value pixel      */
     mut naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
-    naxes: *mut c_long,            /* O - length of each data axis                 */
+    naxes: Option<&mut [c_long]>,  /* O - length of each data axis                 */
     pcount: &mut c_long,           /* O - number of group parameters (usually 0)   */
     gcount: &mut c_long,           /* O - number of random groups (usually 1 or 0) */
     extend: &mut c_int,            /* O - may FITS file haave extensions?          */
@@ -3956,20 +3966,17 @@ pub fn ffghpr_safe(
         status,
     );
 
-    if let Some(naxis_ref) = naxis
-        && !naxes.is_null()
-    {
-        let naxes = unsafe { slice::from_raw_parts_mut(naxes, *naxis_ref as usize) };
-
-        let mut ii = 0;
-        while (ii < *naxis_ref) && (ii < maxdim) {
-            naxes[ii as usize] = tnaxes[ii as usize] as c_long;
-            ii += 1;
-        }
-    } else if !naxes.is_null() {
-        let naxes = unsafe { slice::from_raw_parts_mut(naxes, maxdim as usize) };
-        for ii in 0..(maxdim as usize) {
-            naxes[ii] = tnaxes[ii] as c_long;
+    if let Some(naxes) = naxes {
+        if let Some(naxis_ref) = naxis {
+            let mut ii = 0;
+            while (ii < *naxis_ref) && (ii < maxdim) {
+                naxes[ii as usize] = tnaxes[ii as usize] as c_long;
+                ii += 1;
+            }
+        } else {
+            for ii in 0..(maxdim as usize) {
+                naxes[ii] = tnaxes[ii] as c_long;
+            }
         }
     }
 
@@ -6440,7 +6447,7 @@ mod tests {
             assert!(nkeys >= 5); /* SIMPLE, BITPIX, NAXIS, NAXIS1, NAXIS2, END */
             let hdr = unsafe { CStr::from_ptr(header) };
             assert!(hdr.to_bytes().starts_with(b"SIMPLE"));
-            fffree_safe(header as *mut c_void, &mut status);
+            unsafe { fffree_safe(header as *mut c_void, &mut status) };
             ffclos_safe(fptr.take().unwrap(), &mut status);
         });
     }

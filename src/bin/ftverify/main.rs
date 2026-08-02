@@ -1,4 +1,9 @@
 #![allow(deprecated)]
+// The C-derived declarations in common.rs cover the whole of ftverify; the
+// port is still incomplete, so many are not referenced yet.
+#![allow(dead_code)]
+// kwdtyp, data and the *_KEY variants keep their fitsverify C spellings.
+#![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 use std::process::ExitCode;
 
