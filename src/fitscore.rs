@@ -2539,7 +2539,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
             .map(|&p| [CStr::from_ptr(p[0]), CStr::from_ptr(p[1])])
             .collect::<Vec<_>>();
 
-        fits_translate_keywords_safer(
+        fits_translate_keywords_safe(
             infptr,
             outfptr,
             firstkey,
@@ -2562,7 +2562,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
 /// continues to the end of the header.
 ///
 /// This routine was written by Craig Markwardt, GSFC
-pub fn fits_translate_keywords_safer(
+pub fn fits_translate_keywords_safe(
     infptr: &mut fitsfile,   /* I - pointer to input HDU */
     outfptr: &mut fitsfile,  /* I - pointer to output HDU */
     firstkey: c_int,         /* I - first HDU record number to start with */
