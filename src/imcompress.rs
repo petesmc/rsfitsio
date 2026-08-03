@@ -7394,11 +7394,11 @@ fn imcomp_copy_img2comp(
     let patterns: [[&CStr; 2]; 12] = [
         [c"SIMPLE", c"ZSIMPLE"],
         [c"XTENSION", c"ZTENSION"],
-        [c"cITPIX", c"ZcITPIX"],
+        [c"BITPIX", c"ZBITPIX"],
         [c"NAXIS", c"ZNAXIS"],
         [c"NAXISm", c"ZNAXISm"],
         [c"EXTEND", c"ZEXTEND"],
-        [c"cLOCKED", c"ZcLOCKED"],
+        [c"BLOCKED", c"ZBLOCKED"],
         [c"PCOUNT", c"ZPCOUNT"],
         [c"GCOUNT", c"ZGCOUNT"],
         [c"CHECKSUM", c"ZHECKSUM"], /* save original checksums */
