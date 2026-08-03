@@ -752,7 +752,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
 
         let dims = slice::from_raw_parts_mut(dims, ndim as usize);
 
-        fits_get_tile_dim_safer(fptr, ndim, dims, status)
+        fits_get_tile_dim_safe(fptr, ndim, dims, status)
     }
 }
 
@@ -761,7 +761,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
-pub unsafe fn fits_get_tile_dim_safer(
+pub fn fits_get_tile_dim_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     ndim: c_int,         /* number of dimensions in the compressed image      */
     dims: &mut [c_long], /* size of image compression tile in each dimension  */
@@ -14123,7 +14123,7 @@ mod ricecomp_tests {
 mod tests {
     use super::{
         c_char, c_int, fits_get_compression_type_safe, fits_get_dither_seed_safe,
-        fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safer,
+        fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safe,
         fits_img_compress_safe, fits_set_compression_type_safe, fits_set_dither_seed_safe,
         fits_set_noise_bits_safe, fits_set_quantize_level_safe, fits_set_quantize_method_safe,
         fits_set_tile_dim_safe, fits_shuffle_2bytes, fits_shuffle_4bytes, fits_shuffle_8bytes,
@@ -14418,9 +14418,7 @@ mod tests {
             assert_eq!(status, 0);
 
             let mut dims_out: [c_long; 2] = [0, 0];
-            unsafe {
-                fits_get_tile_dim_safer(&mut fptr, 2, &mut dims_out, &mut status);
-            }
+            fits_get_tile_dim_safe(&mut fptr, 2, &mut dims_out, &mut status);
             assert_eq!(status, 0);
             assert_eq!(dims_out[0], 32);
             assert_eq!(dims_out[1], 32);
