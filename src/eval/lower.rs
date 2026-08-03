@@ -11,6 +11,7 @@
 use super::expr::{Expr, Func, Logic, Unary};
 use super::kernel::{Arith, Compare};
 use super::value::Scalar;
+use crate::c_types::c_long;
 use crate::eval_defs::{ColumnSort, ParserValue, ValueSort};
 use crate::parser::ast::{Ast, AstKind, BinOp, UnOp};
 use crate::parser::resolve::Resolutions;
@@ -24,6 +25,21 @@ use crate::parser::token::CallKind;
 pub(crate) struct Unsupported(pub(crate) &'static str);
 
 type Res = Result<Expr, Unsupported>;
+
+/// The constant an offset names, when it is written plainly enough to fold
+/// here. Anything else -- `INTCOL{1+1}` -- is left to the arena, which already
+/// folded it at parse time.
+fn const_long(ast: &Ast) -> Option<c_long> {
+    match &ast.kind {
+        AstKind::Long(v) => Some(*v),
+        AstKind::Unary { op: UnOp::Neg, arg } => const_long(arg).map(|v| -v),
+        AstKind::Unary {
+            op: UnOp::Plus,
+            arg,
+        } => const_long(arg),
+        _ => None,
+    }
+}
 
 /// Lower a whole expression, or report the first construct not yet ported.
 pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Res {
@@ -150,7 +166,25 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         AstKind::Str(s) => Ok(Expr::Literal(Scalar::Str(s.clone()))),
         AstKind::BitStr(s) => Ok(Expr::Literal(Scalar::Bits(s.clone()))),
         AstKind::SNullRef => Err(Unsupported("#SNULL")),
-        AstKind::Offset { .. } => Err(Unsupported("row offset")),
+        /* The parser has already checked the offset is a constant integer,
+        so it is folded here rather than evaluated per row. */
+        AstKind::Offset { name, off } => {
+            let Some(ParserValue::Column { index, sort }) = names.get(&ast.at) else {
+                return Err(Unsupported("row offset of a non-column"));
+            };
+            if matches!(sort, ColumnSort::String) {
+                /* Do_Offset copies text row by row through its own buffer */
+                return Err(Unsupported("row offset of a string column"));
+            }
+            let _ = name;
+            match const_long(off) {
+                Some(offset) => Ok(Expr::Offset {
+                    col: *index as usize,
+                    offset,
+                }),
+                None => Err(Unsupported("row offset that is not a plain constant")),
+            }
+        }
         /* Subscripting needs the operand's `naxes`, not just its element
         count: with a 2x3 column, `M[1,1]` picks an element but `M[1]` selects
         a whole slice, so even the single-subscript form cannot be lowered

@@ -75,6 +75,21 @@ pub(crate) enum ArrayData {
 }
 
 impl ArrayData {
+    /// The `len` elements starting at `start`, clamped to what is there.
+    pub(crate) fn slice(&self, start: usize, len: usize) -> ArrayData {
+        fn cut<T: Clone>(v: &[T], start: usize, len: usize) -> Vec<T> {
+            let end = (start + len).min(v.len());
+            v.get(start.min(end)..end).unwrap_or_default().to_vec()
+        }
+        match self {
+            ArrayData::Boolean(v) => ArrayData::Boolean(cut(v, start, len)),
+            ArrayData::Long(v) => ArrayData::Long(cut(v, start, len)),
+            ArrayData::Double(v) => ArrayData::Double(cut(v, start, len)),
+            ArrayData::Str(v) => ArrayData::Str(cut(v, start, len)),
+            ArrayData::Bits(v) => ArrayData::Bits(cut(v, start, len)),
+        }
+    }
+
     pub(crate) fn len(&self) -> usize {
         match self {
             ArrayData::Boolean(v) => v.len(),
@@ -276,6 +291,10 @@ pub(crate) enum ValueError {
     Incompatible(&'static str, ValueSort, ValueSort),
     /// A subscript fell outside the operand's bounds.
     OutOfRange,
+    /// A row offset reached a row that is inside the table but outside the
+    /// chunk currently loaded, which only the engine's reload path can serve.
+    /// This is not a failure: the caller hands the batch back to the arena.
+    NeedsReload,
 }
 
 /// Reading a string or bit-string operand element by element, the text

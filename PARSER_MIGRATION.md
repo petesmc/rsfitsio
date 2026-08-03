@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,299 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,353 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -814,9 +814,10 @@ reason gives the order to work in:
 | remaining | reason |
 |---:|---|
 | 132 | function call — the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
-| 78 | bit-string **result** (see below) |
-| 74 | row offset |
+| 90 | bit-string **result** (see below) |
+| 6 | row offset of a string column |
 | 2 | subscript slice (see below) |
+| 2 | row offset written as an expression (`INTCOL{1+1}`) |
 | 2 | `#SNULL` |
 | 1 | string keyword |
 
@@ -836,8 +837,7 @@ so no corpus line arbitrates a string-valued answer. Those are covered by the
 `ffcalc`/`fffrow` tests in `eval_f.rs` instead, which compare through a boolean
 (`STRMID(STRCOL,1,3) == 'alp'`) or read the written column back.
 
-What is left that does real work: the row offsets and the individual
-functions.
+What is left that does real work: the individual functions.
 
 One structural item remains:
 
@@ -856,10 +856,34 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, the bit strings — `&`, `|`, `!`, `+`
+vector literals, fully-indexed subscripts, row offsets, the bit strings — `&`, `|`, `!`, `+`
 and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
 the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
 branches are strings.
+
+### 10.4 Row offsets, and declining a batch
+
+`COL{k}` reads a column `k` rows from the row being evaluated, so the batch now
+gathers the **whole loaded chunk** rather than just the rows being evaluated,
+and a column reference is the chunk sliced at a shift of zero. Three cases:
+
+* the row is outside the **table** — undefined, as `Do_Offset` reports it;
+* the row is inside the chunk — read at the shift;
+* the row is inside the table but outside the **chunk** — the file has to be
+  read again, which only the engine's reload path does.
+
+That last case is why `bridge::evaluate` now returns a bool. It declines the
+batch before writing anything to the result node, and `Evaluate_Parser` walks
+the arena for it instead. The fallback is therefore per *batch* as well as per
+expression.
+
+Worth knowing when changing this: **the corpus cannot reach the reload case.**
+Its table is 3 rows in a single chunk, so every offset either lands in the
+chunk or falls off the table. The reload path is covered by unit tests on
+`Batch::shifted` alone. The same test set pins the case that made this worth
+guarding — `totalRows` is 0 for an image with no `NAXIS2`, and since a plain
+column reference now goes through the same path, bounding against it
+unconditionally would have made every column read null.
 
 ### 10.4 What the corpus caught
 

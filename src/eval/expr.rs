@@ -174,6 +174,12 @@ pub(crate) enum Expr {
         /// The operand's axis lengths, innermost first, resolved at lowering.
         naxes: Vec<usize>,
     },
+    /// `COL{k}`: the column's value `k` rows away from the row being
+    /// evaluated. `k` is a constant, which the parser enforces.
+    Offset {
+        col: usize,
+        offset: c_long,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -197,11 +203,88 @@ pub(crate) struct ColumnBatch {
 pub(crate) struct Batch {
     pub(crate) columns: Vec<ColumnBatch>,
     pub(crate) n_rows: c_long,
+    /// The first row of the chunk the columns were loaded from, and how many
+    /// it holds. A row offset can reach anywhere inside this window; past it
+    /// the engine has to reload, which the arena still does.
+    pub(crate) first_data_row: c_long,
+    pub(crate) n_data_rows: c_long,
+    /// Rows in the whole table, which bounds what a row offset can name at
+    /// all: past either end the answer is undefined rather than a reload.
+    pub(crate) total_rows: c_long,
     /// Table row number of the first row in the batch, one-based.
     pub(crate) first_row: c_long,
 }
 
 impl Batch {
+    /// Column `col` as seen from each row of the batch, shifted by `offset`
+    /// rows -- so `offset == 0` is the plain column reference.
+    ///
+    /// A row naming something outside the table is undefined, which is how
+    /// `Do_Offset` reports the rows before the first and after the last. A row
+    /// inside the table but outside the loaded chunk needs the file read again,
+    /// which only the engine does; that is [`ValueError::NeedsReload`] and the
+    /// caller hands the whole batch back to the arena.
+    fn shifted(&self, col: usize, offset: c_long) -> Result<ColumnarValue, ValueError> {
+        let c = &self.columns[col];
+        let nelem = c.nelem.max(1) as usize;
+        /* a text column keeps one entry per row whatever its declared width */
+        let stride = if matches!(c.data, ArrayData::Str(_) | ArrayData::Bits(_)) {
+            1
+        } else {
+            nelem
+        };
+        let rows = self.n_rows.max(0) as usize;
+
+        let mut picked: Vec<Option<usize>> = Vec::with_capacity(rows);
+        for r in 0..rows {
+            let target = self.first_row + r as c_long + offset;
+            /* `totalRows` is 0 for an image with no NAXIS2, where it says
+            nothing about the top end -- so it only bounds when it is set. A
+            plain column reference has offset 0 and is always in range. */
+            if target < 1 || (self.total_rows > 0 && target > self.total_rows) {
+                picked.push(None);
+                continue;
+            }
+            let within = target - self.first_data_row;
+            if within < 0 || within >= self.n_data_rows {
+                return Err(ValueError::NeedsReload);
+            }
+            picked.push(Some(within as usize));
+        }
+
+        /* the fast path: every row is in the chunk at a fixed shift, so the
+        window can be sliced rather than gathered element by element */
+        if picked.iter().all(Option::is_some) {
+            let start = picked[0].unwrap() * stride;
+            let len = rows * stride;
+            let data = c.data.slice(start, len);
+            let nulls = if c.nulls.len() >= start + len {
+                c.nulls[start..start + len].to_vec()
+            } else {
+                Vec::new()
+            };
+            return Ok(ColumnarValue::Array(
+                Array::with_nulls(data, nulls)
+                    .with_nelem(nelem)
+                    .with_naxes(c.naxes.clone()),
+            ));
+        }
+
+        /* otherwise the rows off the ends of the table are undefined */
+        let mut idx = Vec::with_capacity(rows * stride);
+        for p in &picked {
+            for e in 0..stride {
+                idx.push(p.map(|row| row * stride + e));
+            }
+        }
+        let src = Array::with_nulls(c.data.clone(), c.nulls.clone());
+        Ok(ColumnarValue::Array(
+            gather_at(&src, &idx)
+                .with_nelem(nelem)
+                .with_naxes(c.naxes.clone()),
+        ))
+    }
+
     /// Copy the current chunk out of `ParseData::varData`.
     ///
     /// This is the one place that touches the iterator's raw buffers. It copies
@@ -210,12 +293,15 @@ impl Batch {
     /// against per-element work downstream. Making it a borrow is a later
     /// optimisation, not a correctness question.
     pub(crate) fn gather(lParse: &ParseData, first_row: c_long, n_rows: c_long) -> Batch {
-        let row_offset = first_row - lParse.firstDataRow;
+        /* The whole loaded chunk is gathered, not just the batch's slice of
+        it, so a row offset can reach the neighbouring rows without going back
+        to the file. `Expr::Column` slices the batch window back out. */
+        let chunk_rows = lParse.nDataRows.max(n_rows);
         let mut columns = Vec::with_capacity(lParse.nCols as usize);
 
         for var in lParse.varData.iter().take(lParse.nCols as usize) {
-            let count = (var.nelem * n_rows).max(0) as usize;
-            let offset = (var.nelem * row_offset).max(0) as usize;
+            let count = (var.nelem * chunk_rows).max(0) as usize;
+            let offset = 0usize;
 
             /* A column the iterator has not filled in for this pass -- the
             expression may not reference it at all -- has no buffer yet. */
@@ -249,10 +335,10 @@ impl Batch {
                     not a value per element, so it is indexed by row */
                     ValueSort::String | ValueSort::Bits => {
                         let rows = var.data.cast::<*mut c_char>();
-                        let n = n_rows.max(0) as usize;
+                        let n = chunk_rows.max(0) as usize;
                         let text: Vec<Vec<u8>> = (0..n)
                             .map(|r| {
-                                let p = *rows.add(row_offset.max(0) as usize + r);
+                                let p = *rows.add(r);
                                 if p.is_null() {
                                     Vec::new()
                                 } else {
@@ -277,7 +363,7 @@ impl Batch {
             indexed by row rather than by element */
             let text = matches!(var.dtype, ValueSort::String | ValueSort::Bits);
             let (off, len) = if text {
-                (row_offset.max(0) as usize, n_rows.max(0) as usize)
+                (0, chunk_rows.max(0) as usize)
             } else {
                 (offset, count)
             };
@@ -308,6 +394,9 @@ impl Batch {
         Batch {
             columns,
             n_rows,
+            first_data_row: lParse.firstDataRow,
+            n_data_rows: chunk_rows,
+            total_rows: lParse.totalRows,
             first_row,
         }
     }
@@ -319,7 +408,7 @@ impl Expr {
         match self {
             Expr::Literal(s) => s.sort(),
             Expr::Null(t) => *t,
-            Expr::Column(i) => batch_sorts(*i),
+            Expr::Column(i) | Expr::Offset { col: i, .. } => batch_sorts(*i),
             Expr::RowNumber => ValueSort::Long,
             Expr::Unary { op, arg } => match op {
                 /* `!` over a bit string complements it rather than testing it */
@@ -388,14 +477,11 @@ impl Expr {
                 Ok(ColumnarValue::Array(Array::with_nulls(data, vec![true; n])))
             }
 
-            Expr::Column(i) => {
-                let col = &batch.columns[*i];
-                Ok(ColumnarValue::Array(
-                    Array::with_nulls(col.data.clone(), col.nulls.clone())
-                        .with_nelem(col.nelem.max(1) as usize)
-                        .with_naxes(col.naxes.clone()),
-                ))
-            }
+            /* The gathered column covers the whole chunk, so a plain
+            reference takes the batch's window out of it -- a shift of zero. */
+            Expr::Column(i) => batch.shifted(*i, 0),
+
+            Expr::Offset { col, offset } => batch.shifted(*col, *offset),
 
             Expr::RowNumber => {
                 let n = batch.n_rows.max(0) as usize;
@@ -1387,6 +1473,9 @@ mod tests {
         Batch {
             columns: cols,
             n_rows,
+            first_data_row: 1,
+            n_data_rows: n_rows,
+            total_rows: n_rows,
             first_row: 1,
         }
     }
@@ -1517,6 +1606,91 @@ mod tests {
         assert_eq!(
             a.data(),
             &ArrayData::Str(vec![b"big".to_vec(), b"small".to_vec()])
+        );
+    }
+
+    /// A batch whose loaded chunk is wider than the rows being evaluated, so
+    /// an offset can reach outside the batch but stay inside the chunk.
+    fn offset_batch(first_row: c_long, n_rows: c_long, total: c_long) -> Batch {
+        Batch {
+            columns: vec![long_col(&[10, 20, 30, 40, 50])],
+            n_rows,
+            first_data_row: 1,
+            n_data_rows: 5,
+            total_rows: total,
+            first_row,
+        }
+    }
+
+    #[test]
+    fn a_zero_offset_is_the_plain_column() {
+        let b = offset_batch(2, 3, 5);
+        let e = Expr::Offset { col: 0, offset: 0 };
+        assert_eq!(longs(&e.evaluate(&b).unwrap()), vec![20, 30, 40]);
+        assert_eq!(
+            longs(&Expr::Column(0).evaluate(&b).unwrap()),
+            vec![20, 30, 40]
+        );
+    }
+
+    #[test]
+    fn an_offset_reads_the_neighbouring_rows() {
+        let b = offset_batch(2, 3, 5);
+        let back = Expr::Offset { col: 0, offset: -1 };
+        assert_eq!(longs(&back.evaluate(&b).unwrap()), vec![10, 20, 30]);
+        let fwd = Expr::Offset { col: 0, offset: 1 };
+        assert_eq!(longs(&fwd.evaluate(&b).unwrap()), vec![30, 40, 50]);
+    }
+
+    #[test]
+    fn a_row_off_either_end_of_the_table_is_undefined() {
+        let b = offset_batch(1, 3, 5);
+        let back = Expr::Offset { col: 0, offset: -1 };
+        let ColumnarValue::Array(a) = back.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!(a.is_null(0), "row 0 is before the table");
+        assert!(!a.is_null(1));
+
+        /* and past the last row, with the chunk covering the whole table */
+        let b = offset_batch(3, 3, 5);
+        let fwd = Expr::Offset { col: 0, offset: 2 };
+        let ColumnarValue::Array(a) = fwd.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!(!a.is_null(0), "row 5 is the last one");
+        assert!(a.is_null(1), "row 6 is past the table");
+        assert!(a.is_null(2));
+    }
+
+    #[test]
+    fn a_row_outside_the_loaded_chunk_asks_for_a_reload() {
+        /* the chunk holds rows 3..5 of a 10-row table, so reaching back to
+        row 2 is a row the batch cannot serve and the arena must */
+        let b = Batch {
+            columns: vec![long_col(&[30, 40, 50])],
+            n_rows: 3,
+            first_data_row: 3,
+            n_data_rows: 3,
+            total_rows: 10,
+            first_row: 3,
+        };
+        let e = Expr::Offset { col: 0, offset: -1 };
+        assert!(matches!(e.evaluate(&b), Err(ValueError::NeedsReload)));
+    }
+
+    #[test]
+    fn an_unset_total_row_count_does_not_null_the_column() {
+        /* an image with no NAXIS2 leaves totalRows at 0, which says nothing
+        about the top end */
+        let b = offset_batch(1, 3, 0);
+        let ColumnarValue::Array(a) = Expr::Column(0).evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!((0..3).all(|i| !a.is_null(i)));
+        assert_eq!(
+            longs(&Expr::Column(0).evaluate(&b).unwrap()),
+            vec![10, 20, 30]
         );
     }
 
@@ -1677,6 +1851,9 @@ mod tests {
         let b = Batch {
             columns: vec![],
             n_rows: 3,
+            first_data_row: 11,
+            n_data_rows: 3,
+            total_rows: 13,
             first_row: 11,
         };
         assert_eq!(

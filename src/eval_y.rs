@@ -1583,8 +1583,7 @@ pub(crate) fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
 /// unchanged. See `PARSER_MIGRATION.md` section 10.
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
     #[cfg(feature = "new-eval")]
-    if lParse.expr_tree.is_some() {
-        crate::eval::bridge::evaluate(lParse, firstRow, nRows);
+    if lParse.expr_tree.is_some() && crate::eval::bridge::evaluate(lParse, firstRow, nRows) {
         return;
     }
     Evaluate_Parser_arena(lParse, firstRow, nRows);

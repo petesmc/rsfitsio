@@ -11,7 +11,7 @@
 //! is complete the result node goes away and this file with it.
 
 use super::expr::Batch;
-use super::value::{ArrayData, ColumnarValue, Scalar};
+use super::value::{ArrayData, ColumnarValue, Scalar, ValueError};
 use crate::c_types::{c_char, c_long};
 #[cfg(test)]
 use crate::eval_defs::{BufferKind, ValueSort};
@@ -22,22 +22,32 @@ use crate::fitsio::PARSE_SYNTAX_ERR;
 
 /// Evaluate `lParse.expr_tree` over one batch and store the answer in the
 /// result node.
-pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long) {
+///
+/// Returns whether the batch was handled. A row offset reaching outside the
+/// loaded chunk needs the file read again, which only the engine does, so that
+/// batch is declined and the caller walks the arena instead. Nothing has been
+/// written to the result node when that happens.
+pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long) -> bool {
     lParse.firstRow = first_row;
     lParse.nRows = n_rows;
 
     let Some(tree) = lParse.expr_tree.clone() else {
-        return;
+        return false;
     };
     let batch = Batch::gather(lParse, first_row, n_rows);
 
     match tree.evaluate(&batch) {
-        Ok(v) => store(lParse, &v),
+        Ok(v) => {
+            store(lParse, &v);
+            true
+        }
+        Err(ValueError::NeedsReload) => false,
         Err(e) => {
             ffpmsg_str(&format!("expression evaluation failed: {e:?}"));
             if lParse.status == 0 {
                 lParse.status = PARSE_SYNTAX_ERR;
             }
+            true
         }
     }
 }
