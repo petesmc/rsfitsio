@@ -39,7 +39,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
                 /* the string and bit-string columns need their own kernels */
                 ColumnSort::Numeric | ColumnSort::Boolean => Ok(Expr::Column(*index as usize)),
                 ColumnSort::String => Err(Unsupported("string column")),
-                ColumnSort::Bits => Err(Unsupported("bit-string column")),
+                ColumnSort::Bits => Ok(Expr::Column(*index as usize)),
             },
             Some(ParserValue::Long(v)) => Ok(Expr::Literal(Scalar::Long(*v))),
             Some(ParserValue::Double(v)) => Ok(Expr::Literal(Scalar::Double(*v))),
@@ -148,7 +148,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         }
 
         AstKind::Str(_) => Err(Unsupported("string literal")),
-        AstKind::BitStr(_) => Err(Unsupported("bit-string literal")),
+        AstKind::BitStr(s) => Ok(Expr::Literal(Scalar::Bits(s.clone()))),
         AstKind::SNullRef => Err(Unsupported("#SNULL")),
         AstKind::Offset { .. } => Err(Unsupported("row offset")),
         /* Subscripting needs the operand's `naxes`, not just its element
@@ -376,10 +376,18 @@ mod tests {
     }
 
     #[test]
+    fn bit_strings_lower() {
+        /* the operators over them are the bit kernels, chosen at evaluation
+        from the operand sorts */
+        for src in ["b101 == b110", "b101 & b110", "!b101", "b101 > b110"] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
             ("'a'", "string literal"),
-            ("b101", "bit-string literal"),
             ("NELEM(1)", "function call"),
             ("RANDOM()", "function call"),
             ("GTIFILTER()", "function call"),

@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,170 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,220 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -814,23 +814,26 @@ reason gives the order to work in:
 | remaining | reason |
 |---:|---|
 | 156 | function call — `STRSTR`/`STRMID`, the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
-| 88 | bit-string column |
+| 78 | bit-string **result** (see below) |
 | 74 | row offset |
 | 43 | string column |
-| 40 | bit-string literal |
 | 12 | string literal |
 | 2 | subscript slice (see below) |
 | 2 | `#SNULL` |
 | 1 | string keyword |
 
-The bit-string column count rose from 80 as subscripting landed: `BITCOL[2]`
-now reaches its operand before giving up, so it is counted by the operand's
-reason rather than by the subscript.
+Counting fallbacks by reason overstates what is left, because many of those
+expressions do not evaluate under the old engine either. Of the 128 that once
+fell back for a bit string, only 29 produce a retrievable answer; the rest are
+parse errors reaching an operand, or bit-valued results the caller can never
+read. **A bit-valued result is always an error** — 432 for a row-varying one,
+433 for a constant — so those are deliberately left with the arena rather than
+lowered just to reproduce the error, which would move the counter without
+moving any real work. Bit-valued *subexpressions* are evaluated normally;
+`parser::mod` checks only the top-level sort.
 
-What is left divides in two. The strings and bit strings — 183 lines — are new
-kernel families over `ArrayData::Str` and `ArrayData::Bits`, which the value
-model already has variants for but nothing yet produces or consumes. The rest
-are individual functions.
+What is left that does real work: the strings (55 lines plus `STRSTR`/`STRMID`),
+the row offsets, and the individual functions.
 
 One structural item remains:
 
@@ -849,7 +852,8 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, and fully-indexed subscripts.
+vector literals, fully-indexed subscripts, and the bit strings — `&`, `|`,
+`!`, `+` and the six comparisons, plus `SUM` and `NVALID` over one.
 
 ### 10.4 What the corpus caught
 

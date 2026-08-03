@@ -278,6 +278,30 @@ pub(crate) enum ValueError {
     OutOfRange,
 }
 
+/// Reading a string or bit-string operand element by element, the text
+/// counterpart of [`NumericInput`]: a scalar broadcasts over the batch, an
+/// array yields one entry per row.
+pub(crate) enum TextInput<'a> {
+    Scalar(&'a [u8]),
+    /// A wholly undefined operand: every row reads as null.
+    Null,
+    Array(&'a [Vec<u8>], &'a [bool]),
+}
+
+impl<'a> TextInput<'a> {
+    /// The text at row `i` and whether it is undefined.
+    pub(crate) fn get(&self, i: usize) -> (&'a [u8], bool) {
+        match self {
+            TextInput::Scalar(v) => (v, false),
+            TextInput::Null => (b"", true),
+            TextInput::Array(v, n) => match v.get(i) {
+                Some(t) => (t, n.get(i).copied().unwrap_or(false)),
+                None => (b"", true),
+            },
+        }
+    }
+}
+
 /// Helper for reading a numeric operand element by element, whether it is a
 /// scalar broadcast over the batch or a real array.
 ///
@@ -347,6 +371,19 @@ impl NumericInput<'_> {
 
 impl ColumnarValue {
     /// View this value as a numeric operand, or fail if it is not numeric.
+    /// Read this value as text, for the string and bit-string kernels.
+    pub(crate) fn text(&self, op: &'static str) -> Result<TextInput<'_>, ValueError> {
+        match self {
+            ColumnarValue::Scalar(Scalar::Str(v) | Scalar::Bits(v)) => Ok(TextInput::Scalar(v)),
+            ColumnarValue::Null(_) => Ok(TextInput::Null),
+            ColumnarValue::Array(a) => match a.data() {
+                ArrayData::Str(v) | ArrayData::Bits(v) => Ok(TextInput::Array(v, a.nulls())),
+                _ => Err(ValueError::BadSort(op, self.sort())),
+            },
+            _ => Err(ValueError::BadSort(op, self.sort())),
+        }
+    }
+
     pub(crate) fn numeric(&self, op: &'static str) -> Result<NumericInput<'_>, ValueError> {
         match self {
             ColumnarValue::Scalar(s) => match s.as_f64() {

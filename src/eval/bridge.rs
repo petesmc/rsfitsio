@@ -79,6 +79,23 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
             }
         }
 
+        /* The arena decided at parse time that this expression is constant, so
+        the answer is row-invariant however it was computed: honour that
+        marking and fill the scalar slot, since everything downstream will read
+        the node that way rather than looking for a row buffer. */
+        ColumnarValue::Array(a) if lParse.Nodes[this].operation == Operation::Const => {
+            let first = match a.data() {
+                ArrayData::Long(d) => NodeValue::Long(d.first().copied().unwrap_or(0)),
+                ArrayData::Double(d) => NodeValue::Double(d.first().copied().unwrap_or(0.0)),
+                ArrayData::Boolean(d) => {
+                    NodeValue::Logical(c_char::from(d.first().copied().unwrap_or(false)))
+                }
+                other => unreachable!("lowering refuses {other:?} results"),
+            };
+            lParse.Nodes[this].value.data = first;
+            lParse.Nodes[this].value.undef = core::ptr::null_mut();
+        }
+
         ColumnarValue::Array(a) => {
             Allocate_Ptrs(lParse, this);
             if lParse.status != 0 {

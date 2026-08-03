@@ -6,13 +6,15 @@
 //! a value model where a batch of rows is an owned array with its own null
 //! mask, and each operation is a kernel over two of them.
 //!
-//! **Status: foundation only.** The value layer and the arithmetic and
-//! comparison kernels are here and tested; the `Ast -> Expr` lowering and the
-//! remaining kernels are not, so nothing calls into this yet. It is kept in the
-//! tree rather than on a branch because the pieces are independently
-//! reviewable and the tests are meaningful on their own.
+//! **Status: in progress.** The value layer, the kernels, the `Ast -> Expr`
+//! lowering and the bridge back into the arena's result node are here. Behind
+//! `--features new-eval` most of the corpus evaluates through this; anything
+//! the lowering cannot yet express returns `Unsupported` and falls back to the
+//! arena, per expression. `PARSER_MIGRATION.md` section 10.3 tracks what is
+//! left and why.
 #![allow(dead_code)]
 
+pub(crate) mod bits;
 #[cfg(feature = "new-eval")]
 pub(crate) mod bridge;
 pub(crate) mod expr;

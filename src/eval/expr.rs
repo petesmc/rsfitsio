@@ -8,9 +8,11 @@
 //!
 //! Evaluation is per batch of rows, matching how `ffiter` drives the engine.
 
+use super::bits;
 use super::kernel::{self, Arith, Compare};
 use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
 use crate::c_types::{c_char, c_long};
+use crate::eval_defs::OpCode;
 use crate::eval_defs::{ParseData, ValueSort};
 
 /// A unary operator.
@@ -237,15 +239,45 @@ impl Batch {
                             .map(|&b| b != 0)
                             .collect(),
                     ),
-                    /* strings and bit strings are not ported yet; lowering
-                    refuses any expression that reaches for one */
-                    _ => ArrayData::Long(Vec::new()),
+                    /* a string or bit-string column is a `char*` per row,
+                    not a value per element, so it is indexed by row */
+                    ValueSort::String | ValueSort::Bits => {
+                        let rows = var.data.cast::<*mut c_char>();
+                        let n = n_rows.max(0) as usize;
+                        let text: Vec<Vec<u8>> = (0..n)
+                            .map(|r| {
+                                let p = *rows.add(row_offset.max(0) as usize + r);
+                                if p.is_null() {
+                                    Vec::new()
+                                } else {
+                                    let mut len = 0;
+                                    while *p.add(len) != 0 {
+                                        len += 1;
+                                    }
+                                    core::slice::from_raw_parts(p.cast::<u8>(), len).to_vec()
+                                }
+                            })
+                            .collect();
+                        if var.dtype == ValueSort::Bits {
+                            ArrayData::Bits(text)
+                        } else {
+                            ArrayData::Str(text)
+                        }
+                    }
                 }
             };
 
+            /* the text sorts hold one entry per row, so their flags are
+            indexed by row rather than by element */
+            let text = matches!(var.dtype, ValueSort::String | ValueSort::Bits);
+            let (off, len) = if text {
+                (row_offset.max(0) as usize, n_rows.max(0) as usize)
+            } else {
+                (offset, count)
+            };
             let nulls = match &var.undef {
-                Some(u) if u.len() >= offset + count => {
-                    u[offset..offset + count].iter().map(|&v| v != 0).collect()
+                Some(u) if u.len() >= off + len => {
+                    u[off..off + len].iter().map(|&v| v != 0).collect()
                 }
                 _ => Vec::new(),
             };
@@ -253,11 +285,16 @@ impl Batch {
             columns.push(ColumnBatch {
                 data,
                 nulls,
-                nelem: var.nelem,
-                naxes: var.naxes[..(var.naxis.max(0) as usize).min(var.naxes.len())]
-                    .iter()
-                    .map(|&n| n.max(0) as usize)
-                    .collect(),
+                /* one string per row, whatever its width */
+                nelem: if text { 1 } else { var.nelem },
+                naxes: if text {
+                    Vec::new()
+                } else {
+                    var.naxes[..(var.naxis.max(0) as usize).min(var.naxes.len())]
+                        .iter()
+                        .map(|&n| n.max(0) as usize)
+                        .collect()
+                },
             });
         }
 
@@ -278,7 +315,11 @@ impl Expr {
             Expr::Column(i) => batch_sorts(*i),
             Expr::RowNumber => ValueSort::Long,
             Expr::Unary { op, arg } => match op {
-                Unary::Not => ValueSort::Boolean,
+                /* `!` over a bit string complements it rather than testing it */
+                Unary::Not => match arg.sort(batch_sorts) {
+                    ValueSort::Bits => ValueSort::Bits,
+                    _ => ValueSort::Boolean,
+                },
                 Unary::ToLong => ValueSort::Long,
                 Unary::ToDouble => ValueSort::Double,
                 Unary::ToBoolean => ValueSort::Boolean,
@@ -356,19 +397,34 @@ impl Expr {
 
             Expr::Unary { op, arg } => {
                 let v = arg.evaluate(batch)?;
-                unary(*op, &v)
+                if *op == Unary::Not && is_bits(&v) {
+                    bit_not(&v, batch.n_rows.max(0) as usize)
+                } else {
+                    unary(*op, &v)
+                }
             }
 
             Expr::Arith { op, lhs, rhs } => {
                 let l = lhs.evaluate(batch)?;
                 let r = rhs.evaluate(batch)?;
-                kernel::arith(*op, &l, &r)
+                /* the parser has already rejected every mixed combination, so
+                two bit strings here mean the bit kernels rather than the
+                numeric ones */
+                if is_bits(&l) && is_bits(&r) {
+                    bit_arith(*op, &l, &r, batch.n_rows.max(0) as usize)
+                } else {
+                    kernel::arith(*op, &l, &r)
+                }
             }
 
             Expr::Compare { op, lhs, rhs } => {
                 let l = lhs.evaluate(batch)?;
                 let r = rhs.evaluate(batch)?;
-                kernel::compare(*op, &l, &r)
+                if is_bits(&l) && is_bits(&r) {
+                    bit_compare(*op, &l, &r, batch.n_rows.max(0) as usize)
+                } else {
+                    kernel::compare(*op, &l, &r)
+                }
             }
 
             Expr::Logic { op, lhs, rhs } => {
@@ -380,7 +436,14 @@ impl Expr {
             Expr::Equality { negated, lhs, rhs } => {
                 let l = lhs.evaluate(batch)?;
                 let r = rhs.evaluate(batch)?;
-                if l.sort() == ValueSort::Boolean && r.sort() == ValueSort::Boolean {
+                if is_bits(&l) && is_bits(&r) {
+                    bit_compare(
+                        if *negated { Compare::Ne } else { Compare::Eq },
+                        &l,
+                        &r,
+                        batch.n_rows.max(0) as usize,
+                    )
+                } else if l.sort() == ValueSort::Boolean && r.sort() == ValueSort::Boolean {
                     logic(if *negated { Logic::Ne } else { Logic::Eq }, &l, &r)
                 } else {
                     kernel::compare(if *negated { Compare::Ne } else { Compare::Eq }, &l, &r)
@@ -712,6 +775,82 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
     }
 }
 
+/// Whether a value is a bit string, which decides between the numeric and the
+/// bit kernels for the operators the two share.
+fn is_bits(v: &ColumnarValue) -> bool {
+    match v {
+        ColumnarValue::Scalar(Scalar::Bits(_)) => true,
+        ColumnarValue::Null(s) => *s == ValueSort::Bits,
+        ColumnarValue::Array(a) => matches!(a.data(), ArrayData::Bits(_)),
+        _ => false,
+    }
+}
+
+/// `!` over a bit string complements each bit rather than testing the value.
+fn bit_not(v: &ColumnarValue, rows: usize) -> Result<ColumnarValue, ValueError> {
+    let t = v.text("bit not")?;
+    if let ColumnarValue::Scalar(_) = v {
+        return Ok(ColumnarValue::Scalar(Scalar::Bits(bits::not(t.get(0).0))));
+    }
+    let out: Vec<Vec<u8>> = (0..rows).map(|i| bits::not(t.get(i).0)).collect();
+    Ok(ColumnarValue::Array(Array::new(ArrayData::Bits(out))))
+}
+
+/// `&`, `|` and `+` over two bit strings, per `Do_BinOp_bit`.
+fn bit_arith(
+    op: Arith,
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let f: fn(&[u8], &[u8]) -> Vec<u8> = match op {
+        Arith::BitAnd => bits::and,
+        Arith::BitOr => bits::or,
+        Arith::Add => bits::concat,
+        _ => return Err(ValueError::BadSort("bit operator", ValueSort::Bits)),
+    };
+    let (l, r) = (lhs.text("bit operator")?, rhs.text("bit operator")?);
+
+    /* two constants fold, as the engine folds them at parse time */
+    if let (ColumnarValue::Scalar(_), ColumnarValue::Scalar(_)) = (lhs, rhs) {
+        return Ok(ColumnarValue::Scalar(Scalar::Bits(f(
+            l.get(0).0,
+            r.get(0).0,
+        ))));
+    }
+    let out: Vec<Vec<u8>> = (0..rows).map(|i| f(l.get(i).0, r.get(i).0)).collect();
+    Ok(ColumnarValue::Array(Array::new(ArrayData::Bits(out))))
+}
+
+/// The comparisons over two bit strings. Bit strings carry no undef flags, so
+/// the result is never null.
+fn bit_compare(
+    op: Compare,
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let (l, r) = (lhs.text("bit comparison")?, rhs.text("bit comparison")?);
+    let test = |a: &[u8], b: &[u8]| match op {
+        Compare::Eq => bits::cmp_eq(a, b),
+        Compare::Ne => !bits::cmp_eq(a, b),
+        Compare::Lt => bits::cmp_ord(a, OpCode::Lt, b),
+        Compare::Lte => bits::cmp_ord(a, OpCode::Lte, b),
+        Compare::Gt => bits::cmp_ord(a, OpCode::Gt, b),
+        Compare::Gte => bits::cmp_ord(a, OpCode::Gte, b),
+        /* `BITS ~ BITS` is a parse error, so this never runs */
+        Compare::Approx => bits::cmp_eq(a, b),
+    };
+    if let (ColumnarValue::Scalar(_), ColumnarValue::Scalar(_)) = (lhs, rhs) {
+        return Ok(ColumnarValue::Scalar(Scalar::Boolean(test(
+            l.get(0).0,
+            r.get(0).0,
+        ))));
+    }
+    let out: Vec<bool> = (0..rows).map(|i| test(l.get(i).0, r.get(i).0)).collect();
+    Ok(ColumnarValue::Array(Array::new(ArrayData::Boolean(out))))
+}
+
 /// `base[i, j, ...]` with every axis subscripted, so each row yields one
 /// element. `Do_Deref` folds the subscripts innermost-last:
 /// `elem = naxes[i] * elem + idx[i] - 1`, and an out-of-range subscript is a
@@ -837,6 +976,19 @@ fn vector(items: &[ColumnarValue], rows: usize) -> Result<ColumnarValue, ValueEr
 
 /// Fold each row of `v` down to a single element.
 fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
+    /* Over a bit string a reduction counts bits rather than folding elements:
+    SUM is the number of set bits and NVALID the width, every bit being
+    defined. The rest are parse errors over a bit string. */
+    if is_bits(v) {
+        let t = v.text("reduction")?;
+        return match func {
+            Func::Sum => Ok(ColumnarValue::Scalar(Scalar::Long(bits::count_ones(
+                t.get(0).0,
+            )))),
+            Func::NValid => Ok(ColumnarValue::Scalar(Scalar::Long(t.get(0).0.len() as i64))),
+            _ => Err(ValueError::BadSort("reduction", ValueSort::Bits)),
+        };
+    }
     let out = match func {
         Func::Average | Func::Stddev => ValueSort::Double,
         Func::NValid => ValueSort::Long,
