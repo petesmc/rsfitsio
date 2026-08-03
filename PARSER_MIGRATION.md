@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,353 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,401 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,7 +813,7 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 132 | function call — the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
+| 84 | function call — `ANGSEP` (12), the region tests `CIRCLE`/`BOX`/`ELLIPSE`/`NEAR` (16), `ACCUM`/`SEQDIFF` (20), the random generators (10), and the remaining shape functions `ELEMENTNUM`/`AXISELEM`/`ARRAY` (26) |
 | 90 | bit-string **result** (see below) |
 | 6 | row offset of a string column |
 | 2 | subscript slice (see below) |
@@ -839,12 +839,23 @@ so no corpus line arbitrates a string-valued answer. Those are covered by the
 
 What is left that does real work: the individual functions.
 
-One structural item remains:
+The structural item is **done**. `NELEM`, `NAXIS` and `NAXES` are answers about
+the expression rather than about the data, so they fold to a constant at
+lowering time exactly as the arena folds them at parse time. That needed a
+static `shape_of` pass over the lowered `Expr`, which recomputes what the arena
+tracks while building nodes: `New_BinOp`'s rule that the non-scalar operand's
+shape wins, plus the two cases where that is not it —
 
-* **The shape functions are folded before the new lowering sees them.** The
-  arena lowering turns `NELEM(V)` into a constant from the node's `nelem`;
-  `eval::lower` works from the `Ast`, where that size is not known. They need
-  the sizes threading through, or the fold moving earlier.
+* text `+` **concatenates**, so `NELEM(STRCOL+STRCOL)` is 20, not 10;
+* a vector literal **expands** nested vectors, so `NELEM({IVEC,0})` is 6, not 2.
+
+Neither is visible in the corpus (its `NELEM({1,2,3})` has only scalar entries);
+the second was caught by `test_ffcrow_vector_literal`.
+
+A column's element count is also not always the product of its axes — a string
+or bit-string column is one entry per row on one axis, and its `nelem` is the
+declared *width* — so `Columns` carries both, and the sorts too, since whether
+`+` concatenates depends on them.
 
 The other structural item — subscripting — is **done**. `Array` now carries
 `naxes`, and `parser::mod` hands the per-column shapes to the lowering so it
@@ -856,7 +867,8 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, row offsets, the bit strings — `&`, `|`, `!`, `+`
+vector literals, fully-indexed subscripts, row offsets, the shape functions
+`NELEM`/`NAXIS`/`NAXES`, the bit strings — `&`, `|`, `!`, `+`
 and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
 the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
 branches are strings.

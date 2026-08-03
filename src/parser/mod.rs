@@ -25,6 +25,8 @@ pub(crate) mod resolve;
 pub(crate) mod token;
 
 use crate::c_types::c_int;
+#[cfg(feature = "new-eval")]
+use crate::c_types::c_long;
 use crate::eval_defs::ParseData;
 #[cfg(feature = "new-eval")]
 use crate::eval_defs::ValueSort;
@@ -106,25 +108,32 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
     if status == 0 && lParse.status == 0 {
         /* the per-column shapes let the lowering decide whether a subscript
         names a single element or a slice */
-        let shapes: Vec<Vec<usize>> = lParse
+        let shapes: Vec<(c_long, Vec<c_long>)> = lParse
             .varData
             .iter()
             .map(|v| {
-                v.naxes[..(v.naxis.max(0) as usize).min(v.naxes.len())]
-                    .iter()
-                    .map(|&n| n.max(0) as usize)
-                    .collect()
+                (
+                    v.nelem,
+                    v.naxes[..(v.naxis.max(0) as usize).min(v.naxes.len())]
+                        .iter()
+                        .map(|&n| n.max(0))
+                        .collect(),
+                )
             })
             .collect();
-        let sorts: Vec<ValueSort> = lParse.varData.iter().map(|v| v.dtype).collect();
-        lParse.expr_tree = crate::eval::lower::lower(&tree, &names, &shapes)
+        let cols = crate::eval::lower::Columns {
+            shapes,
+            sorts: lParse.varData.iter().map(|v| v.dtype).collect(),
+        };
+        lParse.expr_tree = crate::eval::lower::lower(&tree, &names, &cols)
             .ok()
             /* A bit-string *result* is never retrievable -- the engine reports
             432 for a row-varying one and 433 for a constant -- so leave those
             with the arena rather than reproduce the error. Bit-valued
             subexpressions are fine; only the top-level sort matters. */
             .filter(|t| {
-                t.sort(&|i| sorts.get(i).copied().unwrap_or(ValueSort::Long)) != ValueSort::Bits
+                t.sort(&|i| cols.sorts.get(i).copied().unwrap_or(ValueSort::Long))
+                    != ValueSort::Bits
             });
     }
 

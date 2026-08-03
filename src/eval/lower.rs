@@ -41,8 +41,187 @@ fn const_long(ast: &Ast) -> Option<c_long> {
     }
 }
 
+/// What lowering needs to know about the table's columns: the shape of each,
+/// for the shape functions, and its sort, for the places where an operator's
+/// meaning depends on it (`+` concatenates text but adds numbers).
+pub(crate) struct Columns {
+    /// Element count and axis lengths per column. The count is not always the
+    /// product of the axes: a string or bit-string column is one entry per row
+    /// laid out on one axis, and its `nelem` is the declared *width*.
+    pub(crate) shapes: Vec<(c_long, Vec<c_long>)>,
+    pub(crate) sorts: Vec<ValueSort>,
+}
+
+impl Columns {
+    fn sort(&self, i: usize) -> ValueSort {
+        self.sorts.get(i).copied().unwrap_or(ValueSort::Long)
+    }
+}
+
+/// An expression's shape: how many elements each row holds, and how those are
+/// laid out across axes.
+///
+/// The arena computes this while building nodes and the shape functions read
+/// it back off the result node, folding to a constant at parse time. Lowering
+/// works from the `Ast`, so it recomputes the same thing from the column
+/// cols -- the rules are `New_BinOp`'s (the non-scalar operand's shape wins)
+/// plus the string and bit-string `+`, which concatenates and so *adds* the
+/// two widths.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Shape {
+    nelem: c_long,
+    naxes: Vec<c_long>,
+}
+
+impl Shape {
+    fn scalar() -> Shape {
+        Shape {
+            nelem: 1,
+            naxes: vec![1],
+        }
+    }
+
+    fn flat(n: c_long) -> Shape {
+        Shape {
+            nelem: n,
+            naxes: vec![n],
+        }
+    }
+
+    fn naxis(&self) -> c_long {
+        self.naxes.len().max(1) as c_long
+    }
+
+    /// The axis `n` names, one-based and clamped at both ends the way
+    /// `NAXES(MATRIX,0)` and `NAXES(MATRIX,1)` both give the first axis.
+    fn axis(&self, n: c_long) -> c_long {
+        let i = (n.max(1) - 1) as usize;
+        self.naxes.get(i).copied().unwrap_or(1)
+    }
+
+    /// The shape a binary operator gives: whichever operand is not a scalar.
+    fn combine(a: &Shape, b: &Shape) -> Shape {
+        if a.nelem == 1 { b.clone() } else { a.clone() }
+    }
+}
+
+/// The shape of a lowered expression, or `None` when it cannot be determined
+/// statically -- in which case the shape functions over it fall back.
+fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
+    let col_shape = |i: &usize| -> Option<Shape> {
+        let (nelem, naxes) = cols.shapes.get(*i)?;
+        Some(Shape {
+            nelem: (*nelem).max(1),
+            naxes: if naxes.is_empty() {
+                vec![(*nelem).max(1)]
+            } else {
+                naxes.clone()
+            },
+        })
+    };
+    Some(match e {
+        Expr::Literal(Scalar::Str(v)) | Expr::Literal(Scalar::Bits(v)) => {
+            Shape::flat(v.len() as c_long)
+        }
+        Expr::Literal(_) | Expr::Null(_) | Expr::RowNumber => Shape::scalar(),
+        Expr::Column(i) | Expr::Offset { col: i, .. } => col_shape(i)?,
+        /* a vector literal expands any entry that is itself a vector, so the
+        element counts add rather than the entries being counted */
+        Expr::Vector(items) => Shape::flat(
+            items
+                .iter()
+                .map(|i| shape_of(i, cols).map(|s| s.nelem))
+                .sum::<Option<c_long>>()?,
+        ),
+        /* a fully-indexed subscript picks one element */
+        Expr::Deref { .. } => Shape::scalar(),
+        Expr::Unary { arg, .. } => shape_of(arg, cols)?,
+        Expr::Arith { op, lhs, rhs } => {
+            let (a, b) = (shape_of(lhs, cols)?, shape_of(rhs, cols)?);
+            /* `+` over text concatenates, so the widths add */
+            if *op == Arith::Add && is_text_expr(lhs, cols) && is_text_expr(rhs, cols) {
+                Shape::flat(a.nelem + b.nelem)
+            } else {
+                Shape::combine(&a, &b)
+            }
+        }
+        Expr::Compare { lhs, rhs, .. } | Expr::Equality { lhs, rhs, .. } => {
+            Shape::combine(&shape_of(lhs, cols)?, &shape_of(rhs, cols)?)
+        }
+        Expr::Logic { lhs, rhs, .. } => {
+            Shape::combine(&shape_of(lhs, cols)?, &shape_of(rhs, cols)?)
+        }
+        Expr::IfThenElse { then, els, .. } => {
+            Shape::combine(&shape_of(then, cols)?, &shape_of(els, cols)?)
+        }
+        /* the reductions collapse a row to one element; the elementwise
+        functions keep their argument's shape */
+        Expr::Call { func, args } => match func {
+            Func::Sum
+            | Func::Average
+            | Func::Stddev
+            | Func::Median
+            | Func::NValid
+            | Func::Min1
+            | Func::Max1
+            | Func::StrStr => Shape::scalar(),
+            _ => shape_of(args.first()?, cols)?,
+        },
+    })
+}
+
+/// `NELEM`, `NAXIS` and `NAXES` answered from the argument's shape.
+///
+/// `Ok(None)` means this is not one of them. Any other failure -- an argument
+/// that will not lower, a shape that is not statically known, an axis index
+/// that is not a constant -- returns `Err` so the expression falls back.
+fn fold_shape_fn(
+    name: &[u8],
+    args: &[Ast],
+    names: &Resolutions,
+    cols: &Columns,
+) -> Result<Option<Expr>, Unsupported> {
+    let arity = match name {
+        b"NELEM" | b"NAXIS" => 1,
+        b"NAXES" => 2,
+        _ => return Ok(None),
+    };
+    if args.len() != arity {
+        /* a wrong arity is the arena's error to report */
+        return Err(Unsupported("shape function with the wrong arity"));
+    }
+    let arg = lower(&args[0], names, cols)?;
+    let shape = shape_of(&arg, cols).ok_or(Unsupported("shape function on an unknown shape"))?;
+
+    let v = match name {
+        b"NELEM" => shape.nelem,
+        b"NAXIS" => shape.naxis(),
+        _ => {
+            let n = const_long(&args[1]).ok_or(Unsupported("NAXES axis is not a constant"))?;
+            shape.axis(n)
+        }
+    };
+    Ok(Some(Expr::Literal(Scalar::Long(v))))
+}
+
+/// Whether an expression is textual, which decides whether `+` concatenates.
+fn is_text_expr(e: &Expr, cols: &Columns) -> bool {
+    match e {
+        Expr::Literal(Scalar::Str(_) | Scalar::Bits(_)) => true,
+        Expr::Column(i) | Expr::Offset { col: i, .. } => {
+            matches!(cols.sort(*i), ValueSort::String | ValueSort::Bits)
+        }
+        Expr::Arith { lhs, .. } => is_text_expr(lhs, cols),
+        Expr::IfThenElse { then, .. } => is_text_expr(then, cols),
+        Expr::Call { func, args } => {
+            *func == Func::StrMid || (*func == Func::DefNull && is_text_expr(&args[0], cols))
+        }
+        _ => false,
+    }
+}
+
 /// Lower a whole expression, or report the first construct not yet ported.
-pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Res {
+pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
     match &ast.kind {
         AstKind::Long(v) => Ok(Expr::Literal(Scalar::Long(*v))),
         AstKind::Double(v) => Ok(Expr::Literal(Scalar::Double(*v))),
@@ -65,7 +244,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         },
 
         AstKind::Unary { op, arg } => {
-            let inner = Box::new(lower(arg, names, shapes)?);
+            let inner = Box::new(lower(arg, names, cols)?);
             Ok(Expr::Unary {
                 op: match op {
                     UnOp::Neg => Unary::Neg,
@@ -81,8 +260,8 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         }
 
         AstKind::Binary { op, lhs, rhs } => {
-            let l = Box::new(lower(lhs, names, shapes)?);
-            let r = Box::new(lower(rhs, names, shapes)?);
+            let l = Box::new(lower(lhs, names, cols)?);
+            let r = Box::new(lower(rhs, names, cols)?);
             if let Some(a) = arith_of(*op) {
                 return Ok(Expr::Arith {
                     op: a,
@@ -140,25 +319,25 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         }
 
         AstKind::Ternary { cond, then, els } => Ok(Expr::IfThenElse {
-            cond: Box::new(lower(cond, names, shapes)?),
-            then: Box::new(lower(then, names, shapes)?),
-            els: Box::new(lower(els, names, shapes)?),
+            cond: Box::new(lower(cond, names, cols)?),
+            then: Box::new(lower(then, names, cols)?),
+            els: Box::new(lower(els, names, cols)?),
         }),
 
         /* `x = lo : hi` desugars to `lo <= x && x <= hi`, as `eval.y` did */
         AstKind::Range { val, lo, hi } => {
-            let v = lower(val, names, shapes)?;
+            let v = lower(val, names, cols)?;
             Ok(Expr::Logic {
                 op: Logic::And,
                 lhs: Box::new(Expr::Compare {
                     op: Compare::Lte,
-                    lhs: Box::new(lower(lo, names, shapes)?),
+                    lhs: Box::new(lower(lo, names, cols)?),
                     rhs: Box::new(v.clone()),
                 }),
                 rhs: Box::new(Expr::Compare {
                     op: Compare::Lte,
                     lhs: Box::new(v),
-                    rhs: Box::new(lower(hi, names, shapes)?),
+                    rhs: Box::new(lower(hi, names, cols)?),
                 }),
             })
         }
@@ -198,9 +377,10 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         AstKind::Deref { base, idx } => {
             let naxes = match &base.kind {
                 AstKind::Ident(_) | AstKind::Keyword(_) => match names.get(&base.at) {
-                    Some(ParserValue::Column { index, .. }) => shapes
+                    Some(ParserValue::Column { index, .. }) => cols
+                        .shapes
                         .get(*index as usize)
-                        .cloned()
+                        .map(|(_, naxes)| naxes.iter().map(|&n| n as usize).collect::<Vec<_>>())
                         .ok_or(Unsupported("subscript of unknown column"))?,
                     _ => return Err(Unsupported("subscript of a scalar")),
                 },
@@ -212,9 +392,9 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
                 gather rather than one element per row */
                 return Err(Unsupported("subscript slice"));
             }
-            let base = lower(base, names, shapes)?;
+            let base = lower(base, names, cols)?;
             let idx: Result<Vec<Expr>, Unsupported> =
-                idx.iter().map(|e| lower(e, names, shapes)).collect();
+                idx.iter().map(|e| lower(e, names, cols)).collect();
             Ok(Expr::Deref {
                 base: Box::new(base),
                 idx: idx?,
@@ -223,7 +403,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
         }
         AstKind::Vector(items) => {
             let lowered: Result<Vec<Expr>, Unsupported> =
-                items.iter().map(|e| lower(e, names, shapes)).collect();
+                items.iter().map(|e| lower(e, names, cols)).collect();
             Ok(Expr::Vector(lowered?))
         }
         AstKind::Call { kind, name, args } => {
@@ -235,6 +415,12 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
                 || *kind == CallKind::IFunction;
             if !admissible {
                 return Err(Unsupported("function call"));
+            }
+            /* The shape functions are answers about the expression, not about
+            the data, so they fold to a constant here exactly as the arena
+            folds them at parse time. */
+            if let Some(folded) = fold_shape_fn(name, args, names, cols)? {
+                return Ok(folded);
             }
             /* MIN and MAX map elementwise with two arguments and reduce with
             one, so the arity picks the kernel */
@@ -250,7 +436,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
                 return Err(Unsupported("function call"));
             }
             let lowered: Result<Vec<Expr>, Unsupported> =
-                args.iter().map(|a| lower(a, names, shapes)).collect();
+                args.iter().map(|a| lower(a, names, cols)).collect();
             Ok(Expr::Call {
                 func,
                 args: lowered?,
@@ -334,7 +520,14 @@ mod tests {
     }
 
     fn try_lower(src: &str) -> Res {
-        lower(&ast(src), &Resolutions::new(), &[])
+        lower(
+            &ast(src),
+            &Resolutions::new(),
+            &Columns {
+                shapes: Vec::new(),
+                sorts: Vec::new(),
+            },
+        )
     }
 
     #[test]
@@ -435,9 +628,36 @@ mod tests {
     }
 
     #[test]
+    fn the_shape_functions_fold_to_a_constant() {
+        /* with no columns declared every argument is a scalar, which is the
+        one shape these tests can assert without a table */
+        assert_eq!(try_lower("NELEM(1)"), Ok(Expr::Literal(Scalar::Long(1))));
+        assert_eq!(try_lower("NAXIS(1)"), Ok(Expr::Literal(Scalar::Long(1))));
+        assert_eq!(try_lower("NAXES(1,1)"), Ok(Expr::Literal(Scalar::Long(1))));
+        /* a string literal's element count is its length */
+        assert_eq!(
+            try_lower("NELEM('abc')"),
+            Ok(Expr::Literal(Scalar::Long(3)))
+        );
+        assert_eq!(
+            try_lower("NELEM({1,2,3})"),
+            Ok(Expr::Literal(Scalar::Long(3)))
+        );
+        /* text `+` concatenates, so the widths add rather than combine */
+        assert_eq!(
+            try_lower("NELEM('ab' + 'cde')"),
+            Ok(Expr::Literal(Scalar::Long(5)))
+        );
+        /* an axis index is clamped at the bottom, as NAXES(x,0) shows */
+        assert_eq!(
+            try_lower("NAXES({1,2},0)"),
+            Ok(Expr::Literal(Scalar::Long(2)))
+        );
+    }
+
+    #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
-            ("NELEM(1)", "function call"),
             ("RANDOM()", "function call"),
             ("GTIFILTER()", "function call"),
             ("#SNULL", "#SNULL"),
@@ -449,6 +669,6 @@ mod tests {
     #[test]
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
-        assert_eq!(try_lower("1 + NELEM(1)"), Err(Unsupported("function call")));
+        assert_eq!(try_lower("1 + RANDOM()"), Err(Unsupported("function call")));
     }
 }
