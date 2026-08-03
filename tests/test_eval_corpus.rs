@@ -132,6 +132,80 @@ mod tests {
         expr.to_ascii_uppercase().contains("RANDOM")
     }
 
+    /// Whether this line's answer depends on how wide a C `long` is.
+    ///
+    /// The lexer's `atol` saturates at `c_long::MAX`, exactly as C's does, so
+    /// an integer literal past that limit lexes as a *different number* on
+    /// LLP64 -- Windows, where a long is 32 bits -- than on LP64, where the
+    /// golden was captured. `9223372036854775807` becomes `2147483647` there.
+    ///
+    /// That is correct behaviour, not a defect: the fixture is what cannot be
+    /// shared across both, so these lines are skipped where a long is narrow
+    /// and still checked everywhere else.
+    fn depends_on_long_width(expr: &str) -> bool {
+        size_of::<c_long>() < 8 && has_literal_above(expr, &c_long::MAX.to_string())
+    }
+
+    /// Whether `expr` contains a run of digits greater than `limit`.
+    ///
+    /// Compared as text, so a literal far past any integer type -- the corpus
+    /// has one of 300-odd digits -- cannot overflow the check itself. Split
+    /// out from [`depends_on_long_width`] so it can be tested on a platform
+    /// where a long is wide.
+    ///
+    /// Digits inside a quoted string are not integer literals and are ignored:
+    /// over-skipping would quietly cost coverage on exactly the platform the
+    /// guard exists to serve.
+    fn has_literal_above(expr: &str, limit: &str) -> bool {
+        let mut digits = String::new();
+        let mut quote: Option<char> = None;
+        /* the character before the run, which says whether it is a decimal
+        integer at all: `b1010`, `0o777`, `1e308` and `0.5` all carry long
+        digit runs that are not integer literals and do not depend on the
+        width of a long */
+        let mut before = ' ';
+        let mut prev = ' ';
+        for c in expr.chars().chain(core::iter::once(' ')) {
+            match quote {
+                Some(q) => {
+                    if c == q {
+                        quote = None;
+                    }
+                    prev = c;
+                    continue;
+                }
+                None if c == '\'' || c == '"' => {
+                    quote = Some(c);
+                    digits.clear();
+                    prev = c;
+                    continue;
+                }
+                None => {}
+            }
+            if c.is_ascii_digit() {
+                if digits.is_empty() {
+                    before = prev;
+                }
+                digits.push(c);
+                prev = c;
+                continue;
+            }
+            if !digits.is_empty() {
+                let decimal = !before.is_ascii_alphanumeric() && before != '.' && c != '.';
+                let trimmed = digits.trim_start_matches('0');
+                if decimal
+                    && (trimmed.len() > limit.len()
+                        || (trimmed.len() == limit.len() && trimmed > limit))
+                {
+                    return true;
+                }
+                digits.clear();
+            }
+            prev = c;
+        }
+        false
+    }
+
     /// Render one corpus line's behaviour as a single deterministic string.
     fn probe(f: &mut fitsfile, expr: &str) -> String {
         /* CORPUS_TRACE=1 ... -- --nocapture names each expression before it is
@@ -254,6 +328,47 @@ mod tests {
     /// than it claims. Raise this when the corpus grows meaningfully.
     const MIN_CORPUS: usize = 1800;
 
+    /// The 32-bit-long skip list, checked here because CI's LLP64 machines are
+    /// the ones that need it and this machine cannot run them.
+    #[test]
+    fn the_long_width_guard_picks_out_the_right_lines() {
+        let limit = i32::MAX.to_string();
+        /* what a 32-bit long cannot hold, and so lexes differently there */
+        for e in [
+            "2147483648",
+            "9223372036854775807",
+            "-9223372036854775807",
+            "1234567890123456789",
+            "99999999999999999999",
+            "INTCOL + 4000000000",
+        ] {
+            assert!(has_literal_above(e, &limit), "should skip: {e}");
+        }
+        /* and what it can, including the boundary itself -- plus the runs of
+        digits that are not decimal integer literals at all */
+        for e in [
+            "2147483647",
+            "INTCOL",
+            "1 + 2",
+            "VECCOL[3]",
+            "b1010",
+            "'9999999999999999999999'",
+            "0000000000002147483647",
+            "(BITS + BITS) == b1111000011110000",
+            "0.30000000000000004",
+            "0b1111111111111111111111111111111111111111111111111111111111111111",
+            "0o777777777777777777777",
+            "1e308",
+            "h1f",
+        ] {
+            assert!(!has_literal_above(e, &limit), "should not skip: {e}");
+        }
+        /* on this platform the guard is inert whatever the expression */
+        if size_of::<c_long>() >= 8 {
+            assert!(!depends_on_long_width("9223372036854775807"));
+        }
+    }
+
     #[test]
     fn eval_corpus_matches_golden() {
         let exprs = corpus_lines();
@@ -286,10 +401,15 @@ mod tests {
             let a: Vec<&str> = actual.lines().collect();
             let g: Vec<&str> = GOLDEN.lines().collect();
             let mut diffs = 0;
+            let mut skipped = 0;
             let mut msg = String::new();
             for i in 0..a.len().max(g.len()) {
                 let x = a.get(i).copied().unwrap_or("<missing>");
                 let y = g.get(i).copied().unwrap_or("<missing>");
+                if depends_on_long_width(y.split('\t').next().unwrap_or("")) {
+                    skipped += 1;
+                    continue;
+                }
                 if x != y {
                     diffs += 1;
                     if diffs <= 40 {
@@ -297,6 +417,12 @@ mod tests {
                             writeln!(msg, "  line {}:\n    golden: {y}\n    actual: {x}", i + 1);
                     }
                 }
+            }
+            if diffs == 0 {
+                /* only the lines whose answer depends on the width of a long,
+                which this platform cannot be held to */
+                eprintln!("{skipped} corpus line(s) skipped: a C long is 32 bits here");
+                return;
             }
             panic!("{diffs} corpus line(s) diverge from the golden file:\n{msg}");
         }
