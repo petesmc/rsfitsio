@@ -64,7 +64,7 @@ use crate::fitscore::{
     ffcmrk_safe, ffcrhd_safe, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
     ffgisz_safe, ffgkcl_safe, ffmahd_safe, ffpmrk_safe, ffpmsg_cstr, ffpmsg_slice, ffpmsg_str,
     ffpsvc_safe, ffpxsz, ffrdef_safe, fits_is_compressed_image_safe, fits_strcasecmp,
-    fits_strncasecmp, fits_translate_keywords_safer,
+    fits_strncasecmp, fits_translate_keywords_safe,
 };
 use crate::getkey::{ffdtdm_safe, ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgrec_safe};
 use crate::modkey::{ffikyj_safe, ffucrd_safe};
@@ -5424,18 +5424,17 @@ pub unsafe extern "C" fn fits_img_decompress(
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_img_decompress_safer(infptr, outfptr, status)
+        fits_img_decompress_safe(infptr, outfptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// This routine decompresses the whole image and writes it to the output file.
-pub unsafe fn fits_img_decompress_safer(
+pub fn fits_img_decompress_safe(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-    unsafe {
         let mut datatype: c_int = 0;
         let mut nullcheck: NullCheckType = NullCheckType::None;
         let mut anynul: c_int = 0;
@@ -5445,7 +5444,7 @@ pub unsafe fn fits_img_decompress_safer(
         let mut fnulval: f32 = 0.0;
         let mut dnulval: f64 = 0.0;
 
-        if fits_img_decompress_header_safer(infptr, outfptr, status) > 0 {
+        if fits_img_decompress_header_safe(infptr, outfptr, status) > 0 {
             return *status;
         }
 
@@ -5507,7 +5506,6 @@ pub unsafe fn fits_img_decompress_safer(
         );
 
         *status
-    }
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5694,19 +5692,18 @@ pub unsafe extern "C" fn fits_img_decompress_header(
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_img_decompress_header_safer(infptr, outfptr, status)
+        fits_img_decompress_header_safe(infptr, outfptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// This routine reads the header of the input tile compressed image and
 /// converts it to that of a standard uncompress FITS image.
-pub unsafe fn fits_img_decompress_header_safer(
+pub fn fits_img_decompress_header_safe(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-    unsafe {
         let mut writeprime = false;
         let mut hdupos: c_int = 0;
         let mut inhdupos: c_int = 0;
@@ -5884,7 +5881,6 @@ pub unsafe fn fits_img_decompress_header_safer(
         }
 
         *status
-    }
 }
 
 /*---------------------------------------------------------------------------*/
@@ -7438,7 +7434,7 @@ unsafe fn imcomp_copy_img2comp(
 
         /* copy all the keywords from the input file to the output */
         npat = patterns.len() as c_int;
-        fits_translate_keywords_safer(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+        fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
 
         if (outfptr.Fptr).request_lossy_int_compress != 0 {
             /* request was made to compress integer images as if they had float pixels. */
@@ -7629,7 +7625,7 @@ fn imcomp_copy_comp2img(
     }
 
     /* translate and copy the keywords from the input file to the output */
-    fits_translate_keywords_safer(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+    fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
 
     ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
 
@@ -7650,40 +7646,29 @@ fn imcomp_copy_comp2img(
 /// This routine copies any unexpected keywords from the primary array
 /// of the compressed input image into the header of the uncompressed image
 /// (which is the primary array of the output file).
-unsafe fn imcomp_copy_prime2img(
+fn imcomp_copy_prime2img(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
         let mut nsp: c_int = 0;
 
         /* keywords that will not be copied */
-        let spkeys: [[&[u8]; 2]; 13] = [
-            [b"SIMPLE\0", b"-\0"],
-            [b"BITPIX\0", b"-\0"],
-            [b"NAXIS\0", b"-\0"],
-            [b"NAXISm\0", b"-\0"],
-            [b"PCOUNT\0", b"-\0"],
-            [b"EXTEND\0", b"-\0"],
-            [b"GCOUNT\0", b"-\0"],
-            [b"CHECKSUM\0", b"-\0"],
-            [b"DATASUM\0", b"-\0"],
-            [b"EXTNAME\0", b"-\0"],
-            [b"HISTORY\0", b"-\0"],
-            [b"COMMENT\0", b"-\0"],
-            [b"*\0", b"+\0"],
+        let spkeys: [[&CStr; 2]; 13] = [
+            [c"SIMPLE", c"-"],
+            [c"BITPIX", c"-"],
+            [c"NAXIS", c"-"],
+            [c"NAXISm", c"-"],
+            [c"PCOUNT", c"-"],
+            [c"EXTEND", c"-"],
+            [c"GCOUNT", c"-"],
+            [c"CHECKSUM", c"-"],
+            [c"DATASUM", c"-"],
+            [c"EXTNAME", c"-"],
+            [c"HISTORY", c"-"],
+            [c"COMMENT", c"-"],
+            [c"*", c"+"],
         ];
-
-        let spkeys = spkeys
-            .iter()
-            .map(|x| {
-                [
-                    CStr::from_bytes_with_nul_unchecked(x[0]),
-                    CStr::from_bytes_with_nul_unchecked(x[1]),
-                ]
-            })
-            .collect::<Vec<_>>();
 
         if *status > 0 {
             return *status;
@@ -7692,10 +7677,9 @@ unsafe fn imcomp_copy_prime2img(
         nsp = spkeys.len() as c_int;
 
         /* translate and copy the keywords from the input file to the output */
-        fits_translate_keywords_safer(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
+        fits_translate_keywords_safe(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
 
         *status
-    }
 }
 
 /*--------------------------------------------------------------------------*/

@@ -1099,118 +1099,118 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_scanf_f_comprehensive() {
-            // Test 1: Simple float
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 1: Simple float
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("3.24", "%lf", valist, 1);
-                assert!((val - 3.24).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("3.24", "%lf", valist, 1);
+            assert!((val - 3.24).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 2: Integer as float
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 2: Integer as float
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("42", "%lf", valist, 1);
-                assert!((val - 42.0).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("42", "%lf", valist, 1);
+            assert!((val - 42.0).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 3: Negative float
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 3: Negative float
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("-2.5", "%lf", valist, 1);
-                assert!((val - (-2.5)).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("-2.5", "%lf", valist, 1);
+            assert!((val - (-2.5)).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 4: Scientific notation
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 4: Scientific notation
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("1.23e-4", "%lf", valist, 1);
-                assert!((val - 1.23e-4).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("1.23e-4", "%lf", valist, 1);
+            assert!((val - 1.23e-4).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 5: Scientific notation with E
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 5: Scientific notation with E
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("2.5E+3", "%lf", valist, 1);
-                assert!((val - 2500.0).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("2.5E+3", "%lf", valist, 1);
+            assert!((val - 2500.0).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 6: Zero float
-            {
-                let mut val: c_double = 999.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 6: Zero float
+        {
+            let mut val: c_double = 999.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("0.0", "%lf", valist, 1);
-                assert!((val - 0.0).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("0.0", "%lf", valist, 1);
+            assert!((val - 0.0).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 7: Very small float
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 7: Very small float
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("0.000001", "%lf", valist, 1);
-                assert!((val - 0.000001).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("0.000001", "%lf", valist, 1);
+            assert!((val - 0.000001).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 8: Large float
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 8: Large float
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("123456.789", "%lf", valist, 1);
-                assert!((val - 123456.789).abs() < 1e-6);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("123456.789", "%lf", valist, 1);
+            assert!((val - 123456.789).abs() < 1e-6);
+            assert_eq!(result, 1);
+        }
 
-            // Test 9: Float with plus sign
-            {
-                let mut val: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 9: Float with plus sign
+        {
+            let mut val: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("+3.24", "%lf", valist, 1);
-                assert!((val - 3.24).abs() < 1e-10);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("+3.24", "%lf", valist, 1);
+            assert!((val - 3.24).abs() < 1e-10);
+            assert_eq!(result, 1);
+        }
 
-            // Test 10: Multiple floats
-            {
-                let mut val1: c_double = 0.0;
-                let mut val2: c_double = 0.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_double as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_double as *const c_void));
+        // Test 10: Multiple floats
+        {
+            let mut val1: c_double = 0.0;
+            let mut val2: c_double = 0.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("1.5 2.5", "%lf %lf", valist, 2);
-                assert!((val1 - 1.5).abs() < 1e-10);
-                assert!((val2 - 2.5).abs() < 1e-10);
-                assert_eq!(result, 2);
-            }
+            let result = test_sscanf_internal("1.5 2.5", "%lf %lf", valist, 2);
+            assert!((val1 - 1.5).abs() < 1e-10);
+            assert!((val2 - 2.5).abs() < 1e-10);
+            assert_eq!(result, 2);
+        }
     }
 
     #[test]
@@ -1289,77 +1289,77 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_scanf_c_comprehensive() {
-            // Test 1: Single character
-            {
-                let mut val: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+        // Test 1: Single character
+        {
+            let mut val: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal("A", "%c", valist, 1);
-                assert_eq!(val as u8, b'A');
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("A", "%c", valist, 1);
+            assert_eq!(val as u8, b'A');
+            assert_eq!(result, 1);
+        }
 
-            // Test 2: Digit character
-            {
-                let mut val: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+        // Test 2: Digit character
+        {
+            let mut val: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal("5", "%c", valist, 1);
-                assert_eq!(val as u8, b'5');
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("5", "%c", valist, 1);
+            assert_eq!(val as u8, b'5');
+            assert_eq!(result, 1);
+        }
 
-            // Test 3: Space character
-            {
-                let mut val: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+        // Test 3: Space character
+        {
+            let mut val: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal(" ", "%c", valist, 1);
-                assert_eq!(val as u8, b' ');
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal(" ", "%c", valist, 1);
+            assert_eq!(val as u8, b' ');
+            assert_eq!(result, 1);
+        }
 
-            // Test 4: Multiple characters
-            {
-                let mut val1: c_char = 0;
-                let mut val2: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
+        // Test 4: Multiple characters
+        {
+            let mut val1: c_char = 0;
+            let mut val2: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal("AB", "%c%c", valist, 2);
-                assert_eq!(val1 as u8, b'A');
-                assert_eq!(val2 as u8, b'B');
-                assert_eq!(result, 2);
-            }
+            let result = test_sscanf_internal("AB", "%c%c", valist, 2);
+            assert_eq!(val1 as u8, b'A');
+            assert_eq!(val2 as u8, b'B');
+            assert_eq!(result, 2);
+        }
 
-            // Test 5: Characters with space format
-            {
-                let mut val1: c_char = 0;
-                let mut val2: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
+        // Test 5: Characters with space format
+        {
+            let mut val1: c_char = 0;
+            let mut val2: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal("A B", "%c %c", valist, 2);
-                assert_eq!(val1 as u8, b'A');
-                assert_eq!(val2 as u8, b'B');
-                assert_eq!(result, 2);
-            }
+            let result = test_sscanf_internal("A B", "%c %c", valist, 2);
+            assert_eq!(val1 as u8, b'A');
+            assert_eq!(val2 as u8, b'B');
+            assert_eq!(result, 2);
+        }
 
-            // Test 6: Special characters
-            {
-                let mut val: c_char = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+        // Test 6: Special characters
+        {
+            let mut val: c_char = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
 
-                let result = test_sscanf_internal("@", "%c", valist, 1);
-                assert_eq!(val as u8, b'@');
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("@", "%c", valist, 1);
+            assert_eq!(val as u8, b'@');
+            assert_eq!(result, 1);
+        }
     }
 
     #[test]
@@ -1530,98 +1530,98 @@ mod tests {
 
     #[test]
     fn test_scanf_edge_cases() {
-            // Test 1: Empty input
-            {
-                let mut val: c_int = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 1: Empty input
+        {
+            let mut val: c_int = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("", "%d", valist, -1);
-                assert_eq!(result, -1); // EOF
-            }
+            let result = test_sscanf_internal("", "%d", valist, -1);
+            assert_eq!(result, -1); // EOF
+        }
 
-            // Test 2: Whitespace only input
-            {
-                let mut val: c_int = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 2: Whitespace only input
+        {
+            let mut val: c_int = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("   ", "%d", valist, -1);
-                assert_eq!(result, -1); // EOF
-            }
+            let result = test_sscanf_internal("   ", "%d", valist, -1);
+            assert_eq!(result, -1); // EOF
+        }
 
-            // Test 3: Invalid number format
-            {
-                let mut val: c_int = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 3: Invalid number format
+        {
+            let mut val: c_int = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("abc", "%d", valist, 0);
-                assert_eq!(result, 0); // No matches
-                assert_eq!(val, 999); // Value unchanged
-            }
+            let result = test_sscanf_internal("abc", "%d", valist, 0);
+            assert_eq!(result, 0); // No matches
+            assert_eq!(val, 999); // Value unchanged
+        }
 
-            // Test 4: Partial match
-            {
-                let mut val1: c_int = 999;
-                let mut val2: c_int = 888;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+        // Test 4: Partial match
+        {
+            let mut val1: c_int = 999;
+            let mut val2: c_int = 888;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("42 abc", "%d %d", valist, 1);
-                assert_eq!(result, 1); // Only first match
-                assert_eq!(val1, 42);
-                assert_eq!(val2, 888); // Second value unchanged
-            }
+            let result = test_sscanf_internal("42 abc", "%d %d", valist, 1);
+            assert_eq!(result, 1); // Only first match
+            assert_eq!(val1, 42);
+            assert_eq!(val2, 888); // Second value unchanged
+        }
 
-            // Test 5: Overflow behavior (large number)
-            {
-                let mut val: c_int = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 5: Overflow behavior (large number)
+        {
+            let mut val: c_int = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                // This should handle overflow gracefully
-                let result = test_sscanf_internal("999999999999999999999", "%d", valist, 1);
-                assert_eq!(result, 1);
-                // Value might wrap around due to overflow
-            }
+            // This should handle overflow gracefully
+            let result = test_sscanf_internal("999999999999999999999", "%d", valist, 1);
+            assert_eq!(result, 1);
+            // Value might wrap around due to overflow
+        }
 
-            // Test 6: Hex without valid hex digits
-            {
-                let mut val: c_uint = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
+        // Test 6: Hex without valid hex digits
+        {
+            let mut val: c_uint = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
 
-                let result = test_sscanf_internal("xyz", "%x", valist, 0);
-                assert_eq!(result, 0);
-                assert_eq!(val, 999); // Value unchanged
-            }
+            let result = test_sscanf_internal("xyz", "%x", valist, 0);
+            assert_eq!(result, 0);
+            assert_eq!(val, 999); // Value unchanged
+        }
 
-            // Test 7: Float with invalid format
-            {
-                let mut val: c_double = 999.0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+        // Test 7: Float with invalid format
+        {
+            let mut val: c_double = 999.0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
 
-                let result = test_sscanf_internal("not.a.number", "%lf", valist, 0);
-                assert_eq!(result, 0);
-                assert_eq!(val, 999.0); // Value unchanged
-            }
+            let result = test_sscanf_internal("not.a.number", "%lf", valist, 0);
+            assert_eq!(result, 0);
+            assert_eq!(val, 999.0); // Value unchanged
+        }
 
-            // Test 8: Missing second operand
-            {
-                let mut val1: c_int = 0;
-                let mut val2: c_int = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+        // Test 8: Missing second operand
+        {
+            let mut val1: c_int = 0;
+            let mut val2: c_int = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("42", "%d %d", valist, 1);
-                assert_eq!(result, 1);
-                assert_eq!(val1, 42);
-                assert_eq!(val2, 999); // Second value unchanged
-            }
+            let result = test_sscanf_internal("42", "%d %d", valist, 1);
+            assert_eq!(result, 1);
+            assert_eq!(val1, 42);
+            assert_eq!(val2, 999); // Second value unchanged
+        }
     }
 
     #[test]
