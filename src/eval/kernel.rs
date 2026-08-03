@@ -26,6 +26,11 @@ pub(crate) enum Arith {
     /// C's `%`: truncated, so the sign follows the dividend.
     Mod,
     Pow,
+    /* Bitwise, integers only. The parser has already rejected any other sort:
+    "Bitwise operations with incompatible types". */
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 /// The comparison operators.
@@ -230,6 +235,10 @@ pub(crate) fn arith(op: Arith, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Res 
                 }
             },
         ),
+        /* the float closure is unreachable: `out` can only be Long here */
+        Arith::BitAnd => zip_numeric(lhs, rhs, out, "&", |_, _| None, |a, b| Some(a & b)),
+        Arith::BitOr => zip_numeric(lhs, rhs, out, "|", |_, _| None, |a, b| Some(a | b)),
+        Arith::BitXor => zip_numeric(lhs, rhs, out, "^^", |_, _| None, |a, b| Some(a ^ b)),
         Arith::Pow => zip_numeric(
             lhs,
             rhs,
@@ -256,6 +265,9 @@ fn name(op: Arith) -> &'static str {
         Arith::Div => "/",
         Arith::Mod => "%",
         Arith::Pow => "**",
+        Arith::BitAnd => "&",
+        Arith::BitOr => "|",
+        Arith::BitXor => "^^",
     }
 }
 

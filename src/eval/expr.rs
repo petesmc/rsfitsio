@@ -77,6 +77,41 @@ pub(crate) enum Func {
     DefNull,
     /// `SETNULL(sentinel, x)`: `x`, undefined wherever it equals `sentinel`.
     SetNull,
+
+    /* Reductions. These fold across the elements *of a row* rather than
+    mapping over them, so an argument with `nelem` elements per row yields one
+    element per row. Every one of them skips undefined elements. */
+    /// `SUM`: null only when the whole row is undefined.
+    Sum,
+    /// `AVERAGE`: the mean of the defined elements.
+    Average,
+    /// `STDDEV`: the sample deviation, and never null -- fewer than two
+    /// defined elements give 0.
+    Stddev,
+    /// `MEDIAN`: the lower of the two middle defined elements.
+    Median,
+    /// One-argument `MIN`.
+    Min1,
+    /// One-argument `MAX`.
+    Max1,
+    /// `NVALID`: how many elements of the row are defined. Never null.
+    NValid,
+}
+
+impl Func {
+    /// Whether this folds a row rather than mapping over it.
+    fn is_reduction(self) -> bool {
+        matches!(
+            self,
+            Func::Sum
+                | Func::Average
+                | Func::Stddev
+                | Func::Median
+                | Func::Min1
+                | Func::Max1
+                | Func::NValid
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -241,6 +276,14 @@ impl Expr {
             Expr::IfThenElse { then, els, .. } => then.sort(batch_sorts).max(els.sort(batch_sorts)),
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
+                Func::NValid => ValueSort::Long,
+                Func::Average | Func::Stddev => ValueSort::Double,
+                Func::Sum | Func::Median | Func::Min1 | Func::Max1 => {
+                    match args[0].sort(batch_sorts) {
+                        ValueSort::Boolean => ValueSort::Long,
+                        other => other,
+                    }
+                }
                 Func::Abs | Func::SetNull => args[0].sort(batch_sorts),
                 Func::Min | Func::Max | Func::DefNull => args
                     .iter()
@@ -586,6 +629,9 @@ fn if_then_else(
 
 /// Apply an elementwise function.
 fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError> {
+    if func.is_reduction() {
+        return reduce(func, &args[0]);
+    }
     match func {
         Func::IsNull => is_null(&args[0]),
         Func::DefNull => def_null(&args[0], &args[1]),
@@ -628,6 +674,80 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
             kernel::map_double_checked(&args[0], "function", f, domain)
         }
     }
+}
+
+/// Fold each row of `v` down to a single element.
+fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
+    let out = match func {
+        Func::Average | Func::Stddev => ValueSort::Double,
+        Func::NValid => ValueSort::Long,
+        _ => match v.sort() {
+            ValueSort::Boolean => ValueSort::Long,
+            other => other,
+        },
+    };
+    let input = v.numeric("reduction")?;
+
+    let Some(n) = v.len() else {
+        /* A constant is a row of one defined element, which is what the
+        engine's `*_const` kernels compute. */
+        let (x, null) = input.get(0, 1);
+        return Ok(match func {
+            Func::NValid => ColumnarValue::Scalar(Scalar::Long(i64::from(!null))),
+            Func::Stddev => ColumnarValue::Scalar(Scalar::Double(0.0)),
+            _ if null => ColumnarValue::Null(out),
+            Func::Average => ColumnarValue::Scalar(Scalar::Double(x)),
+            _ => ColumnarValue::Scalar(kernel::scalar_of_sort(out, x)),
+        });
+    };
+
+    let nelem = input.nelem().max(1);
+    let rows = n / nelem;
+    let mut vals = vec![0.0f64; rows];
+    let mut nulls = vec![false; rows];
+    let mut any = false;
+    let mut defined: Vec<f64> = Vec::with_capacity(nelem);
+
+    for r in 0..rows {
+        defined.clear();
+        for k in 0..nelem {
+            let (x, null) = input.get(r * nelem + k, nelem);
+            if !null {
+                defined.push(x);
+            }
+        }
+        let count = defined.len();
+        let (val, null) = match func {
+            Func::NValid => (count as f64, false),
+            Func::Stddev => {
+                if count > 1 {
+                    let mean = defined.iter().sum::<f64>() / count as f64;
+                    let ss: f64 = defined.iter().map(|x| (x - mean) * (x - mean)).sum();
+                    ((ss / (count as f64 - 1.0)).sqrt(), false)
+                } else {
+                    (0.0, false)
+                }
+            }
+            _ if count == 0 => (0.0, true),
+            Func::Sum => (defined.iter().sum(), false),
+            Func::Average => (defined.iter().sum::<f64>() / count as f64, false),
+            Func::Min1 => (defined.iter().copied().fold(f64::INFINITY, f64::min), false),
+            Func::Max1 => (
+                defined.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                false,
+            ),
+            Func::Median => {
+                let mut scratch = defined.clone();
+                (crate::eval_y::qselect_median(&mut scratch), false)
+            }
+            _ => unreachable!("not a reduction"),
+        };
+        vals[r] = val;
+        nulls[r] = null;
+        any |= null;
+    }
+    /* one element per row now */
+    Ok(kernel::build(out, vals, nulls, any, 1))
 }
 
 /// `ABS`, which keeps its argument's sort rather than widening to double.

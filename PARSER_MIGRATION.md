@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **936 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,050 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,17 +813,23 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 266 | function call — the reductions (`SUM`, `MEDIAN`, one-argument `MIN`/`MAX`), the shape functions (`NELEM`, `NAXIS`, `ARRAY`), `STRSTR`/`STRMID`, the region and GTI tests |
+| 156 | function call — `STRSTR`/`STRMID`, the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
+| 80 | bit-string column |
+| 74 | vector literal |
 | 74 | row offset |
-| 72 | vector literal |
-| 64 | bit-string column |
 | 56 | subscript |
-| 50 | bitwise operator |
+| 43 | string column |
 | 40 | bit-string literal |
-| 33 | string column |
+| 12 | string literal |
 
-The elementwise functions are done: the sixteen transcendentals, `ABS`,
-`ARCTAN2`, two-argument `MIN`/`MAX`, `ISNULL`, `DEFNULL` and `SETNULL`.
+The shape functions are a structural gap rather than a missing kernel: the
+arena lowering folds `NELEM(V)` to a constant using the node's `nelem`, and
+`eval::lower` works from the `Ast`, where that size is not known. They will
+need the sizes threading through, or the fold moving earlier.
+
+Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
+`ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, and the reductions
+`SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`.
 
 ### 10.4 What the corpus caught
 

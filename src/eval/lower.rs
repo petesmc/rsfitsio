@@ -99,11 +99,26 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
                     lhs: l,
                     rhs: r,
                 }),
-                /* `&`, `|` and `^^` are bitwise on integers and set operations
-                on bit strings; neither kernel exists yet */
-                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
-                    Err(Unsupported("bitwise operator"))
-                }
+                /* On integers these are bitwise; on bit strings they are set
+                operations, which need their own kernel. The arena lowering has
+                already rejected every other combination, so reaching here with
+                a bit string means the operands were bit strings -- and those
+                are refused earlier, at the literal or the column. */
+                BinOp::BitAnd => Ok(Expr::Arith {
+                    op: Arith::BitAnd,
+                    lhs: l,
+                    rhs: r,
+                }),
+                BinOp::BitOr => Ok(Expr::Arith {
+                    op: Arith::BitOr,
+                    lhs: l,
+                    rhs: r,
+                }),
+                BinOp::BitXor => Ok(Expr::Arith {
+                    op: Arith::BitXor,
+                    lhs: l,
+                    rhs: r,
+                }),
                 _ => Err(Unsupported("operator")),
             }
         }
@@ -146,12 +161,17 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
             if !admissible {
                 return Err(Unsupported("function call"));
             }
-            let (func, arity) = match func_of(name) {
-                Some(pair) => pair,
-                None => return Err(Unsupported("function call")),
+            /* MIN and MAX map elementwise with two arguments and reduce with
+            one, so the arity picks the kernel */
+            let (func, arity) = match (name.as_slice(), args.len()) {
+                (b"MIN", 1) => (Func::Min1, 1),
+                (b"MAX", 1) => (Func::Max1, 1),
+                _ => match func_of(name) {
+                    Some(pair) => pair,
+                    None => return Err(Unsupported("function call")),
+                },
             };
             if args.len() != arity {
-                /* MIN/MAX are a reduction in their one-argument form */
                 return Err(Unsupported("function call"));
             }
             let lowered: Result<Vec<Expr>, Unsupported> =
@@ -194,6 +214,11 @@ fn func_of(name: &[u8]) -> Option<(Func, usize)> {
         b"DEFNULL" => (Func::DefNull, 2),
         b"SETNULL" => (Func::SetNull, 2),
         b"ISNULL" => (Func::IsNull, 1),
+        b"SUM" => (Func::Sum, 1),
+        b"AVERAGE" => (Func::Average, 1),
+        b"STDDEV" => (Func::Stddev, 1),
+        b"MEDIAN" => (Func::Median, 1),
+        b"NVALID" => (Func::NValid, 1),
         _ => return None,
     })
 }
@@ -281,14 +306,38 @@ mod tests {
     }
 
     #[test]
+    fn the_reductions_lower() {
+        /* MIN and MAX pick a kernel by arity: one argument reduces a row,
+        two map elementwise */
+        for src in [
+            "SUM(1)",
+            "AVERAGE(1)",
+            "STDDEV(1)",
+            "MEDIAN(1)",
+            "NVALID(1)",
+            "MIN(1)",
+            "MAX(1)",
+        ] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
+    fn the_bitwise_operators_lower() {
+        for src in ["1 & 2", "1 | 2", "1 ^^ 2"] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
             ("'a'", "string literal"),
             ("b101", "bit-string literal"),
-            ("1 & 2", "bitwise operator"),
             ("{1,2}", "vector literal"),
-            ("SUM(1)", "function call"),
-            ("MIN(1)", "function call"),
+            ("NELEM(1)", "function call"),
+            ("RANDOM()", "function call"),
+            ("GTIFILTER()", "function call"),
             ("#SNULL", "#SNULL"),
         ] {
             assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
@@ -298,6 +347,6 @@ mod tests {
     #[test]
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
-        assert_eq!(try_lower("1 + SUM(1)"), Err(Unsupported("function call")));
+        assert_eq!(try_lower("1 + NELEM(1)"), Err(Unsupported("function call")));
     }
 }
