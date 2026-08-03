@@ -221,6 +221,20 @@ pub(crate) enum Expr {
         diff: bool,
         arg: Box<Expr>,
     },
+    /// `M[i]` on a column with more axes than subscripts: one index against
+    /// the outermost axis selects a whole slice rather than an element. The
+    /// engine only does this for a constant index.
+    Slice {
+        base: Box<Expr>,
+        /// One-based index along the outermost axis.
+        index: c_long,
+        /// Elements in the slice, the product of the remaining axes.
+        run: usize,
+        /// Length of the axis being indexed, for the range check.
+        axis_len: usize,
+        /// The slice's own axis lengths.
+        naxes: Vec<usize>,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -484,6 +498,7 @@ impl Expr {
                 .max()
                 .unwrap_or(ValueSort::Long),
             Expr::Deref { base, .. } => base.sort(batch_sorts),
+            Expr::Slice { base, .. } => base.sort(batch_sorts),
             Expr::Accum { arg, .. } => match arg.sort(batch_sorts) {
                 ValueSort::Boolean => ValueSort::Long,
                 other => other,
@@ -528,9 +543,14 @@ impl Expr {
                 if n == 0 {
                     return Ok(ColumnarValue::Null(*t));
                 }
+                /* the sort has to survive: an undefined *string* still has
+                to read as text downstream, which `#SNULL` in a conditional
+                depends on */
                 let data = match t {
                     ValueSort::Double => ArrayData::Double(vec![0.0; n]),
                     ValueSort::Boolean => ArrayData::Boolean(vec![false; n]),
+                    ValueSort::String => ArrayData::Str(vec![Vec::new(); n]),
+                    ValueSort::Bits => ArrayData::Bits(vec![Vec::new(); n]),
                     _ => ArrayData::Long(vec![0; n]),
                 };
                 Ok(ColumnarValue::Array(Array::with_nulls(data, vec![true; n])))
@@ -627,6 +647,24 @@ impl Expr {
             Expr::Accum { id, diff, arg } => {
                 let v = arg.evaluate(batch)?;
                 accumulate(*id, *diff, &v, batch)
+            }
+
+            Expr::Slice {
+                base,
+                index,
+                run,
+                axis_len,
+                naxes,
+            } => {
+                let v = base.evaluate(batch)?;
+                slice_of(
+                    &v,
+                    *index,
+                    *run,
+                    *axis_len,
+                    naxes,
+                    batch.n_rows.max(0) as usize,
+                )
             }
 
             Expr::Vector(items) => {
@@ -996,6 +1034,34 @@ fn text_if_then_else(
         ArrayData::Str(out),
         nulls,
     )))
+}
+
+/// `M[i]` where `i` indexes the outermost axis and the rest of the shape comes
+/// through: each row yields the `run` elements starting at `run * (i - 1)`.
+fn slice_of(
+    v: &ColumnarValue,
+    index: c_long,
+    run: usize,
+    axis_len: usize,
+    naxes: &[usize],
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    if index < 1 || index as usize > axis_len {
+        return Err(ValueError::OutOfRange);
+    }
+    let ColumnarValue::Array(a) = v else {
+        return Ok(ColumnarValue::Null(v.sort()));
+    };
+    let src_nelem = a.nelem().max(1);
+    let start = run * (index as usize - 1);
+    let picked: Vec<Option<usize>> = (0..rows)
+        .flat_map(|r| (0..run).map(move |e| Some(r * src_nelem + start + e)))
+        .collect();
+    Ok(ColumnarValue::Array(
+        gather_at(a, &picked)
+            .with_nelem(run)
+            .with_naxes(naxes.to_vec()),
+    ))
 }
 
 /// `ACCUM(x)` and `SEQDIFF(x)` over one batch, carrying the running value in
@@ -2204,6 +2270,43 @@ mod tests {
             };
             assert_eq!(a.data(), &ArrayData::Long(want.to_vec()));
             assert_eq!(a.len(), 2, "one element per row");
+        }
+    }
+
+    #[test]
+    fn one_subscript_on_a_two_dimensional_column_selects_a_slice() {
+        let b = matrix_batch();
+        /* a 2x3 column: M[1] is its first pair, M[3] its last */
+        let slice = |i: c_long| Expr::Slice {
+            base: Box::new(Expr::Column(0)),
+            index: i,
+            run: 2,
+            axis_len: 3,
+            naxes: vec![2],
+        };
+        let ColumnarValue::Array(a) = slice(1).evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.data(), &ArrayData::Long(vec![1, 2, 11, 12]));
+        assert_eq!(a.nelem(), 2, "the slice keeps the remaining axis");
+        assert_eq!(longs(&slice(3).evaluate(&b).unwrap()), vec![5, 6, 15, 16]);
+    }
+
+    #[test]
+    fn a_slice_index_is_checked_against_the_outermost_axis() {
+        let b = matrix_batch();
+        let slice = |i: c_long| Expr::Slice {
+            base: Box::new(Expr::Column(0)),
+            index: i,
+            run: 2,
+            axis_len: 3,
+            naxes: vec![2],
+        };
+        for bad in [0, 4, -1] {
+            assert!(matches!(
+                slice(bad).evaluate(&b),
+                Err(ValueError::OutOfRange)
+            ));
         }
     }
 

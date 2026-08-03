@@ -37,6 +37,17 @@ fn const_long(ast: &Ast) -> Option<c_long> {
             op: UnOp::Plus,
             arg,
         } => const_long(arg),
+        /* the arena folded these at parse time, so folding the same way here
+        keeps `INTCOL{1+1}` on the new path rather than falling back */
+        AstKind::Binary { op, lhs, rhs } => {
+            let (a, b) = (const_long(lhs)?, const_long(rhs)?);
+            match op {
+                BinOp::Add => a.checked_add(b),
+                BinOp::Sub => a.checked_sub(b),
+                BinOp::Mul => a.checked_mul(b),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -139,6 +150,10 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
         ),
         /* a fully-indexed subscript picks one element */
         Expr::Deref { .. } => Shape::scalar(),
+        Expr::Slice { run, naxes, .. } => Shape {
+            nelem: *run as c_long,
+            naxes: naxes.iter().map(|&n| n as c_long).collect(),
+        },
         Expr::Unary { arg, .. } => shape_of(arg, cols)?,
         /* ACCUM and SEQDIFF are elementwise, so the shape carries through */
         Expr::Accum { arg, .. } => shape_of(arg, cols)?,
@@ -272,7 +287,14 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             Some(ParserValue::Long(v)) => Ok(Expr::Literal(Scalar::Long(*v))),
             Some(ParserValue::Double(v)) => Ok(Expr::Literal(Scalar::Double(*v))),
             Some(ParserValue::Boolean(v)) => Ok(Expr::Literal(Scalar::Boolean(*v))),
-            Some(ParserValue::Str(_)) => Err(Unsupported("string keyword")),
+            /* a keyword's string value is NUL-terminated, and the text is
+            what precedes the terminator */
+            Some(ParserValue::Str(v)) => Ok(Expr::Literal(Scalar::Str(
+                v.iter()
+                    .take_while(|&&c| c != 0)
+                    .map(|&c| c as u8)
+                    .collect(),
+            ))),
             None => Err(Unsupported("unresolved name")),
         },
 
@@ -377,18 +399,18 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
 
         AstKind::Str(s) => Ok(Expr::Literal(Scalar::Str(s.clone()))),
         AstKind::BitStr(s) => Ok(Expr::Literal(Scalar::Bits(s.clone()))),
-        AstKind::SNullRef => Err(Unsupported("#SNULL")),
+        /* `#SNULL` is the undefined string, which the arena builds as a null
+        of string sort */
+        AstKind::SNullRef => Ok(Expr::Null(ValueSort::String)),
         /* The parser has already checked the offset is a constant integer,
         so it is folded here rather than evaluated per row. */
         AstKind::Offset { name, off } => {
             let Some(ParserValue::Column { index, sort }) = names.get(&ast.at) else {
                 return Err(Unsupported("row offset of a non-column"));
             };
-            if matches!(sort, ColumnSort::String) {
-                /* Do_Offset copies text row by row through its own buffer */
-                return Err(Unsupported("row offset of a string column"));
-            }
-            let _ = name;
+            /* `shifted` reads a text column the same way as a numeric one,
+            one entry per row, so a string offset needs nothing extra */
+            let _ = (name, sort);
             match const_long(off) {
                 Some(offset) => Ok(Expr::Offset {
                     col: *index as usize,
@@ -420,10 +442,25 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 AstKind::Vector(items) => vec![items.len()],
                 _ => return Err(Unsupported("subscript of a computed value")),
             };
+            /* One index against a shape with more axes selects a slice
+            rather than an element -- the engine only does that for a constant
+            index, which is what `Do_Deref`'s `allConst && nDims == 1` path
+            handles, so anything else still falls back. */
             if naxes.len() != idx.len() {
-                /* a partial index selects a slice, which needs a shape-aware
-                gather rather than one element per row */
-                return Err(Unsupported("subscript slice"));
+                if idx.len() != 1 || naxes.is_empty() {
+                    return Err(Unsupported("subscript slice"));
+                }
+                let Some(index) = const_long(&idx[0]) else {
+                    return Err(Unsupported("subscript slice with a computed index"));
+                };
+                let inner = &naxes[..naxes.len() - 1];
+                return Ok(Expr::Slice {
+                    base: Box::new(lower(base, names, cols)?),
+                    index,
+                    run: inner.iter().product::<usize>().max(1),
+                    axis_len: *naxes.last().unwrap(),
+                    naxes: inner.to_vec(),
+                });
             }
             let base = lower(base, names, cols)?;
             let idx: Result<Vec<Expr>, Unsupported> =
@@ -696,6 +733,12 @@ mod tests {
     }
 
     #[test]
+    fn the_undefined_string_lowers_as_a_string() {
+        /* not as a long, or a conditional with a string branch cannot read it */
+        assert_eq!(try_lower("#SNULL"), Ok(Expr::Null(ValueSort::String)));
+    }
+
+    #[test]
     fn the_shape_functions_fold_to_a_constant() {
         /* with no columns declared every argument is a scalar, which is the
         one shape these tests can assert without a table */
@@ -726,9 +769,11 @@ mod tests {
     #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
+            /* the random generators draw from a global time-seeded
+            generator, so they stay with the arena on purpose */
             ("RANDOM()", "function call"),
+            ("RANDOMN()", "function call"),
             ("GTIFILTER()", "function call"),
-            ("#SNULL", "#SNULL"),
         ] {
             assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
         }

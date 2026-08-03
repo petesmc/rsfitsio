@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,475 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,488 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,13 +813,8 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 10 | the random generators (see below) |
 | 90 | bit-string **result** (see below) |
-| 6 | row offset of a string column |
-| 2 | subscript slice (see below) |
-| 2 | row offset written as an expression (`INTCOL{1+1}`) |
-| 2 | `#SNULL` |
-| 1 | string keyword |
+| 10 | the random generators (see below) |
 
 Counting fallbacks by reason overstates what is left, because many of those
 expressions do not evaluate under the old engine either. Of the 128 that once
@@ -837,7 +832,18 @@ so no corpus line arbitrates a string-valued answer. Those are covered by the
 `ffcalc`/`fffrow` tests in `eval_f.rs` instead, which compare through a boolean
 (`STRMID(STRCOL,1,3) == 'alp'`) or read the written column back.
 
-What is left that does real work: the individual functions.
+**Nothing is left that does real work.** Every expression the corpus can
+evaluate now goes through the new evaluator except the two categories that are
+excluded on purpose, and both are excluded because putting them through it
+would move the counter without verifying anything:
+
+* a **bit-valued result** is always an error to retrieve, 432 for a
+  row-varying one and 433 for a constant;
+* the **random generators** draw from a global `time()`-seeded generator, so
+  the corpus runs them parse-only and never compares a value.
+
+The other 264 corpus lines never reach the lowering at all -- they are parse
+errors, which the front end already owns.
 
 The structural item is **done**. `NELEM`, `NAXIS` and `NAXES` are answers about
 the expression rather than about the data, so they fold to a constant at
@@ -867,7 +873,8 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, row offsets, `ACCUM`, `SEQDIFF`,
+vector literals, subscripts both full and partial, row offsets over every
+column sort, `#SNULL`, string keywords, `ACCUM`, `SEQDIFF`,
 `ELEMENTNUM`,
 `AXISELEM`, `ARRAY`, `ANGSEP` and the region
 predicates `NEAR`/`CIRCLE`/`BOX`/`ELLIPSE`, the shape functions
