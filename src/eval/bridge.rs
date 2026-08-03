@@ -35,8 +35,13 @@ pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long
         return false;
     };
     let batch = Batch::gather(lParse, first_row, n_rows);
+    /* the ACCUM/SEQDIFF running values live in ParseData between batches; lend
+    them to the batch for this one and take them back afterwards */
+    *batch.accum.borrow_mut() = core::mem::take(&mut lParse.accum_state);
 
-    match tree.evaluate(&batch) {
+    let result = tree.evaluate(&batch);
+    lParse.accum_state = core::mem::take(&mut batch.accum.borrow_mut());
+    match result {
         Ok(v) => {
             store(lParse, &v);
             true

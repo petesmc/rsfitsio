@@ -689,6 +689,9 @@ pub(crate) struct ParseData {
     /// this expression, which is still the case for most of them.
     #[cfg(feature = "new-eval")]
     pub expr_tree: Option<crate::eval::expr::Expr>,
+    /// The running values of the expression's `ACCUM`/`SEQDIFF` nodes, which
+    /// have to survive from one batch to the next.
+    pub accum_state: Vec<crate::eval::expr::AccumState>,
 }
 
 impl ParseData {
@@ -725,6 +728,7 @@ impl ParseData {
         #[cfg(feature = "new-eval")]
         {
             self.expr_tree = None;
+            self.accum_state = Vec::new();
         }
     }
 }

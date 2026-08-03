@@ -45,6 +45,10 @@ fn const_long(ast: &Ast) -> Option<c_long> {
 /// for the shape functions, and its sort, for the places where an operator's
 /// meaning depends on it (`+` concatenates text but adds numbers).
 pub(crate) struct Columns {
+    /// Hands out a slot to each `ACCUM`/`SEQDIFF` as it is lowered, so the
+    /// running values can live in one flat vector that survives between
+    /// batches. Interior mutability keeps `lower` taking `&Columns`.
+    pub(crate) accums: core::cell::Cell<usize>,
     /// Element count and axis lengths per column. The count is not always the
     /// product of the axes: a string or bit-string column is one entry per row
     /// laid out on one axis, and its `nelem` is the declared *width*.
@@ -136,6 +140,8 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
         /* a fully-indexed subscript picks one element */
         Expr::Deref { .. } => Shape::scalar(),
         Expr::Unary { arg, .. } => shape_of(arg, cols)?,
+        /* ACCUM and SEQDIFF are elementwise, so the shape carries through */
+        Expr::Accum { arg, .. } => shape_of(arg, cols)?,
         Expr::Arith { op, lhs, rhs } => {
             let (a, b) = (shape_of(lhs, cols)?, shape_of(rhs, cols)?);
             /* `+` over text concatenates, so the widths add */
@@ -453,6 +459,28 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             if let Some(folded) = fold_shape_fn(name, args, names, cols)? {
                 return Ok(folded);
             }
+            /* ACCUM and SEQDIFF carry a running value between rows and
+            batches, so each gets a slot rather than being a plain kernel */
+            if matches!(name.as_slice(), b"ACCUM" | b"SEQDIFF") {
+                if args.len() != 1 {
+                    return Err(Unsupported("ACCUM with the wrong arity"));
+                }
+                let arg = lower(&args[0], names, cols)?;
+                /* the boolean and bit-string forms take a different path in
+                the engine, and one of them is the known type confusion, so
+                they are left with the arena */
+                let sort = arg.sort(&|i| cols.sort(i));
+                if !matches!(sort, ValueSort::Long | ValueSort::Double) {
+                    return Err(Unsupported("ACCUM over a non-numeric argument"));
+                }
+                let id = cols.accums.get();
+                cols.accums.set(id + 1);
+                return Ok(Expr::Accum {
+                    id,
+                    diff: name.as_slice() == b"SEQDIFF",
+                    arg: Box::new(arg),
+                });
+            }
             /* MIN and MAX map elementwise with two arguments and reduce with
             one, so the arity picks the kernel */
             let (func, arity) = match (name.as_slice(), args.len()) {
@@ -563,6 +591,7 @@ mod tests {
             &ast(src),
             &Resolutions::new(),
             &Columns {
+                accums: core::cell::Cell::new(0),
                 shapes: Vec::new(),
                 sorts: Vec::new(),
             },

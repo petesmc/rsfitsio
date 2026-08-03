@@ -8,6 +8,8 @@
 //!
 //! Evaluation is per batch of rows, matching how `ffiter` drives the engine.
 
+use core::cell::RefCell;
+
 use super::bits;
 use super::kernel::{self, Arith, Compare};
 use super::regions;
@@ -139,6 +141,19 @@ impl Func {
     }
 }
 
+/// The carried value of one `ACCUM` or `SEQDIFF` node.
+///
+/// Both sorts are kept because the node's own sort decides which is live:
+/// `ACCUM(INTCOL)` sums in `i64` and `ACCUM(FLOATCOL)` in `f64`, and routing
+/// the integer case through `f64` would lose exactness past 2^53.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct AccumState {
+    pub(crate) prev: f64,
+    pub(crate) prev_i: c_long,
+    /// Whether the previous element was undefined, which only `SEQDIFF` reads.
+    pub(crate) undef: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Expr {
     Literal(Scalar),
@@ -197,6 +212,15 @@ pub(crate) enum Expr {
         col: usize,
         offset: c_long,
     },
+    /// `ACCUM(x)` and `SEQDIFF(x)`: a running total, and the difference from
+    /// the previous element. Both run over the row-major element sequence and
+    /// carry across batches, so each owns a slot in [`Batch::accum`].
+    Accum {
+        id: usize,
+        /// `SEQDIFF` rather than `ACCUM`.
+        diff: bool,
+        arg: Box<Expr>,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -230,6 +254,12 @@ pub(crate) struct Batch {
     pub(crate) total_rows: c_long,
     /// Table row number of the first row in the batch, one-based.
     pub(crate) first_row: c_long,
+    /// The running values of the `ACCUM` and `SEQDIFF` nodes, which carry from
+    /// one batch to the next. The engine keeps the same state in the constant
+    /// subnode each of those operators is paired with; here it is handed in by
+    /// the bridge and handed back after the batch, so `evaluate` stays a
+    /// `&self` walk.
+    pub(crate) accum: RefCell<Vec<AccumState>>,
 }
 
 impl Batch {
@@ -415,6 +445,7 @@ impl Batch {
             n_data_rows: chunk_rows,
             total_rows: lParse.totalRows,
             first_row,
+            accum: RefCell::new(Vec::new()),
         }
     }
 }
@@ -453,6 +484,10 @@ impl Expr {
                 .max()
                 .unwrap_or(ValueSort::Long),
             Expr::Deref { base, .. } => base.sort(batch_sorts),
+            Expr::Accum { arg, .. } => match arg.sort(batch_sorts) {
+                ValueSort::Boolean => ValueSort::Long,
+                other => other,
+            },
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid | Func::StrStr => ValueSort::Long,
@@ -589,6 +624,11 @@ impl Expr {
                 let idx: Result<Vec<_>, _> = idx.iter().map(|e| e.evaluate(batch)).collect();
                 deref(&base, &idx?, naxes, batch.n_rows.max(0) as usize)
             }
+            Expr::Accum { id, diff, arg } => {
+                let v = arg.evaluate(batch)?;
+                accumulate(*id, *diff, &v, batch)
+            }
+
             Expr::Vector(items) => {
                 let vals: Result<Vec<_>, _> = items.iter().map(|e| e.evaluate(batch)).collect();
                 vector(&vals?, batch.n_rows.max(0) as usize)
@@ -956,6 +996,76 @@ fn text_if_then_else(
         ArrayData::Str(out),
         nulls,
     )))
+}
+
+/// `ACCUM(x)` and `SEQDIFF(x)` over one batch, carrying the running value in
+/// and out of [`Batch::accum`].
+///
+/// `ACCUM` skips undefined elements -- they add nothing -- and its result is
+/// never undefined. `SEQDIFF` is undefined wherever the current element or the
+/// one before it is, and still advances its previous value across a gap.
+fn accumulate(
+    id: usize,
+    diff: bool,
+    v: &ColumnarValue,
+    batch: &Batch,
+) -> Result<ColumnarValue, ValueError> {
+    let sort = match v.sort() {
+        ValueSort::Boolean => ValueSort::Long,
+        other => other,
+    };
+    if !matches!(sort, ValueSort::Long | ValueSort::Double) {
+        return Err(ValueError::BadSort("ACCUM", v.sort()));
+    }
+    let input = v.numeric("ACCUM")?;
+    let (nelem, _) = shape_at_runtime(v);
+    let n = batch.n_rows.max(0) as usize * nelem;
+
+    let mut states = batch.accum.borrow_mut();
+    let st = states
+        .get_mut(id)
+        .ok_or(ValueError::BadSort("ACCUM", sort))?;
+
+    let mut longs = Vec::new();
+    let mut doubles = Vec::new();
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let (x, undef) = input.get(i, nelem);
+        let xi = input.get_i64(i, nelem).0;
+        if diff {
+            /* a gap makes this element undefined, but the previous value still
+            advances past it */
+            let bad = undef || st.undef;
+            nulls.push(bad);
+            if sort == ValueSort::Double {
+                doubles.push(if bad { 0.0 } else { x - st.prev });
+            } else {
+                longs.push(if bad { 0 } else { xi.wrapping_sub(st.prev_i) });
+            }
+            st.prev = x;
+            st.prev_i = xi;
+            st.undef = undef;
+        } else {
+            if !undef {
+                st.prev += x;
+                st.prev_i = st.prev_i.wrapping_add(xi);
+            }
+            nulls.push(false);
+            if sort == ValueSort::Double {
+                doubles.push(st.prev);
+            } else {
+                longs.push(st.prev_i);
+            }
+        }
+    }
+    let data = if sort == ValueSort::Double {
+        ArrayData::Double(doubles)
+    } else {
+        ArrayData::Long(longs)
+    };
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(data, nulls).with_nelem(nelem),
+    ))
 }
 
 /// The shape of an evaluated argument: its elements per row and axis lengths.
@@ -1681,6 +1791,7 @@ mod tests {
             n_data_rows: n_rows,
             total_rows: n_rows,
             first_row: 1,
+            accum: RefCell::new(vec![AccumState::default(); 4]),
         }
     }
 
@@ -1823,6 +1934,7 @@ mod tests {
             n_data_rows: 5,
             total_rows: total,
             first_row,
+            accum: RefCell::new(Vec::new()),
         }
     }
 
@@ -1878,6 +1990,7 @@ mod tests {
             n_data_rows: 3,
             total_rows: 10,
             first_row: 3,
+            accum: RefCell::new(Vec::new()),
         };
         let e = Expr::Offset { col: 0, offset: -1 };
         assert!(matches!(e.evaluate(&b), Err(ValueError::NeedsReload)));
@@ -1896,6 +2009,85 @@ mod tests {
             longs(&Expr::Column(0).evaluate(&b).unwrap()),
             vec![10, 20, 30]
         );
+    }
+
+    /// Evaluate `e` over two consecutive batches, sharing one accumulator
+    /// vector the way the bridge lends it between calls.
+    fn over_two_batches(e: &Expr, first: &[c_long], second: &[c_long]) -> Vec<c_long> {
+        let mut state = vec![AccumState::default(); 1];
+        let mut out = Vec::new();
+        for (i, rows) in [first, second].iter().enumerate() {
+            let mut b = batch(vec![long_col(rows)], rows.len() as c_long);
+            b.first_row = 1 + i as c_long * first.len() as c_long;
+            b.total_rows = (first.len() + second.len()) as c_long;
+            b.n_data_rows = rows.len() as c_long;
+            b.first_data_row = b.first_row;
+            *b.accum.borrow_mut() = core::mem::take(&mut state);
+            out.extend(longs(&e.evaluate(&b).unwrap()));
+            state = core::mem::take(&mut b.accum.borrow_mut());
+        }
+        out
+    }
+
+    #[test]
+    fn accum_runs_a_total_across_the_batch_boundary() {
+        let e = Expr::Accum {
+            id: 0,
+            diff: false,
+            arg: Box::new(Expr::Column(0)),
+        };
+        /* the second batch must continue from 6, not restart */
+        assert_eq!(
+            over_two_batches(&e, &[1, 2, 3], &[4, 5]),
+            vec![1, 3, 6, 10, 15]
+        );
+    }
+
+    #[test]
+    fn seqdiff_remembers_the_last_element_of_the_previous_batch() {
+        let e = Expr::Accum {
+            id: 0,
+            diff: true,
+            arg: Box::new(Expr::Column(0)),
+        };
+        /* the first element differences against zero, and 10 against 3 */
+        assert_eq!(
+            over_two_batches(&e, &[1, 2, 3], &[10, 20]),
+            vec![1, 1, 1, 7, 10]
+        );
+    }
+
+    #[test]
+    fn accum_skips_undefined_elements_and_is_never_null() {
+        let mut b = batch(vec![long_col(&[7, 0, 10])], 3);
+        b.columns[0].nulls = vec![false, true, false];
+        let e = Expr::Accum {
+            id: 0,
+            diff: false,
+            arg: Box::new(Expr::Column(0)),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.data(), &ArrayData::Long(vec![7, 7, 17]));
+        assert!((0..3).all(|i| !a.is_null(i)), "ACCUM is never undefined");
+    }
+
+    #[test]
+    fn seqdiff_is_undefined_on_both_sides_of_a_gap() {
+        let mut b = batch(vec![long_col(&[1, 0, 10])], 3);
+        b.columns[0].nulls = vec![false, true, false];
+        let e = Expr::Accum {
+            id: 0,
+            diff: true,
+            arg: Box::new(Expr::Column(0)),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!(!a.is_null(0));
+        assert!(a.is_null(1), "the gap itself");
+        assert!(a.is_null(2), "and the element after it");
     }
 
     fn matrix_batch() -> Batch {
@@ -2143,6 +2335,7 @@ mod tests {
             n_data_rows: 3,
             total_rows: 13,
             first_row: 11,
+            accum: RefCell::new(Vec::new()),
         };
         assert_eq!(
             longs(&Expr::RowNumber.evaluate(&b).unwrap()),

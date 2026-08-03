@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,455 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,475 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,7 +813,7 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 30 | function call — `ACCUM`/`SEQDIFF` (20) and the random generators (10) |
+| 10 | the random generators (see below) |
 | 90 | bit-string **result** (see below) |
 | 6 | row offset of a string column |
 | 2 | subscript slice (see below) |
@@ -867,13 +867,38 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, row offsets, `ELEMENTNUM`,
+vector literals, fully-indexed subscripts, row offsets, `ACCUM`, `SEQDIFF`,
+`ELEMENTNUM`,
 `AXISELEM`, `ARRAY`, `ANGSEP` and the region
 predicates `NEAR`/`CIRCLE`/`BOX`/`ELLIPSE`, the shape functions
 `NELEM`/`NAXIS`/`NAXES`, the bit strings — `&`, `|`, `!`, `+`
 and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
 the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
 branches are strings.
+
+The random generators are left with the arena deliberately. `RANDOM`,
+`RANDOMN` and `RANDOMP` draw from a global generator seeded from `time()`, so
+the corpus runs them **parse-only** -- no value is ever compared. Porting them
+would move the counter by ten without putting a single verified value through
+the new evaluator, which is the same reason bit-valued results stay where they
+are.
+
+### 10.5 ACCUM and SEQDIFF carry between batches
+
+These two are the only operators with state. `ACCUM` is a running total and
+`SEQDIFF` a running difference, both over the row-major element sequence and
+both continuing across batch boundaries -- the engine keeps that running value
+in the constant subnode each is paired with, writing it back after every batch.
+
+Here each gets a slot in `ParseData::accum_state`, handed to the batch on the
+way in and taken back on the way out, so `Expr::evaluate` stays a `&self` walk.
+The corpus is one batch of three rows, so it cannot test the carry at all; unit
+tests evaluate two consecutive batches sharing one accumulator.
+
+The null rules differ between the two and are worth stating: `ACCUM` skips
+undefined elements -- they add nothing -- and its result is never undefined,
+while `SEQDIFF` is undefined both *at* a gap and immediately *after* one, since
+it has no defined predecessor to difference against.
 
 ### 10.4 Row offsets, and declining a batch
 

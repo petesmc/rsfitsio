@@ -122,10 +122,14 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
             })
             .collect();
         let cols = crate::eval::lower::Columns {
+            accums: core::cell::Cell::new(0),
             shapes,
             sorts: lParse.varData.iter().map(|v| v.dtype).collect(),
         };
-        lParse.expr_tree = crate::eval::lower::lower(&tree, &names, &cols)
+        let lowered = crate::eval::lower::lower(&tree, &names, &cols);
+        /* one running-value slot per ACCUM/SEQDIFF the lowering handed out */
+        lParse.accum_state = vec![Default::default(); cols.accums.get()];
+        lParse.expr_tree = lowered
             .ok()
             /* A bit-string *result* is never retrievable -- the engine reports
             432 for a row-varying one and 433 for a constant -- so leave those
