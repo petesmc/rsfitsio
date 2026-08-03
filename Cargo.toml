@@ -41,10 +41,6 @@ test = true
 default = ["bzip2"]
 bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
-# Route expressions the new columnar evaluator understands through it instead
-# of the Node arena. Off by default while the port is in progress; anything it
-# cannot lower still falls back. See PARSER_MIGRATION.md section 10.
-new-eval = []
 net_services = []
 
 [dependencies]

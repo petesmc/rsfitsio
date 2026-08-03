@@ -687,7 +687,6 @@ pub(crate) struct ParseData {
     /// The expression lowered for the new columnar evaluator, when it could
     /// handle every construct in it. `None` means the `Node` arena evaluates
     /// this expression, which is still the case for most of them.
-    #[cfg(feature = "new-eval")]
     pub expr_tree: Option<crate::eval::expr::Expr>,
     /// The running values of the expression's `ACCUM`/`SEQDIFF` nodes, which
     /// have to survive from one batch to the next.
@@ -725,7 +724,6 @@ impl ParseData {
         self.datatype = Default::default();
         self.hdutype = Default::default();
         self.status = Default::default();
-        #[cfg(feature = "new-eval")]
         {
             self.expr_tree = None;
             self.accum_state = Vec::new();

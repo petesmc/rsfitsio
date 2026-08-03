@@ -25,10 +25,8 @@ pub(crate) mod resolve;
 pub(crate) mod token;
 
 use crate::c_types::c_int;
-#[cfg(feature = "new-eval")]
 use crate::c_types::c_long;
 use crate::eval_defs::ParseData;
-#[cfg(feature = "new-eval")]
 use crate::eval_defs::ValueSort;
 use crate::fitsio::PARSE_SYNTAX_ERR;
 
@@ -104,7 +102,6 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
     /* The arena is still built either way: `ffiprs` reads the result node for
     the expression's datatype and shape, and the new evaluator only replaces
     the per-row computation. */
-    #[cfg(feature = "new-eval")]
     if status == 0 && lParse.status == 0 {
         /* the per-column shapes let the lowering decide whether a subscript
         names a single element or a slice */

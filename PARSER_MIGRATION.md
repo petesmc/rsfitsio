@@ -799,17 +799,17 @@ type erasure and the manual memory are not. So:
 
 ### 10.3 Status
 
-The new evaluator is **wired in behind `--features new-eval`, off by default**.
-`src/eval/` holds the value model, the kernels, the `Expr` tree, the
-`Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,488 of the corpus's 1,852 expressions go
-through it** and all 1,852 still match the golden file byte for byte; the rest
-hit a construct the lowering does not cover yet and fall back.
+The new evaluator is **on**, and the `new-eval` feature flag that used to gate
+it is gone. `src/eval/` holds the value model, the kernels, the `Expr` tree,
+the `Ast -> Expr` lowering and the bridge that writes a result back into the
+arena's result node. **1,488 of the corpus's 1,852 expressions go through it**,
+and all 1,852 still match the golden file byte for byte.
 
-The fallback is per expression and explicit: `eval::lower::lower` returns
-`Unsupported("function call")`, `Unsupported("bit-string column")` and so on,
-so what is missing is greppable rather than mysterious. Counting the corpus by
-reason gives the order to work in:
+The arena walk in `eval_y` has not gone away, and is not expected to: it is
+what the evaluator falls back *to*. The fallback is explicit -- `eval::lower`
+returns `Unsupported("...")` naming the construct, and `bridge::evaluate`
+returns whether it handled the batch -- so what goes where is greppable rather
+than mysterious. Counting the corpus by reason:
 
 | remaining | reason |
 |---:|---|
