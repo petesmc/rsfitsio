@@ -59,6 +59,8 @@ pub(crate) struct Columns {
     /// What each GTI call read while the arena was built, keyed by the call's
     /// byte offset. The file navigation happens once, there.
     pub(crate) gti: crate::parser::lower::GtiLoads,
+    /// And the region each `REGFILTER` parsed.
+    pub(crate) regions: crate::parser::lower::RegionLoads,
     /// Hands out a slot to each `ACCUM`/`SEQDIFF` as it is lowered, so the
     /// running values can live in one flat vector that survives between
     /// batches. Interior mutability keeps `lower` taking `&Columns`.
@@ -163,6 +165,7 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
         Expr::GtiOverlap { start, stop, .. } => {
             Shape::combine(&shape_of(start, cols)?, &shape_of(stop, cols)?)
         }
+        Expr::RegFilter { x, y, .. } => Shape::combine(&shape_of(x, cols)?, &shape_of(y, cols)?),
         /* ACCUM and SEQDIFF are elementwise, so the shape carries through */
         Expr::Accum { arg, .. } => shape_of(arg, cols)?,
         Expr::Arith { op, lhs, rhs } => {
@@ -436,21 +439,14 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         design addition rather than another kernel. */
         /* A subscript needs the operand's shape, not just its element count:
         on a 2x3 column `M[1,1]` picks an element but `M[1]` selects a whole
-        slice. The shape is known here — for a column from the table, for a
-        vector literal from its length — so only the fully-indexed form is
-        lowered and a slice still falls back. */
+        slice. `shape_of` knows the shape of any lowered expression, so the
+        operand can be anything -- a column, a vector literal, or something
+        computed like `(VECCOL + 1)[2]`. */
         AstKind::Deref { base, idx } => {
-            let naxes = match &base.kind {
-                AstKind::Ident(_) | AstKind::Keyword(_) => match names.get(&base.at) {
-                    Some(ParserValue::Column { index, .. }) => cols
-                        .shapes
-                        .get(*index as usize)
-                        .map(|(_, naxes)| naxes.iter().map(|&n| n as usize).collect::<Vec<_>>())
-                        .ok_or(Unsupported("subscript of unknown column"))?,
-                    _ => return Err(Unsupported("subscript of a scalar")),
-                },
-                AstKind::Vector(items) => vec![items.len()],
-                _ => return Err(Unsupported("subscript of a computed value")),
+            let lowered_base = lower(base, names, cols)?;
+            let naxes: Vec<usize> = match shape_of(&lowered_base, cols) {
+                Some(shape) => shape.naxes.iter().map(|&n| n.max(0) as usize).collect(),
+                None => return Err(Unsupported("subscript of an unknown shape")),
             };
             /* One index against a shape with more axes selects a slice
             rather than an element -- the engine only does that for a constant
@@ -465,18 +461,17 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 };
                 let inner = &naxes[..naxes.len() - 1];
                 return Ok(Expr::Slice {
-                    base: Box::new(lower(base, names, cols)?),
+                    base: Box::new(lowered_base),
                     index,
                     run: inner.iter().product::<usize>().max(1),
                     axis_len: *naxes.last().unwrap(),
                     naxes: inner.to_vec(),
                 });
             }
-            let base = lower(base, names, cols)?;
             let idx: Result<Vec<Expr>, Unsupported> =
                 idx.iter().map(|e| lower(e, names, cols)).collect();
             Ok(Expr::Deref {
-                base: Box::new(base),
+                base: Box::new(lowered_base),
                 idx: idx?,
                 naxes,
             })
@@ -492,6 +487,27 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             /* GTIFILTER and GTIFIND read their intervals while the arena was
             built; the lowering picks them up rather than reading the file
             again. GTIOVERLAP and the region filters are not ported yet. */
+            if *kind == CallKind::RegFilter {
+                let Some(region) = cols.regions.get(&ast.at) else {
+                    return Err(Unsupported("REGFILTER with no recorded region"));
+                };
+                /* the coordinates are the second and third arguments when
+                given, and the X and Y columns New_REG resolved otherwise */
+                let (x, y) = match (args.get(1), args.get(2)) {
+                    (Some(a), Some(b)) => (lower(a, names, cols)?, lower(b, names, cols)?),
+                    /* `regfilter("f.reg")` leaves the coordinates to the
+                    columns New_REG resolved */
+                    _ => match (region.x_col, region.y_col) {
+                        (Some(x), Some(y)) => (Expr::Column(x as usize), Expr::Column(y as usize)),
+                        _ => return Err(Unsupported("REGFILTER with no coordinate columns")),
+                    },
+                };
+                return Ok(Expr::RegFilter {
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    region: alloc::rc::Rc::new(region.region.clone()),
+                });
+            }
             if *kind == CallKind::GtiOverlap {
                 let Some(data) = cols.gti.get(&ast.at) else {
                     return Err(Unsupported("GTI call with no recorded load"));
@@ -687,6 +703,7 @@ mod tests {
             &Resolutions::new(),
             &Columns {
                 gti: Default::default(),
+                regions: Default::default(),
                 accums: core::cell::Cell::new(0),
                 shapes: Vec::new(),
                 sorts: Vec::new(),
@@ -838,12 +855,19 @@ mod tests {
         );
     }
 
-    /// The region filters are the last construct still left with the arena.
+    /// Every construct the parser accepts now lowers. What is left are the
+    /// calls whose data is loaded while the arena is built -- a GTI's
+    /// intervals, a region file -- which cannot lower without that load, and
+    /// say so rather than inventing an empty one.
     #[test]
-    fn unported_constructs_name_themselves() {
+    fn a_load_bearing_call_without_its_load_says_so() {
         assert_eq!(
-            try_lower("REGFILTER('x.reg')"),
-            Err(Unsupported("function call"))
+            try_lower("REGFILTER('x.reg', 1, 2)"),
+            Err(Unsupported("REGFILTER with no recorded region"))
+        );
+        assert_eq!(
+            try_lower("GTIOVERLAP('f', 1, 2)"),
+            Err(Unsupported("GTI call with no recorded load"))
         );
     }
 
@@ -851,8 +875,8 @@ mod tests {
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
         assert_eq!(
-            try_lower("1 + REGFILTER('x.reg')"),
-            Err(Unsupported("function call"))
+            try_lower("1 + REGFILTER('x.reg', 1, 2)"),
+            Err(Unsupported("REGFILTER with no recorded region"))
         );
     }
 }

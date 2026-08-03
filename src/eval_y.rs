@@ -4873,7 +4873,7 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                 if fits_in_region(
                     Xval,
                     Yval,
-                    &mut *(lParse.Nodes[theRegion])
+                    &*(lParse.Nodes[theRegion])
                         .value
                         .data
                         .raw()
@@ -4936,7 +4936,7 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(elem as isize) = if fits_in_region(
                             Xval,
                             Yval,
-                            &mut *(lParse.Nodes[theRegion])
+                            &*(lParse.Nodes[theRegion])
                                 .value
                                 .data
                                 .raw()

@@ -19,6 +19,8 @@ use super::ast::{Ast, AstKind, BinOp, UnOp};
 use super::error::ParseError;
 use std::collections::HashMap;
 
+use crate::region::SAORegion;
+
 use super::resolve::Resolutions;
 use super::token::CallKind;
 use crate::c_types::{c_char, c_double, c_int, c_long};
@@ -85,12 +87,27 @@ pub(crate) struct GtiData {
 /// The GTI loads of one expression, keyed by the call's byte offset.
 pub(crate) type GtiLoads = HashMap<usize, GtiData>;
 
+/// The regions of one expression, keyed by the call's byte offset.
+pub(crate) type RegionLoads = HashMap<usize, RegionData>;
+
+/// The region a `REGFILTER` call parsed, and the coordinate columns it used.
+#[derive(Clone, Debug)]
+pub(crate) struct RegionData {
+    pub(crate) region: SAORegion,
+    /// The X and Y columns `New_REG` resolved when the call did not name
+    /// expressions, as `regfilter("f.reg")` does not.
+    pub(crate) x_col: Option<c_int>,
+    pub(crate) y_col: Option<c_int>,
+}
+
 pub(crate) struct Lowerer<'a> {
     pub(crate) p: &'a mut ParseData,
     /// Names already resolved by [`super::resolve`], keyed by byte offset.
     pub(crate) names: &'a Resolutions,
     /// What each GTI call read, for the columnar lowering that follows.
     pub(crate) gti: GtiLoads,
+    /// And likewise the region each `REGFILTER` parsed.
+    pub(crate) regions: RegionLoads,
 }
 
 impl Lowerer<'_> {
@@ -1336,6 +1353,31 @@ impl Lowerer<'_> {
         Ok(n)
     }
 
+    /// Copy the region `New_REG` just parsed out of the node holding it.
+    ///
+    /// The node owns a raw `SAORegion` for the arena's own use, so this takes
+    /// a clone rather than the pointer: two owners of one leaked box is not
+    /// worth the saving.
+    fn record_region(&mut self, n: NodeId, at: usize) {
+        let held = &self.p.Nodes[self.p.Nodes[n as usize].SubNodes[0]];
+        let raw = held.value.data.raw().cast::<SAORegion>();
+        if raw.is_null() {
+            return;
+        }
+        let region = unsafe { (*raw).clone() };
+        let node = &self.p.Nodes[n as usize];
+        let x_col = self.p.Nodes[node.SubNodes[1]].operation.column();
+        let y_col = self.p.Nodes[node.SubNodes[2]].operation.column();
+        self.regions.insert(
+            at,
+            RegionData {
+                region,
+                x_col,
+                y_col,
+            },
+        );
+    }
+
     /// Copy the intervals `New_GTI` just loaded out of the node holding them.
     ///
     /// They live in the first subnode as one buffer of `2 * nGTI` doubles:
@@ -1439,6 +1481,8 @@ impl Lowerer<'_> {
             cols = self.literal_str(&args[3], name)?;
         }
         let n = New_REG(self.p, fname.as_mut_ptr(), nx, ny, cols.as_mut_ptr());
-        self.test(n)
+        let n = self.test(n)?;
+        self.record_region(n, at);
+        Ok(n)
     }
 }

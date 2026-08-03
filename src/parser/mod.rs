@@ -88,14 +88,19 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
 
     /* the borrow of `lParse` ends with the block, so the result and what the
     GTI calls read on the way come back out together */
-    let (built, gti) = {
+    let (built, gti, regions) = {
         let mut lowerer = lower::Lowerer {
             gti: Default::default(),
+            regions: Default::default(),
             p: lParse,
             names: &names,
         };
         let built = lowerer.lower(&tree);
-        (built, core::mem::take(&mut lowerer.gti))
+        (
+            built,
+            core::mem::take(&mut lowerer.gti),
+            core::mem::take(&mut lowerer.regions),
+        )
     };
     let status = match built {
         Ok(node) => {
@@ -126,6 +131,7 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
             .collect();
         let cols = crate::eval::lower::Columns {
             gti,
+            regions,
             accums: core::cell::Cell::new(0),
             shapes,
             sorts: lParse.varData.iter().map(|v| v.dtype).collect(),

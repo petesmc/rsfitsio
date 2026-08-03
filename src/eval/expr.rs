@@ -17,6 +17,7 @@ use super::kernel::{self, Arith, Compare};
 use super::regions;
 use super::strings;
 use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
+use crate::region::{SAORegion, fits_in_region};
 use core::ffi::c_void;
 
 use crate::c_types::{c_char, c_long};
@@ -258,6 +259,12 @@ pub(crate) enum Expr {
         time: Box<Expr>,
         intervals: Rc<GtiIntervals>,
     },
+    /// `REGFILTER(file, x, y)`: whether a point is inside the region.
+    RegFilter {
+        x: Box<Expr>,
+        y: Box<Expr>,
+        region: Rc<SAORegion>,
+    },
     /// `GTIOVERLAP(file, start, stop)`: how much of an event's span falls in
     /// good time.
     GtiOverlap {
@@ -453,6 +460,10 @@ impl Expr {
             Expr::GtiOverlap { start, stop, .. } => {
                 f(start);
                 f(stop);
+            }
+            Expr::RegFilter { x, y, .. } => {
+                f(x);
+                f(y);
             }
             Expr::Arith { lhs, rhs, .. }
             | Expr::Compare { lhs, rhs, .. }
@@ -782,6 +793,7 @@ impl Expr {
             Expr::Deref { base, .. } => base.sort(batch_sorts),
             Expr::Slice { base, .. } => base.sort(batch_sorts),
             Expr::GtiOverlap { .. } => ValueSort::Double,
+            Expr::RegFilter { .. } => ValueSort::Boolean,
             Expr::Gti { find, .. } => {
                 if *find {
                     ValueSort::Long
@@ -952,6 +964,11 @@ impl Expr {
                 let a = start.evaluate(batch)?;
                 let b = stop.evaluate(batch)?;
                 gti_overlap(&a, &b, intervals, batch.n_rows.max(0) as usize)
+            }
+
+            Expr::RegFilter { x, y, region } => {
+                let (px, py) = (x.evaluate(batch)?, y.evaluate(batch)?);
+                reg_filter(&px, &py, region, batch.n_rows.max(0) as usize)
             }
 
             Expr::Accum { id, diff, arg } => {
@@ -1477,6 +1494,30 @@ fn gti_overlap(
     }
     Ok(ColumnarValue::Array(
         Array::with_nulls(ArrayData::Double(out), nulls).with_nelem(nelem),
+    ))
+}
+
+/// `REGFILTER`. A row is undefined if either coordinate is.
+fn reg_filter(
+    x: &ColumnarValue,
+    y: &ColumnarValue,
+    region: &SAORegion,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let (px, py) = (x.numeric("REGFILTER")?, y.numeric("REGFILTER")?);
+    let nelem = shape_at_runtime(x).0.max(shape_at_runtime(y).0);
+    let n = rows * nelem;
+    let mut out = Vec::with_capacity(n);
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let (xi, xn) = px.get(i, nelem);
+        let (yi, yn) = py.get(i, nelem);
+        let null = xn || yn;
+        nulls.push(null);
+        out.push(!null && fits_in_region(xi, yi, region) != 0);
+    }
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(ArrayData::Boolean(out), nulls).with_nelem(nelem),
     ))
 }
 
