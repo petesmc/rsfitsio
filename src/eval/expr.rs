@@ -9,7 +9,7 @@
 //! Evaluation is per batch of rows, matching how `ffiter` drives the engine.
 
 use super::kernel::{self, Arith, Compare};
-use super::value::{Array, ArrayData, ColumnarValue, Scalar, ValueError};
+use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
 use crate::c_types::{c_char, c_long};
 use crate::eval_defs::{ParseData, ValueSort};
 
@@ -158,6 +158,14 @@ pub(crate) enum Expr {
     /// that row, so the result has as many elements per row as the literal
     /// has entries.
     Vector(Vec<Expr>),
+    /// `base[i, j, ...]` with one subscript per axis, so the result is a
+    /// single element per row.
+    Deref {
+        base: Box<Expr>,
+        idx: Vec<Expr>,
+        /// The operand's axis lengths, innermost first, resolved at lowering.
+        naxes: Vec<usize>,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -173,6 +181,8 @@ pub(crate) struct ColumnBatch {
     pub(crate) nulls: Vec<bool>,
     /// Elements per row, so a vector column can be reshaped.
     pub(crate) nelem: c_long,
+    /// Axis lengths within a row, innermost first.
+    pub(crate) naxes: Vec<usize>,
 }
 
 /// The rows an [`Expr`] is evaluated over.
@@ -206,6 +216,7 @@ impl Batch {
                     data: ArrayData::Long(Vec::new()),
                     nulls: Vec::new(),
                     nelem: var.nelem,
+                    naxes: Vec::new(),
                 });
                 continue;
             }
@@ -243,6 +254,10 @@ impl Batch {
                 data,
                 nulls,
                 nelem: var.nelem,
+                naxes: var.naxes[..(var.naxis.max(0) as usize).min(var.naxes.len())]
+                    .iter()
+                    .map(|&n| n.max(0) as usize)
+                    .collect(),
             });
         }
 
@@ -283,6 +298,7 @@ impl Expr {
                 .map(|e| e.sort(batch_sorts))
                 .max()
                 .unwrap_or(ValueSort::Long),
+            Expr::Deref { base, .. } => base.sort(batch_sorts),
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid => ValueSort::Long,
@@ -327,7 +343,8 @@ impl Expr {
                 let col = &batch.columns[*i];
                 Ok(ColumnarValue::Array(
                     Array::with_nulls(col.data.clone(), col.nulls.clone())
-                        .with_nelem(col.nelem.max(1) as usize),
+                        .with_nelem(col.nelem.max(1) as usize)
+                        .with_naxes(col.naxes.clone()),
                 ))
             }
 
@@ -375,6 +392,11 @@ impl Expr {
                 call(*func, &vals?)
             }
 
+            Expr::Deref { base, idx, naxes } => {
+                let base = base.evaluate(batch)?;
+                let idx: Result<Vec<_>, _> = idx.iter().map(|e| e.evaluate(batch)).collect();
+                deref(&base, &idx?, naxes, batch.n_rows.max(0) as usize)
+            }
             Expr::Vector(items) => {
                 let vals: Result<Vec<_>, _> = items.iter().map(|e| e.evaluate(batch)).collect();
                 vector(&vals?, batch.n_rows.max(0) as usize)
@@ -690,6 +712,74 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
     }
 }
 
+/// `base[i, j, ...]` with every axis subscripted, so each row yields one
+/// element. `Do_Deref` folds the subscripts innermost-last:
+/// `elem = naxes[i] * elem + idx[i] - 1`, and an out-of-range subscript is a
+/// range error rather than a null.
+fn deref(
+    base: &ColumnarValue,
+    idx: &[ColumnarValue],
+    naxes: &[usize],
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let ColumnarValue::Array(a) = base else {
+        /* the parser rejects indexing a scalar, so this is a wholly null
+        operand: it stays null, one element per row */
+        return Ok(ColumnarValue::Null(base.sort()));
+    };
+    let subs: Vec<NumericInput> = idx
+        .iter()
+        .map(|v| v.numeric("subscript"))
+        .collect::<Result<_, _>>()?;
+
+    let mut picked = Vec::with_capacity(rows);
+    for row in 0..rows {
+        let mut elem: i64 = 0;
+        for (axis, sub) in naxes.iter().zip(&subs).rev() {
+            let (i, null) = sub.get_i64(row, 1);
+            if null {
+                /* an undefined subscript cannot pick an element */
+                elem = -1;
+                break;
+            }
+            if i < 1 || i > *axis as i64 {
+                return Err(ValueError::OutOfRange);
+            }
+            elem = *axis as i64 * elem + i - 1;
+        }
+        picked.push(if elem < 0 {
+            None
+        } else {
+            Some(row * a.nelem() + elem as usize)
+        });
+    }
+    Ok(ColumnarValue::Array(gather_at(a, &picked)))
+}
+
+/// Take one element of `a` per row, `None` marking a row whose subscript was
+/// undefined. The result holds one element per row.
+fn gather_at(a: &Array, picked: &[Option<usize>]) -> Array {
+    let nulls = picked
+        .iter()
+        .map(|p| p.is_none_or(|i| a.is_null(i)))
+        .collect();
+    let data = match a.data() {
+        ArrayData::Long(d) => ArrayData::Long(pick(picked, d, 0)),
+        ArrayData::Double(d) => ArrayData::Double(pick(picked, d, 0.0)),
+        ArrayData::Boolean(d) => ArrayData::Boolean(pick(picked, d, false)),
+        ArrayData::Str(d) => ArrayData::Str(pick(picked, d, Vec::new())),
+        ArrayData::Bits(d) => ArrayData::Bits(pick(picked, d, Vec::new())),
+    };
+    Array::with_nulls(data, nulls)
+}
+
+fn pick<T: Clone>(picked: &[Option<usize>], src: &[T], fill: T) -> Vec<T> {
+    picked
+        .iter()
+        .map(|p| p.and_then(|i| src.get(i)).cloned().unwrap_or(fill.clone()))
+        .collect()
+}
+
 /// Build `{ a, b, c }`: each row gets one element per entry, in order.
 fn vector(items: &[ColumnarValue], rows: usize) -> Result<ColumnarValue, ValueError> {
     if items.is_empty() {
@@ -918,11 +1008,95 @@ mod tests {
         }
     }
 
+    /// A 2x3 column holding 1..6 in the first row and 11..16 in the second,
+    /// laid out innermost axis first as the engine stores it.
+    fn matrix_col() -> ColumnBatch {
+        ColumnBatch {
+            data: ArrayData::Long((1..=6).chain(11..=16).collect()),
+            nulls: Vec::new(),
+            nelem: 6,
+            naxes: vec![2, 3],
+        }
+    }
+
+    #[test]
+    fn a_full_subscript_picks_one_element_per_row() {
+        let b = batch(vec![matrix_col()], 2);
+        /* M[1,1] is the first element of each row, M[2,3] the last */
+        for (idx, want) in [([1, 1], [1, 11]), ([2, 3], [6, 16])] {
+            let e = Expr::Deref {
+                base: Box::new(Expr::Column(0)),
+                idx: idx
+                    .iter()
+                    .map(|&i| Expr::Literal(Scalar::Long(i)))
+                    .collect(),
+                naxes: vec![2, 3],
+            };
+            let got = e.evaluate(&b).unwrap();
+            let ColumnarValue::Array(a) = got else {
+                panic!("expected an array")
+            };
+            assert_eq!(a.data(), &ArrayData::Long(want.to_vec()));
+            assert_eq!(a.len(), 2, "one element per row");
+        }
+    }
+
+    #[test]
+    fn a_subscript_outside_the_axis_is_a_range_error() {
+        let b = batch(vec![matrix_col()], 2);
+        for idx in [[3, 1], [1, 4], [0, 0]] {
+            let e = Expr::Deref {
+                base: Box::new(Expr::Column(0)),
+                idx: idx
+                    .iter()
+                    .map(|&i| Expr::Literal(Scalar::Long(i)))
+                    .collect(),
+                naxes: vec![2, 3],
+            };
+            assert!(
+                matches!(e.evaluate(&b), Err(ValueError::OutOfRange)),
+                "{idx:?} is out of a 2x3 column"
+            );
+        }
+    }
+
+    #[test]
+    fn an_undefined_subscript_yields_a_null() {
+        let b = batch(vec![matrix_col()], 2);
+        let e = Expr::Deref {
+            base: Box::new(Expr::Column(0)),
+            idx: vec![Expr::Literal(Scalar::Long(1)), Expr::Null(ValueSort::Long)],
+            naxes: vec![2, 3],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!((0..2).all(|i| a.is_null(i)));
+    }
+
+    #[test]
+    fn a_subscript_of_a_vector_literal_reads_that_entry() {
+        let b = batch(vec![], 2);
+        let e = Expr::Deref {
+            base: Box::new(Expr::Vector(vec![
+                Expr::Literal(Scalar::Long(7)),
+                Expr::Literal(Scalar::Long(9)),
+            ])),
+            idx: vec![Expr::Literal(Scalar::Long(2))],
+            naxes: vec![2],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.data(), &ArrayData::Long(vec![9, 9]));
+    }
+
     fn long_col(v: &[c_long]) -> ColumnBatch {
         ColumnBatch {
             data: ArrayData::Long(v.to_vec()),
             nulls: Vec::new(),
             nelem: 1,
+            naxes: Vec::new(),
         }
     }
 

@@ -26,7 +26,7 @@ pub(crate) struct Unsupported(pub(crate) &'static str);
 type Res = Result<Expr, Unsupported>;
 
 /// Lower a whole expression, or report the first construct not yet ported.
-pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
+pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Res {
     match &ast.kind {
         AstKind::Long(v) => Ok(Expr::Literal(Scalar::Long(*v))),
         AstKind::Double(v) => Ok(Expr::Literal(Scalar::Double(*v))),
@@ -49,7 +49,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         },
 
         AstKind::Unary { op, arg } => {
-            let inner = Box::new(lower(arg, names)?);
+            let inner = Box::new(lower(arg, names, shapes)?);
             Ok(Expr::Unary {
                 op: match op {
                     UnOp::Neg => Unary::Neg,
@@ -65,8 +65,8 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         }
 
         AstKind::Binary { op, lhs, rhs } => {
-            let l = Box::new(lower(lhs, names)?);
-            let r = Box::new(lower(rhs, names)?);
+            let l = Box::new(lower(lhs, names, shapes)?);
+            let r = Box::new(lower(rhs, names, shapes)?);
             if let Some(a) = arith_of(*op) {
                 return Ok(Expr::Arith {
                     op: a,
@@ -124,25 +124,25 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         }
 
         AstKind::Ternary { cond, then, els } => Ok(Expr::IfThenElse {
-            cond: Box::new(lower(cond, names)?),
-            then: Box::new(lower(then, names)?),
-            els: Box::new(lower(els, names)?),
+            cond: Box::new(lower(cond, names, shapes)?),
+            then: Box::new(lower(then, names, shapes)?),
+            els: Box::new(lower(els, names, shapes)?),
         }),
 
         /* `x = lo : hi` desugars to `lo <= x && x <= hi`, as `eval.y` did */
         AstKind::Range { val, lo, hi } => {
-            let v = lower(val, names)?;
+            let v = lower(val, names, shapes)?;
             Ok(Expr::Logic {
                 op: Logic::And,
                 lhs: Box::new(Expr::Compare {
                     op: Compare::Lte,
-                    lhs: Box::new(lower(lo, names)?),
+                    lhs: Box::new(lower(lo, names, shapes)?),
                     rhs: Box::new(v.clone()),
                 }),
                 rhs: Box::new(Expr::Compare {
                     op: Compare::Lte,
                     lhs: Box::new(v),
-                    rhs: Box::new(lower(hi, names)?),
+                    rhs: Box::new(lower(hi, names, shapes)?),
                 }),
             })
         }
@@ -156,10 +156,40 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         a whole slice, so even the single-subscript form cannot be lowered
         without the shape. Threading `naxes` through the value model is a
         design addition rather than another kernel. */
-        AstKind::Deref { .. } => Err(Unsupported("subscript")),
+        /* A subscript needs the operand's shape, not just its element count:
+        on a 2x3 column `M[1,1]` picks an element but `M[1]` selects a whole
+        slice. The shape is known here — for a column from the table, for a
+        vector literal from its length — so only the fully-indexed form is
+        lowered and a slice still falls back. */
+        AstKind::Deref { base, idx } => {
+            let naxes = match &base.kind {
+                AstKind::Ident(_) | AstKind::Keyword(_) => match names.get(&base.at) {
+                    Some(ParserValue::Column { index, .. }) => shapes
+                        .get(*index as usize)
+                        .cloned()
+                        .ok_or(Unsupported("subscript of unknown column"))?,
+                    _ => return Err(Unsupported("subscript of a scalar")),
+                },
+                AstKind::Vector(items) => vec![items.len()],
+                _ => return Err(Unsupported("subscript of a computed value")),
+            };
+            if naxes.len() != idx.len() {
+                /* a partial index selects a slice, which needs a shape-aware
+                gather rather than one element per row */
+                return Err(Unsupported("subscript slice"));
+            }
+            let base = lower(base, names, shapes)?;
+            let idx: Result<Vec<Expr>, Unsupported> =
+                idx.iter().map(|e| lower(e, names, shapes)).collect();
+            Ok(Expr::Deref {
+                base: Box::new(base),
+                idx: idx?,
+                naxes,
+            })
+        }
         AstKind::Vector(items) => {
             let lowered: Result<Vec<Expr>, Unsupported> =
-                items.iter().map(|e| lower(e, names)).collect();
+                items.iter().map(|e| lower(e, names, shapes)).collect();
             Ok(Expr::Vector(lowered?))
         }
         AstKind::Call { kind, name, args } => {
@@ -184,7 +214,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
                 return Err(Unsupported("function call"));
             }
             let lowered: Result<Vec<Expr>, Unsupported> =
-                args.iter().map(|a| lower(a, names)).collect();
+                args.iter().map(|a| lower(a, names, shapes)).collect();
             Ok(Expr::Call {
                 func,
                 args: lowered?,
@@ -266,7 +296,7 @@ mod tests {
     }
 
     fn try_lower(src: &str) -> Res {
-        lower(&ast(src), &Resolutions::new())
+        lower(&ast(src), &Resolutions::new(), &[])
     }
 
     #[test]

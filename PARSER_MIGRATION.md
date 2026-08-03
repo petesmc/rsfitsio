@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,124 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,170 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -814,29 +814,42 @@ reason gives the order to work in:
 | remaining | reason |
 |---:|---|
 | 156 | function call — `STRSTR`/`STRMID`, the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
-| 80 | bit-string column |
+| 88 | bit-string column |
 | 74 | row offset |
-| 56 | subscript |
 | 43 | string column |
 | 40 | bit-string literal |
 | 12 | string literal |
+| 2 | subscript slice (see below) |
+| 2 | `#SNULL` |
+| 1 | string keyword |
 
-Two of those are structural rather than a missing kernel:
+The bit-string column count rose from 80 as subscripting landed: `BITCOL[2]`
+now reaches its operand before giving up, so it is counted by the operand's
+reason rather than by the subscript.
 
-* **Subscripting needs `naxes`, not just the element count.** With a 2×3
-  column, `M[1,1]` picks an element but `M[1]` selects a whole *slice* — so
-  even the single-subscript form cannot be lowered from an element count
-  alone. `Array` would have to carry the shape.
+What is left divides in two. The strings and bit strings — 183 lines — are new
+kernel families over `ArrayData::Str` and `ArrayData::Bits`, which the value
+model already has variants for but nothing yet produces or consumes. The rest
+are individual functions.
+
+One structural item remains:
 
 * **The shape functions are folded before the new lowering sees them.** The
   arena lowering turns `NELEM(V)` into a constant from the node's `nelem`;
   `eval::lower` works from the `Ast`, where that size is not known. They need
   the sizes threading through, or the fold moving earlier.
 
+The other structural item — subscripting — is **done**. `Array` now carries
+`naxes`, and `parser::mod` hands the per-column shapes to the lowering so it
+can tell an element from a slice at lowering time: `M[1,1]` on a 2×3 column
+lowers, `M[1]` returns `Unsupported("subscript slice")` and falls back, because
+selecting a slice needs a shape-aware gather rather than one element per row.
+Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
+
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-and vector literals.
+vector literals, and fully-indexed subscripts.
 
 ### 10.4 What the corpus caught
 

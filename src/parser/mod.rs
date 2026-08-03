@@ -102,7 +102,19 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
     the per-row computation. */
     #[cfg(feature = "new-eval")]
     if status == 0 && lParse.status == 0 {
-        lParse.expr_tree = crate::eval::lower::lower(&tree, &names).ok();
+        /* the per-column shapes let the lowering decide whether a subscript
+        names a single element or a slice */
+        let shapes: Vec<Vec<usize>> = lParse
+            .varData
+            .iter()
+            .map(|v| {
+                v.naxes[..(v.naxis.max(0) as usize).min(v.naxes.len())]
+                    .iter()
+                    .map(|&n| n.max(0) as usize)
+                    .collect()
+            })
+            .collect();
+        lParse.expr_tree = crate::eval::lower::lower(&tree, &names, &shapes).ok();
     }
 
     status

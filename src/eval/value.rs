@@ -113,6 +113,12 @@ pub(crate) struct Array {
     /// `vector1 > 1 ? buf[elem] : buf[row]`; here it is a property of the
     /// value, and [`Array::index_for`] does the mapping once.
     nelem: usize,
+    /// Length of each axis, innermost first, when the elements of a row form a
+    /// multi-dimensional array. Empty means one dimension of `nelem`.
+    ///
+    /// Subscripting needs this rather than just `nelem`: on a 2x3 column
+    /// `M[1,1]` picks an element but `M[1]` selects a whole slice.
+    naxes: Vec<usize>,
 }
 
 impl Array {
@@ -122,6 +128,7 @@ impl Array {
             data,
             nulls: Vec::new(),
             nelem: 1,
+            naxes: Vec::new(),
         }
     }
 
@@ -134,6 +141,7 @@ impl Array {
             data,
             nulls,
             nelem: 1,
+            naxes: Vec::new(),
         }
     }
 
@@ -145,6 +153,21 @@ impl Array {
 
     pub(crate) fn nelem(&self) -> usize {
         self.nelem
+    }
+
+    pub(crate) fn with_naxes(mut self, naxes: Vec<usize>) -> Self {
+        self.naxes = naxes;
+        self
+    }
+
+    /// The axis lengths, innermost first. A one-dimensional value reports a
+    /// single axis of `nelem`.
+    pub(crate) fn naxes(&self) -> Vec<usize> {
+        if self.naxes.is_empty() {
+            vec![self.nelem]
+        } else {
+            self.naxes.clone()
+        }
     }
 
     /// Which of *this* array's elements corresponds to element `i` of a result
@@ -251,6 +274,8 @@ pub(crate) enum ValueError {
     BadSort(&'static str, ValueSort),
     /// Two operands whose sorts have no common operation.
     Incompatible(&'static str, ValueSort, ValueSort),
+    /// A subscript fell outside the operand's bounds.
+    OutOfRange,
 }
 
 /// Helper for reading a numeric operand element by element, whether it is a
