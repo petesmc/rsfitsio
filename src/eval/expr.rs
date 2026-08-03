@@ -1556,7 +1556,7 @@ fn deref(
 
     let mut picked = Vec::with_capacity(rows);
     for row in 0..rows {
-        let mut elem: i64 = 0;
+        let mut elem: c_long = 0;
         for (axis, sub) in naxes.iter().zip(&subs).rev() {
             let (i, null) = sub.get_i64(row, 1);
             if null {
@@ -1564,10 +1564,10 @@ fn deref(
                 elem = -1;
                 break;
             }
-            if i < 1 || i > *axis as i64 {
+            if i < 1 || i > *axis as c_long {
                 return Err(ValueError::OutOfRange);
             }
-            elem = *axis as i64 * elem + i - 1;
+            elem = *axis as c_long * elem + i - 1;
         }
         picked.push(if elem < 0 {
             None
@@ -1668,7 +1668,9 @@ fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
             Func::Sum => Ok(ColumnarValue::Scalar(Scalar::Long(bits::count_ones(
                 t.get(0).0,
             )))),
-            Func::NValid => Ok(ColumnarValue::Scalar(Scalar::Long(t.get(0).0.len() as i64))),
+            Func::NValid => Ok(ColumnarValue::Scalar(Scalar::Long(
+                t.get(0).0.len() as c_long
+            ))),
             _ => Err(ValueError::BadSort("reduction", ValueSort::Bits)),
         };
     }
@@ -1682,7 +1684,7 @@ fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
             return Ok(ColumnarValue::Scalar(Scalar::Long(1)));
         };
         let out = (0..n)
-            .map(|i| i64::from(!v.text("NVALID").map(|t| t.get(i).1).unwrap_or(true)))
+            .map(|i| c_long::from(!v.text("NVALID").map(|t| t.get(i).1).unwrap_or(true)))
             .collect();
         return Ok(ColumnarValue::Array(Array::new(ArrayData::Long(out))));
     }
@@ -1701,7 +1703,7 @@ fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
         engine's `*_const` kernels compute. */
         let (x, null) = input.get(0, 1);
         return Ok(match func {
-            Func::NValid => ColumnarValue::Scalar(Scalar::Long(i64::from(!null))),
+            Func::NValid => ColumnarValue::Scalar(Scalar::Long(c_long::from(!null))),
             Func::Stddev => ColumnarValue::Scalar(Scalar::Double(0.0)),
             _ if null => ColumnarValue::Null(out),
             Func::Average => ColumnarValue::Scalar(Scalar::Double(x)),

@@ -7,6 +7,8 @@
 
 use core::cmp::Ordering;
 
+use crate::c_types::c_long;
+
 /// `strcmp`'s ordering.
 ///
 /// `Do_BinOp_str` shortcuts on the first character, comparing it as a *signed*
@@ -31,13 +33,13 @@ pub(crate) fn concat(a: &[u8], b: &[u8]) -> Vec<u8> {
 
 /// `STRSTR(a, b)`: the 1-based position of `b` in `a`, or `None` when it does
 /// not occur -- which the engine reports as a *null*, not as 0.
-pub(crate) fn find(a: &[u8], b: &[u8]) -> Option<i64> {
+pub(crate) fn find(a: &[u8], b: &[u8]) -> Option<c_long> {
     if b.is_empty() {
         return Some(1);
     }
     a.windows(b.len())
         .position(|w| w == b)
-        .map(|i| i as i64 + 1)
+        .map(|i| i as c_long + 1)
 }
 
 /// `STRMID(s, pos, len)`, per `cstrmid`.

@@ -9,6 +9,7 @@
 //! longer one's width first, which is what those functions do with their
 //! scratch buffer.
 
+use crate::c_types::c_long;
 use crate::eval_defs::OpCode;
 
 /// Left-pad `bits` with `'0'` to `width`.
@@ -129,8 +130,8 @@ pub(crate) fn cmp_ord(a: &[u8], op: OpCode, b: &[u8]) -> bool {
 }
 
 /// The number of set bits, which `ACCUM` over a bit string counts.
-pub(crate) fn count_ones(bits: &[u8]) -> i64 {
-    bits.iter().filter(|&&c| c == b'1').count() as i64
+pub(crate) fn count_ones(bits: &[u8]) -> c_long {
+    bits.iter().filter(|&&c| c == b'1').count() as c_long
 }
 
 #[cfg(test)]
