@@ -6108,29 +6108,29 @@ pub fn ffcnvthdr2str_safe(
         /* this is a tile compressed image, so need to make an uncompressed */
         /* copy of the image header in memory before concatenating the keywords */
 
-            let mut tempfptr = None;
+        let mut tempfptr = None;
 
-            if fits_create_file(&mut tempfptr, cs!(c"mem://"), status) > 0 {
-                return *status;
-            }
+        if fits_create_file(&mut tempfptr, cs!(c"mem://"), status) > 0 {
+            return *status;
+        }
 
-            let mut tempfptr = tempfptr.unwrap();
+        let mut tempfptr = tempfptr.unwrap();
 
-            if fits_img_decompress_header_safe(fptr, &mut tempfptr, status) > 0 {
-                fits_delete_file(&mut Some(tempfptr), status);
-                return *status;
-            }
+        if fits_img_decompress_header_safe(fptr, &mut tempfptr, status) > 0 {
+            fits_delete_file(&mut Some(tempfptr), status);
+            return *status;
+        }
 
-            ffhdr2str_safe(
-                &mut tempfptr,
-                exclude_comm,
-                exclist,
-                nexc,
-                header,
-                nkeys,
-                status,
-            );
-            fits_close_file(tempfptr, status);
+        ffhdr2str_safe(
+            &mut tempfptr,
+            exclude_comm,
+            exclist,
+            nexc,
+            header,
+            nkeys,
+            status,
+        );
+        fits_close_file(tempfptr, status);
     } else {
         ffhdr2str_safe(fptr, exclude_comm, exclist, nexc, header, nkeys, status);
     }

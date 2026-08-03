@@ -1323,7 +1323,7 @@ pub fn fits_img_compress_safe(
     }
 
     /* Copy the image header keywords to the table header. */
-    if unsafe { imcomp_copy_img2comp(infptr, outfptr, status) } > 0 {
+    if imcomp_copy_img2comp(infptr, outfptr, status) > 0 {
         return *status;
     }
 
@@ -5435,77 +5435,77 @@ pub fn fits_img_decompress_safe(
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-        let mut datatype: c_int = 0;
-        let mut nullcheck: NullCheckType = NullCheckType::None;
-        let mut anynul: c_int = 0;
-        let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut fnulval: f32 = 0.0;
-        let mut dnulval: f64 = 0.0;
+    let mut datatype: c_int = 0;
+    let mut nullcheck: NullCheckType = NullCheckType::None;
+    let mut anynul: c_int = 0;
+    let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut fnulval: f32 = 0.0;
+    let mut dnulval: f64 = 0.0;
 
-        if fits_img_decompress_header_safe(infptr, outfptr, status) > 0 {
-            return *status;
-        }
+    if fits_img_decompress_header_safe(infptr, outfptr, status) > 0 {
+        return *status;
+    }
 
-        /* force a rescan of the output header keywords, then reset the scaling */
-        /* in case the BSCALE and BZERO keywords are present, so that the       */
-        /* decompressed values won't be scaled when written to the output image */
-        ffrdef_safe(outfptr, status);
-        ffpscl_safe(outfptr, 1.0, 0.0, status);
-        ffpscl_safe(infptr, 1.0, 0.0, status);
+    /* force a rescan of the output header keywords, then reset the scaling */
+    /* in case the BSCALE and BZERO keywords are present, so that the       */
+    /* decompressed values won't be scaled when written to the output image */
+    ffrdef_safe(outfptr, status);
+    ffpscl_safe(outfptr, 1.0, 0.0, status);
+    ffpscl_safe(infptr, 1.0, 0.0, status);
 
-        /* initialize; no null checking is needed for integer images */
-        nullcheck = NullCheckType::None;
-        let mut nulladdr = NullValue::Float(fnulval);
+    /* initialize; no null checking is needed for integer images */
+    nullcheck = NullCheckType::None;
+    let mut nulladdr = NullValue::Float(fnulval);
 
-        /* determine datatype for image */
-        if (infptr.Fptr).zbitpix == BYTE_IMG {
-            datatype = TBYTE;
-        } else if (infptr.Fptr).zbitpix == SHORT_IMG {
-            datatype = TSHORT;
-        } else if (infptr.Fptr).zbitpix == LONG_IMG {
-            datatype = TINT;
-        } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
-            /* In the case of float images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            fnulval = FLOATNULLVALUE;
-            nulladdr = NullValue::Float(fnulval);
-            datatype = TFLOAT;
-        } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
-            /* In the case of double images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            dnulval = DOUBLENULLVALUE;
-            nulladdr = NullValue::Double(dnulval);
-            datatype = TDOUBLE;
-        }
+    /* determine datatype for image */
+    if (infptr.Fptr).zbitpix == BYTE_IMG {
+        datatype = TBYTE;
+    } else if (infptr.Fptr).zbitpix == SHORT_IMG {
+        datatype = TSHORT;
+    } else if (infptr.Fptr).zbitpix == LONG_IMG {
+        datatype = TINT;
+    } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
+        /* In the case of float images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        fnulval = FLOATNULLVALUE;
+        nulladdr = NullValue::Float(fnulval);
+        datatype = TFLOAT;
+    } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
+        /* In the case of double images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        dnulval = DOUBLENULLVALUE;
+        nulladdr = NullValue::Double(dnulval);
+        datatype = TDOUBLE;
+    }
 
-        /* calculate size of the image (in pixels) */
-        // let mut imgsize = 1;
-        for ii in 0..((infptr.Fptr).zndim as usize) {
-            // imgsize *= (infptr.Fptr).znaxis[ii];
-            fpixel[ii] = 1; /* Set first and last pixel to */
-            lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
-            inc[ii] = 1;
-        }
+    /* calculate size of the image (in pixels) */
+    // let mut imgsize = 1;
+    for ii in 0..((infptr.Fptr).zndim as usize) {
+        // imgsize *= (infptr.Fptr).znaxis[ii];
+        fpixel[ii] = 1; /* Set first and last pixel to */
+        lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
+        inc[ii] = 1;
+    }
 
-        /* uncompress the input image and write to output image, one tile at a time
-         */
+    /* uncompress the input image and write to output image, one tile at a time
+     */
 
-        fits_read_write_compressed_img(
-            infptr,
-            datatype,
-            &fpixel,
-            &lpixel,
-            &inc,
-            nullcheck,
-            &Some(nulladdr),
-            Some(&mut anynul),
-            outfptr,
-            status,
-        );
+    fits_read_write_compressed_img(
+        infptr,
+        datatype,
+        &fpixel,
+        &lpixel,
+        &inc,
+        nullcheck,
+        &Some(nulladdr),
+        Some(&mut anynul),
+        outfptr,
+        status,
+    );
 
-        *status
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5704,90 +5704,111 @@ pub fn fits_img_decompress_header_safe(
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-        let mut writeprime = false;
-        let mut hdupos: c_int = 0;
-        let mut inhdupos: c_int = 0;
-        let mut numkeys: c_int = 0;
-        let mut nullprime = false;
-        let mut copyprime = false;
-        let mut norec = false;
-        let mut tstatus: c_int = 0;
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut naxis: c_int = 0;
-        let mut bitpix: c_int = 0;
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut writeprime = false;
+    let mut hdupos: c_int = 0;
+    let mut inhdupos: c_int = 0;
+    let mut numkeys: c_int = 0;
+    let mut nullprime = false;
+    let mut copyprime = false;
+    let mut norec = false;
+    let mut tstatus: c_int = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut naxis: c_int = 0;
+    let mut bitpix: c_int = 0;
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        if *status > 0 {
-            return *status;
-        } else if *status == -1 {
-            *status = 0;
-            writeprime = true;
-        }
+    if *status > 0 {
+        return *status;
+    } else if *status == -1 {
+        *status = 0;
+        writeprime = true;
+    }
 
-        if fits_is_compressed_image_safe(infptr, status) == 0 {
-            ffpmsg_str("CHDU is not a compressed image (fits_img_decompress)");
-            *status = DATA_DECOMPRESSION_ERR;
-            return *status;
-        }
+    if fits_is_compressed_image_safe(infptr, status) == 0 {
+        ffpmsg_str("CHDU is not a compressed image (fits_img_decompress)");
+        *status = DATA_DECOMPRESSION_ERR;
+        return *status;
+    }
 
-        /* get information about the state of the output file; does it already */
-        /* contain any keywords and HDUs?  */
-        fits_get_hdu_num(infptr, &mut inhdupos); /* Get the current output HDU position */
-        fits_get_hdu_num(outfptr, &mut hdupos); /* Get the current output HDU position */
-        fits_get_hdrspace(outfptr, Some(&mut numkeys), None, status);
+    /* get information about the state of the output file; does it already */
+    /* contain any keywords and HDUs?  */
+    fits_get_hdu_num(infptr, &mut inhdupos); /* Get the current output HDU position */
+    fits_get_hdu_num(outfptr, &mut hdupos); /* Get the current output HDU position */
+    fits_get_hdrspace(outfptr, Some(&mut numkeys), None, status);
 
-        /* Was the input compressed HDU originally the primary array image? */
-        tstatus = 0;
-        if fits_read_card(infptr, cs!(c"ZSIMPLE"), &mut card, &mut tstatus) == 0 {
-            /* yes, input HDU was a primary array (not an IMAGE extension) */
-            /* Now determine if we can uncompress it into the primary array of */
-            /* the output file.  This is only possible if the output file */
-            /* currently only contains a null primary array, with no addition */
-            /* header keywords and with no following extension in the FITS file. */
+    /* Was the input compressed HDU originally the primary array image? */
+    tstatus = 0;
+    if fits_read_card(infptr, cs!(c"ZSIMPLE"), &mut card, &mut tstatus) == 0 {
+        /* yes, input HDU was a primary array (not an IMAGE extension) */
+        /* Now determine if we can uncompress it into the primary array of */
+        /* the output file.  This is only possible if the output file */
+        /* currently only contains a null primary array, with no addition */
+        /* header keywords and with no following extension in the FITS file. */
 
-            if hdupos == 1 {
-                /* are we positioned at the primary array? */
-                if numkeys == 0 {
-                    /* primary HDU is completely empty */
+        if hdupos == 1 {
+            /* are we positioned at the primary array? */
+            if numkeys == 0 {
+                /* primary HDU is completely empty */
+                nullprime = true;
+            } else {
+                fits_get_img_param(
+                    outfptr,
+                    MAX_COMPRESS_DIM as c_int,
+                    Some(&mut bitpix),
+                    Some(&mut naxis),
+                    Some(&mut naxes),
+                    status,
+                );
+
+                if naxis == 0 {
+                    /* is this a null image? */
                     nullprime = true;
-                } else {
-                    fits_get_img_param(
-                        outfptr,
-                        MAX_COMPRESS_DIM as c_int,
-                        Some(&mut bitpix),
-                        Some(&mut naxis),
-                        Some(&mut naxes),
-                        status,
-                    );
 
-                    if naxis == 0 {
-                        /* is this a null image? */
-                        nullprime = true;
-
-                        if inhdupos == 2 {
-                            /* must be at the first extension */
-                            copyprime = true;
-                        }
+                    if inhdupos == 2 {
+                        /* must be at the first extension */
+                        copyprime = true;
                     }
                 }
             }
         }
+    }
 
-        if nullprime {
-            /* We will delete the existing keywords in the null primary array
-            and uncompress the input image into the primary array of the output.
-            Some of these keywords may be added back to the uncompressed image
-            header later.
-            */
+    if nullprime {
+        /* We will delete the existing keywords in the null primary array
+        and uncompress the input image into the primary array of the output.
+        Some of these keywords may be added back to the uncompressed image
+        header later.
+        */
 
-            for ii in 1..=numkeys {
-                fits_delete_record(outfptr, ii as c_int, status);
+        for ii in 1..=numkeys {
+            fits_delete_record(outfptr, ii as c_int, status);
+        }
+    } else {
+        /* if the ZTENSION keyword doesn't exist, then we have to
+        write the required keywords manually */
+        tstatus = 0;
+        if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
+            /* create an empty output image with the correct dimensions */
+            if ffcrim_safe(
+                outfptr,
+                (infptr.Fptr).zbitpix,
+                (infptr.Fptr).zndim,
+                &(infptr.Fptr).znaxis,
+                status,
+            ) > 0
+            {
+                ffpmsg_str("error creating output decompressed image HDU");
+                return *status;
             }
+
+            norec = true; /* the required keywords have already been written */
         } else {
-            /* if the ZTENSION keyword doesn't exist, then we have to
-            write the required keywords manually */
-            tstatus = 0;
-            if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
+            /* the input compressed image does have ZTENSION keyword */
+
+            if writeprime {
+                /* convert the image extension to a primary array */
+                /* have to write the required keywords manually */
+
                 /* create an empty output image with the correct dimensions */
                 if ffcrim_safe(
                     outfptr,
@@ -5803,84 +5824,63 @@ pub fn fits_img_decompress_header_safe(
 
                 norec = true; /* the required keywords have already been written */
             } else {
-                /* the input compressed image does have ZTENSION keyword */
+                /* write the input compressed image to an image extension */
 
-                if writeprime {
-                    /* convert the image extension to a primary array */
-                    /* have to write the required keywords manually */
+                if numkeys == 0 {
+                    /* the output file is currently completely empty */
 
-                    /* create an empty output image with the correct dimensions */
-                    if ffcrim_safe(
-                        outfptr,
-                        (infptr.Fptr).zbitpix,
-                        (infptr.Fptr).zndim,
-                        &(infptr.Fptr).znaxis,
-                        status,
-                    ) > 0
-                    {
+                    /* In this case, the input is a compressed IMAGE extension. */
+                    /* Since the uncompressed output file is currently completely empty, */
+                    /* we need to write a null primary array before uncompressing the */
+                    /* image extension */
+
+                    ffcrim_safe(outfptr, 8, 0, &naxes, status); /* naxes is not used */
+
+                    /* now create the empty extension to uncompress into */
+                    if fits_create_hdu(outfptr, status) > 0 {
                         ffpmsg_str("error creating output decompressed image HDU");
                         return *status;
                     }
-
-                    norec = true; /* the required keywords have already been written */
                 } else {
-                    /* write the input compressed image to an image extension */
-
-                    if numkeys == 0 {
-                        /* the output file is currently completely empty */
-
-                        /* In this case, the input is a compressed IMAGE extension. */
-                        /* Since the uncompressed output file is currently completely empty, */
-                        /* we need to write a null primary array before uncompressing the */
-                        /* image extension */
-
-                        ffcrim_safe(outfptr, 8, 0, &naxes, status); /* naxes is not used */
-
-                        /* now create the empty extension to uncompress into */
-                        if fits_create_hdu(outfptr, status) > 0 {
-                            ffpmsg_str("error creating output decompressed image HDU");
-                            return *status;
-                        }
-                    } else {
-                        /* just create a new empty extension, then copy all the required */
-                        /* keywords into it.  */
-                        fits_create_hdu(outfptr, status);
-                    }
+                    /* just create a new empty extension, then copy all the required */
+                    /* keywords into it.  */
+                    fits_create_hdu(outfptr, status);
                 }
             }
         }
+    }
 
-        if *status > 0 {
-            ffpmsg_str("error creating output decompressed image HDU");
-            return *status;
+    if *status > 0 {
+        ffpmsg_str("error creating output decompressed image HDU");
+        return *status;
+    }
+
+    /* Copy the table header to the image header. */
+
+    if imcomp_copy_comp2img(infptr, outfptr, norec, status) > 0 {
+        ffpmsg_str("error copying header keywords from compressed image");
+    }
+
+    if copyprime {
+        /* append any unexpected keywords from the primary array.
+        This includes any keywords except SIMPLE, BITPIX, NAXIS,
+        EXTEND, COMMENT, HISTORY, CHECKSUM, and DATASUM.
+        */
+
+        fits_movabs_hdu(infptr, 1, None, status); /* move to primary array */
+
+        /* do this so that any new keywords get written before any blank
+        keywords that may have been appended by imcomp_copy_comp2img  */
+        fits_set_hdustruc(outfptr, status);
+
+        if imcomp_copy_prime2img(infptr, outfptr, status) > 0 {
+            ffpmsg_str("error copying primary keywords from compressed file");
         }
 
-        /* Copy the table header to the image header. */
+        fits_movabs_hdu(infptr, 2, None, status); /* move back to where we were */
+    }
 
-        if imcomp_copy_comp2img(infptr, outfptr, norec, status) > 0 {
-            ffpmsg_str("error copying header keywords from compressed image");
-        }
-
-        if copyprime {
-            /* append any unexpected keywords from the primary array.
-            This includes any keywords except SIMPLE, BITPIX, NAXIS,
-            EXTEND, COMMENT, HISTORY, CHECKSUM, and DATASUM.
-            */
-
-            fits_movabs_hdu(infptr, 1, None, status); /* move to primary array */
-
-            /* do this so that any new keywords get written before any blank
-            keywords that may have been appended by imcomp_copy_comp2img  */
-            fits_set_hdustruc(outfptr, status);
-
-            if imcomp_copy_prime2img(infptr, outfptr, status) > 0 {
-                ffpmsg_str("error copying primary keywords from compressed file");
-            }
-
-            fits_movabs_hdu(infptr, 2, None, status); /* move back to where we were */
-        }
-
-        *status
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -7374,156 +7374,144 @@ fn imcomp_copy_imheader(
 /*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the uncompressed input image
 /// and to the compressed image (in a binary table)
-unsafe fn imcomp_copy_img2comp(
+fn imcomp_copy_img2comp(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        /* a header record */
-        let mut card2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut nkeys: c_int = 0;
-        let mut nmore: c_int = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* a header record */
+    let mut card2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut nkeys: c_int = 0;
+    let mut nmore: c_int = 0;
 
-        let mut tstatus: c_int = 0;
-        let mut bitpix: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut bitpix: c_int = 0;
 
-        /* tile compressed image keyword translation table  */
-        /*                        INPUT      OUTPUT  */
-        /*                       01234567   01234567 */
-        let _patterns: [[&[u8]; 2]; 12] = [
-            [b"SIMPLE\0", b"ZSIMPLE\0"],
-            [b"XTENSION\0", b"ZTENSION\0"],
-            [b"BITPIX\0", b"ZBITPIX\0"],
-            [b"NAXIS\0", b"ZNAXIS\0"],
-            [b"NAXISm\0", b"ZNAXISm\0"],
-            [b"EXTEND\0", b"ZEXTEND\0"],
-            [b"BLOCKED\0", b"ZBLOCKED\0"],
-            [b"PCOUNT\0", b"ZPCOUNT\0"],
-            [b"GCOUNT\0", b"ZGCOUNT\0"],
-            [b"CHECKSUM\0", b"ZHECKSUM\0"], /* save original checksums */
-            [b"DATASUM\0", b"ZDATASUM\0"],
-            [b"*\0", b"+\0"],
-        ]; /* copy all other keywords */
+    /* tile compressed image keyword translation table  */
+    /*                        INPUT      OUTPUT  */
+    /*                       01234567   01234567 */
+    let patterns: [[&CStr; 2]; 12] = [
+        [c"SIMPLE", c"ZSIMPLE"],
+        [c"XTENSION", c"ZTENSION"],
+        [c"cITPIX", c"ZcITPIX"],
+        [c"NAXIS", c"ZNAXIS"],
+        [c"NAXISm", c"ZNAXISm"],
+        [c"EXTEND", c"ZEXTEND"],
+        [c"cLOCKED", c"ZcLOCKED"],
+        [c"PCOUNT", c"ZPCOUNT"],
+        [c"GCOUNT", c"ZGCOUNT"],
+        [c"CHECKSUM", c"ZHECKSUM"], /* save original checksums */
+        [c"DATASUM", c"ZDATASUM"],
+        [c"*", c"+"],
+    ]; /* copy all other keywords */
 
-        let patterns = _patterns
-            .iter()
-            .map(|x| {
-                [
-                    CStr::from_bytes_with_nul_unchecked(x[0]),
-                    CStr::from_bytes_with_nul_unchecked(x[1]),
-                ]
-            })
-            .collect::<Vec<_>>();
+    let mut npat: c_int = 0;
 
-        let mut npat: c_int = 0;
+    if *status > 0 {
+        return *status;
+    }
 
-        if *status > 0 {
-            return *status;
+    /* write a default EXTNAME keyword if it doesn't exist in input file*/
+    fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, status);
+
+    if *status != 0 {
+        *status = 0;
+        strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"));
+        fits_write_record(outfptr, &card, status);
+    }
+
+    /* copy all the keywords from the input file to the output */
+    npat = patterns.len() as c_int;
+    fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+
+    if (outfptr.Fptr).request_lossy_int_compress != 0 {
+        /* request was made to compress integer images as if they had float pixels. */
+        /* If input image has positive bitpix value, then reset the output ZBITPIX */
+        /* value to -32. */
+
+        fits_read_key(
+            infptr,
+            crate::KeywordDatatypeMut::TINT(&mut bitpix),
+            cs!(c"BITPIX"),
+            None,
+            status,
+        );
+
+        if *status <= 0 && bitpix > 0 {
+            fits_modify_key_lng(outfptr, cs!(c"ZBITPIX"), -32, None, status);
+
+            /* also delete the BSCALE, BZERO, and BLANK keywords */
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BSCALE"), &mut tstatus);
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BZERO"), &mut tstatus);
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BLANK"), &mut tstatus);
         }
+    }
 
-        /* write a default EXTNAME keyword if it doesn't exist in input file*/
-        fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, status);
+    /*
+    For compatibility with software that uses an older version of CFITSIO,
+    we must make certain that the new ZQUANTIZ keyword, if it exists, must
+    occur after the other peudo-required keywords (e.g., ZSIMPLE, ZBITPIX,
+    etc.).  Do this by trying to delete the keyword.  If that succeeds (and
+    thus the keyword did exist) then rewrite the keyword at the end of header.
+    In principle this should not be necessary once all software has upgraded
+    to a newer version of CFITSIO (version number greater than 3.181, newer
+    than August 2009).
 
-        if *status != 0 {
-            *status = 0;
-            strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"));
-            fits_write_record(outfptr, &card, status);
-        }
+    Do the same for the new ZDITHER0 keyword.
+    */
 
-        /* copy all the keywords from the input file to the output */
-        npat = patterns.len() as c_int;
-        fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+    tstatus = 0;
+    if fits_read_card(outfptr, cs!(c"ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
+        fits_delete_key(outfptr, cs!(c"ZQUANTIZ"), status);
 
-        if (outfptr.Fptr).request_lossy_int_compress != 0 {
-            /* request was made to compress integer images as if they had float pixels. */
-            /* If input image has positive bitpix value, then reset the output ZBITPIX */
-            /* value to -32. */
+        /* rewrite the deleted keyword at the end of the header */
+        fits_write_record(outfptr, &card, status);
 
-            fits_read_key(
-                infptr,
-                crate::KeywordDatatypeMut::TINT(&mut bitpix),
-                cs!(c"BITPIX"),
-                None,
+        /* write some associated HISTORY keywords */
+        fits_parse_value(&card, &mut card2, None, status);
+        if fits_strncasecmp(&card2, cs!(c"'NONE"), 5) != 0 {
+            /* the value is not 'NONE' */
+            fits_write_history(
+                outfptr,
+                cs!(c"Image was compressed by CFITSIO using scaled integer quantization:"),
                 status,
             );
-
-            if *status <= 0 && bitpix > 0 {
-                fits_modify_key_lng(outfptr, cs!(c"ZBITPIX"), -32, None, status);
-
-                /* also delete the BSCALE, BZERO, and BLANK keywords */
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BSCALE"), &mut tstatus);
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BZERO"), &mut tstatus);
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BLANK"), &mut tstatus);
-            }
+            int_snprintf!(
+                card2,
+                FLEN_CARD,
+                "  q = {} / quantized level scaling parameter",
+                (outfptr.Fptr).request_quantize_level,
+            );
+            fits_write_history(outfptr, &card2, status);
+            fits_write_history(outfptr, &card[10..], status);
         }
-
-        /*
-        For compatibility with software that uses an older version of CFITSIO,
-        we must make certain that the new ZQUANTIZ keyword, if it exists, must
-        occur after the other peudo-required keywords (e.g., ZSIMPLE, ZBITPIX,
-        etc.).  Do this by trying to delete the keyword.  If that succeeds (and
-        thus the keyword did exist) then rewrite the keyword at the end of header.
-        In principle this should not be necessary once all software has upgraded
-        to a newer version of CFITSIO (version number greater than 3.181, newer
-        than August 2009).
-
-        Do the same for the new ZDITHER0 keyword.
-        */
-
-        tstatus = 0;
-        if fits_read_card(outfptr, cs!(c"ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!(c"ZQUANTIZ"), status);
-
-            /* rewrite the deleted keyword at the end of the header */
-            fits_write_record(outfptr, &card, status);
-
-            /* write some associated HISTORY keywords */
-            fits_parse_value(&card, &mut card2, None, status);
-            if fits_strncasecmp(&card2, cs!(c"'NONE"), 5) != 0 {
-                /* the value is not 'NONE' */
-                fits_write_history(
-                    outfptr,
-                    cs!(c"Image was compressed by CFITSIO using scaled integer quantization:"),
-                    status,
-                );
-                int_snprintf!(
-                    card2,
-                    FLEN_CARD,
-                    "  q = {} / quantized level scaling parameter",
-                    (outfptr.Fptr).request_quantize_level,
-                );
-                fits_write_history(outfptr, &card2, status);
-                fits_write_history(outfptr, &card[10..], status);
-            }
-        }
-
-        tstatus = 0;
-        if fits_read_card(outfptr, cs!(c"ZDITHER0"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!(c"ZDITHER0"), status);
-
-            /* rewrite the deleted keyword at the end of the header */
-            fits_write_record(outfptr, &card, status);
-        }
-
-        ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
-
-        nmore /= 36; /* how many completely empty header blocks are there? */
-
-        /* preserve the same number of spare header blocks in the output header */
-
-        for _jj in 0..(nmore as usize) {
-            for _ii in 0..36 {
-                fits_write_record(outfptr, cs!(c"    "), status);
-            }
-        }
-
-        *status
     }
+
+    tstatus = 0;
+    if fits_read_card(outfptr, cs!(c"ZDITHER0"), &mut card, &mut tstatus) == 0 {
+        fits_delete_key(outfptr, cs!(c"ZDITHER0"), status);
+
+        /* rewrite the deleted keyword at the end of the header */
+        fits_write_record(outfptr, &card, status);
+    }
+
+    ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
+
+    nmore /= 36; /* how many completely empty header blocks are there? */
+
+    /* preserve the same number of spare header blocks in the output header */
+
+    for _jj in 0..(nmore as usize) {
+        for _ii in 0..36 {
+            fits_write_record(outfptr, cs!(c"    "), status);
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7651,35 +7639,35 @@ fn imcomp_copy_prime2img(
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-        let mut nsp: c_int = 0;
+    let mut nsp: c_int = 0;
 
-        /* keywords that will not be copied */
-        let spkeys: [[&CStr; 2]; 13] = [
-            [c"SIMPLE", c"-"],
-            [c"BITPIX", c"-"],
-            [c"NAXIS", c"-"],
-            [c"NAXISm", c"-"],
-            [c"PCOUNT", c"-"],
-            [c"EXTEND", c"-"],
-            [c"GCOUNT", c"-"],
-            [c"CHECKSUM", c"-"],
-            [c"DATASUM", c"-"],
-            [c"EXTNAME", c"-"],
-            [c"HISTORY", c"-"],
-            [c"COMMENT", c"-"],
-            [c"*", c"+"],
-        ];
+    /* keywords that will not be copied */
+    let spkeys: [[&CStr; 2]; 13] = [
+        [c"SIMPLE", c"-"],
+        [c"BITPIX", c"-"],
+        [c"NAXIS", c"-"],
+        [c"NAXISm", c"-"],
+        [c"PCOUNT", c"-"],
+        [c"EXTEND", c"-"],
+        [c"GCOUNT", c"-"],
+        [c"CHECKSUM", c"-"],
+        [c"DATASUM", c"-"],
+        [c"EXTNAME", c"-"],
+        [c"HISTORY", c"-"],
+        [c"COMMENT", c"-"],
+        [c"*", c"+"],
+    ];
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        nsp = spkeys.len() as c_int;
+    nsp = spkeys.len() as c_int;
 
-        /* translate and copy the keywords from the input file to the output */
-        fits_translate_keywords_safe(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
+    /* translate and copy the keywords from the input file to the output */
+    fits_translate_keywords_safe(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
 
-        *status
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -10815,16 +10803,15 @@ pub unsafe extern "C" fn fits_compress_table(
         let status = status.as_mut().expect(NULL_MSG);
 
         // Call the safer version of the function
-        fits_compress_table_safer(infptr, outfptr, status)
+        fits_compress_table_safe(infptr, outfptr, status)
     }
 }
 
-pub unsafe fn fits_compress_table_safer(
+pub fn fits_compress_table_safe(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
         let maxchunksize: c_long = 10000000; // default value for the size of each chunk of the table
 
         let mut cm_buffer: Vec<c_char>; // memory buffer for the transposed, Column-Major, chunk of the table
@@ -11505,13 +11492,14 @@ pub unsafe fn fits_compress_table_safer(
                                         }
                                     }
                                     /*: gzip compress the array of bytes */
-                                    compress2mem_from_mem(
+                                    unsafe {compress2mem_from_mem(
                                         cast_slice(&vlamem),
                                         vlamemlen as usize,
                                         &mut cvlamem,
                                         Some(&mut dlen),
                                         status,
                                     );
+                                }
                                 } else {
                                     /* this should not happen */
                                     ffpmsg_str(" Error: unknown compression algorithm");
@@ -11632,13 +11620,13 @@ pub unsafe fn fits_compress_table_safer(
                             ffswap8(outdescript, rowspertile * 2);
                         }
                         /* compress the array contain both sets of descriptors */
-                        compress2mem_from_mem(
+                        unsafe {compress2mem_from_mem(
                             &cdescript,
                             datasize + (rowspertile * 16) as usize,
                             &mut cvlamem,
                             Some(&mut dlen),
                             status,
-                        );
+                        );}
 
                         /* write the compressed descriptors to the output column */
                         fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
@@ -11769,13 +11757,15 @@ pub unsafe fn fits_compress_table_safer(
                         }
                     } else {
                         /* all other cases: gzip compress the column (bytes may have been shuffled previously) */
-                        compress2mem_from_mem(
+                        unsafe {
+                            compress2mem_from_mem(
                             cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
                             datasize,
                             &mut cvlamem,
                             Some(&mut dlen),
                             status,
                         );
+                    }
                     }
 
                     if ll == 0 {
@@ -11854,7 +11844,6 @@ pub unsafe fn fits_compress_table_safer(
             );
         }
         *status
-    }
 }
 
 /*--------------------------------------------------------------------------*/
