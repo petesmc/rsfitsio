@@ -1745,6 +1745,28 @@ fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
             Func::NValid => Ok(ColumnarValue::Scalar(Scalar::Long(
                 t.get(0).0.len() as c_long
             ))),
+            /* MIN and MAX over a bit string reduce it to a single bit: MIN is
+            '1' unless some bit is '0', MAX is '0' unless some bit is '1'. An
+            undefined bit sways neither. */
+            Func::Min1 | Func::Max1 => {
+                let want = if func == Func::Min1 { b'0' } else { b'1' };
+                let rows = v.len().unwrap_or(1);
+                let out: Vec<Vec<u8>> = (0..rows)
+                    .map(|i| {
+                        let bits = t.get(i).0;
+                        vec![if bits.contains(&want) {
+                            want
+                        } else if want == b'0' {
+                            b'1'
+                        } else {
+                            b'0'
+                        }]
+                    })
+                    .collect();
+                Ok(ColumnarValue::Array(
+                    Array::new(ArrayData::Bits(out)).with_nelem(1),
+                ))
+            }
             _ => Err(ValueError::BadSort("reduction", ValueSort::Bits)),
         };
     }

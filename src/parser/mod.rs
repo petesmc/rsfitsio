@@ -27,7 +27,6 @@ pub(crate) mod token;
 use crate::c_types::c_int;
 use crate::c_types::c_long;
 use crate::eval_defs::ParseData;
-use crate::eval_defs::ValueSort;
 use crate::fitsio::PARSE_SYNTAX_ERR;
 
 /// Parse `lParse.expr`, filling `lParse.Nodes` and setting `lParse.resultNode`.
@@ -132,10 +131,7 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
             432 for a row-varying one and 433 for a constant -- so leave those
             with the arena rather than reproduce the error. Bit-valued
             subexpressions are fine; only the top-level sort matters. */
-            .filter(|t| {
-                t.sort(&|i| cols.sorts.get(i).copied().unwrap_or(ValueSort::Long))
-                    != ValueSort::Bits
-            });
+;
     }
 
     status

@@ -81,7 +81,7 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
         /* A constant string result is already in the node: the arena folded
         the same expression at parse time and owns the text buffer, so there
         is nothing to copy in and its pointer must not be overwritten. */
-        ColumnarValue::Scalar(Scalar::Str(_)) => {
+        ColumnarValue::Scalar(Scalar::Str(_) | Scalar::Bits(_)) => {
             lParse.Nodes[this].operation = Operation::Const;
         }
 
@@ -91,10 +91,7 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                 Scalar::Boolean(b) => NodeValue::Logical(c_char::from(*b)),
                 Scalar::Long(v) => NodeValue::Long(*v),
                 Scalar::Double(v) => NodeValue::Double(*v),
-                /* Str is handled above; a bit-valued result never lowers */
-                Scalar::Str(_) | Scalar::Bits(_) => {
-                    unreachable!("handled above, or refused by the lowering")
-                }
+                Scalar::Str(_) | Scalar::Bits(_) => unreachable!("handled above"),
             };
             lParse.Nodes[this].value.undef = core::ptr::null_mut();
         }
@@ -163,7 +160,11 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                     /* A string result is a `char*` per row, each pointing
                     into the block `Allocate_Ptrs` laid out at the node's
                     declared width; the text is copied in and terminated. */
-                    ArrayData::Str(d) => {
+                    /* A bit string is laid out exactly like a character
+                    string -- `Allocate_Ptrs` gives both a `char*` per row --
+                    the difference being that a bit node has no undef array,
+                    which the guard below already accounts for. */
+                    ArrayData::Str(d) | ArrayData::Bits(d) => {
                         let buf = lParse.Nodes[this].value.data.str_buf();
                         let width = lParse.Nodes[this].value.nelem.max(0) as usize;
                         for (row, text) in d.iter().enumerate() {
@@ -176,7 +177,6 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                             *dst.add(n) = 0;
                         }
                     }
-                    other => unreachable!("lowering refuses {other:?} results"),
                 }
 
                 let undef = lParse.Nodes[this].value.undef;
