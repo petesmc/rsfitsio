@@ -186,6 +186,8 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
             | Func::Min1
             | Func::Max1
             | Func::StrStr => Shape::scalar(),
+            /* a generator with no argument yields one value per row */
+            Func::Random | Func::RandomN if args.is_empty() => Shape::scalar(),
             /* ARRAY's shape is its second argument, which the parser requires
             to be constant, so it is read off the lowered dims directly */
             Func::Array => {
@@ -523,6 +525,10 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             let (func, arity) = match (name.as_slice(), args.len()) {
                 (b"MIN", 1) => (Func::Min1, 1),
                 (b"MAX", 1) => (Func::Max1, 1),
+                /* the generators take an optional argument that only sets the
+                shape, so the arity follows what was written */
+                (b"RANDOM", n @ (0 | 1)) => (Func::Random, n),
+                (b"RANDOMN", n @ (0 | 1)) => (Func::RandomN, n),
                 _ => match func_of(name) {
                     Some(pair) => pair,
                     None => return Err(Unsupported("function call")),
@@ -571,6 +577,7 @@ fn func_of(name: &[u8]) -> Option<(Func, usize)> {
         b"DEFNULL" => (Func::DefNull, 2),
         b"STRSTR" => (Func::StrStr, 2),
         b"ANGSEP" => (Func::AngSep, 4),
+        b"RANDOMP" => (Func::RandomP, 1),
         b"ELEMENTNUM" => (Func::ElementNum, 1),
         b"AXISELEM" => (Func::AxisElem, 2),
         b"ARRAY" => (Func::Array, 2),
@@ -733,6 +740,19 @@ mod tests {
     }
 
     #[test]
+    fn the_generators_lower_with_or_without_an_argument() {
+        for src in [
+            "RANDOM()",
+            "RANDOM(1)",
+            "RANDOMN()",
+            "RANDOMN(1)",
+            "RANDOMP(1)",
+        ] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn the_undefined_string_lowers_as_a_string() {
         /* not as a long, or a conditional with a string branch cannot read it */
         assert_eq!(try_lower("#SNULL"), Ok(Expr::Null(ValueSort::String)));
@@ -769,11 +789,8 @@ mod tests {
     #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
-            /* the random generators draw from a global time-seeded
-            generator, so they stay with the arena on purpose */
-            ("RANDOM()", "function call"),
-            ("RANDOMN()", "function call"),
             ("GTIFILTER()", "function call"),
+            ("REGFILTER('x.reg')", "function call"),
         ] {
             assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
         }
@@ -782,6 +799,9 @@ mod tests {
     #[test]
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
-        assert_eq!(try_lower("1 + RANDOM()"), Err(Unsupported("function call")));
+        assert_eq!(
+            try_lower("1 + GTIFILTER()"),
+            Err(Unsupported("function call"))
+        );
     }
 }

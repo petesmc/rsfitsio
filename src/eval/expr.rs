@@ -18,6 +18,7 @@ use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueE
 use crate::c_types::{c_char, c_long};
 use crate::eval_defs::OpCode;
 use crate::eval_defs::{ParseData, ValueSort};
+use crate::simplerng::{simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform};
 
 /// A unary operator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +88,12 @@ pub(crate) enum Func {
     AxisElem,
     /// `ARRAY(x, dims)`: `x` broadcast into an array of the given shape.
     Array,
+    /// `RANDOM()`: a uniform deviate in [0,1) per element. Never undefined.
+    Random,
+    /// `RANDOMN()`: a normal deviate per element. Never undefined.
+    RandomN,
+    /// `RANDOMP(mean)`: a Poisson deviate, undefined where the mean is.
+    RandomP,
     /// `ANGSEP(ra1, dec1, ra2, dec2)`, in degrees.
     AngSep,
     /// `NEAR(x, y, tol)`.
@@ -507,7 +514,8 @@ impl Expr {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid | Func::StrStr => ValueSort::Long,
                 Func::AngSep => ValueSort::Double,
-                Func::ElementNum | Func::AxisElem => ValueSort::Long,
+                Func::ElementNum | Func::AxisElem | Func::RandomP => ValueSort::Long,
+                Func::Random | Func::RandomN => ValueSort::Double,
                 Func::Array => match args[0].sort(batch_sorts) {
                     ValueSort::Boolean => ValueSort::Long,
                     other => other,
@@ -794,13 +802,33 @@ fn logic(op: Logic, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Result<Columnar
         Logic::Ne => a != b,
     };
 
+    /// The answer when one side is undefined, if the other side settles it
+    /// anyway. `Do_BinOp_log` is three-valued: `null OR true` is *true* and
+    /// defined, and `null AND false` is *false* and defined, because the
+    /// undefined operand cannot change either. Equality has no such shortcut,
+    /// so it stays undefined.
+    fn decided_by(op: Logic, known: bool) -> Option<bool> {
+        match op {
+            Logic::Or if known => Some(true),
+            Logic::And if !known => Some(false),
+            _ => None,
+        }
+    }
+
     let Some(n) = lhs.broadcast_len(rhs)? else {
         let (a, an) = bool_at(lhs, 0)?;
         let (b, bn) = bool_at(rhs, 0)?;
-        return Ok(if an || bn {
-            ColumnarValue::Null(ValueSort::Boolean)
-        } else {
-            ColumnarValue::Scalar(Scalar::Boolean(apply(a, b)))
+        return Ok(match (an, bn) {
+            (false, false) => ColumnarValue::Scalar(Scalar::Boolean(apply(a, b))),
+            (true, false) => match decided_by(op, b) {
+                Some(v) => ColumnarValue::Scalar(Scalar::Boolean(v)),
+                None => ColumnarValue::Null(ValueSort::Boolean),
+            },
+            (false, true) => match decided_by(op, a) {
+                Some(v) => ColumnarValue::Scalar(Scalar::Boolean(v)),
+                None => ColumnarValue::Null(ValueSort::Boolean),
+            },
+            (true, true) => ColumnarValue::Null(ValueSort::Boolean),
         });
     };
 
@@ -826,11 +854,23 @@ fn logic(op: Logic, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Result<Columnar
     for i in 0..n {
         let (a, an) = bool_at(lhs, idx(lhs, ln, i))?;
         let (b, bn) = bool_at(rhs, idx(rhs, rn_, i))?;
-        if an || bn {
-            nulls[i] = true;
-            any = true;
-        } else {
-            data[i] = apply(a, b);
+        match (an, bn) {
+            (false, false) => data[i] = apply(a, b),
+            /* one side undefined: the other may still settle it */
+            (true, false) | (false, true) => {
+                let known = if an { b } else { a };
+                match decided_by(op, known) {
+                    Some(v) => data[i] = v,
+                    None => {
+                        nulls[i] = true;
+                        any = true;
+                    }
+                }
+            }
+            (true, true) => {
+                nulls[i] = true;
+                any = true;
+            }
         }
     }
     Ok(ColumnarValue::Array(
@@ -953,6 +993,9 @@ fn call(func: Func, args: &[ColumnarValue], rows: usize) -> Result<ColumnarValue
         Func::Min => kernel::zip_keep_sort(&args[0], &args[1], "MIN", f64::min, c_long::min),
         Func::Max => kernel::zip_keep_sort(&args[0], &args[1], "MAX", f64::max, c_long::max),
         Func::StrStr => str_str(&args[0], &args[1], rows),
+        Func::Random => Ok(random(args.first(), rows, simplerng_getuniform)),
+        Func::RandomN => Ok(random(args.first(), rows, simplerng_getnorm)),
+        Func::RandomP => random_poisson(&args[0], rows),
         Func::ElementNum => Ok(element_num(&args[0], rows)),
         Func::AxisElem => axis_elem(&args[0], &args[1], rows),
         Func::Array => array_of(&args[0], &args[1], rows),
@@ -1131,6 +1174,37 @@ fn accumulate(
     };
     Ok(ColumnarValue::Array(
         Array::with_nulls(data, nulls).with_nelem(nelem),
+    ))
+}
+
+/// `RANDOM()` and `RANDOMN()`. The optional argument only sets the shape --
+/// one deviate per element -- and the result is never undefined.
+fn random(arg: Option<&ColumnarValue>, rows: usize, draw: fn() -> f64) -> ColumnarValue {
+    let nelem = arg.map_or(1, |v| shape_at_runtime(v).0);
+    let out: Vec<f64> = (0..rows * nelem).map(|_| draw()).collect();
+    ColumnarValue::Array(Array::new(ArrayData::Double(out)).with_nelem(nelem))
+}
+
+/// `RANDOMP(mean)`: a Poisson deviate per element. A negative mean has no
+/// distribution, so that element is undefined, as is one whose mean is.
+fn random_poisson(v: &ColumnarValue, rows: usize) -> Result<ColumnarValue, ValueError> {
+    let input = v.numeric("RANDOMP")?;
+    let (nelem, _) = shape_at_runtime(v);
+    let n = rows * nelem;
+    let mut out = Vec::with_capacity(n);
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let (mean, null) = input.get(i, nelem);
+        let bad = null || mean < 0.0;
+        nulls.push(bad);
+        out.push(if bad {
+            0
+        } else {
+            c_long::from(simplerng_getpoisson(mean))
+        });
+    }
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(ArrayData::Long(out), nulls).with_nelem(nelem),
     ))
 }
 
@@ -2164,6 +2238,78 @@ mod tests {
         b.n_data_rows = 2;
         b.first_data_row = 1;
         b
+    }
+
+    /// Three-valued logic, which the corpus does not reach: it took a
+    /// `fits_find_rows` test over `strstr(...) > 0` -- null wherever the
+    /// needle is absent -- to show that an undefined operand was wrongly
+    /// swallowing a decided answer.
+    #[test]
+    fn an_undefined_operand_does_not_hide_a_decided_answer() {
+        let t = ColumnarValue::Scalar(Scalar::Boolean(true));
+        let f = ColumnarValue::Scalar(Scalar::Boolean(false));
+        let u = ColumnarValue::Null(ValueSort::Boolean);
+
+        /* whatever the missing operand was, true wins an OR ... */
+        assert_eq!(
+            logic(Logic::Or, &u, &t).unwrap(),
+            ColumnarValue::Scalar(Scalar::Boolean(true))
+        );
+        assert_eq!(
+            logic(Logic::Or, &t, &u).unwrap(),
+            ColumnarValue::Scalar(Scalar::Boolean(true))
+        );
+        /* ... and false wins an AND */
+        assert_eq!(
+            logic(Logic::And, &u, &f).unwrap(),
+            ColumnarValue::Scalar(Scalar::Boolean(false))
+        );
+        assert_eq!(
+            logic(Logic::And, &f, &u).unwrap(),
+            ColumnarValue::Scalar(Scalar::Boolean(false))
+        );
+
+        /* where the missing operand would decide it, the answer is undefined */
+        for (op, other) in [(Logic::Or, &f), (Logic::And, &t)] {
+            assert_eq!(
+                logic(op, &u, other).unwrap(),
+                ColumnarValue::Null(ValueSort::Boolean)
+            );
+        }
+        /* equality has no shortcut, and neither does two undefined operands */
+        assert_eq!(
+            logic(Logic::Eq, &u, &t).unwrap(),
+            ColumnarValue::Null(ValueSort::Boolean)
+        );
+        assert_eq!(
+            logic(Logic::Or, &u, &u).unwrap(),
+            ColumnarValue::Null(ValueSort::Boolean)
+        );
+    }
+
+    #[test]
+    fn three_valued_logic_holds_over_a_column() {
+        /* the same rules per row: row 1 defined, row 2 not */
+        let mut b = batch(vec![long_col(&[1, 0])], 2);
+        b.columns[0].nulls = vec![false, true];
+        let col = Expr::Compare {
+            op: Compare::Gt,
+            lhs: Box::new(Expr::Column(0)),
+            rhs: Box::new(Expr::Literal(Scalar::Long(0))),
+        };
+        let e = Expr::Logic {
+            op: Logic::Or,
+            lhs: Box::new(col),
+            rhs: Box::new(Expr::Literal(Scalar::Boolean(true))),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.data(), &ArrayData::Boolean(vec![true, true]));
+        assert!(
+            (0..2).all(|i| !a.is_null(i)),
+            "OR with a true operand is decided even where the other is null"
+        );
     }
 
     #[test]

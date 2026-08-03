@@ -12,13 +12,14 @@
 
 use super::expr::Batch;
 use super::value::{ArrayData, ColumnarValue, Scalar, ValueError};
-use crate::c_types::{c_char, c_long};
+use crate::c_types::{c_char, c_long, c_uint};
 #[cfg(test)]
 use crate::eval_defs::{BufferKind, ValueSort};
 use crate::eval_defs::{NodeValue, Operation, ParseData};
 use crate::eval_y::Allocate_Ptrs;
 use crate::fitscore::ffpmsg_str;
 use crate::fitsio::PARSE_SYNTAX_ERR;
+use crate::simplerng::simplerng_srand;
 
 /// Evaluate `lParse.expr_tree` over one batch and store the answer in the
 /// result node.
@@ -28,6 +29,19 @@ use crate::fitsio::PARSE_SYNTAX_ERR;
 /// batch is declined and the caller walks the arena instead. Nothing has been
 /// written to the result node when that happens.
 pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long) -> bool {
+    /* The generators draw from a global stream, seeded once per process. The
+    arena did this behind a `static mut`; a `Once` says the same thing without
+    the unsafe. */
+    static SEED: std::sync::Once = std::sync::Once::new();
+    SEED.call_once(|| {
+        simplerng_srand(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as c_uint)
+                .unwrap_or(0),
+        )
+    });
+
     lParse.firstRow = first_row;
     lParse.nRows = n_rows;
 
