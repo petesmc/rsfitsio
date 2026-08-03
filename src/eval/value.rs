@@ -291,10 +291,6 @@ pub(crate) enum ValueError {
     Incompatible(&'static str, ValueSort, ValueSort),
     /// A subscript fell outside the operand's bounds.
     OutOfRange,
-    /// A row offset reached a row that is inside the table but outside the
-    /// chunk currently loaded, which only the engine's reload path can serve.
-    /// This is not a failure: the caller hands the batch back to the arena.
-    NeedsReload,
 }
 
 /// Reading a string or bit-string operand element by element, the text

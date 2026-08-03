@@ -11,7 +11,7 @@
 //! is complete the result node goes away and this file with it.
 
 use super::expr::Batch;
-use super::value::{ArrayData, ColumnarValue, Scalar, ValueError};
+use super::value::{ArrayData, ColumnarValue, Scalar};
 use crate::c_types::{c_char, c_long, c_uint};
 #[cfg(test)]
 use crate::eval_defs::{BufferKind, ValueSort};
@@ -48,7 +48,7 @@ pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long
     let Some(tree) = lParse.expr_tree.clone() else {
         return false;
     };
-    let batch = Batch::gather(lParse, first_row, n_rows);
+    let batch = Batch::gather(lParse, first_row, n_rows, tree.offset_range());
     /* the ACCUM/SEQDIFF running values live in ParseData between batches; lend
     them to the batch for this one and take them back afterwards */
     *batch.accum.borrow_mut() = core::mem::take(&mut lParse.accum_state);
@@ -60,7 +60,6 @@ pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long
             store(lParse, &v);
             true
         }
-        Err(ValueError::NeedsReload) => false,
         Err(e) => {
             ffpmsg_str(&format!("expression evaluation failed: {e:?}"));
             if lParse.status == 0 {

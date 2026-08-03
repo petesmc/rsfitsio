@@ -15,6 +15,8 @@ use super::kernel::{self, Arith, Compare};
 use super::regions;
 use super::strings;
 use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
+use core::ffi::c_void;
+
 use crate::c_types::{c_char, c_long};
 use crate::eval_defs::OpCode;
 use crate::eval_defs::{ParseData, ValueSort};
@@ -283,15 +285,171 @@ pub(crate) struct Batch {
     pub(crate) accum: RefCell<Vec<AccumState>>,
 }
 
+/// A scratch destination for `ParseData::loadData`, which writes native C
+/// values into a caller-supplied buffer.
+///
+/// One variant per column sort. The text case needs two allocations, because
+/// the loader is handed a `char*` per row and writes through those pointers
+/// into storage the caller owns -- the same layout `Allocate_Ptrs` builds.
+enum ColumnStore {
+    Long(Vec<c_long>, Vec<c_char>),
+    Double(Vec<f64>, Vec<c_char>),
+    Boolean(Vec<c_char>, Vec<c_char>),
+    /// Row pointers, the block they point into, the undef flags, and the
+    /// declared width.
+    Text(Vec<*mut c_char>, Vec<c_char>, Vec<c_char>, usize, bool),
+}
+
+impl ColumnStore {
+    fn new(dtype: ValueSort, nelem: c_long, rows: c_long) -> ColumnStore {
+        let rows = rows.max(0) as usize;
+        let width = nelem.max(1) as usize;
+        let n = rows * width;
+        match dtype {
+            ValueSort::Double => ColumnStore::Double(vec![0.0; n], vec![0; n]),
+            ValueSort::Boolean => ColumnStore::Boolean(vec![0; n], vec![0; n]),
+            ValueSort::String | ValueSort::Bits => {
+                /* one NUL-terminated slot per row, contiguous, as the engine
+                lays them out */
+                let block = vec![0 as c_char; rows * (width + 2)];
+                ColumnStore::Text(
+                    vec![core::ptr::null_mut(); rows],
+                    block,
+                    vec![0; rows],
+                    width,
+                    dtype == ValueSort::Bits,
+                )
+            }
+            _ => ColumnStore::Long(vec![0; n], vec![0; n]),
+        }
+    }
+
+    /// The `(data, undef)` pair to hand the loader.
+    fn as_ptrs(&mut self) -> (*mut c_void, *mut c_char) {
+        match self {
+            ColumnStore::Long(d, u) => (d.as_mut_ptr().cast(), u.as_mut_ptr()),
+            ColumnStore::Double(d, u) => (d.as_mut_ptr().cast(), u.as_mut_ptr()),
+            ColumnStore::Boolean(d, u) => (d.as_mut_ptr().cast(), u.as_mut_ptr()),
+            ColumnStore::Text(ptrs, block, u, width, _) => {
+                /* point each row at its own slot before handing them over */
+                let stride = *width + 2;
+                for (row, slot) in ptrs.iter_mut().enumerate() {
+                    *slot = unsafe { block.as_mut_ptr().add(row * stride) };
+                }
+                (ptrs.as_mut_ptr().cast(), u.as_mut_ptr())
+            }
+        }
+    }
+
+    fn into_batch(self, nelem: c_long, naxes: Vec<usize>) -> ColumnBatch {
+        let flags = |u: Vec<c_char>| u.into_iter().map(|v| v != 0).collect();
+        match self {
+            ColumnStore::Long(d, u) => ColumnBatch {
+                data: ArrayData::Long(d),
+                nulls: flags(u),
+                nelem,
+                naxes,
+            },
+            ColumnStore::Double(d, u) => ColumnBatch {
+                data: ArrayData::Double(d),
+                nulls: flags(u),
+                nelem,
+                naxes,
+            },
+            ColumnStore::Boolean(d, u) => ColumnBatch {
+                data: ArrayData::Boolean(d.into_iter().map(|v| v != 0).collect()),
+                nulls: flags(u),
+                nelem,
+                naxes,
+            },
+            ColumnStore::Text(ptrs, block, u, width, bits) => {
+                let stride = width + 2;
+                let text: Vec<Vec<u8>> = (0..ptrs.len())
+                    .map(|row| {
+                        let start = row * stride;
+                        let slot = &block[start..(start + stride).min(block.len())];
+                        slot.iter()
+                            .take_while(|&&c| c != 0)
+                            .map(|&c| c as u8)
+                            .collect()
+                    })
+                    .collect();
+                ColumnBatch {
+                    data: if bits {
+                        ArrayData::Bits(text)
+                    } else {
+                        ArrayData::Str(text)
+                    },
+                    nulls: flags(u),
+                    /* text is one entry per row; nelem carries the width */
+                    nelem,
+                    naxes: Vec::new(),
+                }
+            }
+        }
+    }
+}
+
+impl Expr {
+    /// How far this expression reaches either side of the row being evaluated.
+    ///
+    /// `(0, 0)` for anything without a row offset, which is almost everything.
+    /// The batch uses it to load a wide enough window up front, so that
+    /// evaluation never has to go back to the file part-way through.
+    pub(crate) fn offset_range(&self) -> (c_long, c_long) {
+        let mut lo = 0;
+        let mut hi = 0;
+        self.walk_offsets(&mut lo, &mut hi);
+        (lo, hi)
+    }
+
+    fn walk_offsets(&self, lo: &mut c_long, hi: &mut c_long) {
+        if let Expr::Offset { offset, .. } = self {
+            *lo = (*lo).min(*offset);
+            *hi = (*hi).max(*offset);
+        }
+        self.for_each_child(&mut |c| c.walk_offsets(lo, hi));
+    }
+
+    /// Apply `f` to each direct subexpression.
+    fn for_each_child(&self, f: &mut dyn FnMut(&Expr)) {
+        match self {
+            Expr::Literal(_)
+            | Expr::Null(_)
+            | Expr::Column(_)
+            | Expr::Offset { .. }
+            | Expr::RowNumber => {}
+            Expr::Unary { arg, .. } | Expr::Accum { arg, .. } => f(arg),
+            Expr::Arith { lhs, rhs, .. }
+            | Expr::Compare { lhs, rhs, .. }
+            | Expr::Logic { lhs, rhs, .. }
+            | Expr::Equality { lhs, rhs, .. } => {
+                f(lhs);
+                f(rhs);
+            }
+            Expr::Deref { base, idx, .. } => {
+                f(base);
+                idx.iter().for_each(&mut *f);
+            }
+            Expr::Slice { base, .. } => f(base),
+            Expr::Vector(items) | Expr::Call { args: items, .. } => items.iter().for_each(&mut *f),
+            Expr::IfThenElse { cond, then, els } => {
+                f(cond);
+                f(then);
+                f(els);
+            }
+        }
+    }
+}
+
 impl Batch {
     /// Column `col` as seen from each row of the batch, shifted by `offset`
     /// rows -- so `offset == 0` is the plain column reference.
     ///
     /// A row naming something outside the table is undefined, which is how
-    /// `Do_Offset` reports the rows before the first and after the last. A row
-    /// inside the table but outside the loaded chunk needs the file read again,
-    /// which only the engine does; that is [`ValueError::NeedsReload`] and the
-    /// caller hands the whole batch back to the arena.
+    /// `Do_Offset` reports the rows before the first and after the last.
+    /// Everything the tree can reach inside the table is present, because
+    /// [`Batch::widen`] loaded it before evaluation started.
     fn shifted(&self, col: usize, offset: c_long) -> Result<ColumnarValue, ValueError> {
         let c = &self.columns[col];
         let nelem = c.nelem.max(1) as usize;
@@ -315,7 +473,11 @@ impl Batch {
             }
             let within = target - self.first_data_row;
             if within < 0 || within >= self.n_data_rows {
-                return Err(ValueError::NeedsReload);
+                /* `gather` widened the window to cover every row the tree can
+                reach, so anything still outside it is a row the table does not
+                have and the loader declined to give us */
+                picked.push(None);
+                continue;
             }
             picked.push(Some(within as usize));
         }
@@ -360,11 +522,90 @@ impl Batch {
     /// through every kernel, and the copy is a memcpy per column per chunk
     /// against per-element work downstream. Making it a borrow is a later
     /// optimisation, not a correctness question.
-    pub(crate) fn gather(lParse: &ParseData, first_row: c_long, n_rows: c_long) -> Batch {
+    /// The row window this batch must hold, and the columns for it when that
+    /// window is not the loaded chunk.
+    ///
+    /// This is the columnar counterpart of the reload inside `Do_Offset`, moved
+    /// to the front: doing it once here, before any kernel runs, keeps
+    /// evaluation a pure function of the batch. Rows outside the table are
+    /// never requested -- those are undefined, which `shifted` decides.
+    ///
+    /// The reload re-reads the whole window rather than splicing in the part
+    /// already present. Reloading is the rare path, and one call per column is
+    /// far easier to be sure of than a partial copy.
+    fn widen(
+        lParse: &mut ParseData,
+        first_row: c_long,
+        n_rows: c_long,
+        offsets: (c_long, c_long),
+    ) -> (c_long, c_long, Option<Vec<ColumnBatch>>) {
+        let chunk_first = lParse.firstDataRow;
+        let chunk_rows = lParse.nDataRows.max(n_rows);
+        let here = (chunk_first, chunk_rows, None);
+        if offsets == (0, 0) {
+            return here;
+        }
+        let total = if lParse.totalRows > 0 {
+            lParse.totalRows
+        } else {
+            chunk_first + chunk_rows - 1
+        };
+        let want_first = (first_row + offsets.0).max(1);
+        let want_last = (first_row + n_rows - 1 + offsets.1).min(total);
+        let want_rows = want_last - want_first + 1;
+        if want_rows <= 0 || (want_first >= chunk_first && want_last < chunk_first + chunk_rows) {
+            /* already loaded, which is every single-chunk table */
+            return here;
+        }
+        let Some(load) = lParse.loadData else {
+            return here;
+        };
+
+        let mut cols = Vec::with_capacity(lParse.nCols as usize);
+        for col in 0..lParse.nCols {
+            let var = &lParse.varData[col as usize];
+            /* copied out before the call, which needs `lParse` mutably */
+            let (dtype, nelem) = (var.dtype, var.nelem.max(1));
+            let naxes: Vec<usize> = var.naxes[..(var.naxis.max(0) as usize).min(var.naxes.len())]
+                .iter()
+                .map(|&n| n.max(0) as usize)
+                .collect();
+
+            let mut store = ColumnStore::new(dtype, nelem, want_rows);
+            let (data, undef) = store.as_ptrs();
+            if load(lParse, col, want_first, want_rows, data, undef) != 0 {
+                return here;
+            }
+            cols.push(store.into_batch(nelem, naxes));
+        }
+        (want_first, want_rows, Some(cols))
+    }
+
+    pub(crate) fn gather(
+        lParse: &mut ParseData,
+        first_row: c_long,
+        n_rows: c_long,
+        offsets: (c_long, c_long),
+    ) -> Batch {
+        /* Widen first, so that whatever the expression reaches is present
+        before any kernel runs. Usually this is a no-op and the window is the
+        chunk already loaded. */
+        let (win_first, win_rows, reloaded) = Self::widen(lParse, first_row, n_rows, offsets);
+        if let Some(columns) = reloaded {
+            return Batch {
+                columns,
+                n_rows,
+                first_data_row: win_first,
+                n_data_rows: win_rows,
+                total_rows: lParse.totalRows,
+                first_row,
+                accum: RefCell::new(Vec::new()),
+            };
+        }
         /* The whole loaded chunk is gathered, not just the batch's slice of
         it, so a row offset can reach the neighbouring rows without going back
         to the file. `Expr::Column` slices the batch window back out. */
-        let chunk_rows = lParse.nDataRows.max(n_rows);
+        let chunk_rows = win_rows;
         let mut columns = Vec::with_capacity(lParse.nCols as usize);
 
         for var in lParse.varData.iter().take(lParse.nCols as usize) {
@@ -462,7 +703,7 @@ impl Batch {
         Batch {
             columns,
             n_rows,
-            first_data_row: lParse.firstDataRow,
+            first_data_row: win_first,
             n_data_rows: chunk_rows,
             total_rows: lParse.totalRows,
             first_row,
@@ -1946,6 +2187,7 @@ fn set_null(v: &ColumnarValue, sentinel: &ColumnarValue) -> Result<ColumnarValue
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c_types::c_int;
 
     fn batch(cols: Vec<ColumnBatch>, n_rows: c_long) -> Batch {
         Batch {
@@ -2143,21 +2385,119 @@ mod tests {
         assert!(a.is_null(2));
     }
 
-    #[test]
-    fn a_row_outside_the_loaded_chunk_asks_for_a_reload() {
-        /* the chunk holds rows 3..5 of a 10-row table, so reaching back to
-        row 2 is a row the batch cannot serve and the arena must */
-        let b = Batch {
-            columns: vec![long_col(&[30, 40, 50])],
-            n_rows: 3,
-            first_data_row: 3,
-            n_data_rows: 3,
-            total_rows: 10,
-            first_row: 3,
-            accum: RefCell::new(Vec::new()),
+    /// A stand-in for the iterator's loader: fills a long column with the
+    /// table row number, so a test can see exactly which rows were fetched.
+    fn stub_loader(
+        _p: &mut ParseData,
+        _col: c_int,
+        first: c_long,
+        rows: c_long,
+        data: *mut core::ffi::c_void,
+        undef: *mut c_char,
+    ) -> c_int {
+        unsafe {
+            let d = core::slice::from_raw_parts_mut(data.cast::<c_long>(), rows as usize);
+            let u = core::slice::from_raw_parts_mut(undef, rows as usize);
+            for i in 0..rows as usize {
+                d[i] = first + i as c_long;
+                u[i] = 0;
+            }
+        }
+        0
+    }
+
+    /// A ParseData holding one long column, with the chunk covering rows
+    /// `chunk_first ..` of a `total`-row table.
+    fn parse_data_for_widen(chunk_first: c_long, chunk_rows: c_long, total: c_long) -> ParseData {
+        let mut p = ParseData {
+            nCols: 1,
+            firstDataRow: chunk_first,
+            nDataRows: chunk_rows,
+            totalRows: total,
+            loadData: Some(stub_loader),
+            ..Default::default()
         };
-        let e = Expr::Offset { col: 0, offset: -1 };
-        assert!(matches!(e.evaluate(&b), Err(ValueError::NeedsReload)));
+        p.varData = vec![crate::eval_defs::DataInfo {
+            dtype: ValueSort::Long,
+            nelem: 1,
+            naxis: 1,
+            ..Default::default()
+        }];
+        p
+    }
+
+    #[test]
+    fn a_window_inside_the_chunk_is_not_reloaded() {
+        let mut p = parse_data_for_widen(1, 10, 10);
+        let (first, rows, reloaded) = Batch::widen(&mut p, 3, 3, (-1, 1));
+        assert!(reloaded.is_none(), "rows 2..6 are already in the chunk");
+        assert_eq!((first, rows), (1, 10));
+    }
+
+    #[test]
+    fn a_window_past_the_chunk_is_loaded_once_for_the_whole_reach() {
+        /* the chunk holds rows 5..7 of a 20-row table, and the expression
+        reaches one row either side */
+        let mut p = parse_data_for_widen(5, 3, 20);
+        let (first, rows, reloaded) = Batch::widen(&mut p, 5, 3, (-1, 1));
+        assert_eq!((first, rows), (4, 5), "rows 4..8 are what the tree reaches");
+        let cols = reloaded.expect("should have reloaded");
+        assert_eq!(
+            cols[0].data,
+            ArrayData::Long(vec![4, 5, 6, 7, 8]),
+            "and the loader was asked for exactly that window"
+        );
+    }
+
+    #[test]
+    fn the_window_is_clipped_to_the_table() {
+        /* reaching back from row 1 asks for nothing before it */
+        let mut p = parse_data_for_widen(1, 2, 20);
+        let (first, rows, reloaded) = Batch::widen(&mut p, 1, 2, (-3, 3));
+        assert_eq!(first, 1, "never before the first row");
+        assert_eq!(rows, 5, "rows 1..5, the reach forward clipped to nothing");
+        assert!(reloaded.is_some());
+
+        /* and reaching past the last row stops there */
+        let mut p = parse_data_for_widen(18, 3, 20);
+        let (first, rows, _) = Batch::widen(&mut p, 18, 3, (0, 5));
+        assert_eq!((first, rows), (18, 3), "rows 18..20 are already loaded");
+    }
+
+    #[test]
+    fn a_loader_that_fails_leaves_the_chunk_alone() {
+        fn refuse(
+            _p: &mut ParseData,
+            _c: c_int,
+            _f: c_long,
+            _r: c_long,
+            _d: *mut core::ffi::c_void,
+            _u: *mut c_char,
+        ) -> c_int {
+            1
+        }
+        let mut p = parse_data_for_widen(5, 3, 20);
+        p.loadData = Some(refuse);
+        let (first, rows, reloaded) = Batch::widen(&mut p, 5, 3, (-1, 1));
+        assert!(reloaded.is_none());
+        assert_eq!((first, rows), (5, 3), "the batch keeps what it had");
+    }
+
+    #[test]
+    fn the_offset_range_is_the_widest_reach_in_the_tree() {
+        let off = |k| Expr::Offset { col: 0, offset: k };
+        assert_eq!(Expr::Column(0).offset_range(), (0, 0));
+        assert_eq!(off(-2).offset_range(), (-2, 0));
+        /* nested either side of an operator, and inside a call */
+        let e = Expr::Arith {
+            op: Arith::Add,
+            lhs: Box::new(off(-3)),
+            rhs: Box::new(Expr::Call {
+                func: Func::Abs,
+                args: vec![off(4)],
+            }),
+        };
+        assert_eq!(e.offset_range(), (-3, 4));
     }
 
     #[test]
