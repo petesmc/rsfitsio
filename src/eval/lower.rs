@@ -38,7 +38,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
             Some(ParserValue::Column { index, sort }) => match sort {
                 /* the string and bit-string columns need their own kernels */
                 ColumnSort::Numeric | ColumnSort::Boolean => Ok(Expr::Column(*index as usize)),
-                ColumnSort::String => Err(Unsupported("string column")),
+                ColumnSort::String => Ok(Expr::Column(*index as usize)),
                 ColumnSort::Bits => Ok(Expr::Column(*index as usize)),
             },
             Some(ParserValue::Long(v)) => Ok(Expr::Literal(Scalar::Long(*v))),
@@ -147,7 +147,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
             })
         }
 
-        AstKind::Str(_) => Err(Unsupported("string literal")),
+        AstKind::Str(s) => Ok(Expr::Literal(Scalar::Str(s.clone()))),
         AstKind::BitStr(s) => Ok(Expr::Literal(Scalar::Bits(s.clone()))),
         AstKind::SNullRef => Err(Unsupported("#SNULL")),
         AstKind::Offset { .. } => Err(Unsupported("row offset")),
@@ -196,7 +196,9 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, shapes: &[Vec<usize>]) -> Re
             /* ISNULL lexes as a BFUNCTION; the other names in that class are
             the region tests, and GTI/STRSTR each need their own kernels */
             let admissible = *kind == CallKind::Function
-                || (*kind == CallKind::BFunction && name.as_slice() == b"ISNULL");
+                || (*kind == CallKind::BFunction && name.as_slice() == b"ISNULL")
+                /* STRSTR is the only IFunction */
+                || *kind == CallKind::IFunction;
             if !admissible {
                 return Err(Unsupported("function call"));
             }
@@ -251,6 +253,8 @@ fn func_of(name: &[u8]) -> Option<(Func, usize)> {
         b"MIN" => (Func::Min, 2),
         b"MAX" => (Func::Max, 2),
         b"DEFNULL" => (Func::DefNull, 2),
+        b"STRSTR" => (Func::StrStr, 2),
+        b"STRMID" => (Func::StrMid, 3),
         b"SETNULL" => (Func::SetNull, 2),
         b"ISNULL" => (Func::IsNull, 1),
         b"SUM" => (Func::Sum, 1),
@@ -385,9 +389,20 @@ mod tests {
     }
 
     #[test]
+    fn strings_lower() {
+        for src in [
+            "'a' == 'b'",
+            "'a' + 'b'",
+            "STRSTR('abc','b')",
+            "STRMID('abc',1,2)",
+        ] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
-            ("'a'", "string literal"),
             ("NELEM(1)", "function call"),
             ("RANDOM()", "function call"),
             ("GTIFILTER()", "function call"),

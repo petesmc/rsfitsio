@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,220 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,299 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,11 +813,9 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 156 | function call — `STRSTR`/`STRMID`, the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
+| 132 | function call — the region and GTI tests, the shape functions (`NELEM`, `NAXIS`, `NAXES`, `ARRAY`, `AXISELEM`, `ELEMENTNUM`), `ACCUM`/`SEQDIFF`, the random generators |
 | 78 | bit-string **result** (see below) |
 | 74 | row offset |
-| 43 | string column |
-| 12 | string literal |
 | 2 | subscript slice (see below) |
 | 2 | `#SNULL` |
 | 1 | string keyword |
@@ -832,8 +830,14 @@ lowered just to reproduce the error, which would move the counter without
 moving any real work. Bit-valued *subexpressions* are evaluated normally;
 `parser::mod` checks only the top-level sort.
 
-What is left that does real work: the strings (55 lines plus `STRSTR`/`STRMID`),
-the row offsets, and the individual functions.
+The same caution applies to reading the string count, for the opposite reason:
+the corpus harness prints only *metadata* for a `dt=16` result, never the text,
+so no corpus line arbitrates a string-valued answer. Those are covered by the
+`ffcalc`/`fffrow` tests in `eval_f.rs` instead, which compare through a boolean
+(`STRMID(STRCOL,1,3) == 'alp'`) or read the written column back.
+
+What is left that does real work: the row offsets and the individual
+functions.
 
 One structural item remains:
 
@@ -852,8 +856,10 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, and the bit strings — `&`, `|`,
-`!`, `+` and the six comparisons, plus `SUM` and `NVALID` over one.
+vector literals, fully-indexed subscripts, the bit strings — `&`, `|`, `!`, `+`
+and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
+the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
+branches are strings.
 
 ### 10.4 What the corpus caught
 

@@ -49,14 +49,22 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
     match value {
         /* A constant result keeps the node's CONST_OP marking and its scalar
         slot, exactly as a folded node did. */
+        /* A constant string result is already in the node: the arena folded
+        the same expression at parse time and owns the text buffer, so there
+        is nothing to copy in and its pointer must not be overwritten. */
+        ColumnarValue::Scalar(Scalar::Str(_)) => {
+            lParse.Nodes[this].operation = Operation::Const;
+        }
+
         ColumnarValue::Scalar(s) => {
             lParse.Nodes[this].operation = Operation::Const;
             lParse.Nodes[this].value.data = match s {
                 Scalar::Boolean(b) => NodeValue::Logical(c_char::from(*b)),
                 Scalar::Long(v) => NodeValue::Long(*v),
                 Scalar::Double(v) => NodeValue::Double(*v),
+                /* Str is handled above; a bit-valued result never lowers */
                 Scalar::Str(_) | Scalar::Bits(_) => {
-                    unreachable!("lowering refuses string results")
+                    unreachable!("handled above, or refused by the lowering")
                 }
             };
             lParse.Nodes[this].value.undef = core::ptr::null_mut();
@@ -65,6 +73,10 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
         /* A wholly undefined result still gets a row buffer: the engine's
         null_fct is a rows kernel, so downstream expects per-row undef flags
         rather than a flag smuggled into the pointer field. */
+        /* A constant node has no row buffer to flag, so an undefined constant
+        keeps the scalar slot the arena already gave it. */
+        ColumnarValue::Null(_) if lParse.Nodes[this].operation == Operation::Const => {}
+
         ColumnarValue::Null(_) => {
             Allocate_Ptrs(lParse, this);
             if lParse.status != 0 {
@@ -117,6 +129,22 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                         let out = core::slice::from_raw_parts_mut(buf, n);
                         for (slot, &v) in out.iter_mut().zip(d) {
                             *slot = c_char::from(v);
+                        }
+                    }
+                    /* A string result is a `char*` per row, each pointing
+                    into the block `Allocate_Ptrs` laid out at the node's
+                    declared width; the text is copied in and terminated. */
+                    ArrayData::Str(d) => {
+                        let buf = lParse.Nodes[this].value.data.str_buf();
+                        let width = lParse.Nodes[this].value.nelem.max(0) as usize;
+                        for (row, text) in d.iter().enumerate() {
+                            let dst = *buf.add(row);
+                            if dst.is_null() {
+                                continue;
+                            }
+                            let n = text.len().min(width);
+                            core::ptr::copy_nonoverlapping(text.as_ptr(), dst.cast::<u8>(), n);
+                            *dst.add(n) = 0;
                         }
                     }
                     other => unreachable!("lowering refuses {other:?} results"),

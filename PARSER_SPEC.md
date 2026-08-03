@@ -633,6 +633,17 @@ Deeply nested expressions reallocate the parse stack via raw `malloc`/`memcpy`
 in the transpiled code, with `YYMAXDEPTH` as the ceiling. A recursive-descent
 replacement needs its own depth limit to avoid stack overflow (§`PARSER_MIGRATION.md` §4.6).
 
+### 6.8 `STRSTR` reports a miss two different ways
+
+`str_pos_rows` marks the row **undefined** when the needle does not occur, but
+`str_pos_const` — the folded form used when both arguments are constants —
+stores a plain **0** instead. So `STRSTR(STRCOL,'z')` is null while
+`STRSTR('abc','z')` is `0`, and `ISNULL(STRSTR(...))` answers differently
+depending only on whether the arguments happen to be literals.
+
+Found while porting the string kernels; not reported upstream. The port
+reproduces both behaviours.
+
 ---
 
 ## 7. Reference: token id table

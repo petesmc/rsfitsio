@@ -10,6 +10,7 @@
 
 use super::bits;
 use super::kernel::{self, Arith, Compare};
+use super::strings;
 use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
 use crate::c_types::{c_char, c_long};
 use crate::eval_defs::OpCode;
@@ -77,6 +78,11 @@ pub(crate) enum Func {
     IsNull,
     /// `DEFNULL(x, y)`: `y` wherever `x` is undefined.
     DefNull,
+    /// `STRSTR(a, b)`: the 1-based position of `b` in `a`, undefined where it
+    /// does not occur.
+    StrStr,
+    /// `STRMID(s, pos, len)`: a 1-based substring.
+    StrMid,
     /// `SETNULL(sentinel, x)`: `x`, undefined wherever it equals `sentinel`.
     SetNull,
 
@@ -285,8 +291,9 @@ impl Batch {
             columns.push(ColumnBatch {
                 data,
                 nulls,
-                /* one string per row, whatever its width */
-                nelem: if text { 1 } else { var.nelem },
+                /* A text column holds one entry per row; `nelem` carries its
+                declared width instead, which STRMID measures against. */
+                nelem: var.nelem,
                 naxes: if text {
                     Vec::new()
                 } else {
@@ -342,7 +349,8 @@ impl Expr {
             Expr::Deref { base, .. } => base.sort(batch_sorts),
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
-                Func::NValid => ValueSort::Long,
+                Func::NValid | Func::StrStr => ValueSort::Long,
+                Func::StrMid => ValueSort::String,
                 Func::Average | Func::Stddev => ValueSort::Double,
                 Func::Sum | Func::Median | Func::Min1 | Func::Max1 => {
                     match args[0].sort(batch_sorts) {
@@ -412,6 +420,8 @@ impl Expr {
                 numeric ones */
                 if is_bits(&l) && is_bits(&r) {
                     bit_arith(*op, &l, &r, batch.n_rows.max(0) as usize)
+                } else if is_text(&l) && is_text(&r) {
+                    str_arith(*op, &l, &r, batch.n_rows.max(0) as usize)
                 } else {
                     kernel::arith(*op, &l, &r)
                 }
@@ -422,6 +432,8 @@ impl Expr {
                 let r = rhs.evaluate(batch)?;
                 if is_bits(&l) && is_bits(&r) {
                     bit_compare(*op, &l, &r, batch.n_rows.max(0) as usize)
+                } else if is_text(&l) && is_text(&r) {
+                    str_compare(*op, &l, &r, batch.n_rows.max(0) as usize)
                 } else {
                     kernel::compare(*op, &l, &r)
                 }
@@ -443,6 +455,13 @@ impl Expr {
                         &r,
                         batch.n_rows.max(0) as usize,
                     )
+                } else if is_text(&l) && is_text(&r) {
+                    str_compare(
+                        if *negated { Compare::Ne } else { Compare::Eq },
+                        &l,
+                        &r,
+                        batch.n_rows.max(0) as usize,
+                    )
                 } else if l.sort() == ValueSort::Boolean && r.sort() == ValueSort::Boolean {
                     logic(if *negated { Logic::Ne } else { Logic::Eq }, &l, &r)
                 } else {
@@ -452,7 +471,7 @@ impl Expr {
 
             Expr::Call { func, args } => {
                 let vals: Result<Vec<_>, _> = args.iter().map(|a| a.evaluate(batch)).collect();
-                call(*func, &vals?)
+                call(*func, &vals?, batch.n_rows.max(0) as usize)
             }
 
             Expr::Deref { base, idx, naxes } => {
@@ -469,7 +488,11 @@ impl Expr {
                 let c = cond.evaluate(batch)?;
                 let t = then.evaluate(batch)?;
                 let e = els.evaluate(batch)?;
-                if_then_else(&c, &t, &e)
+                if is_text(&t) || is_text(&e) {
+                    text_if_then_else(&c, &t, &e, batch.n_rows.max(0) as usize)
+                } else {
+                    if_then_else(&c, &t, &e)
+                }
             }
         }
     }
@@ -727,7 +750,7 @@ fn if_then_else(
 }
 
 /// Apply an elementwise function.
-fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError> {
+fn call(func: Func, args: &[ColumnarValue], rows: usize) -> Result<ColumnarValue, ValueError> {
     if func.is_reduction() {
         return reduce(func, &args[0]);
     }
@@ -741,6 +764,8 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
         Func::Atan2 => kernel::zip_double(&args[0], &args[1], "ARCTAN2", |a, b| a.atan2(b)),
         Func::Min => kernel::zip_keep_sort(&args[0], &args[1], "MIN", f64::min, c_long::min),
         Func::Max => kernel::zip_keep_sort(&args[0], &args[1], "MAX", f64::max, c_long::max),
+        Func::StrStr => str_str(&args[0], &args[1], rows),
+        Func::StrMid => str_mid(&args[0], &args[1], &args[2], rows),
         _ => {
             let f: fn(f64) -> f64 = match func {
                 Func::Sin => f64::sin,
@@ -775,6 +800,114 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
     }
 }
 
+/// `cond ? a : b` over string branches, which the numeric kernel cannot carry.
+/// An undefined condition leaves the row undefined, as does taking a branch
+/// that is itself undefined there.
+fn text_if_then_else(
+    cond: &ColumnarValue,
+    then: &ColumnarValue,
+    els: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let c = cond.numeric("?:")?;
+    let (t, e) = (then.text("?:")?, els.text("?:")?);
+    let mut out = Vec::with_capacity(rows);
+    let mut nulls = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let (flag, cnull) = c.get_i64(i, 1);
+        if cnull {
+            out.push(Vec::new());
+            nulls.push(true);
+            continue;
+        }
+        let (text, null) = if flag != 0 { t.get(i) } else { e.get(i) };
+        out.push(text.to_vec());
+        nulls.push(null);
+    }
+    Ok(ColumnarValue::Array(Array::with_nulls(
+        ArrayData::Str(out),
+        nulls,
+    )))
+}
+
+/// `STRSTR(a, b)`. Absence is a *null*, not a zero, so a caller that wants a
+/// number writes `DEFNULL(STRSTR(...), -1)`.
+fn str_str(a: &ColumnarValue, b: &ColumnarValue, rows: usize) -> Result<ColumnarValue, ValueError> {
+    let (l, r) = (a.text("STRSTR")?, b.text("STRSTR")?);
+    let both_const = matches!((a, b), (ColumnarValue::Scalar(_), ColumnarValue::Scalar(_)));
+    let n = if both_const { 1 } else { rows };
+    let mut out = Vec::with_capacity(n);
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let ((x, nx), (y, ny)) = (l.get(i), r.get(i));
+        match if nx || ny { None } else { strings::find(x, y) } {
+            Some(p) => {
+                out.push(p);
+                nulls.push(false);
+            }
+            None => {
+                out.push(0);
+                nulls.push(true);
+            }
+        }
+    }
+    if both_const {
+        /* `str_pos_const` and `str_pos_rows` disagree: over rows a miss is a
+        null, but folded over two constants it is a plain 0. */
+        return Ok(ColumnarValue::Scalar(Scalar::Long(out[0])));
+    }
+    Ok(ColumnarValue::Array(Array::with_nulls(
+        ArrayData::Long(out),
+        nulls,
+    )))
+}
+
+/// The width `STRMID` measures a source against: a column's declared width,
+/// or a literal's own length when there is no column behind it.
+fn src_width(v: &ColumnarValue, text: &[u8]) -> usize {
+    match v {
+        ColumnarValue::Array(a) if a.nelem() > 0 => a.nelem(),
+        _ => text.len(),
+    }
+}
+
+/// `STRMID(s, pos, len)`. A zero position is undefined, as is a row whose
+/// source, position or length is.
+fn str_mid(
+    s: &ColumnarValue,
+    pos: &ColumnarValue,
+    len: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let src = s.text("STRMID")?;
+    let (p, n) = (pos.numeric("STRMID")?, len.numeric("STRMID")?);
+    let mut out = Vec::with_capacity(rows);
+    let mut nulls = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let (text, ntext) = src.get(i);
+        let (pos_v, npos) = p.get_i64(i, 1);
+        let (len_v, nlen) = n.get_i64(i, 1);
+        /* `pos == 0` asks for the null string, which the engine reports as
+        undefined rather than as an empty one */
+        if ntext || npos || nlen || pos_v <= 0 {
+            out.push(Vec::new());
+            nulls.push(true);
+            continue;
+        }
+        out.push(strings::mid(
+            text,
+            src_width(s, text),
+            pos_v as usize,
+            len_v.max(0) as usize,
+        ));
+        nulls.push(false);
+    }
+    Ok(ColumnarValue::Array(Array::with_nulls(
+        ArrayData::Str(out),
+        nulls,
+    )))
+}
+
 /// Whether a value is a bit string, which decides between the numeric and the
 /// bit kernels for the operators the two share.
 fn is_bits(v: &ColumnarValue) -> bool {
@@ -784,6 +917,90 @@ fn is_bits(v: &ColumnarValue) -> bool {
         ColumnarValue::Array(a) => matches!(a.data(), ArrayData::Bits(_)),
         _ => false,
     }
+}
+
+/// Whether a value is a string, which decides between the numeric and the
+/// string kernels for the operators the two share.
+fn is_text(v: &ColumnarValue) -> bool {
+    match v {
+        ColumnarValue::Scalar(Scalar::Str(_)) => true,
+        ColumnarValue::Null(s) => *s == ValueSort::String,
+        ColumnarValue::Array(a) => matches!(a.data(), ArrayData::Str(_)),
+        _ => false,
+    }
+}
+
+/// `+` over two strings concatenates them; nothing else is defined.
+fn str_arith(
+    op: Arith,
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    if op != Arith::Add {
+        return Err(ValueError::BadSort("string operator", ValueSort::String));
+    }
+    let (l, r) = (lhs.text("string operator")?, rhs.text("string operator")?);
+    if let (ColumnarValue::Scalar(_), ColumnarValue::Scalar(_)) = (lhs, rhs) {
+        return Ok(ColumnarValue::Scalar(Scalar::Str(strings::concat(
+            l.get(0).0,
+            r.get(0).0,
+        ))));
+    }
+    let mut out = Vec::with_capacity(rows);
+    let mut nulls = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let ((a, na), (b, nb)) = (l.get(i), r.get(i));
+        out.push(strings::concat(a, b));
+        nulls.push(na || nb);
+    }
+    Ok(ColumnarValue::Array(Array::with_nulls(
+        ArrayData::Str(out),
+        nulls,
+    )))
+}
+
+/// The comparisons over two strings. Either operand being undefined makes the
+/// answer undefined, as `Do_BinOp_str` does.
+fn str_compare(
+    op: Compare,
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let (l, r) = (
+        lhs.text("string comparison")?,
+        rhs.text("string comparison")?,
+    );
+    let test = |a: &[u8], b: &[u8]| {
+        let ord = strings::compare(a, b);
+        match op {
+            /* `~` over strings is a parse error, so Approx never runs */
+            Compare::Eq | Compare::Approx => ord.is_eq(),
+            Compare::Ne => ord.is_ne(),
+            Compare::Lt => ord.is_lt(),
+            Compare::Lte => ord.is_le(),
+            Compare::Gt => ord.is_gt(),
+            Compare::Gte => ord.is_ge(),
+        }
+    };
+    if let (ColumnarValue::Scalar(_), ColumnarValue::Scalar(_)) = (lhs, rhs) {
+        return Ok(ColumnarValue::Scalar(Scalar::Boolean(test(
+            l.get(0).0,
+            r.get(0).0,
+        ))));
+    }
+    let mut out = Vec::with_capacity(rows);
+    let mut nulls = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let ((a, na), (b, nb)) = (l.get(i), r.get(i));
+        out.push(test(a, b));
+        nulls.push(na || nb);
+    }
+    Ok(ColumnarValue::Array(Array::with_nulls(
+        ArrayData::Boolean(out),
+        nulls,
+    )))
 }
 
 /// `!` over a bit string complements each bit rather than testing the value.
@@ -989,6 +1206,20 @@ fn reduce(func: Func, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
             _ => Err(ValueError::BadSort("reduction", ValueSort::Bits)),
         };
     }
+    /* A string is one element per row, so the only reduction defined over it
+    counts whether that element is there. */
+    if is_text(v) {
+        if func != Func::NValid {
+            return Err(ValueError::BadSort("reduction", ValueSort::String));
+        }
+        let Some(n) = v.len() else {
+            return Ok(ColumnarValue::Scalar(Scalar::Long(1)));
+        };
+        let out = (0..n)
+            .map(|i| i64::from(!v.text("NVALID").map(|t| t.get(i).1).unwrap_or(true)))
+            .collect();
+        return Ok(ColumnarValue::Array(Array::new(ArrayData::Long(out))));
+    }
     let out = match func {
         Func::Average | Func::Stddev => ValueSort::Double,
         Func::NValid => ValueSort::Long,
@@ -1158,6 +1389,135 @@ mod tests {
             n_rows,
             first_row: 1,
         }
+    }
+
+    fn str_col(v: &[&str], width: c_long) -> ColumnBatch {
+        ColumnBatch {
+            data: ArrayData::Str(v.iter().map(|s| s.as_bytes().to_vec()).collect()),
+            nulls: Vec::new(),
+            nelem: width,
+            naxes: Vec::new(),
+        }
+    }
+
+    fn slit(s: &str) -> Expr {
+        Expr::Literal(Scalar::Str(s.as_bytes().to_vec()))
+    }
+
+    #[test]
+    fn strings_compare_and_concatenate_over_a_column() {
+        let b = batch(vec![str_col(&["alpha", "beta"], 10)], 2);
+        let e = Expr::Equality {
+            negated: false,
+            lhs: Box::new(Expr::Column(0)),
+            rhs: Box::new(slit("alpha")),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.data(), &ArrayData::Boolean(vec![true, false]));
+
+        let e = Expr::Arith {
+            op: Arith::Add,
+            lhs: Box::new(Expr::Column(0)),
+            rhs: Box::new(slit("!")),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(
+            a.data(),
+            &ArrayData::Str(vec![b"alpha!".to_vec(), b"beta!".to_vec()])
+        );
+    }
+
+    #[test]
+    fn strstr_reports_a_miss_as_a_null_over_rows() {
+        let b = batch(vec![str_col(&["alpha", "beta"], 10)], 2);
+        let e = Expr::Call {
+            func: Func::StrStr,
+            args: vec![Expr::Column(0), slit("ta")],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        /* 'ta' is in 'beta' at 3 and absent from 'alpha' */
+        assert!(a.is_null(0), "a miss is undefined, not zero");
+        assert!(!a.is_null(1));
+        assert_eq!(a.data(), &ArrayData::Long(vec![0, 3]));
+    }
+
+    #[test]
+    fn strstr_folded_over_two_constants_reports_a_miss_as_zero() {
+        /* str_pos_const differs from str_pos_rows here, and callers depend on
+        the constant form being a plain 0 */
+        let b = batch(vec![], 2);
+        let e = Expr::Call {
+            func: Func::StrStr,
+            args: vec![slit("abc"), slit("z")],
+        };
+        assert_eq!(
+            e.evaluate(&b).unwrap(),
+            ColumnarValue::Scalar(Scalar::Long(0))
+        );
+    }
+
+    #[test]
+    fn strmid_measures_against_the_declared_width() {
+        let b = batch(vec![str_col(&["alpha", "beta"], 10)], 2);
+        let e = Expr::Call {
+            func: Func::StrMid,
+            args: vec![
+                Expr::Column(0),
+                Expr::Literal(Scalar::Long(1)),
+                Expr::Literal(Scalar::Long(3)),
+            ],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(
+            a.data(),
+            &ArrayData::Str(vec![b"alp".to_vec(), b"bet".to_vec()])
+        );
+    }
+
+    #[test]
+    fn a_zero_position_makes_strmid_undefined() {
+        let b = batch(vec![str_col(&["alpha"], 10)], 1);
+        let e = Expr::Call {
+            func: Func::StrMid,
+            args: vec![
+                Expr::Column(0),
+                Expr::Literal(Scalar::Long(0)),
+                Expr::Literal(Scalar::Long(3)),
+            ],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!(a.is_null(0));
+    }
+
+    #[test]
+    fn a_conditional_can_pick_between_strings() {
+        let b = batch(vec![str_col(&["alpha", "beta"], 10)], 2);
+        let e = Expr::IfThenElse {
+            cond: Box::new(Expr::Equality {
+                negated: false,
+                lhs: Box::new(Expr::Column(0)),
+                rhs: Box::new(slit("alpha")),
+            }),
+            then: Box::new(slit("big")),
+            els: Box::new(slit("small")),
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(
+            a.data(),
+            &ArrayData::Str(vec![b"big".to_vec(), b"small".to_vec()])
+        );
     }
 
     /// A 2x3 column holding 1..6 in the first row and 11..16 in the second,
