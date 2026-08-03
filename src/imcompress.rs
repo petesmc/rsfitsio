@@ -3280,7 +3280,7 @@ fn imcomp_write_nocompress_tile(
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
 /// Note that the calling routine must have allocated the input array big enough
 /// to be able to do this.
-unsafe fn imcomp_convert_tile_tshort(
+fn imcomp_convert_tile_tshort(
     outfptr: &mut fitsfile,
     tiledata: &mut [u8],
     tilelen: c_long,
@@ -3799,7 +3799,7 @@ fn imcomp_convert_tile_tsbyte(
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
 /// Note that the calling routine must have allocated the input array big enough
 /// to be able to do this.
-unsafe fn imcomp_convert_tile_tfloat(
+fn imcomp_convert_tile_tfloat(
     outfptr: &mut fitsfile,
     row: c_long,
     tiledata: &mut [u8],
@@ -6162,7 +6162,7 @@ pub(crate) fn fits_read_compressed_img(
 /// This is similar to fits_read_compressed_img, except that it writes
 /// the pixels to the output image, on a tile by tile basis instead of returning
 /// the array.
-unsafe fn fits_read_write_compressed_img(
+fn fits_read_write_compressed_img(
     fptr: &mut fitsfile,            /* I - FITS file pointer      */
     datatype: c_int,                /* I - datatype of the array to be returned      */
     infpixel: &[LONGLONG],          /* I - 'bottom left corner' of the subsection    */
@@ -7533,7 +7533,7 @@ unsafe fn imcomp_copy_img2comp(
 /*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the compressed input image
 /// and to the uncompressed image (in a binary table)
-unsafe fn imcomp_copy_comp2img(
+fn imcomp_copy_comp2img(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     norec: bool,
