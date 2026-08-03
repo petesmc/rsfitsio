@@ -132,76 +132,67 @@ mod tests {
         expr.to_ascii_uppercase().contains("RANDOM")
     }
 
-    /// Whether this line's answer depends on how wide a C `long` is.
+    /// Whether a golden line records an answer a narrower C `long` cannot hold.
     ///
-    /// The lexer's `atol` saturates at `c_long::MAX`, exactly as C's does, so
-    /// an integer literal past that limit lexes as a *different number* on
-    /// LLP64 -- Windows, where a long is 32 bits -- than on LP64, where the
-    /// golden was captured. `9223372036854775807` becomes `2147483647` there.
+    /// Integer results travel through `c_long`, which is 64 bits on LP64 and 32
+    /// on LLP64 (Windows). The golden was captured on LP64, so any line whose
+    /// recorded value is outside the 32-bit range describes something Windows
+    /// cannot reproduce -- correctly so, since C's `long` is genuinely narrower
+    /// there. Those lines are skipped where a long is narrow and checked
+    /// everywhere else.
     ///
-    /// That is correct behaviour, not a defect: the fixture is what cannot be
-    /// shared across both, so these lines are skipped where a long is narrow
-    /// and still checked everywhere else.
-    fn depends_on_long_width(expr: &str) -> bool {
-        size_of::<c_long>() < 8 && has_literal_above(expr, &c_long::MAX.to_string())
+    /// The test is on the *recorded value*, not on the expression, because the
+    /// dependency does not have to come from a literal. `INTCOL ** INTCOL` is
+    /// `10000000000` with no large literal anywhere in it, and
+    /// `0o777777777777777777777` is a literal but not a decimal one -- an
+    /// earlier version of this guard scanned the source text and missed both.
+    fn depends_on_long_width(golden_line: &str) -> bool {
+        size_of::<c_long>() < 8 && records_value_outside(golden_line, 32)
     }
 
-    /// Whether `expr` contains a run of digits greater than `limit`.
+    /// Whether the values a golden line records include an integer that does
+    /// not fit in a signed integer of `bits` bits.
     ///
-    /// Compared as text, so a literal far past any integer type -- the corpus
-    /// has one of 300-odd digits -- cannot overflow the check itself. Split
-    /// out from [`depends_on_long_width`] so it can be tested on a platform
-    /// where a long is wide.
-    ///
-    /// Digits inside a quoted string are not integer literals and are ignored:
-    /// over-skipping would quietly cost coverage on exactly the platform the
-    /// guard exists to serve.
-    fn has_literal_above(expr: &str, limit: &str) -> bool {
-        let mut digits = String::new();
-        let mut quote: Option<char> = None;
-        /* the character before the run, which says whether it is a decimal
-        integer at all: `b1010`, `0o777`, `1e308` and `0.5` all carry long
-        digit runs that are not integer literals and do not depend on the
-        width of a long */
-        let mut before = ' ';
-        let mut prev = ' ';
-        for c in expr.chars().chain(core::iter::once(' ')) {
-            match quote {
-                Some(q) => {
-                    if c == q {
-                        quote = None;
-                    }
-                    prev = c;
-                    continue;
-                }
-                None if c == '\'' || c == '"' => {
-                    quote = Some(c);
-                    digits.clear();
-                    prev = c;
-                    continue;
-                }
-                None => {}
-            }
-            if c.is_ascii_digit() {
-                if digits.is_empty() {
-                    before = prev;
-                }
-                digits.push(c);
-                prev = c;
+    /// Only the value section after `|` is considered: the metadata before it
+    /// carries datatype and shape numbers that are the same on every platform.
+    /// Anything with a decimal point is a double and travels in an `f64`
+    /// regardless, so only bare integers count.
+    fn records_value_outside(golden_line: &str, bits: u32) -> bool {
+        let Some(values) = golden_line.split_once('|').map(|(_, v)| v) else {
+            return false;
+        };
+        let lo = -(1i128 << (bits - 1));
+        let hi = (1i128 << (bits - 1)) - 1;
+
+        let b: Vec<char> = values.chars().collect();
+        let mut i = 0;
+        while i < b.len() {
+            if !b[i].is_ascii_digit() {
+                i += 1;
                 continue;
             }
-            if !digits.is_empty() {
-                let decimal = !before.is_ascii_alphanumeric() && before != '.' && c != '.';
-                let trimmed = digits.trim_start_matches('0');
-                if decimal
-                    && (trimmed.len() > limit.len()
-                        || (trimmed.len() == limit.len() && trimmed > limit))
-                {
-                    return true;
-                }
-                digits.clear();
+            let start = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
             }
-            prev = c;
+            /* a decimal point on either side makes this a double's digits */
+            let is_float = b.get(i) == Some(&'.') || (start > 0 && b[start - 1] == '.');
+            let negative = start > 0 && b[start - 1] == '-';
+            if is_float {
+                continue;
+            }
+            let text: String = b[start..i].iter().collect();
+            /* parse into i128 so a value far past i64 cannot wrap the check */
+            match text.parse::<i128>() {
+                Ok(v) => {
+                    let v = if negative { -v } else { v };
+                    if v < lo || v > hi {
+                        return true;
+                    }
+                }
+                /* longer than i128 can hold, so certainly outside */
+                Err(_) => return true,
+            }
         }
         false
     }
@@ -330,42 +321,49 @@ mod tests {
 
     /// The 32-bit-long skip list, checked here because CI's LLP64 machines are
     /// the ones that need it and this machine cannot run them.
+    ///
+    /// The positive cases are the golden lines Windows actually reported, not
+    /// invented ones: two of them have no large literal in the expression at
+    /// all, which is why the guard reads the recorded value instead.
     #[test]
     fn the_long_width_guard_picks_out_the_right_lines() {
-        let limit = i32::MAX.to_string();
-        /* what a 32-bit long cannot hold, and so lexes differently there */
-        for e in [
-            "2147483648",
-            "9223372036854775807",
-            "-9223372036854775807",
-            "1234567890123456789",
-            "99999999999999999999",
-            "INTCOL + 4000000000",
+        for g in [
+            /* a literal past the range, saturated by atol */
+            "9223372036854775807\tOK dt=41 nelem=-1 naxis=1 naxes=[1] | [9223372036854775807]",
+            /* an octal literal, truncated by the cast in radix_const */
+            "0o777777777777777777777\tOK dt=41 | [9223372036854775807, 9223372036854775807]",
+            /* and a computed result, with no large literal anywhere */
+            "INTCOL ** INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [823543, 0, 10000000000]",
+            "INTCOL ^ INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [823543, 0, 10000000000]",
+            "-9223372036854775807\tOK dt=41 | [-9223372036854775807]",
+            /* longer than any integer type, so certainly outside */
+            "big\tOK dt=41 | [123456789012345678901234567890123456789012]",
         ] {
-            assert!(has_literal_above(e, &limit), "should skip: {e}");
+            assert!(records_value_outside(g, 32), "should skip: {g}");
         }
-        /* and what it can, including the boundary itself -- plus the runs of
-        digits that are not decimal integer literals at all */
-        for e in [
-            "2147483647",
-            "INTCOL",
-            "1 + 2",
-            "VECCOL[3]",
-            "b1010",
-            "'9999999999999999999999'",
-            "0000000000002147483647",
-            "(BITS + BITS) == b1111000011110000",
-            "0.30000000000000004",
-            "0b1111111111111111111111111111111111111111111111111111111111111111",
-            "0o777777777777777777777",
-            "1e308",
-            "h1f",
+
+        for g in [
+            /* the boundary itself fits */
+            "2147483647\tOK dt=41 nelem=-1 naxis=1 naxes=[1] | [2147483647, 2147483647]",
+            "-2147483648\tOK dt=41 | [-2147483648]",
+            "INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [7, -3, 10]",
+            /* doubles travel in an f64 whatever a long is */
+            "1e308\tOK dt=82 nelem=-1 naxis=1 naxes=[1] | [100000000000000000000.000000]",
+            "FLOATCOL\tOK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 4.000000, 0.500000]",
+            /* a parse error records no values at all */
+            "INTCOL{'a'}\tERR 431",
+            /* and a big number in the expression does not matter if the
+            recorded answer is small */
+            "9223372036854775807 > 0\tOK dt=14 nelem=-1 naxis=1 naxes=[1] | [1, 1, 1]",
         ] {
-            assert!(!has_literal_above(e, &limit), "should not skip: {e}");
+            assert!(!records_value_outside(g, 32), "should not skip: {g}");
         }
-        /* on this platform the guard is inert whatever the expression */
+
+        /* on this platform the guard is inert whatever the line says */
         if size_of::<c_long>() >= 8 {
-            assert!(!depends_on_long_width("9223372036854775807"));
+            assert!(!depends_on_long_width(
+                "x\tOK dt=41 | [9223372036854775807]"
+            ));
         }
     }
 
@@ -406,7 +404,7 @@ mod tests {
             for i in 0..a.len().max(g.len()) {
                 let x = a.get(i).copied().unwrap_or("<missing>");
                 let y = g.get(i).copied().unwrap_or("<missing>");
-                if depends_on_long_width(y.split('\t').next().unwrap_or("")) {
+                if depends_on_long_width(y) {
                     skipped += 1;
                     continue;
                 }
