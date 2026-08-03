@@ -16,6 +16,7 @@
 pub(crate) mod bits;
 pub(crate) mod bridge;
 pub(crate) mod expr;
+pub(crate) mod gti;
 pub(crate) mod kernel;
 pub(crate) mod lower;
 pub(crate) mod regions;

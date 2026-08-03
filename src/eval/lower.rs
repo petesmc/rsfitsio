@@ -8,7 +8,7 @@
 //! Name resolution has already happened — `parser::resolve` ran before the
 //! parse — so a name here is a column index or a folded constant.
 
-use super::expr::{Expr, Func, Logic, Unary};
+use super::expr::{Expr, Func, GtiIntervals, Logic, Unary};
 use super::kernel::{Arith, Compare};
 use super::value::Scalar;
 use crate::c_types::c_long;
@@ -56,6 +56,9 @@ fn const_long(ast: &Ast) -> Option<c_long> {
 /// for the shape functions, and its sort, for the places where an operator's
 /// meaning depends on it (`+` concatenates text but adds numbers).
 pub(crate) struct Columns {
+    /// What each GTI call read while the arena was built, keyed by the call's
+    /// byte offset. The file navigation happens once, there.
+    pub(crate) gti: crate::parser::lower::GtiLoads,
     /// Hands out a slot to each `ACCUM`/`SEQDIFF` as it is lowered, so the
     /// running values can live in one flat vector that survives between
     /// batches. Interior mutability keeps `lower` taking `&Columns`.
@@ -155,6 +158,8 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
             naxes: naxes.iter().map(|&n| n as c_long).collect(),
         },
         Expr::Unary { arg, .. } => shape_of(arg, cols)?,
+        /* one answer per element of the time expression */
+        Expr::Gti { time, .. } => shape_of(time, cols)?,
         /* ACCUM and SEQDIFF are elementwise, so the shape carries through */
         Expr::Accum { arg, .. } => shape_of(arg, cols)?,
         Expr::Arith { op, lhs, rhs } => {
@@ -481,6 +486,32 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         AstKind::Call { kind, name, args } => {
             /* ISNULL lexes as a BFUNCTION; the other names in that class are
             the region tests, and GTI/STRSTR each need their own kernels */
+            /* GTIFILTER and GTIFIND read their intervals while the arena was
+            built; the lowering picks them up rather than reading the file
+            again. GTIOVERLAP and the region filters are not ported yet. */
+            if matches!(kind, CallKind::GtiFilter | CallKind::GtiFind) {
+                let Some(data) = cols.gti.get(&ast.at) else {
+                    return Err(Unsupported("GTI call with no recorded load"));
+                };
+                /* the time is the second argument when there is one, and the
+                column `New_GTI` resolved otherwise */
+                let time = match args.get(1) {
+                    Some(a) => lower(a, names, cols)?,
+                    None => match data.time_col {
+                        Some(c) => Expr::Column(c as usize),
+                        None => return Err(Unsupported("GTI call with no time column")),
+                    },
+                };
+                return Ok(Expr::Gti {
+                    find: *kind == CallKind::GtiFind,
+                    time: Box::new(time),
+                    intervals: alloc::rc::Rc::new(GtiIntervals {
+                        start: data.start.clone(),
+                        stop: data.stop.clone(),
+                        ordered: data.ordered,
+                    }),
+                });
+            }
             let admissible = *kind == CallKind::Function
                 || (*kind == CallKind::BFunction
                     && matches!(
@@ -635,6 +666,7 @@ mod tests {
             &ast(src),
             &Resolutions::new(),
             &Columns {
+                gti: Default::default(),
                 accums: core::cell::Cell::new(0),
                 shapes: Vec::new(),
                 sorts: Vec::new(),
@@ -789,7 +821,8 @@ mod tests {
     #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
-            ("GTIFILTER()", "function call"),
+            /* GTIOVERLAP and the region filters are not ported yet */
+            ("GTIOVERLAP('f',1,2)", "function call"),
             ("REGFILTER('x.reg')", "function call"),
         ] {
             assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
@@ -800,7 +833,7 @@ mod tests {
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
         assert_eq!(
-            try_lower("1 + GTIFILTER()"),
+            try_lower("1 + REGFILTER('x.reg')"),
             Err(Unsupported("function call"))
         );
     }

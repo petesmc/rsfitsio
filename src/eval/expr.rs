@@ -8,9 +8,11 @@
 //!
 //! Evaluation is per batch of rows, matching how `ffiter` drives the engine.
 
+use alloc::rc::Rc;
 use core::cell::RefCell;
 
 use super::bits;
+use super::gti;
 use super::kernel::{self, Arith, Compare};
 use super::regions;
 use super::strings;
@@ -244,6 +246,18 @@ pub(crate) enum Expr {
         /// The slice's own axis lengths.
         naxes: Vec<usize>,
     },
+    /// `GTIFILTER(...)` and `GTIFIND(...)`: whether a time falls in a good
+    /// interval, or which one.
+    ///
+    /// The intervals were read from the file while the arena was built. They
+    /// are behind an `Rc` because the bridge clones the tree once per batch
+    /// and a GTI can hold thousands of them.
+    Gti {
+        /// `GTIFIND`, which reports the interval rather than a yes or no.
+        find: bool,
+        time: Box<Expr>,
+        intervals: Rc<GtiIntervals>,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -283,6 +297,14 @@ pub(crate) struct Batch {
     /// the bridge and handed back after the batch, so `evaluate` stays a
     /// `&self` walk.
     pub(crate) accum: RefCell<Vec<AccumState>>,
+}
+
+/// The good-time intervals one call site loaded.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct GtiIntervals {
+    pub(crate) start: Vec<f64>,
+    pub(crate) stop: Vec<f64>,
+    pub(crate) ordered: bool,
 }
 
 /// A scratch destination for `ParseData::loadData`, which writes native C
@@ -420,6 +442,7 @@ impl Expr {
             | Expr::Offset { .. }
             | Expr::RowNumber => {}
             Expr::Unary { arg, .. } | Expr::Accum { arg, .. } => f(arg),
+            Expr::Gti { time, .. } => f(time),
             Expr::Arith { lhs, rhs, .. }
             | Expr::Compare { lhs, rhs, .. }
             | Expr::Logic { lhs, rhs, .. }
@@ -747,6 +770,13 @@ impl Expr {
                 .unwrap_or(ValueSort::Long),
             Expr::Deref { base, .. } => base.sort(batch_sorts),
             Expr::Slice { base, .. } => base.sort(batch_sorts),
+            Expr::Gti { find, .. } => {
+                if *find {
+                    ValueSort::Long
+                } else {
+                    ValueSort::Boolean
+                }
+            }
             Expr::Accum { arg, .. } => match arg.sort(batch_sorts) {
                 ValueSort::Boolean => ValueSort::Long,
                 other => other,
@@ -893,6 +923,15 @@ impl Expr {
                 let idx: Result<Vec<_>, _> = idx.iter().map(|e| e.evaluate(batch)).collect();
                 deref(&base, &idx?, naxes, batch.n_rows.max(0) as usize)
             }
+            Expr::Gti {
+                find,
+                time,
+                intervals,
+            } => {
+                let t = time.evaluate(batch)?;
+                gti_filter(*find, &t, intervals, batch.n_rows.max(0) as usize)
+            }
+
             Expr::Accum { id, diff, arg } => {
                 let v = arg.evaluate(batch)?;
                 accumulate(*id, *diff, &v, batch)
@@ -1345,6 +1384,49 @@ fn slice_of(
         gather_at(a, &picked)
             .with_nelem(run)
             .with_naxes(naxes.to_vec()),
+    ))
+}
+
+/// `GTIFILTER` and `GTIFIND`. A row whose time is undefined is undefined; a
+/// row outside every interval is `false`, or `-1` for the finding form, which
+/// is what `Do_GTI` writes.
+fn gti_filter(
+    find: bool,
+    time: &ColumnarValue,
+    intervals: &GtiIntervals,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let input = time.numeric("GTIFILTER")?;
+    let (nelem, _) = shape_at_runtime(time);
+    let n = rows * nelem;
+    let mut longs = Vec::new();
+    let mut bools = Vec::new();
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let (t, null) = input.get(i, nelem);
+        let found = if null {
+            -1
+        } else {
+            gti::search(t, &intervals.start, &intervals.stop, intervals.ordered)
+        };
+        if find {
+            /* GTIFIND reports a row *outside* every interval as undefined --
+            the -1 is only what the value slot holds -- while GTIFILTER just
+            answers no and keeps whatever the time's own flag was */
+            longs.push(if found >= 0 { found + 1 } else { -1 });
+            nulls.push(found < 0);
+        } else {
+            bools.push(found >= 0);
+            nulls.push(null);
+        }
+    }
+    let data = if find {
+        ArrayData::Long(longs)
+    } else {
+        ArrayData::Boolean(bools)
+    };
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(data, nulls).with_nelem(nelem),
     ))
 }
 
