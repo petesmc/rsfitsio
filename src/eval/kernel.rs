@@ -313,6 +313,126 @@ pub(crate) fn compare(op: Compare, lhs: &ColumnarValue, rhs: &ColumnarValue) -> 
     ))
 }
 
+/// Build a numeric result of the given sort from per-element doubles.
+pub(crate) fn build(
+    out: ValueSort,
+    vals: Vec<f64>,
+    nulls: Vec<bool>,
+    any_null: bool,
+    nelem: usize,
+) -> ColumnarValue {
+    let data = match out {
+        ValueSort::Double => ArrayData::Double(vals),
+        ValueSort::Boolean => ArrayData::Boolean(vals.iter().map(|&v| v != 0.0).collect()),
+        _ => ArrayData::Long(vals.iter().map(|&v| v as c_long).collect()),
+    };
+    array_with(data, nulls, any_null, nelem)
+}
+
+pub(crate) fn scalar_of_sort(sort: ValueSort, v: f64) -> Scalar {
+    match sort {
+        ValueSort::Double => Scalar::Double(v),
+        ValueSort::Boolean => Scalar::Boolean(v != 0.0),
+        _ => Scalar::Long(v as c_long),
+    }
+}
+
+/// Map a numeric value elementwise to a double result.
+pub(crate) fn map_double(v: &ColumnarValue, op: &'static str, f: impl Fn(f64) -> f64) -> Res {
+    map_double_checked(v, op, f, |_| false)
+}
+
+/// As [`map_double`], but `domain` marks an argument the function is not
+/// defined for, which becomes a null instead of a NaN.
+pub(crate) fn map_double_checked(
+    v: &ColumnarValue,
+    op: &'static str,
+    f: impl Fn(f64) -> f64,
+    domain: impl Fn(f64) -> bool,
+) -> Res {
+    let input = v.numeric(op)?;
+    let nelem = input.nelem();
+    let Some(n) = v.len() else {
+        let (x, null) = input.get(0, nelem);
+        return Ok(if null || domain(x) {
+            ColumnarValue::Null(ValueSort::Double)
+        } else {
+            ColumnarValue::Scalar(Scalar::Double(f(x)))
+        });
+    };
+    let mut vals = vec![0.0; n];
+    let mut nulls = vec![false; n];
+    let mut any = false;
+    for i in 0..n {
+        let (x, null) = input.get(i, nelem);
+        let bad = null || domain(x);
+        vals[i] = if bad { 0.0 } else { f(x) };
+        nulls[i] = bad;
+        any |= bad;
+    }
+    Ok(build(ValueSort::Double, vals, nulls, any, nelem))
+}
+
+/// Map an integer value elementwise, staying in `i64`.
+pub(crate) fn map_long(v: &ColumnarValue, op: &'static str, g: impl Fn(c_long) -> c_long) -> Res {
+    let input = v.numeric(op)?;
+    let nelem = input.nelem();
+    let Some(n) = v.len() else {
+        let (x, null) = input.get_i64(0, nelem);
+        return Ok(if null {
+            ColumnarValue::Null(ValueSort::Long)
+        } else {
+            ColumnarValue::Scalar(Scalar::Long(g(x)))
+        });
+    };
+    let mut data = vec![0 as c_long; n];
+    let mut nulls = vec![false; n];
+    let mut any = false;
+    for i in 0..n {
+        let (x, null) = input.get_i64(i, nelem);
+        data[i] = if null { 0 } else { g(x) };
+        nulls[i] = null;
+        any |= null;
+    }
+    Ok(array_with(ArrayData::Long(data), nulls, any, nelem))
+}
+
+/// Combine two numeric values elementwise into a double result.
+pub(crate) fn zip_double(
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    op: &'static str,
+    f: impl Fn(f64, f64) -> f64,
+) -> Res {
+    zip_numeric(
+        lhs,
+        rhs,
+        ValueSort::Double,
+        op,
+        |a, b| Some(f(a, b)),
+        |_, _| None,
+    )
+}
+
+/// Combine two numeric values elementwise, keeping the promoted sort.
+pub(crate) fn zip_keep_sort(
+    lhs: &ColumnarValue,
+    rhs: &ColumnarValue,
+    op: &'static str,
+    f: impl Fn(f64, f64) -> f64,
+    g: impl Fn(c_long, c_long) -> c_long,
+) -> Res {
+    let out = promote(lhs.sort(), rhs.sort());
+    zip_numeric(
+        lhs,
+        rhs,
+        out,
+        op,
+        |a, b| Some(f(a, b)),
+        |a, b| Some(g(a, b)),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

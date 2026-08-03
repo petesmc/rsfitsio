@@ -802,15 +802,28 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **694 of the corpus's 1,852 expressions go
-through it** and all 1,852 still match the golden file byte for byte; the other
-894 hit a construct the lowering does not cover yet and fall back.
+result node. With the feature on, **936 of the corpus's 1,852 expressions go
+through it** and all 1,852 still match the golden file byte for byte; the rest
+hit a construct the lowering does not cover yet and fall back.
 
 The fallback is per expression and explicit: `eval::lower::lower` returns
 `Unsupported("function call")`, `Unsupported("bit-string column")` and so on,
-so what is missing is greppable rather than mysterious. Still to port: strings,
-bit strings, vectors and subscripts, row offsets, the bitwise operators, and
-the ~50 functions now sitting as named kernels in `eval_y/func.rs`.
+so what is missing is greppable rather than mysterious. Counting the corpus by
+reason gives the order to work in:
+
+| remaining | reason |
+|---:|---|
+| 266 | function call — the reductions (`SUM`, `MEDIAN`, one-argument `MIN`/`MAX`), the shape functions (`NELEM`, `NAXIS`, `ARRAY`), `STRSTR`/`STRMID`, the region and GTI tests |
+| 74 | row offset |
+| 72 | vector literal |
+| 64 | bit-string column |
+| 56 | subscript |
+| 50 | bitwise operator |
+| 40 | bit-string literal |
+| 33 | string column |
+
+The elementwise functions are done: the sixteen transcendentals, `ABS`,
+`ARCTAN2`, two-argument `MIN`/`MAX`, `ISNULL`, `DEFNULL` and `SETNULL`.
 
 ### 10.4 What the corpus caught
 
@@ -840,3 +853,21 @@ three were design errors in the value model, which is the useful part:
 
 None of these would have been found by the unit tests, which is the argument
 for wiring an incomplete evaluator in early rather than finishing it first.
+
+### 10.5 More of what the corpus caught
+
+Porting the elementwise functions produced four more divergences, all of them
+places where the engine does something other than the obvious:
+
+* **A domain error is a null, not a NaN.** `SQRT(-3)` sets the undef flag; the
+  same goes for `LOG` and `LOG10` at or below zero and the inverse
+  trigonometric functions outside [-1, 1].
+* **`ROUND` is `floor(x + 0.5)`**, not Rust's `round`, which rounds half away
+  from zero — they differ at `-2.5`.
+* **`SETNULL`'s arguments are reordered.** The parser writes
+  `SETNULL(sentinel, value)` and `New_Func` swaps them, so the value is the
+  second argument by the time a kernel sees it.
+* **`SETNULL` ignores its sentinel when both arguments are constant.**
+  `set_null_const` copies the value and never compares, so `SETNULL(1,1)` is 1
+  rather than null. CFITSIO agrees, so this is the contract rather than a
+  transpilation slip — but it is almost certainly an upstream bug.

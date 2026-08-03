@@ -8,12 +8,13 @@
 //! Name resolution has already happened — `parser::resolve` ran before the
 //! parse — so a name here is a column index or a folded constant.
 
-use super::expr::{Expr, Logic, Unary};
+use super::expr::{Expr, Func, Logic, Unary};
 use super::kernel::{Arith, Compare};
 use super::value::Scalar;
 use crate::eval_defs::{ColumnSort, ParserValue, ValueSort};
 use crate::parser::ast::{Ast, AstKind, BinOp, UnOp};
 use crate::parser::resolve::Resolutions;
+use crate::parser::token::CallKind;
 
 /// Why an expression could not be lowered to an [`Expr`].
 ///
@@ -81,6 +82,13 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
                 });
             }
             match op {
+                /* `==` and `!=` are numeric comparison or boolean equality
+                depending on the operands, which lowering cannot see */
+                BinOp::Eq | BinOp::Ne => Ok(Expr::Equality {
+                    negated: *op == BinOp::Ne,
+                    lhs: l,
+                    rhs: r,
+                }),
                 BinOp::And => Ok(Expr::Logic {
                     op: Logic::And,
                     lhs: l,
@@ -130,8 +138,64 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         AstKind::Offset { .. } => Err(Unsupported("row offset")),
         AstKind::Deref { .. } => Err(Unsupported("subscript")),
         AstKind::Vector(_) => Err(Unsupported("vector literal")),
-        AstKind::Call { .. } => Err(Unsupported("function call")),
+        AstKind::Call { kind, name, args } => {
+            /* ISNULL lexes as a BFUNCTION; the other names in that class are
+            the region tests, and GTI/STRSTR each need their own kernels */
+            let admissible = *kind == CallKind::Function
+                || (*kind == CallKind::BFunction && name.as_slice() == b"ISNULL");
+            if !admissible {
+                return Err(Unsupported("function call"));
+            }
+            let (func, arity) = match func_of(name) {
+                Some(pair) => pair,
+                None => return Err(Unsupported("function call")),
+            };
+            if args.len() != arity {
+                /* MIN/MAX are a reduction in their one-argument form */
+                return Err(Unsupported("function call"));
+            }
+            let lowered: Result<Vec<Expr>, Unsupported> =
+                args.iter().map(|a| lower(a, names)).collect();
+            Ok(Expr::Call {
+                func,
+                args: lowered?,
+            })
+        }
     }
+}
+
+/// The elementwise functions and their arity.
+///
+/// Names arrive upper-cased from the lexer. `MIN` and `MAX` appear here in
+/// their two-argument form only; with one argument they reduce across a row,
+/// which needs a different kernel.
+fn func_of(name: &[u8]) -> Option<(Func, usize)> {
+    Some(match name {
+        b"SIN" => (Func::Sin, 1),
+        b"COS" => (Func::Cos, 1),
+        b"TAN" => (Func::Tan, 1),
+        b"ARCSIN" | b"ASIN" => (Func::Asin, 1),
+        b"ARCCOS" | b"ACOS" => (Func::Acos, 1),
+        b"ARCTAN" | b"ATAN" => (Func::Atan, 1),
+        b"SINH" => (Func::Sinh, 1),
+        b"COSH" => (Func::Cosh, 1),
+        b"TANH" => (Func::Tanh, 1),
+        b"EXP" => (Func::Exp, 1),
+        b"LOG" => (Func::Ln, 1),
+        b"LOG10" => (Func::Log10, 1),
+        b"SQRT" => (Func::Sqrt, 1),
+        b"CEIL" => (Func::Ceil, 1),
+        b"FLOOR" => (Func::Floor, 1),
+        b"ROUND" => (Func::Round, 1),
+        b"ABS" => (Func::Abs, 1),
+        b"ARCTAN2" => (Func::Atan2, 2),
+        b"MIN" => (Func::Min, 2),
+        b"MAX" => (Func::Max, 2),
+        b"DEFNULL" => (Func::DefNull, 2),
+        b"SETNULL" => (Func::SetNull, 2),
+        b"ISNULL" => (Func::IsNull, 1),
+        _ => return None,
+    })
 }
 
 fn arith_of(op: BinOp) -> Option<Arith> {
@@ -199,13 +263,32 @@ mod tests {
     }
 
     #[test]
+    fn the_elementwise_functions_lower() {
+        for src in [
+            "SIN(1)",
+            "sqrt(4)",
+            "ABS(-1)",
+            "ROUND(2.5)",
+            "ARCTAN2(1,1)",
+            "MIN(1,2)",
+            "MAX(1,2)",
+            "DEFNULL(1,2)",
+            "SETNULL(1,2)",
+            "ISNULL(1)",
+        ] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn unported_constructs_name_themselves() {
         for (src, want) in [
             ("'a'", "string literal"),
             ("b101", "bit-string literal"),
             ("1 & 2", "bitwise operator"),
             ("{1,2}", "vector literal"),
-            ("SIN(1)", "function call"),
+            ("SUM(1)", "function call"),
+            ("MIN(1)", "function call"),
             ("#SNULL", "#SNULL"),
         ] {
             assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
@@ -215,6 +298,6 @@ mod tests {
     #[test]
     fn an_unsupported_leaf_stops_the_whole_expression() {
         /* the fallback is per expression, not per node */
-        assert_eq!(try_lower("1 + SIN(1)"), Err(Unsupported("function call")));
+        assert_eq!(try_lower("1 + SUM(1)"), Err(Unsupported("function call")));
     }
 }

@@ -38,6 +38,47 @@ pub(crate) enum Logic {
     Ne,
 }
 
+/// A function applied element by element.
+///
+/// Only the elementwise ones so far. The reductions -- `SUM`, `MEDIAN`,
+/// `NELEM` and the one-argument `MIN`/`MAX` -- fold across the elements *of a
+/// row* rather than mapping over them, so they need a different shape and
+/// come later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Func {
+    /* one argument, double result */
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Exp,
+    Ln,
+    Log10,
+    Sqrt,
+    Ceil,
+    Floor,
+    /// `floor(x + 0.5)`, which is what the C computes -- not Rust's `round`,
+    /// which rounds half away from zero and so differs at `-2.5`.
+    Round,
+    /// One argument, keeping its sort.
+    Abs,
+    /* two arguments */
+    Atan2,
+    Min,
+    Max,
+    /// `ISNULL(x)`: true where `x` is undefined. Never null itself.
+    IsNull,
+    /// `DEFNULL(x, y)`: `y` wherever `x` is undefined.
+    DefNull,
+    /// `SETNULL(sentinel, x)`: `x`, undefined wherever it equals `sentinel`.
+    SetNull,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Expr {
     Literal(Scalar),
@@ -65,6 +106,18 @@ pub(crate) enum Expr {
         op: Logic,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
+    },
+    /// `==` or `!=`, whose meaning depends on the operand sorts: a numeric
+    /// comparison, or boolean equality. `eval.y` had separate productions for
+    /// each; here the sorts are only known once the operands are evaluated.
+    Equality {
+        negated: bool,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    Call {
+        func: Func,
+        args: Vec<Expr>,
     },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
@@ -184,8 +237,18 @@ impl Expr {
                     other => other,
                 }
             }
-            Expr::Compare { .. } | Expr::Logic { .. } => ValueSort::Boolean,
+            Expr::Compare { .. } | Expr::Logic { .. } | Expr::Equality { .. } => ValueSort::Boolean,
             Expr::IfThenElse { then, els, .. } => then.sort(batch_sorts).max(els.sort(batch_sorts)),
+            Expr::Call { func, args } => match func {
+                Func::IsNull => ValueSort::Boolean,
+                Func::Abs | Func::SetNull => args[0].sort(batch_sorts),
+                Func::Min | Func::Max | Func::DefNull => args
+                    .iter()
+                    .map(|a| a.sort(batch_sorts))
+                    .max()
+                    .unwrap_or(ValueSort::Long),
+                _ => ValueSort::Double,
+            },
         }
     }
 
@@ -243,6 +306,21 @@ impl Expr {
                 let l = lhs.evaluate(batch)?;
                 let r = rhs.evaluate(batch)?;
                 logic(*op, &l, &r)
+            }
+
+            Expr::Equality { negated, lhs, rhs } => {
+                let l = lhs.evaluate(batch)?;
+                let r = rhs.evaluate(batch)?;
+                if l.sort() == ValueSort::Boolean && r.sort() == ValueSort::Boolean {
+                    logic(if *negated { Logic::Ne } else { Logic::Eq }, &l, &r)
+                } else {
+                    kernel::compare(if *negated { Compare::Ne } else { Compare::Eq }, &l, &r)
+                }
+            }
+
+            Expr::Call { func, args } => {
+                let vals: Result<Vec<_>, _> = args.iter().map(|a| a.evaluate(batch)).collect();
+                call(*func, &vals?)
             }
 
             Expr::IfThenElse { cond, then, els } => {
@@ -504,6 +582,139 @@ fn if_then_else(
         }
         .with_nelem(out_nelem),
     ))
+}
+
+/// Apply an elementwise function.
+fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError> {
+    match func {
+        Func::IsNull => is_null(&args[0]),
+        Func::DefNull => def_null(&args[0], &args[1]),
+        /* the parser writes SETNULL(sentinel, value); `New_Func` reordered
+        them, so the value is the second argument here */
+        Func::SetNull => set_null(&args[1], &args[0]),
+        Func::Abs => map1_keep_sort(&args[0], |v| v.abs(), |v| v.wrapping_abs()),
+        Func::Atan2 => kernel::zip_double(&args[0], &args[1], "ARCTAN2", |a, b| a.atan2(b)),
+        Func::Min => kernel::zip_keep_sort(&args[0], &args[1], "MIN", f64::min, c_long::min),
+        Func::Max => kernel::zip_keep_sort(&args[0], &args[1], "MAX", f64::max, c_long::max),
+        _ => {
+            let f: fn(f64) -> f64 = match func {
+                Func::Sin => f64::sin,
+                Func::Cos => f64::cos,
+                Func::Tan => f64::tan,
+                Func::Asin => f64::asin,
+                Func::Acos => f64::acos,
+                Func::Atan => f64::atan,
+                Func::Sinh => f64::sinh,
+                Func::Cosh => f64::cosh,
+                Func::Tanh => f64::tanh,
+                Func::Exp => f64::exp,
+                Func::Ln => f64::ln,
+                Func::Log10 => f64::log10,
+                Func::Sqrt => f64::sqrt,
+                Func::Ceil => f64::ceil,
+                Func::Floor => f64::floor,
+                Func::Round => |v: f64| (v + 0.5).floor(),
+                _ => unreachable!("handled above"),
+            };
+            /* the engine turns a domain error into a null rather than
+            letting a NaN through: sqrt and log check their argument and set
+            the undef flag. */
+            let domain: fn(f64) -> bool = match func {
+                Func::Sqrt => |v| v < 0.0,
+                Func::Ln | Func::Log10 => |v| v <= 0.0,
+                Func::Asin | Func::Acos => |v| !(-1.0..=1.0).contains(&v),
+                _ => |_| false,
+            };
+            kernel::map_double_checked(&args[0], "function", f, domain)
+        }
+    }
+}
+
+/// `ABS`, which keeps its argument's sort rather than widening to double.
+fn map1_keep_sort(
+    v: &ColumnarValue,
+    f: impl Fn(f64) -> f64,
+    g: impl Fn(c_long) -> c_long,
+) -> Result<ColumnarValue, ValueError> {
+    if v.sort() == ValueSort::Double {
+        kernel::map_double(v, "ABS", f)
+    } else {
+        kernel::map_long(v, "ABS", g)
+    }
+}
+
+fn is_null(v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
+    Ok(match v {
+        ColumnarValue::Null(_) => ColumnarValue::Scalar(Scalar::Boolean(true)),
+        ColumnarValue::Scalar(_) => ColumnarValue::Scalar(Scalar::Boolean(false)),
+        ColumnarValue::Array(a) => {
+            let flags: Vec<bool> = (0..a.len()).map(|i| a.is_null(i)).collect();
+            ColumnarValue::Array(Array::new(ArrayData::Boolean(flags)).with_nelem(a.nelem()))
+        }
+    })
+}
+
+fn def_null(v: &ColumnarValue, fallback: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
+    let out = v.sort().max(fallback.sort());
+    let a = v.numeric("DEFNULL")?;
+    let b = fallback.numeric("DEFNULL")?;
+    let out_nelem = a.nelem().max(b.nelem());
+
+    let Some(n) = v.broadcast_len(fallback)? else {
+        let (x, xn) = a.get(0, out_nelem);
+        let (y, yn) = b.get(0, out_nelem);
+        let (val, null) = if xn { (y, yn) } else { (x, false) };
+        return Ok(if null {
+            ColumnarValue::Null(out)
+        } else {
+            ColumnarValue::Scalar(kernel::scalar_of_sort(out, val))
+        });
+    };
+
+    let mut vals = vec![0.0f64; n];
+    let mut nulls = vec![false; n];
+    let mut any = false;
+    for i in 0..n {
+        let (x, xn) = a.get(i, out_nelem);
+        let (y, yn) = b.get(i, out_nelem);
+        let (val, null) = if xn { (y, yn) } else { (x, false) };
+        vals[i] = val;
+        nulls[i] = null;
+        any |= null;
+    }
+    Ok(kernel::build(out, vals, nulls, any, out_nelem))
+}
+
+fn set_null(v: &ColumnarValue, sentinel: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
+    let out = v.sort();
+    let a = v.numeric("SETNULL")?;
+    let s = sentinel.numeric("SETNULL")?;
+    let out_nelem = a.nelem();
+
+    let Some(n) = v.len() else {
+        /* Bug-compatible with the engine: `set_null_const` copies the value
+        and never consults the sentinel, so `SETNULL(1,1)` is 1 rather than
+        null. CFITSIO does the same -- see the corpus. */
+        let (x, xn) = a.get(0, out_nelem);
+        return Ok(if xn {
+            ColumnarValue::Null(out)
+        } else {
+            ColumnarValue::Scalar(kernel::scalar_of_sort(out, x))
+        });
+    };
+
+    let mut vals = vec![0.0f64; n];
+    let mut nulls = vec![false; n];
+    let mut any = false;
+    let (t, _) = s.get(0, 1);
+    for i in 0..n {
+        let (x, xn) = a.get(i, out_nelem);
+        let null = xn || x == t;
+        vals[i] = if null { 0.0 } else { x };
+        nulls[i] = null;
+        any |= null;
+    }
+    Ok(kernel::build(out, vals, nulls, any, out_nelem))
 }
 
 #[cfg(test)]
