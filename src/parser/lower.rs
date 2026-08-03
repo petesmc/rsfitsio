@@ -1409,7 +1409,9 @@ impl Lowerer<'_> {
             start.as_mut_ptr(),
             stop.as_mut_ptr(),
         );
-        self.test(n)
+        let n = self.test(n)?;
+        self.record_gti(n, at);
+        Ok(n)
     }
 
     fn lower_regfilter(&mut self, name: &[u8], args: &[Ast], at: usize) -> LRes {

@@ -160,6 +160,9 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
         Expr::Unary { arg, .. } => shape_of(arg, cols)?,
         /* one answer per element of the time expression */
         Expr::Gti { time, .. } => shape_of(time, cols)?,
+        Expr::GtiOverlap { start, stop, .. } => {
+            Shape::combine(&shape_of(start, cols)?, &shape_of(stop, cols)?)
+        }
         /* ACCUM and SEQDIFF are elementwise, so the shape carries through */
         Expr::Accum { arg, .. } => shape_of(arg, cols)?,
         Expr::Arith { op, lhs, rhs } => {
@@ -489,6 +492,23 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             /* GTIFILTER and GTIFIND read their intervals while the arena was
             built; the lowering picks them up rather than reading the file
             again. GTIOVERLAP and the region filters are not ported yet. */
+            if *kind == CallKind::GtiOverlap {
+                let Some(data) = cols.gti.get(&ast.at) else {
+                    return Err(Unsupported("GTI call with no recorded load"));
+                };
+                if args.len() < 3 {
+                    return Err(Unsupported("GTIOVERLAP with too few arguments"));
+                }
+                return Ok(Expr::GtiOverlap {
+                    start: Box::new(lower(&args[1], names, cols)?),
+                    stop: Box::new(lower(&args[2], names, cols)?),
+                    intervals: alloc::rc::Rc::new(GtiIntervals {
+                        start: data.start.clone(),
+                        stop: data.stop.clone(),
+                        ordered: data.ordered,
+                    }),
+                });
+            }
             if matches!(kind, CallKind::GtiFilter | CallKind::GtiFind) {
                 let Some(data) = cols.gti.get(&ast.at) else {
                     return Err(Unsupported("GTI call with no recorded load"));
@@ -818,15 +838,13 @@ mod tests {
         );
     }
 
+    /// The region filters are the last construct still left with the arena.
     #[test]
     fn unported_constructs_name_themselves() {
-        for (src, want) in [
-            /* GTIOVERLAP and the region filters are not ported yet */
-            ("GTIOVERLAP('f',1,2)", "function call"),
-            ("REGFILTER('x.reg')", "function call"),
-        ] {
-            assert_eq!(try_lower(src), Err(Unsupported(want)), "src: {src}");
-        }
+        assert_eq!(
+            try_lower("REGFILTER('x.reg')"),
+            Err(Unsupported("function call"))
+        );
     }
 
     #[test]

@@ -258,6 +258,13 @@ pub(crate) enum Expr {
         time: Box<Expr>,
         intervals: Rc<GtiIntervals>,
     },
+    /// `GTIOVERLAP(file, start, stop)`: how much of an event's span falls in
+    /// good time.
+    GtiOverlap {
+        start: Box<Expr>,
+        stop: Box<Expr>,
+        intervals: Rc<GtiIntervals>,
+    },
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -443,6 +450,10 @@ impl Expr {
             | Expr::RowNumber => {}
             Expr::Unary { arg, .. } | Expr::Accum { arg, .. } => f(arg),
             Expr::Gti { time, .. } => f(time),
+            Expr::GtiOverlap { start, stop, .. } => {
+                f(start);
+                f(stop);
+            }
             Expr::Arith { lhs, rhs, .. }
             | Expr::Compare { lhs, rhs, .. }
             | Expr::Logic { lhs, rhs, .. }
@@ -770,6 +781,7 @@ impl Expr {
                 .unwrap_or(ValueSort::Long),
             Expr::Deref { base, .. } => base.sort(batch_sorts),
             Expr::Slice { base, .. } => base.sort(batch_sorts),
+            Expr::GtiOverlap { .. } => ValueSort::Double,
             Expr::Gti { find, .. } => {
                 if *find {
                     ValueSort::Long
@@ -930,6 +942,16 @@ impl Expr {
             } => {
                 let t = time.evaluate(batch)?;
                 gti_filter(*find, &t, intervals, batch.n_rows.max(0) as usize)
+            }
+
+            Expr::GtiOverlap {
+                start,
+                stop,
+                intervals,
+            } => {
+                let a = start.evaluate(batch)?;
+                let b = stop.evaluate(batch)?;
+                gti_overlap(&a, &b, intervals, batch.n_rows.max(0) as usize)
             }
 
             Expr::Accum { id, diff, arg } => {
@@ -1427,6 +1449,34 @@ fn gti_filter(
     };
     Ok(ColumnarValue::Array(
         Array::with_nulls(data, nulls).with_nelem(nelem),
+    ))
+}
+
+/// `GTIOVERLAP`. A row is undefined if either end of its span is.
+fn gti_overlap(
+    start: &ColumnarValue,
+    stop: &ColumnarValue,
+    intervals: &GtiIntervals,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let (a, b) = (start.numeric("GTIOVERLAP")?, stop.numeric("GTIOVERLAP")?);
+    let nelem = shape_at_runtime(start).0.max(shape_at_runtime(stop).0);
+    let n = rows * nelem;
+    let mut out = Vec::with_capacity(n);
+    let mut nulls = Vec::with_capacity(n);
+    for i in 0..n {
+        let (s, sn) = a.get(i, nelem);
+        let (e, en) = b.get(i, nelem);
+        let null = sn || en;
+        nulls.push(null);
+        out.push(if null {
+            0.0
+        } else {
+            gti::overlap(s, e, &intervals.start, &intervals.stop)
+        });
+    }
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(ArrayData::Double(out), nulls).with_nelem(nelem),
     ))
 }
 
