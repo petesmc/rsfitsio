@@ -410,7 +410,11 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             /* ISNULL lexes as a BFUNCTION; the other names in that class are
             the region tests, and GTI/STRSTR each need their own kernels */
             let admissible = *kind == CallKind::Function
-                || (*kind == CallKind::BFunction && name.as_slice() == b"ISNULL")
+                || (*kind == CallKind::BFunction
+                    && matches!(
+                        name.as_slice(),
+                        b"ISNULL" | b"NEAR" | b"CIRCLE" | b"BOX" | b"ELLIPSE"
+                    ))
                 /* STRSTR is the only IFunction */
                 || *kind == CallKind::IFunction;
             if !admissible {
@@ -474,6 +478,11 @@ fn func_of(name: &[u8]) -> Option<(Func, usize)> {
         b"MAX" => (Func::Max, 2),
         b"DEFNULL" => (Func::DefNull, 2),
         b"STRSTR" => (Func::StrStr, 2),
+        b"ANGSEP" => (Func::AngSep, 4),
+        b"NEAR" => (Func::Near, 3),
+        b"CIRCLE" => (Func::Circle, 5),
+        b"BOX" => (Func::Box, 7),
+        b"ELLIPSE" => (Func::Ellipse, 7),
         b"STRMID" => (Func::StrMid, 3),
         b"SETNULL" => (Func::SetNull, 2),
         b"ISNULL" => (Func::IsNull, 1),

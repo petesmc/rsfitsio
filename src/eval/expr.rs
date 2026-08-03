@@ -10,6 +10,7 @@
 
 use super::bits;
 use super::kernel::{self, Arith, Compare};
+use super::regions;
 use super::strings;
 use super::value::{Array, ArrayData, ColumnarValue, NumericInput, Scalar, ValueError};
 use crate::c_types::{c_char, c_long};
@@ -78,6 +79,16 @@ pub(crate) enum Func {
     IsNull,
     /// `DEFNULL(x, y)`: `y` wherever `x` is undefined.
     DefNull,
+    /// `ANGSEP(ra1, dec1, ra2, dec2)`, in degrees.
+    AngSep,
+    /// `NEAR(x, y, tol)`.
+    Near,
+    /// `CIRCLE(xcen, ycen, rad, x, y)`.
+    Circle,
+    /// `BOX(xcen, ycen, xwid, ywid, rot, x, y)`.
+    Box,
+    /// `ELLIPSE(xcen, ycen, xrad, yrad, rot, x, y)`.
+    Ellipse,
     /// `STRSTR(a, b)`: the 1-based position of `b` in `a`, undefined where it
     /// does not occur.
     StrStr,
@@ -439,6 +450,8 @@ impl Expr {
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid | Func::StrStr => ValueSort::Long,
+                Func::AngSep => ValueSort::Double,
+                Func::Near | Func::Circle | Func::Box | Func::Ellipse => ValueSort::Boolean,
                 Func::StrMid => ValueSort::String,
                 Func::Average | Func::Stddev => ValueSort::Double,
                 Func::Sum | Func::Median | Func::Min1 | Func::Max1 => {
@@ -851,6 +864,21 @@ fn call(func: Func, args: &[ColumnarValue], rows: usize) -> Result<ColumnarValue
         Func::Min => kernel::zip_keep_sort(&args[0], &args[1], "MIN", f64::min, c_long::min),
         Func::Max => kernel::zip_keep_sort(&args[0], &args[1], "MAX", f64::max, c_long::max),
         Func::StrStr => str_str(&args[0], &args[1], rows),
+        Func::AngSep => nary(args, rows, "ANGSEP", |a| {
+            NaryOut::Double(regions::angsep(a[0], a[1], a[2], a[3]))
+        }),
+        Func::Near => nary(args, rows, "NEAR", |a| {
+            NaryOut::Boolean(regions::near(a[0], a[1], a[2]))
+        }),
+        Func::Circle => nary(args, rows, "CIRCLE", |a| {
+            NaryOut::Boolean(regions::circle(a[0], a[1], a[2], a[3], a[4]))
+        }),
+        Func::Box => nary(args, rows, "BOX", |a| {
+            NaryOut::Boolean(regions::saobox(a[0], a[1], a[2], a[3], a[4], a[5], a[6]))
+        }),
+        Func::Ellipse => nary(args, rows, "ELLIPSE", |a| {
+            NaryOut::Boolean(regions::ellipse(a[0], a[1], a[2], a[3], a[4], a[5], a[6]))
+        }),
         Func::StrMid => str_mid(&args[0], &args[1], &args[2], rows),
         _ => {
             let f: fn(f64) -> f64 = match func {
@@ -914,6 +942,83 @@ fn text_if_then_else(
         ArrayData::Str(out),
         nulls,
     )))
+}
+
+/// What an n-ary numeric kernel produces for one element.
+enum NaryOut {
+    Double(f64),
+    Boolean(bool),
+}
+
+/// A function of several numeric arguments, applied elementwise.
+///
+/// These all share the rule that a row is undefined if *any* argument is
+/// undefined there, and they all broadcast a scalar argument across the batch,
+/// which is what the engine's `vector[i] > 1 ? buf[elem] : buf[row]` does.
+fn nary(
+    args: &[ColumnarValue],
+    rows: usize,
+    name: &'static str,
+    f: impl Fn(&[f64]) -> NaryOut,
+) -> Result<ColumnarValue, ValueError> {
+    let inputs: Vec<NumericInput> = args
+        .iter()
+        .map(|v| v.numeric(name))
+        .collect::<Result<_, _>>()?;
+
+    /* the widest argument sets how many elements each row has */
+    let nelem = args
+        .iter()
+        .filter_map(|v| match v {
+            ColumnarValue::Array(a) => Some(a.nelem()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(1);
+    let all_const = args.iter().all(|v| matches!(v, ColumnarValue::Scalar(_)));
+    let n = if all_const { 1 } else { rows * nelem };
+
+    let mut doubles = Vec::new();
+    let mut bools = Vec::new();
+    let mut nulls = Vec::with_capacity(n);
+    let mut vals = vec![0.0; inputs.len()];
+    for i in 0..n {
+        let mut null = false;
+        for (slot, input) in vals.iter_mut().zip(&inputs) {
+            let (v, u) = input.get(i, nelem);
+            *slot = v;
+            null |= u;
+        }
+        nulls.push(null);
+        /* a null row still needs a slot, and the engine leaves it untouched
+        rather than computing over undefined inputs */
+        match if null { NaryOut::Double(0.0) } else { f(&vals) } {
+            NaryOut::Double(v) => doubles.push(v),
+            NaryOut::Boolean(v) => bools.push(v),
+        }
+    }
+    let data = if doubles.is_empty() {
+        ArrayData::Boolean(bools)
+    } else {
+        ArrayData::Double(doubles)
+    };
+    if all_const {
+        return Ok(if nulls[0] {
+            ColumnarValue::Null(match data {
+                ArrayData::Boolean(_) => ValueSort::Boolean,
+                _ => ValueSort::Double,
+            })
+        } else {
+            ColumnarValue::Scalar(match data {
+                ArrayData::Boolean(v) => Scalar::Boolean(v[0]),
+                ArrayData::Double(v) => Scalar::Double(v[0]),
+                _ => unreachable!("nary produces only doubles and booleans"),
+            })
+        });
+    }
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(data, nulls).with_nelem(nelem),
+    ))
 }
 
 /// `STRSTR(a, b)`. Absence is a *null*, not a zero, so a caller that wants a

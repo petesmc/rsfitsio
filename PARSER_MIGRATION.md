@@ -802,7 +802,7 @@ type erasure and the manual memory are not. So:
 The new evaluator is **wired in behind `--features new-eval`, off by default**.
 `src/eval/` holds the value model, the kernels, the `Expr` tree, the
 `Ast -> Expr` lowering and the bridge that writes a result back into the arena's
-result node. With the feature on, **1,401 of the corpus's 1,852 expressions go
+result node. With the feature on, **1,429 of the corpus's 1,852 expressions go
 through it** and all 1,852 still match the golden file byte for byte; the rest
 hit a construct the lowering does not cover yet and fall back.
 
@@ -813,7 +813,7 @@ reason gives the order to work in:
 
 | remaining | reason |
 |---:|---|
-| 84 | function call — `ANGSEP` (12), the region tests `CIRCLE`/`BOX`/`ELLIPSE`/`NEAR` (16), `ACCUM`/`SEQDIFF` (20), the random generators (10), and the remaining shape functions `ELEMENTNUM`/`AXISELEM`/`ARRAY` (26) |
+| 56 | function call — `ACCUM`/`SEQDIFF` (20), the random generators (10), and the remaining shape functions `ELEMENTNUM`/`AXISELEM`/`ARRAY` (26) |
 | 90 | bit-string **result** (see below) |
 | 6 | row offset of a string column |
 | 2 | subscript slice (see below) |
@@ -867,7 +867,8 @@ Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
 Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
 `ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
 `SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, fully-indexed subscripts, row offsets, the shape functions
+vector literals, fully-indexed subscripts, row offsets, `ANGSEP` and the region
+predicates `NEAR`/`CIRCLE`/`BOX`/`ELLIPSE`, the shape functions
 `NELEM`/`NAXIS`/`NAXES`, the bit strings — `&`, `|`, `!`, `+`
 and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
 the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
