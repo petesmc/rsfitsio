@@ -67,20 +67,33 @@ fn zip_numeric(
     out: ValueSort,
     op: &'static str,
     f: impl Fn(f64, f64) -> Option<f64>,
+    g: impl Fn(c_long, c_long) -> Option<c_long>,
 ) -> Res {
     let len = lhs.broadcast_len(rhs)?;
     let l = lhs.numeric(op)?;
     let r = rhs.numeric(op)?;
+    let out_nelem = l.nelem().max(r.nelem());
 
     let Some(n) = len else {
         /* both sides are scalars, so the result is one too */
-        let (lv, ln) = l.get(0);
-        let (rv, rn) = r.get(0);
+        if out == ValueSort::Double {
+            let (lv, ln) = l.get(0, out_nelem);
+            let (rv, rn) = r.get(0, out_nelem);
+            if ln || rn {
+                return Ok(ColumnarValue::Null(out));
+            }
+            return Ok(match f(lv, rv) {
+                Some(v) => ColumnarValue::Scalar(Scalar::Double(v)),
+                None => ColumnarValue::Null(out),
+            });
+        }
+        let (lv, ln) = l.get_i64(0, out_nelem);
+        let (rv, rn) = r.get_i64(0, out_nelem);
         if ln || rn {
             return Ok(ColumnarValue::Null(out));
         }
-        return Ok(match f(lv, rv) {
-            Some(v) => ColumnarValue::Scalar(scalar_of(out, v)),
+        return Ok(match g(lv, rv) {
+            Some(v) => ColumnarValue::Scalar(Scalar::Long(v)),
             None => ColumnarValue::Null(out),
         });
     };
@@ -91,8 +104,8 @@ fn zip_numeric(
         ValueSort::Double => {
             let mut data = vec![0.0f64; n];
             for i in 0..n {
-                let (lv, ln) = l.get(i);
-                let (rv, rn) = r.get(i);
+                let (lv, ln) = l.get(i, out_nelem);
+                let (rv, rn) = r.get(i, out_nelem);
                 match if ln || rn { None } else { f(lv, rv) } {
                     Some(v) => data[i] = v,
                     None => {
@@ -101,32 +114,50 @@ fn zip_numeric(
                     }
                 }
             }
-            Ok(array(ArrayData::Double(data), nulls, any_null))
+            Ok(array_with(
+                ArrayData::Double(data),
+                nulls,
+                any_null,
+                out_nelem,
+            ))
         }
         _ => {
+            /* Integers stay integers: routing an i64 through f64 loses every
+            bit past 2^53, which turned -9223372036854775807 into
+            -9223372036854775808. */
             let mut data = vec![0 as c_long; n];
             for i in 0..n {
-                let (lv, ln) = l.get(i);
-                let (rv, rn) = r.get(i);
-                match if ln || rn { None } else { f(lv, rv) } {
-                    Some(v) => data[i] = v as c_long,
+                let (lv, ln) = l.get_i64(i, out_nelem);
+                let (rv, rn) = r.get_i64(i, out_nelem);
+                match if ln || rn { None } else { g(lv, rv) } {
+                    Some(v) => data[i] = v,
                     None => {
                         nulls[i] = true;
                         any_null = true;
                     }
                 }
             }
-            Ok(array(ArrayData::Long(data), nulls, any_null))
+            Ok(array_with(
+                ArrayData::Long(data),
+                nulls,
+                any_null,
+                out_nelem,
+            ))
         }
     }
 }
 
 fn array(data: ArrayData, nulls: Vec<bool>, any_null: bool) -> ColumnarValue {
-    ColumnarValue::Array(if any_null {
+    array_with(data, nulls, any_null, 1)
+}
+
+fn array_with(data: ArrayData, nulls: Vec<bool>, any_null: bool, nelem: usize) -> ColumnarValue {
+    let a = if any_null {
         Array::with_nulls(data, nulls)
     } else {
         Array::new(data)
-    })
+    };
+    ColumnarValue::Array(a.with_nelem(nelem))
 }
 
 fn scalar_of(sort: ValueSort, v: f64) -> Scalar {
@@ -145,28 +176,71 @@ pub(crate) fn arith(op: Arith, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Res 
     let out = promote(lt, rt);
 
     match op {
-        Arith::Add => zip_numeric(lhs, rhs, out, "+", |a, b| Some(a + b)),
-        Arith::Sub => zip_numeric(lhs, rhs, out, "-", |a, b| Some(a - b)),
-        Arith::Mul => zip_numeric(lhs, rhs, out, "*", |a, b| Some(a * b)),
+        Arith::Add => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "+",
+            |a, b| Some(a + b),
+            |a, b| Some(a.wrapping_add(b)),
+        ),
+        Arith::Sub => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "-",
+            |a, b| Some(a - b),
+            |a, b| Some(a.wrapping_sub(b)),
+        ),
+        Arith::Mul => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "*",
+            |a, b| Some(a * b),
+            |a, b| Some(a.wrapping_mul(b)),
+        ),
         /* integer division by zero yields a null rather than a trap, which is
         what the engine did via its undef flag */
-        Arith::Div => zip_numeric(lhs, rhs, out, "/", move |a, b| {
-            if b == 0.0 && out != ValueSort::Double {
-                None
-            } else {
-                Some(a / b)
-            }
-        }),
-        Arith::Mod => zip_numeric(lhs, rhs, out, "%", move |a, b| {
-            if b == 0.0 {
-                None
-            } else if out == ValueSort::Double {
-                Some(a % b)
-            } else {
-                Some(((a as c_long) % (b as c_long)) as f64)
-            }
-        }),
-        Arith::Pow => zip_numeric(lhs, rhs, out, "**", |a, b| Some(a.powf(b))),
+        Arith::Div => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "/",
+            |a, b| Some(a / b),
+            |a, b| {
+                if b == 0 {
+                    None
+                } else {
+                    Some(a.wrapping_div(b))
+                }
+            },
+        ),
+        Arith::Mod => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "%",
+            |a, b| if b == 0.0 { None } else { Some(a % b) },
+            |a, b| {
+                if b == 0 {
+                    None
+                } else {
+                    Some(a.wrapping_rem(b))
+                }
+            },
+        ),
+        Arith::Pow => zip_numeric(
+            lhs,
+            rhs,
+            out,
+            "**",
+            |a, b| Some(a.powf(b)),
+            /* Integer POWER goes through pow() in double and truncates, which
+            is what the C did: (-3)**(-3) is 0, not 1. Every other integer
+            operator stays in i64. */
+            |a, b| Some((a as f64).powf(b as f64) as c_long),
+        ),
     }
 }
 
@@ -194,6 +268,7 @@ pub(crate) fn compare(op: Compare, lhs: &ColumnarValue, rhs: &ColumnarValue) -> 
     let len = lhs.broadcast_len(rhs)?;
     let l = lhs.numeric("comparison")?;
     let r = rhs.numeric("comparison")?;
+    let out_nelem = l.nelem().max(r.nelem());
 
     let test = |a: f64, b: f64| match op {
         Compare::Eq => a == b,
@@ -208,8 +283,8 @@ pub(crate) fn compare(op: Compare, lhs: &ColumnarValue, rhs: &ColumnarValue) -> 
     };
 
     let Some(n) = len else {
-        let (lv, ln) = l.get(0);
-        let (rv, rn) = r.get(0);
+        let (lv, ln) = l.get(0, out_nelem);
+        let (rv, rn) = r.get(0, out_nelem);
         return Ok(if ln || rn {
             ColumnarValue::Null(ValueSort::Boolean)
         } else {
@@ -221,8 +296,8 @@ pub(crate) fn compare(op: Compare, lhs: &ColumnarValue, rhs: &ColumnarValue) -> 
     let mut nulls = vec![false; n];
     let mut any_null = false;
     for i in 0..n {
-        let (lv, ln) = l.get(i);
-        let (rv, rn) = r.get(i);
+        let (lv, ln) = l.get(i, out_nelem);
+        let (rv, rn) = r.get(i, out_nelem);
         if ln || rn {
             nulls[i] = true;
             any_null = true;
@@ -230,7 +305,12 @@ pub(crate) fn compare(op: Compare, lhs: &ColumnarValue, rhs: &ColumnarValue) -> 
             data[i] = test(lv, rv);
         }
     }
-    Ok(array(ArrayData::Boolean(data), nulls, any_null))
+    Ok(array_with(
+        ArrayData::Boolean(data),
+        nulls,
+        any_null,
+        out_nelem,
+    ))
 }
 
 #[cfg(test)]

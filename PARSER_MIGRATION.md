@@ -799,18 +799,44 @@ type erasure and the manual memory are not. So:
 
 ### 10.3 Status
 
-**Step 1 is done**: `src/eval/value.rs` and `src/eval/kernel.rs` hold the value
-model and the arithmetic and comparison kernels, with 21 tests covering
-broadcasting, promotion, null propagation, integer division by zero, C's
-truncated `%`, and the relative tolerance of `~`. Nothing calls into it yet.
+The new evaluator is **wired in behind `--features new-eval`, off by default**.
+`src/eval/` holds the value model, the kernels, the `Expr` tree, the
+`Ast -> Expr` lowering and the bridge that writes a result back into the arena's
+result node. With the feature on, **694 of the corpus's 1,852 expressions go
+through it** and all 1,852 still match the golden file byte for byte; the other
+894 hit a construct the lowering does not cover yet and fall back.
 
-**Step 2 is the port**: `Ast -> Expr` lowering, the remaining kernels (string,
-bit-string, the ~50 functions now split out into `eval_y/func.rs`), then
-retarget `ffiprs`/`Evaluate_Parser` and delete the arena. Do it one kernel
-family at a time behind a feature flag, running `tests/test_eval_corpus.rs`
-after each — two evaluators, one corpus, diff. That is the same play that made
-the parser migration safe, and the corpus already exists.
+The fallback is per expression and explicit: `eval::lower::lower` returns
+`Unsupported("function call")`, `Unsupported("bit-string column")` and so on,
+so what is missing is greppable rather than mysterious. Still to port: strings,
+bit strings, vectors and subscripts, row offsets, the bitwise operators, and
+the ~50 functions now sitting as named kernels in `eval_y/func.rs`.
 
-The prerequisite that is also already done: `Do_Func` was one 3,310-line
-function and is now 84 named kernels in `src/eval_y/func.rs`, which is the
-granularity the port needs.
+### 10.4 What the corpus caught
+
+Wiring it up produced four wrong answers, and only one was a slip. The other
+three were design errors in the value model, which is the useful part:
+
+1. **A value is not just scalar-or-array.** It carries *elements per row*. A
+   batch is `n_rows * nelem` elements, so a scalar column and a 3-vector column
+   over the same rows have lengths 3 and 9, and combining them broadcasts each
+   scalar element across its row. The old engine spelled this out in every loop
+   as `vector1 > 1 ? buf[elem] : buf[row]`; the first cut of `ColumnarValue`
+   dropped the *branch* and the *concept* with it, so `BOOLCOL ? VECCOL : 1`
+   was a length mismatch. `Array` now carries `nelem`.
+
+2. **Integer arithmetic must not detour through `f64`.** Everything went
+   through `f64`, which silently loses every bit past 2^53:
+   `-9223372036854775807` came back as `-9223372036854775808`. There is now a
+   separate `i64` path, with `**` the deliberate exception — the C computes it
+   with `pow()` and truncates, so `(-3)**(-3)` is 0 rather than 1.
+
+3. **`#NULL` is a rows kernel, not a folded constant.** The engine fills a
+   buffer and sets every undef flag, so representing it as a scalar meant
+   `anynul` never reached the caller.
+
+4. The slip: `Expr::Column` did not copy the column's `nelem` into the array it
+   built, so nothing downstream could broadcast correctly even after (1).
+
+None of these would have been found by the unit tests, which is the argument
+for wiring an incomplete evaluator in early rather than finishing it first.

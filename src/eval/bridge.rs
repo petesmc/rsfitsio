@@ -1,0 +1,221 @@
+//! Running the columnar evaluator in place of the `Node` arena.
+//!
+//! The port is incremental, so the two representations coexist: the arena is
+//! still built at parse time because `ffiprs` reads the result node for the
+//! expression's datatype and shape, and everything downstream of
+//! `Evaluate_Parser` — `fits_parser_workfn`, `ffcalc`, `fffrow` — still reads
+//! its answer from there.
+//!
+//! So this evaluates the [`Expr`] tree and writes the result back into the
+//! result node in the layout the old engine would have produced. When the port
+//! is complete the result node goes away and this file with it.
+
+use super::expr::Batch;
+use super::value::{ArrayData, ColumnarValue, Scalar};
+use crate::c_types::{c_char, c_long};
+#[cfg(test)]
+use crate::eval_defs::{BufferKind, ValueSort};
+use crate::eval_defs::{NodeValue, Operation, ParseData};
+use crate::eval_y::Allocate_Ptrs;
+use crate::fitscore::ffpmsg_str;
+use crate::fitsio::PARSE_SYNTAX_ERR;
+
+/// Evaluate `lParse.expr_tree` over one batch and store the answer in the
+/// result node.
+pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long) {
+    lParse.firstRow = first_row;
+    lParse.nRows = n_rows;
+
+    let Some(tree) = lParse.expr_tree.clone() else {
+        return;
+    };
+    let batch = Batch::gather(lParse, first_row, n_rows);
+
+    match tree.evaluate(&batch) {
+        Ok(v) => store(lParse, &v),
+        Err(e) => {
+            ffpmsg_str(&format!("expression evaluation failed: {e:?}"));
+            if lParse.status == 0 {
+                lParse.status = PARSE_SYNTAX_ERR;
+            }
+        }
+    }
+}
+
+/// Write `value` into the result node, in the shape the arena used.
+fn store(lParse: &mut ParseData, value: &ColumnarValue) {
+    let this = lParse.resultNode as usize;
+
+    match value {
+        /* A constant result keeps the node's CONST_OP marking and its scalar
+        slot, exactly as a folded node did. */
+        ColumnarValue::Scalar(s) => {
+            lParse.Nodes[this].operation = Operation::Const;
+            lParse.Nodes[this].value.data = match s {
+                Scalar::Boolean(b) => NodeValue::Logical(c_char::from(*b)),
+                Scalar::Long(v) => NodeValue::Long(*v),
+                Scalar::Double(v) => NodeValue::Double(*v),
+                Scalar::Str(_) | Scalar::Bits(_) => {
+                    unreachable!("lowering refuses string results")
+                }
+            };
+            lParse.Nodes[this].value.undef = core::ptr::null_mut();
+        }
+
+        /* A wholly undefined result still gets a row buffer: the engine's
+        null_fct is a rows kernel, so downstream expects per-row undef flags
+        rather than a flag smuggled into the pointer field. */
+        ColumnarValue::Null(_) => {
+            Allocate_Ptrs(lParse, this);
+            if lParse.status != 0 {
+                return;
+            }
+            let n = (lParse.nRows * lParse.Nodes[this].value.nelem).max(0) as usize;
+            unsafe {
+                let undef = lParse.Nodes[this].value.undef;
+                if !undef.is_null() {
+                    core::slice::from_raw_parts_mut(undef, n).fill(1);
+                }
+            }
+        }
+
+        ColumnarValue::Array(a) => {
+            Allocate_Ptrs(lParse, this);
+            if lParse.status != 0 {
+                return;
+            }
+            let n = a.len();
+            unsafe {
+                match a.data() {
+                    ArrayData::Long(d) => {
+                        let buf = lParse.Nodes[this].value.data.lng_buf();
+                        core::slice::from_raw_parts_mut(buf, n).copy_from_slice(d);
+                    }
+                    ArrayData::Double(d) => {
+                        let buf = lParse.Nodes[this].value.data.dbl_buf();
+                        core::slice::from_raw_parts_mut(buf, n).copy_from_slice(d);
+                    }
+                    ArrayData::Boolean(d) => {
+                        let buf = lParse.Nodes[this].value.data.log_buf();
+                        let out = core::slice::from_raw_parts_mut(buf, n);
+                        for (slot, &v) in out.iter_mut().zip(d) {
+                            *slot = c_char::from(v);
+                        }
+                    }
+                    other => unreachable!("lowering refuses {other:?} results"),
+                }
+
+                let undef = lParse.Nodes[this].value.undef;
+                if !undef.is_null() {
+                    let flags = core::slice::from_raw_parts_mut(undef, n);
+                    for (slot, i) in flags.iter_mut().zip(0..n) {
+                        *slot = c_char::from(a.is_null(i));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The buffer kind `Allocate_Ptrs` will have chosen for a node of this sort,
+/// used only by the tests below to check the two agree.
+#[cfg(test)]
+fn kind_for(sort: ValueSort) -> BufferKind {
+    match sort {
+        ValueSort::Double => BufferKind::Double,
+        ValueSort::Long => BufferKind::Long,
+        _ => BufferKind::Logical,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::value::Array;
+    use crate::eval_defs::Node;
+
+    /// A ParseData with one node to write into, standing in for a result node
+    /// of the given sort.
+    fn parse_data(sort: ValueSort, nelem: c_long, n_rows: c_long) -> ParseData {
+        let mut p = ParseData {
+            nRows: n_rows,
+            ..Default::default()
+        };
+        p.Nodes = vec![Node {
+            ntype: sort,
+            operation: Operation::Op(crate::eval_defs::OpCode::Add),
+            ..Default::default()
+        }];
+        p.nNodes = 1;
+        p.nNodesAlloc = 1;
+        p.Nodes[0].value.nelem = nelem;
+        p.resultNode = 0;
+        p
+    }
+
+    #[test]
+    fn a_scalar_result_lands_in_the_nodes_constant_slot() {
+        let mut p = parse_data(ValueSort::Long, 1, 3);
+        store(&mut p, &ColumnarValue::Scalar(Scalar::Long(42)));
+        assert_eq!(p.Nodes[0].operation, Operation::Const);
+        assert_eq!(p.Nodes[0].value.data.lng(), 42);
+    }
+
+    #[test]
+    fn an_array_result_fills_the_row_buffer() {
+        let mut p = parse_data(ValueSort::Long, 1, 3);
+        let v = ColumnarValue::Array(Array::new(ArrayData::Long(vec![7, -3, 10])));
+        store(&mut p, &v);
+        assert_eq!(p.status, 0);
+        unsafe {
+            let buf = p.Nodes[0].value.data.lng_buf();
+            assert_eq!(core::slice::from_raw_parts(buf, 3), &[7, -3, 10]);
+        }
+    }
+
+    #[test]
+    fn nulls_reach_the_undef_flags() {
+        let mut p = parse_data(ValueSort::Long, 1, 3);
+        let v = ColumnarValue::Array(Array::with_nulls(
+            ArrayData::Long(vec![1, 2, 3]),
+            vec![false, true, false],
+        ));
+        store(&mut p, &v);
+        unsafe {
+            let undef = p.Nodes[0].value.undef;
+            assert!(!undef.is_null(), "Allocate_Ptrs must provide the flags");
+            assert_eq!(core::slice::from_raw_parts(undef, 3), &[0, 1, 0]);
+        }
+    }
+
+    #[test]
+    fn booleans_are_stored_one_byte_per_row() {
+        let mut p = parse_data(ValueSort::Boolean, 1, 3);
+        let v = ColumnarValue::Array(Array::new(ArrayData::Boolean(vec![true, false, true])));
+        store(&mut p, &v);
+        unsafe {
+            let buf = p.Nodes[0].value.data.log_buf();
+            assert_eq!(core::slice::from_raw_parts(buf, 3), &[1, 0, 1]);
+        }
+    }
+
+    #[test]
+    fn the_buffer_kind_matches_what_allocate_ptrs_chose() {
+        for sort in [ValueSort::Long, ValueSort::Double, ValueSort::Boolean] {
+            let mut p = parse_data(sort, 1, 2);
+            let data = match sort {
+                ValueSort::Long => ArrayData::Long(vec![1, 2]),
+                ValueSort::Double => ArrayData::Double(vec![1.0, 2.0]),
+                _ => ArrayData::Boolean(vec![true, false]),
+            };
+            store(&mut p, &ColumnarValue::Array(Array::new(data)));
+            /* reading through the accessor for the expected kind asserts the
+            tag, so a mismatch panics rather than silently reinterpreting */
+            match kind_for(sort) {
+                BufferKind::Long => assert!(!p.Nodes[0].value.data.lng_buf().is_null()),
+                BufferKind::Double => assert!(!p.Nodes[0].value.data.dbl_buf().is_null()),
+                _ => assert!(!p.Nodes[0].value.data.log_buf().is_null()),
+            }
+        }
+    }
+}

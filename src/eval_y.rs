@@ -1575,7 +1575,22 @@ pub(crate) fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
     }
 }
 
+/// Evaluate the parsed expression for one batch of rows.
+///
+/// With the `new-eval` feature on and an expression the columnar evaluator
+/// could lower, this runs that instead of walking the `Node` arena; the result
+/// is written back into the result node so that everything downstream is
+/// unchanged. See `PARSER_MIGRATION.md` section 10.
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
+    #[cfg(feature = "new-eval")]
+    if lParse.expr_tree.is_some() {
+        crate::eval::bridge::evaluate(lParse, firstRow, nRows);
+        return;
+    }
+    Evaluate_Parser_arena(lParse, firstRow, nRows);
+}
+
+fn Evaluate_Parser_arena(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
     unsafe {
         let mut i: c_int = 0;
         let mut column: c_int = 0;
@@ -1694,7 +1709,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
     }
 }
 
-fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
+pub(crate) fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut elem: c_long = 0;
         let mut row: c_long = 0;

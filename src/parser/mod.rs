@@ -89,11 +89,21 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
         p: lParse,
         names: &names,
     };
-    match lowerer.lower(&tree) {
+    let status = match lowerer.lower(&tree) {
         Ok(node) => {
             lParse.resultNode = node;
             0
         }
         Err(e) => fail(lParse, e),
+    };
+
+    /* The arena is still built either way: `ffiprs` reads the result node for
+    the expression's datatype and shape, and the new evaluator only replaces
+    the per-row computation. */
+    #[cfg(feature = "new-eval")]
+    if status == 0 && lParse.status == 0 {
+        lParse.expr_tree = crate::eval::lower::lower(&tree, &names).ok();
     }
+
+    status
 }

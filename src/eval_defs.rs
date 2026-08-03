@@ -684,6 +684,11 @@ pub(crate) struct ParseData {
     pub datatype: c_int,
     pub hdutype: c_int,
     pub status: c_int,
+    /// The expression lowered for the new columnar evaluator, when it could
+    /// handle every construct in it. `None` means the `Node` arena evaluates
+    /// this expression, which is still the case for most of them.
+    #[cfg(feature = "new-eval")]
+    pub expr_tree: Option<crate::eval::expr::Expr>,
 }
 
 impl ParseData {
@@ -717,6 +722,10 @@ impl ParseData {
         self.datatype = Default::default();
         self.hdutype = Default::default();
         self.status = Default::default();
+        #[cfg(feature = "new-eval")]
+        {
+            self.expr_tree = None;
+        }
     }
 }
 

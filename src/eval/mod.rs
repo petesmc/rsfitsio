@@ -13,6 +13,9 @@
 //! reviewable and the tests are meaningful on their own.
 #![allow(dead_code)]
 
+#[cfg(feature = "new-eval")]
+pub(crate) mod bridge;
 pub(crate) mod expr;
 pub(crate) mod kernel;
+pub(crate) mod lower;
 pub(crate) mod value;

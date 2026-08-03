@@ -107,6 +107,17 @@ impl Batch {
             let count = (var.nelem * n_rows).max(0) as usize;
             let offset = (var.nelem * row_offset).max(0) as usize;
 
+            /* A column the iterator has not filled in for this pass -- the
+            expression may not reference it at all -- has no buffer yet. */
+            if var.data.is_null() || count == 0 {
+                columns.push(ColumnBatch {
+                    data: ArrayData::Long(Vec::new()),
+                    nulls: Vec::new(),
+                    nelem: var.nelem,
+                });
+                continue;
+            }
+
             let data = unsafe {
                 match var.dtype {
                     ValueSort::Long => ArrayData::Long(
@@ -181,14 +192,28 @@ impl Expr {
     pub(crate) fn evaluate(&self, batch: &Batch) -> Result<ColumnarValue, ValueError> {
         match self {
             Expr::Literal(s) => Ok(ColumnarValue::Scalar(s.clone())),
-            Expr::Null(t) => Ok(ColumnarValue::Null(*t)),
+            /* `#NULL` is a rows kernel in the engine -- it fills a buffer and
+            sets every undef flag -- so it must be an array here too, or the
+            caller never sees anynul. */
+            Expr::Null(t) => {
+                let n = batch.n_rows.max(0) as usize;
+                if n == 0 {
+                    return Ok(ColumnarValue::Null(*t));
+                }
+                let data = match t {
+                    ValueSort::Double => ArrayData::Double(vec![0.0; n]),
+                    ValueSort::Boolean => ArrayData::Boolean(vec![false; n]),
+                    _ => ArrayData::Long(vec![0; n]),
+                };
+                Ok(ColumnarValue::Array(Array::with_nulls(data, vec![true; n])))
+            }
 
             Expr::Column(i) => {
                 let col = &batch.columns[*i];
-                Ok(ColumnarValue::Array(Array::with_nulls(
-                    col.data.clone(),
-                    col.nulls.clone(),
-                )))
+                Ok(ColumnarValue::Array(
+                    Array::with_nulls(col.data.clone(), col.nulls.clone())
+                        .with_nelem(col.nelem.max(1) as usize),
+                ))
             }
 
             Expr::RowNumber => {
@@ -250,7 +275,7 @@ fn unary(op: Unary, v: &ColumnarValue) -> Result<ColumnarValue, ValueError> {
 fn convert(v: &ColumnarValue, to: ValueSort) -> Result<ColumnarValue, ValueError> {
     let input = v.numeric("cast")?;
     let Some(n) = v.len() else {
-        let (x, null) = input.get(0);
+        let (x, null) = input.get(0, input.nelem());
         return Ok(if null {
             ColumnarValue::Null(to)
         } else {
@@ -268,7 +293,7 @@ fn convert(v: &ColumnarValue, to: ValueSort) -> Result<ColumnarValue, ValueError
         ValueSort::Double => {
             let mut d = vec![0.0; n];
             for (i, slot) in d.iter_mut().enumerate() {
-                let (x, null) = input.get(i);
+                let (x, null) = input.get(i, input.nelem());
                 *slot = x;
                 nulls[i] = null;
                 any |= null;
@@ -278,7 +303,7 @@ fn convert(v: &ColumnarValue, to: ValueSort) -> Result<ColumnarValue, ValueError
         ValueSort::Boolean => {
             let mut d = vec![false; n];
             for (i, slot) in d.iter_mut().enumerate() {
-                let (x, null) = input.get(i);
+                let (x, null) = input.get(i, input.nelem());
                 *slot = x != 0.0;
                 nulls[i] = null;
                 any |= null;
@@ -288,7 +313,7 @@ fn convert(v: &ColumnarValue, to: ValueSort) -> Result<ColumnarValue, ValueError
         _ => {
             let mut d = vec![0 as c_long; n];
             for (i, slot) in d.iter_mut().enumerate() {
-                let (x, null) = input.get(i);
+                let (x, null) = input.get(i, input.nelem());
                 *slot = x as c_long;
                 nulls[i] = null;
                 any |= null;
@@ -296,11 +321,18 @@ fn convert(v: &ColumnarValue, to: ValueSort) -> Result<ColumnarValue, ValueError
             ArrayData::Long(d)
         }
     };
-    Ok(ColumnarValue::Array(if any {
-        Array::with_nulls(data, nulls)
-    } else {
-        Array::new(data)
-    }))
+    let nelem = match v {
+        ColumnarValue::Array(a) => a.nelem(),
+        _ => 1,
+    };
+    Ok(ColumnarValue::Array(
+        if any {
+            Array::with_nulls(data, nulls)
+        } else {
+            Array::new(data)
+        }
+        .with_nelem(nelem),
+    ))
 }
 
 /// Read a boolean operand element by element, broadcasting a scalar.
@@ -341,12 +373,28 @@ fn logic(op: Logic, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Result<Columnar
         });
     };
 
+    let nelem_of = |v: &ColumnarValue| match v {
+        ColumnarValue::Array(a) => a.nelem(),
+        _ => 1,
+    };
+    let (ln, rn_) = (nelem_of(lhs), nelem_of(rhs));
+    let out_nelem = ln.max(rn_);
+    let idx = |v: &ColumnarValue, own: usize, i: usize| {
+        if v.is_scalar() {
+            0
+        } else if own == out_nelem {
+            i
+        } else {
+            i / out_nelem.max(1)
+        }
+    };
+
     let mut data = vec![false; n];
     let mut nulls = vec![false; n];
     let mut any = false;
     for i in 0..n {
-        let (a, an) = bool_at(lhs, if lhs.is_scalar() { 0 } else { i })?;
-        let (b, bn) = bool_at(rhs, if rhs.is_scalar() { 0 } else { i })?;
+        let (a, an) = bool_at(lhs, idx(lhs, ln, i))?;
+        let (b, bn) = bool_at(rhs, idx(rhs, rn_, i))?;
         if an || bn {
             nulls[i] = true;
             any = true;
@@ -354,11 +402,14 @@ fn logic(op: Logic, lhs: &ColumnarValue, rhs: &ColumnarValue) -> Result<Columnar
             data[i] = apply(a, b);
         }
     }
-    Ok(ColumnarValue::Array(if any {
-        Array::with_nulls(ArrayData::Boolean(data), nulls)
-    } else {
-        Array::new(ArrayData::Boolean(data))
-    }))
+    Ok(ColumnarValue::Array(
+        if any {
+            Array::with_nulls(ArrayData::Boolean(data), nulls)
+        } else {
+            Array::new(ArrayData::Boolean(data))
+        }
+        .with_nelem(out_nelem),
+    ))
 }
 
 /// `cond ? then : els`.
@@ -381,17 +432,41 @@ fn if_then_else(
         (None, None) => None,
         (Some(a), None) | (None, Some(a)) => Some(a),
         (Some(a), Some(b)) if a == b => Some(a),
+        /* a per-row condition against per-element branches */
+        (Some(a), Some(b)) if a != 0 && b != 0 && (a % b == 0 || b % a == 0) => Some(a.max(b)),
         (Some(a), Some(b)) => return Err(ValueError::LengthMismatch(a, b)),
     };
 
+    /* the branches decide the shape; the condition is per row and repeats
+    across the elements of that row, as `Do_Func`'s ifthenelse_fct did */
+    let out_nelem = [then, els]
+        .iter()
+        .filter_map(|v| match v {
+            ColumnarValue::Array(a) => Some(a.nelem()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(1);
+    let cond_nelem = match cond {
+        ColumnarValue::Array(a) => a.nelem(),
+        _ => 1,
+    };
+
     let pick = |i: usize| -> Result<(f64, bool), ValueError> {
-        let (c, cn) = bool_at(cond, if cond.is_scalar() { 0 } else { i })?;
+        let ci = if cond.is_scalar() {
+            0
+        } else if cond_nelem == out_nelem {
+            i
+        } else {
+            i / out_nelem.max(1)
+        };
+        let (c, cn) = bool_at(cond, ci)?;
         if cn {
             return Ok((0.0, true));
         }
         let side = if c { then } else { els };
         let input = side.numeric("?:")?;
-        Ok(input.get(if side.is_scalar() { 0 } else { i }))
+        Ok(input.get(if side.is_scalar() { 0 } else { i }, out_nelem))
     };
 
     let Some(n) = n else {
@@ -421,11 +496,14 @@ fn if_then_else(
         ValueSort::Boolean => ArrayData::Boolean(vals.iter().map(|&v| v != 0.0).collect()),
         _ => ArrayData::Long(vals.iter().map(|&v| v as c_long).collect()),
     };
-    Ok(ColumnarValue::Array(if any {
-        Array::with_nulls(data, nulls)
-    } else {
-        Array::new(data)
-    }))
+    Ok(ColumnarValue::Array(
+        if any {
+            Array::with_nulls(data, nulls)
+        } else {
+            Array::new(data)
+        }
+        .with_nelem(out_nelem),
+    ))
 }
 
 #[cfg(test)]
@@ -588,15 +666,17 @@ mod tests {
         };
         assert_eq!(longs(&e.evaluate(&b).unwrap()), vec![0, 100, 100]);
 
+        /* a null condition gives a null for every row: `#NULL` is a rows
+        kernel in the engine, not a folded constant */
         let n = Expr::IfThenElse {
             cond: Box::new(Expr::Null(ValueSort::Boolean)),
             then: lit(1),
             els: lit(2),
         };
-        assert_eq!(
-            n.evaluate(&b).unwrap(),
-            ColumnarValue::Null(ValueSort::Long)
-        );
+        match n.evaluate(&b).unwrap() {
+            ColumnarValue::Array(a) => assert!((0..3).all(|i| a.is_null(i))),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
@@ -624,10 +704,14 @@ mod tests {
     }
 
     #[test]
-    fn deep_nesting_does_not_overflow() {
-        /* left-nested, so evaluation recurses to the full depth */
+    fn nesting_up_to_the_parsers_limit_evaluates() {
+        /* Evaluation recurses once per level, so the depth the parser admits
+        is the depth this has to survive. `grammar::MAX_DEPTH` is 100; if that
+        is ever raised, this is the test that says whether the evaluator can
+        take it. Dropping the tree recurses too, so the margin covers both. */
+        const DEPTH: usize = 100;
         let mut e = Expr::Literal(Scalar::Long(0));
-        for _ in 0..500 {
+        for _ in 0..DEPTH {
             e = Expr::Arith {
                 op: Arith::Add,
                 lhs: Box::new(e),
@@ -637,7 +721,7 @@ mod tests {
         let b = batch(vec![], 1);
         assert_eq!(
             e.evaluate(&b).unwrap(),
-            ColumnarValue::Scalar(Scalar::Long(500))
+            ColumnarValue::Scalar(Scalar::Long(DEPTH as c_long))
         );
     }
 }

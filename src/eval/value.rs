@@ -105,13 +105,23 @@ impl ArrayData {
 pub(crate) struct Array {
     data: ArrayData,
     nulls: Vec<bool>,
+    /// Elements per row.
+    ///
+    /// A batch is `n_rows * nelem` elements laid out row-major, so this is what
+    /// distinguishes a scalar column from a vector one. The old engine kept the
+    /// same distinction and spelled it out in every loop as
+    /// `vector1 > 1 ? buf[elem] : buf[row]`; here it is a property of the
+    /// value, and [`Array::index_for`] does the mapping once.
+    nelem: usize,
 }
 
 impl Array {
+    /// One element per row.
     pub(crate) fn new(data: ArrayData) -> Self {
         Array {
             data,
             nulls: Vec::new(),
+            nelem: 1,
         }
     }
 
@@ -120,7 +130,35 @@ impl Array {
             nulls.is_empty() || nulls.len() == data.len(),
             "null mask must be empty or match the data length"
         );
-        Array { data, nulls }
+        Array {
+            data,
+            nulls,
+            nelem: 1,
+        }
+    }
+
+    /// `nelem` elements per row.
+    pub(crate) fn with_nelem(mut self, nelem: usize) -> Self {
+        self.nelem = nelem.max(1);
+        self
+    }
+
+    pub(crate) fn nelem(&self) -> usize {
+        self.nelem
+    }
+
+    /// Which of *this* array's elements corresponds to element `i` of a result
+    /// that has `out_nelem` elements per row.
+    ///
+    /// An array with one element per row supplies the same value to every
+    /// element of that row, which is how a scalar column combines with a
+    /// vector one.
+    pub(crate) fn index_for(&self, i: usize, out_nelem: usize) -> usize {
+        if self.nelem == out_nelem || out_nelem == 0 {
+            i
+        } else {
+            i / out_nelem.max(1)
+        }
     }
 
     pub(crate) fn data(&self) -> &ArrayData {
@@ -195,6 +233,11 @@ impl ColumnarValue {
             (None, None) => Ok(None),
             (Some(n), None) | (None, Some(n)) => Ok(Some(n)),
             (Some(a), Some(b)) if a == b => Ok(Some(a)),
+            /* a per-row array against a per-element one: the result has the
+            longer shape, provided the shorter divides it evenly */
+            (Some(a), Some(b)) if a != 0 && b != 0 && (a % b == 0 || b % a == 0) => {
+                Ok(Some(a.max(b)))
+            }
             (Some(a), Some(b)) => Err(ValueError::LengthMismatch(a, b)),
         }
     }
@@ -218,21 +261,61 @@ pub(crate) enum ValueError {
 #[derive(Debug)]
 pub(crate) enum NumericInput<'a> {
     Scalar(f64, bool),
-    Long(&'a [c_long], &'a [bool]),
-    Double(&'a [f64], &'a [bool]),
-    Boolean(&'a [bool], &'a [bool]),
+    Long(&'a [c_long], &'a [bool], usize),
+    Double(&'a [f64], &'a [bool], usize),
+    Boolean(&'a [bool], &'a [bool], usize),
 }
 
 impl NumericInput<'_> {
-    pub(crate) fn get(&self, i: usize) -> (f64, bool) {
+    /// Elements per row; 1 for a scalar.
+    pub(crate) fn nelem(&self) -> usize {
+        match self {
+            NumericInput::Scalar(..) => 1,
+            NumericInput::Long(_, _, n)
+            | NumericInput::Double(_, _, n)
+            | NumericInput::Boolean(_, _, n) => *n,
+        }
+    }
+
+    /// Which of this input's elements feeds element `i` of a result that has
+    /// `out_nelem` elements per row.
+    fn map(&self, i: usize, out_nelem: usize) -> usize {
+        let own = self.nelem();
+        if own == out_nelem || out_nelem == 0 {
+            i
+        } else {
+            i / out_nelem.max(1)
+        }
+    }
+
+    /// Element `i` of a result with `out_nelem` elements per row.
+    pub(crate) fn get(&self, i: usize, out_nelem: usize) -> (f64, bool) {
+        let k = self.map(i, out_nelem);
         match self {
             NumericInput::Scalar(v, null) => (*v, *null),
-            NumericInput::Long(v, n) => (v[i] as f64, n.get(i).copied().unwrap_or(false)),
-            NumericInput::Double(v, n) => (v[i], n.get(i).copied().unwrap_or(false)),
-            NumericInput::Boolean(v, n) => (
-                f64::from(u8::from(v[i])),
-                n.get(i).copied().unwrap_or(false),
+            NumericInput::Long(v, n, _) => (v[k] as f64, n.get(k).copied().unwrap_or(false)),
+            NumericInput::Double(v, n, _) => (v[k], n.get(k).copied().unwrap_or(false)),
+            NumericInput::Boolean(v, n, _) => (
+                f64::from(u8::from(v[k])),
+                n.get(k).copied().unwrap_or(false),
             ),
+        }
+    }
+
+    /// The exact integer at element `i`.
+    ///
+    /// Integer arithmetic must not detour through `f64`: an `i64` past 2^53
+    /// does not survive the round trip, which is how `-9223372036854775807`
+    /// came back as `-9223372036854775808`.
+    pub(crate) fn get_i64(&self, i: usize, out_nelem: usize) -> (c_long, bool) {
+        let k = self.map(i, out_nelem);
+        match self {
+            NumericInput::Scalar(v, null) => (*v as c_long, *null),
+            NumericInput::Long(v, n, _) => (v[k], n.get(k).copied().unwrap_or(false)),
+            NumericInput::Double(v, n, _) => (v[k] as c_long, n.get(k).copied().unwrap_or(false)),
+            NumericInput::Boolean(v, n, _) => {
+                (c_long::from(v[k]), n.get(k).copied().unwrap_or(false))
+            }
         }
     }
 }
@@ -250,9 +333,9 @@ impl ColumnarValue {
             }
             ColumnarValue::Null(t) => Err(ValueError::BadSort(op, *t)),
             ColumnarValue::Array(a) => Ok(match a.data() {
-                ArrayData::Long(v) => NumericInput::Long(v, a.nulls()),
-                ArrayData::Double(v) => NumericInput::Double(v, a.nulls()),
-                ArrayData::Boolean(v) => NumericInput::Boolean(v, a.nulls()),
+                ArrayData::Long(v) => NumericInput::Long(v, a.nulls(), a.nelem()),
+                ArrayData::Double(v) => NumericInput::Double(v, a.nulls(), a.nelem()),
+                ArrayData::Boolean(v) => NumericInput::Boolean(v, a.nulls(), a.nelem()),
                 other => return Err(ValueError::BadSort(op, other.sort())),
             }),
         }
@@ -314,22 +397,22 @@ mod tests {
         let s = ColumnarValue::Scalar(Scalar::Long(7));
         let n = s.numeric("+").unwrap();
         /* a scalar reads the same at every index */
-        assert_eq!(n.get(0), (7.0, false));
-        assert_eq!(n.get(99), (7.0, false));
+        assert_eq!(n.get(0, 1), (7.0, false));
+        assert_eq!(n.get(99, 1), (7.0, false));
 
         let a = ColumnarValue::Array(Array::with_nulls(
             ArrayData::Double(vec![1.5, 2.5]),
             vec![false, true],
         ));
         let n = a.numeric("+").unwrap();
-        assert_eq!(n.get(0), (1.5, false));
-        assert_eq!(n.get(1), (2.5, true));
+        assert_eq!(n.get(0, 1), (1.5, false));
+        assert_eq!(n.get(1, 1), (2.5, true));
     }
 
     #[test]
     fn booleans_are_numeric_but_strings_are_not() {
         let b = ColumnarValue::Scalar(Scalar::Boolean(true));
-        assert_eq!(b.numeric("+").unwrap().get(0), (1.0, false));
+        assert_eq!(b.numeric("+").unwrap().get(0, 1), (1.0, false));
 
         let s = ColumnarValue::Scalar(Scalar::Str(b"abc".to_vec()));
         assert!(matches!(
@@ -342,8 +425,8 @@ mod tests {
     fn a_null_scalar_reports_itself_as_null_at_every_index() {
         let n = ColumnarValue::Null(ValueSort::Long);
         let input = n.numeric("+").unwrap();
-        assert_eq!(input.get(0), (0.0, true));
-        assert_eq!(input.get(5), (0.0, true));
+        assert_eq!(input.get(0, 1), (0.0, true));
+        assert_eq!(input.get(5, 1), (0.0, true));
     }
 
     #[test]
