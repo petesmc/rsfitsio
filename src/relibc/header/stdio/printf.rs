@@ -120,7 +120,7 @@ pub(crate) enum VaArg {
 }
 
 impl VaArg {
-    unsafe fn arg_from(fmtkind: FmtKind, intkind: IntKind, ap: &mut CustomVaList) -> VaArg {
+    fn arg_from(fmtkind: FmtKind, intkind: IntKind, ap: &mut CustomVaList) -> VaArg {
         // Per the C standard using va_arg with a type with a size
         // less than that of an int for integers and double for floats
         // is invalid. As a result any arguments smaller than an int or
@@ -417,7 +417,7 @@ unsafe fn pop_int(format: &mut *const u8) -> Option<Number> {
     }
 }
 
-unsafe fn fmt_int<I>(fmt: u8, i: I) -> String
+fn fmt_int<I>(fmt: u8, i: I) -> String
 where
     I: fmt::Display + fmt::Octal + fmt::LowerHex + fmt::UpperHex + fmt::Binary,
 {
