@@ -20,7 +20,7 @@ mod tests {
     }
 
     // Test helper for sscanf_internal with comparison to libc
-    unsafe fn test_sscanf_internal(
+    fn test_sscanf_internal(
         input: &str,
         format: &str,
         valist: CustomVaList,
@@ -1099,7 +1099,6 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_scanf_f_comprehensive() {
-        unsafe {
             // Test 1: Simple float
             {
                 let mut val: c_double = 0.0;
@@ -1212,7 +1211,6 @@ mod tests {
                 assert!((val2 - 2.5).abs() < 1e-10);
                 assert_eq!(result, 2);
             }
-        }
     }
 
     #[test]
@@ -1291,7 +1289,6 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn test_scanf_c_comprehensive() {
-        unsafe {
             // Test 1: Single character
             {
                 let mut val: c_char = 0;
@@ -1363,7 +1360,6 @@ mod tests {
                 assert_eq!(val as u8, b'@');
                 assert_eq!(result, 1);
             }
-        }
     }
 
     #[test]
@@ -1534,7 +1530,6 @@ mod tests {
 
     #[test]
     fn test_scanf_edge_cases() {
-        unsafe {
             // Test 1: Empty input
             {
                 let mut val: c_int = 999;
@@ -1627,7 +1622,6 @@ mod tests {
                 assert_eq!(val1, 42);
                 assert_eq!(val2, 999); // Second value unchanged
             }
-        }
     }
 
     #[test]
@@ -1698,42 +1692,40 @@ mod tests {
 
     #[test]
     fn test_scanf_percent_literal() {
-        unsafe {
-            // Test 1: Single percent literal
-            {
-                let mut val: c_int = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 1: Single percent literal
+        {
+            let mut val: c_int = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("%42", "%%%d", valist, 1);
-                assert_eq!(val, 42);
-                assert_eq!(result, 1);
-            }
+            let result = test_sscanf_internal("%42", "%%%d", valist, 1);
+            assert_eq!(val, 42);
+            assert_eq!(result, 1);
+        }
 
-            // Test 2: Percent literal with multiple values
-            {
-                let mut val1: c_int = 0;
-                let mut val2: c_int = 0;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+        // Test 2: Percent literal with multiple values
+        {
+            let mut val1: c_int = 0;
+            let mut val2: c_int = 0;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("42%100", "%d%%%d", valist, 2);
-                assert_eq!(val1, 42);
-                assert_eq!(val2, 100);
-                assert_eq!(result, 2);
-            }
+            let result = test_sscanf_internal("42%100", "%d%%%d", valist, 2);
+            assert_eq!(val1, 42);
+            assert_eq!(val2, 100);
+            assert_eq!(result, 2);
+        }
 
-            // Test 3: Mismatched percent
-            {
-                let mut val: c_int = 999;
-                let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+        // Test 3: Mismatched percent
+        {
+            let mut val: c_int = 999;
+            let mut valist = CustomVaList::new();
+            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
 
-                let result = test_sscanf_internal("42", "%%%d", valist, 0);
-                assert_eq!(result, 0); // Should fail to match
-                assert_eq!(val, 999); // Value unchanged
-            }
+            let result = test_sscanf_internal("42", "%%%d", valist, 0);
+            assert_eq!(result, 0); // Should fail to match
+            assert_eq!(val, 999); // Value unchanged
         }
     }
 
