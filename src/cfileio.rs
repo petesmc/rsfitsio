@@ -8503,9 +8503,7 @@ pub unsafe extern "C" fn ffshdwn(flag: c_int) {
 /// This is NOT THREAD-SAFE
 pub fn ffshdwn_safe(flag: c_int) {
     if cfg!(feature = "net_services") {
-        unsafe {
             fits_dwnld_prog_bar(flag);
-        }
     }
 }
 
@@ -8522,7 +8520,7 @@ pub fn ffgtmo_safer() -> c_int {
     let mut timeout = 0;
 
     if cfg!(feature = "net_services") {
-        timeout = unsafe { fits_net_timeout(-1) };
+        timeout = fits_net_timeout(-1);
     }
 
     timeout
