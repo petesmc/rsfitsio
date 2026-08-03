@@ -79,6 +79,12 @@ pub(crate) enum Func {
     IsNull,
     /// `DEFNULL(x, y)`: `y` wherever `x` is undefined.
     DefNull,
+    /// `ELEMENTNUM(x)`: each element's 1-based position within its row.
+    ElementNum,
+    /// `AXISELEM(x, n)`: each element's 1-based index along axis `n`.
+    AxisElem,
+    /// `ARRAY(x, dims)`: `x` broadcast into an array of the given shape.
+    Array,
     /// `ANGSEP(ra1, dec1, ra2, dec2)`, in degrees.
     AngSep,
     /// `NEAR(x, y, tol)`.
@@ -451,6 +457,11 @@ impl Expr {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid | Func::StrStr => ValueSort::Long,
                 Func::AngSep => ValueSort::Double,
+                Func::ElementNum | Func::AxisElem => ValueSort::Long,
+                Func::Array => match args[0].sort(batch_sorts) {
+                    ValueSort::Boolean => ValueSort::Long,
+                    other => other,
+                },
                 Func::Near | Func::Circle | Func::Box | Func::Ellipse => ValueSort::Boolean,
                 Func::StrMid => ValueSort::String,
                 Func::Average | Func::Stddev => ValueSort::Double,
@@ -864,6 +875,9 @@ fn call(func: Func, args: &[ColumnarValue], rows: usize) -> Result<ColumnarValue
         Func::Min => kernel::zip_keep_sort(&args[0], &args[1], "MIN", f64::min, c_long::min),
         Func::Max => kernel::zip_keep_sort(&args[0], &args[1], "MAX", f64::max, c_long::max),
         Func::StrStr => str_str(&args[0], &args[1], rows),
+        Func::ElementNum => Ok(element_num(&args[0], rows)),
+        Func::AxisElem => axis_elem(&args[0], &args[1], rows),
+        Func::Array => array_of(&args[0], &args[1], rows),
         Func::AngSep => nary(args, rows, "ANGSEP", |a| {
             NaryOut::Double(regions::angsep(a[0], a[1], a[2], a[3]))
         }),
@@ -942,6 +956,91 @@ fn text_if_then_else(
         ArrayData::Str(out),
         nulls,
     )))
+}
+
+/// The shape of an evaluated argument: its elements per row and axis lengths.
+fn shape_at_runtime(v: &ColumnarValue) -> (usize, Vec<usize>) {
+    match v {
+        ColumnarValue::Array(a) => (a.nelem().max(1), a.naxes()),
+        _ => (1, vec![1]),
+    }
+}
+
+/// `ELEMENTNUM(x)`: 1..nelem repeated for each row. Never undefined.
+fn element_num(v: &ColumnarValue, rows: usize) -> ColumnarValue {
+    let (nelem, _) = shape_at_runtime(v);
+    let out: Vec<c_long> = (0..rows * nelem)
+        .map(|i| (i % nelem) as c_long + 1)
+        .collect();
+    ColumnarValue::Array(Array::new(ArrayData::Long(out)).with_nelem(nelem))
+}
+
+/// `AXISELEM(x, n)`: each element's 1-based index along axis `n`.
+///
+/// The axes are innermost first, so axis 1 cycles fastest: over a 2x3 column
+/// it runs 1,2,1,2,1,2 while axis 2 runs 1,1,2,2,3,3.
+fn axis_elem(
+    v: &ColumnarValue,
+    axis: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let (nelem, naxes) = shape_at_runtime(v);
+    let n = axis.numeric("AXISELEM")?.get_i64(0, 1).0.max(1) as usize;
+    /* the stride of an axis is the product of the ones inside it */
+    let stride: usize = naxes.iter().take(n - 1).product::<usize>().max(1);
+    let len = naxes.get(n - 1).copied().unwrap_or(1).max(1);
+    let out: Vec<c_long> = (0..rows * nelem)
+        .map(|i| ((i % nelem) / stride % len) as c_long + 1)
+        .collect();
+    Ok(ColumnarValue::Array(
+        Array::new(ArrayData::Long(out)).with_nelem(nelem),
+    ))
+}
+
+/// `ARRAY(x, dims)`: `x` repeated into an array of the given shape, one such
+/// array per row. `dims` is a constant count or a vector of axis lengths.
+fn array_of(
+    v: &ColumnarValue,
+    dims: &ColumnarValue,
+    rows: usize,
+) -> Result<ColumnarValue, ValueError> {
+    let d = dims.numeric("ARRAY")?;
+    let (dim_count, _) = shape_at_runtime(dims);
+    let naxes: Vec<usize> = (0..dim_count)
+        .map(|i| d.get_i64(i, dim_count).0.max(0) as usize)
+        .collect();
+    let nelem: usize = naxes.iter().product::<usize>().max(1);
+
+    let src = v.numeric("ARRAY")?;
+    let sort = match v.sort() {
+        ValueSort::Boolean => ValueSort::Long,
+        other => other,
+    };
+    let mut nulls = Vec::with_capacity(rows * nelem);
+    let mut doubles = Vec::new();
+    let mut longs = Vec::new();
+    for i in 0..rows * nelem {
+        /* A scalar source fills every element; a source that is already an
+        array is re-dimensioned, so ARRAY(MATRIX,6) lays its six elements out
+        flat rather than repeating the first. */
+        let (x, null) = src.get(i, nelem);
+        nulls.push(null);
+        if sort == ValueSort::Double {
+            doubles.push(x);
+        } else {
+            longs.push(src.get_i64(i, nelem).0);
+        }
+    }
+    let data = if sort == ValueSort::Double {
+        ArrayData::Double(doubles)
+    } else {
+        ArrayData::Long(longs)
+    };
+    Ok(ColumnarValue::Array(
+        Array::with_nulls(data, nulls)
+            .with_nelem(nelem)
+            .with_naxes(naxes),
+    ))
 }
 
 /// What an n-ary numeric kernel produces for one element.
@@ -1797,6 +1896,90 @@ mod tests {
             longs(&Expr::Column(0).evaluate(&b).unwrap()),
             vec![10, 20, 30]
         );
+    }
+
+    fn matrix_batch() -> Batch {
+        let mut b = batch(vec![matrix_col()], 2);
+        b.total_rows = 2;
+        b.n_data_rows = 2;
+        b.first_data_row = 1;
+        b
+    }
+
+    #[test]
+    fn elementnum_counts_within_each_row() {
+        let b = matrix_batch();
+        let e = Expr::Call {
+            func: Func::ElementNum,
+            args: vec![Expr::Column(0)],
+        };
+        assert_eq!(
+            longs(&e.evaluate(&b).unwrap()),
+            vec![1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]
+        );
+    }
+
+    #[test]
+    fn axiselem_cycles_the_innermost_axis_fastest() {
+        let b = matrix_batch();
+        let axis = |n: c_long| Expr::Call {
+            func: Func::AxisElem,
+            args: vec![Expr::Column(0), Expr::Literal(Scalar::Long(n))],
+        };
+        /* a 2x3 column: axis 1 runs 1,2 repeatedly, axis 2 changes every two */
+        assert_eq!(
+            longs(&axis(1).evaluate(&b).unwrap())[..6],
+            [1, 2, 1, 2, 1, 2]
+        );
+        assert_eq!(
+            longs(&axis(2).evaluate(&b).unwrap())[..6],
+            [1, 1, 2, 2, 3, 3]
+        );
+    }
+
+    #[test]
+    fn array_fills_a_scalar_and_redimensions_a_vector() {
+        let b = matrix_batch();
+        /* a scalar reaches every element */
+        let e = Expr::Call {
+            func: Func::Array,
+            args: vec![
+                Expr::Literal(Scalar::Long(3)),
+                Expr::Literal(Scalar::Long(4)),
+            ],
+        };
+        assert_eq!(
+            longs(&e.evaluate(&b).unwrap()),
+            vec![3, 3, 3, 3, 3, 3, 3, 3]
+        );
+
+        /* a source that is already an array is laid out flat, not repeated */
+        let e = Expr::Call {
+            func: Func::Array,
+            args: vec![Expr::Column(0), Expr::Literal(Scalar::Long(6))],
+        };
+        assert_eq!(longs(&e.evaluate(&b).unwrap())[..6], [1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn array_takes_its_shape_from_a_vector_of_dimensions() {
+        let b = matrix_batch();
+        let e = Expr::Call {
+            func: Func::Array,
+            args: vec![
+                Expr::Literal(Scalar::Long(0)),
+                Expr::Vector(vec![
+                    Expr::Literal(Scalar::Long(2)),
+                    Expr::Literal(Scalar::Long(3)),
+                    Expr::Literal(Scalar::Long(1)),
+                ]),
+            ],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert_eq!(a.nelem(), 6);
+        assert_eq!(a.naxes(), vec![2, 3, 1]);
     }
 
     /// A 2x3 column holding 1..6 in the first row and 11..16 in the second,

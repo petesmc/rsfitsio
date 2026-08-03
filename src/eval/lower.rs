@@ -165,6 +165,15 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
             | Func::Min1
             | Func::Max1
             | Func::StrStr => Shape::scalar(),
+            /* ARRAY's shape is its second argument, which the parser requires
+            to be constant, so it is read off the lowered dims directly */
+            Func::Array => {
+                let dims = const_dims(args.get(1)?)?;
+                Shape {
+                    nelem: dims.iter().product::<c_long>().max(1),
+                    naxes: dims,
+                }
+            }
             _ => shape_of(args.first()?, cols)?,
         },
     })
@@ -202,6 +211,24 @@ fn fold_shape_fn(
         }
     };
     Ok(Some(Expr::Literal(Scalar::Long(v))))
+}
+
+/// The axis lengths `ARRAY`'s second argument names: a single count, or a
+/// vector literal of counts. Anything else is not a shape known here.
+fn const_dims(e: &Expr) -> Option<Vec<c_long>> {
+    match e {
+        Expr::Literal(Scalar::Long(n)) => Some(vec![*n]),
+        Expr::Literal(Scalar::Double(n)) => Some(vec![*n as c_long]),
+        Expr::Vector(items) => items
+            .iter()
+            .map(|i| match i {
+                Expr::Literal(Scalar::Long(n)) => Some(*n),
+                Expr::Literal(Scalar::Double(n)) => Some(*n as c_long),
+                _ => None,
+            })
+            .collect(),
+        _ => None,
+    }
 }
 
 /// Whether an expression is textual, which decides whether `+` concatenates.
@@ -479,6 +506,9 @@ fn func_of(name: &[u8]) -> Option<(Func, usize)> {
         b"DEFNULL" => (Func::DefNull, 2),
         b"STRSTR" => (Func::StrStr, 2),
         b"ANGSEP" => (Func::AngSep, 4),
+        b"ELEMENTNUM" => (Func::ElementNum, 1),
+        b"AXISELEM" => (Func::AxisElem, 2),
+        b"ARRAY" => (Func::Array, 2),
         b"NEAR" => (Func::Near, 3),
         b"CIRCLE" => (Func::Circle, 5),
         b"BOX" => (Func::Box, 7),
