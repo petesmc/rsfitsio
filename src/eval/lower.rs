@@ -151,8 +151,17 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions) -> Res {
         AstKind::BitStr(_) => Err(Unsupported("bit-string literal")),
         AstKind::SNullRef => Err(Unsupported("#SNULL")),
         AstKind::Offset { .. } => Err(Unsupported("row offset")),
+        /* Subscripting needs the operand's `naxes`, not just its element
+        count: with a 2x3 column, `M[1,1]` picks an element but `M[1]` selects
+        a whole slice, so even the single-subscript form cannot be lowered
+        without the shape. Threading `naxes` through the value model is a
+        design addition rather than another kernel. */
         AstKind::Deref { .. } => Err(Unsupported("subscript")),
-        AstKind::Vector(_) => Err(Unsupported("vector literal")),
+        AstKind::Vector(items) => {
+            let lowered: Result<Vec<Expr>, Unsupported> =
+                items.iter().map(|e| lower(e, names)).collect();
+            Ok(Expr::Vector(lowered?))
+        }
         AstKind::Call { kind, name, args } => {
             /* ISNULL lexes as a BFUNCTION; the other names in that class are
             the region tests, and GTI/STRSTR each need their own kernels */
@@ -323,6 +332,13 @@ mod tests {
     }
 
     #[test]
+    fn vector_literals_lower() {
+        for src in ["{1,2}", "{1,2,3}", "{1.5,2}", "{T,F}"] {
+            assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    #[test]
     fn the_bitwise_operators_lower() {
         for src in ["1 & 2", "1 | 2", "1 ^^ 2"] {
             assert!(try_lower(src).is_ok(), "src: {src}");
@@ -334,7 +350,6 @@ mod tests {
         for (src, want) in [
             ("'a'", "string literal"),
             ("b101", "bit-string literal"),
-            ("{1,2}", "vector literal"),
             ("NELEM(1)", "function call"),
             ("RANDOM()", "function call"),
             ("GTIFILTER()", "function call"),

@@ -154,6 +154,10 @@ pub(crate) enum Expr {
         func: Func,
         args: Vec<Expr>,
     },
+    /// `{ a, b, c }`: one row of the result holds each element's value for
+    /// that row, so the result has as many elements per row as the literal
+    /// has entries.
+    Vector(Vec<Expr>),
     /// `cond ? then : els`, over numeric or boolean branches.
     IfThenElse {
         cond: Box<Expr>,
@@ -274,6 +278,11 @@ impl Expr {
             }
             Expr::Compare { .. } | Expr::Logic { .. } | Expr::Equality { .. } => ValueSort::Boolean,
             Expr::IfThenElse { then, els, .. } => then.sort(batch_sorts).max(els.sort(batch_sorts)),
+            Expr::Vector(items) => items
+                .iter()
+                .map(|e| e.sort(batch_sorts))
+                .max()
+                .unwrap_or(ValueSort::Long),
             Expr::Call { func, args } => match func {
                 Func::IsNull => ValueSort::Boolean,
                 Func::NValid => ValueSort::Long,
@@ -364,6 +373,11 @@ impl Expr {
             Expr::Call { func, args } => {
                 let vals: Result<Vec<_>, _> = args.iter().map(|a| a.evaluate(batch)).collect();
                 call(*func, &vals?)
+            }
+
+            Expr::Vector(items) => {
+                let vals: Result<Vec<_>, _> = items.iter().map(|e| e.evaluate(batch)).collect();
+                vector(&vals?, batch.n_rows.max(0) as usize)
             }
 
             Expr::IfThenElse { cond, then, els } => {
@@ -674,6 +688,61 @@ fn call(func: Func, args: &[ColumnarValue]) -> Result<ColumnarValue, ValueError>
             kernel::map_double_checked(&args[0], "function", f, domain)
         }
     }
+}
+
+/// Build `{ a, b, c }`: each row gets one element per entry, in order.
+fn vector(items: &[ColumnarValue], rows: usize) -> Result<ColumnarValue, ValueError> {
+    if items.is_empty() {
+        return Err(ValueError::BadSort("{}", ValueSort::Long));
+    }
+    /* the widest entry decides the sort, as `Close_Vec` did */
+    let out = match items.iter().map(|v| v.sort()).max().unwrap() {
+        ValueSort::Boolean if items.iter().all(|v| v.sort() == ValueSort::Boolean) => {
+            ValueSort::Boolean
+        }
+        ValueSort::Boolean => ValueSort::Long,
+        other => other,
+    };
+
+    /* an entry that is itself a vector contributes all of its elements */
+    let widths: Vec<usize> = items
+        .iter()
+        .map(|v| match v {
+            ColumnarValue::Array(a) => a.nelem(),
+            _ => 1,
+        })
+        .collect();
+    let out_nelem: usize = widths.iter().sum();
+
+    let mut vals = vec![0.0f64; rows * out_nelem];
+    let mut nulls = vec![false; rows * out_nelem];
+    let mut any = false;
+    for (item, (idx, width)) in items.iter().zip(
+        widths
+            .iter()
+            .scan(0usize, |acc, w| {
+                let start = *acc;
+                *acc += w;
+                Some((start, *w))
+            })
+            .collect::<Vec<_>>(),
+    ) {
+        let input = item.numeric("{}")?;
+        for r in 0..rows {
+            for k in 0..width {
+                let (v, null) = if item.is_scalar() {
+                    input.get(0, width)
+                } else {
+                    input.get(r * width + k, width)
+                };
+                let at = r * out_nelem + idx + k;
+                vals[at] = v;
+                nulls[at] = null;
+                any |= null;
+            }
+        }
+    }
+    Ok(kernel::build(out, vals, nulls, any, out_nelem))
 }
 
 /// Fold each row of `v` down to a single element.
