@@ -9780,7 +9780,15 @@ mod tests {
             assert_eq!(status, 0);
 
             assert_eq!(eval_lng::<1>(&mut f, "NELEM(VECCOL)"), [5]);
-            assert_eq!(eval_lng::<1>(&mut f, "NVALID(VECCOL)"), [4]);
+            /* report the mask itself when the count is wrong: whether the
+            undefined element reached the evaluator at all is the first thing
+            worth knowing, and this test has failed that way before */
+            let seen = eval_log::<5>(&mut f, "ISNULL(VECCOL)");
+            assert_eq!(
+                eval_lng::<1>(&mut f, "NVALID(VECCOL)"),
+                [4],
+                "ISNULL(VECCOL) per element = {seen:?}, expected [0, 0, 1, 0, 0]"
+            );
             let r = eval_dbl::<1>(&mut f, "SUM(VECCOL)");
             assert!((r[0] - 12.0).abs() < 1e-9, "got {}", r[0]);
             let r = eval_dbl::<1>(&mut f, "AVERAGE(VECCOL)");

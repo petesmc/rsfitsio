@@ -533,10 +533,15 @@ impl Batch {
             let start = picked[0].unwrap() * stride;
             let len = rows * stride;
             let data = c.data.slice(start, len);
-            let nulls = if c.nulls.len() >= start + len {
-                c.nulls[start..start + len].to_vec()
-            } else {
+            /* likewise here: a short mask must not lose the flags it does
+            hold */
+            let nulls = if c.nulls.is_empty() {
                 Vec::new()
+            } else {
+                let end = (start + len).min(c.nulls.len());
+                let mut v = c.nulls[start.min(end)..end].to_vec();
+                v.resize(len, false);
+                v
             };
             return Ok(ColumnarValue::Array(
                 Array::with_nulls(data, nulls)
@@ -721,11 +726,18 @@ impl Batch {
             } else {
                 (offset, count)
             };
+            /* A column with no undef array has no nulls, which is a real
+            answer. A *short* one is not: discarding every flag because the
+            last is missing turns undefined elements into defined ones, so
+            take what is there and treat the rest as defined. */
             let nulls = match &var.undef {
-                Some(u) if u.len() >= off + len => {
-                    u[off..off + len].iter().map(|&v| v != 0).collect()
+                Some(u) => {
+                    let end = (off + len).min(u.len());
+                    let mut v: Vec<bool> = u[off.min(end)..end].iter().map(|&x| x != 0).collect();
+                    v.resize(len, false);
+                    v
                 }
-                _ => Vec::new(),
+                None => Vec::new(),
             };
 
             columns.push(ColumnBatch {
