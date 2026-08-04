@@ -1583,90 +1583,16 @@ pub(crate) fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
 /// result node, so everything downstream is unchanged. See
 /// `PARSER_MIGRATION.md` section 10.
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
-    if lParse.expr_tree.is_some() && crate::eval::bridge::evaluate(lParse, firstRow, nRows) {
+    if lParse.expr_tree.is_some() {
+        crate::eval::bridge::evaluate(lParse, firstRow, nRows);
         return;
     }
-    Evaluate_Parser_arena(lParse, firstRow, nRows);
-}
-
-fn Evaluate_Parser_arena(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
-    unsafe {
-        let mut i: c_int = 0;
-        let mut column: c_int = 0;
-        let mut offset: c_long = 0;
-        let mut rowOffset: c_long = 0;
-        static mut RAND_INITIALIZED: c_int = 0;
-        if RAND_INITIALIZED == 0 {
-            simplerng_srand(time(core::ptr::null_mut::<time_t>()) as c_uint);
-            RAND_INITIALIZED = 1;
-        }
-        lParse.firstRow = firstRow;
-        lParse.nRows = nRows;
-        rowOffset = firstRow - lParse.firstDataRow;
-        i = 0;
-        while i < lParse.nNodes {
-            if !(((lParse.Nodes)[i as usize]).operation.is_computed()
-                || ((lParse.Nodes)[i as usize]).operation == Operation::Const)
-            {
-                column = ((lParse.Nodes)[i as usize]).operation.column().unwrap();
-                offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
-
-                (((lParse.Nodes)[i as usize]).value).undef =
-                    match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
-                        Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
-                        None => ptr::null_mut(),
-                    };
-
-                /* A column node borrows the iterator's buffer rather than
-                owning one, so this points the node at the right row offset. */
-                match ((lParse.Nodes)[i as usize]).ntype {
-                    ValueSort::Bits | ValueSort::String => {
-                        let rows = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
-                        (((lParse.Nodes)[i as usize]).value)
-                            .data
-                            .set_buffer(BufferKind::Text, rows.cast::<c_void>());
-                        (((lParse.Nodes)[i as usize]).value).undef =
-                            if ((lParse.Nodes)[i as usize]).ntype == ValueSort::String {
-                                (((lParse.varData)[column as usize]).undef)
-                                    .as_deref_mut()
-                                    .unwrap()[(rowOffset as usize)..]
-                                    .as_mut_ptr()
-                            } else {
-                                ptr::null_mut()
-                            };
-                    }
-                    ValueSort::Boolean => {
-                        let buf = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_char)
-                            .offset(offset as isize);
-                        (((lParse.Nodes)[i as usize]).value)
-                            .data
-                            .set_buffer(BufferKind::Logical, buf.cast::<c_void>());
-                    }
-                    ValueSort::Long => {
-                        let buf = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_long)
-                            .offset(offset as isize);
-                        (((lParse.Nodes)[i as usize]).value)
-                            .data
-                            .set_buffer(BufferKind::Long, buf.cast::<c_void>());
-                    }
-                    ValueSort::Double => {
-                        let buf = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_double)
-                            .offset(offset as isize);
-                        (((lParse.Nodes)[i as usize]).value)
-                            .data
-                            .set_buffer(BufferKind::Double, buf.cast::<c_void>());
-                    }
-                }
-            }
-            i += 1;
-        }
-        Evaluate_Node(lParse, lParse.resultNode);
+    /* Every expression the parser accepts lowers, so reaching here means the
+    lowering has a gap. Saying so is better than the silent wrong answer that
+    evaluating nothing would give. */
+    crate::fitscore::ffpmsg_str("expression could not be lowered for evaluation");
+    if lParse.status == 0 {
+        lParse.status = PARSE_SYNTAX_ERR;
     }
 }
 
