@@ -22,6 +22,7 @@ use crate::fitscore::ffgtclll_safe;
 use crate::fitscore::ffkeyn_safe;
 use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::ffpmsg_str;
+use crate::fitsio2::INT32_MAX;
 use crate::getcol::ffgcv_safe;
 use crate::getcol::ffgpv_safe;
 use crate::getkey::ffgkyj_safe;
@@ -31,17 +32,6 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use core::mem::size_of;
 use libc::{calloc, free, memcmp, memcpy, memset};
 use std::os::raw::{c_char, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ushort};
-
-// Import numeric constants
-const SHRT_MAX: c_short = c_short::MAX;
-const SHRT_MIN: c_short = c_short::MIN;
-const INT32_MAX: i32 = i32::MAX;
-const UINT_MAX: c_uint = c_uint::MAX;
-const LONGLONG_MIN: LONGLONG = LONGLONG::MIN;
-const LONG_MIN: c_long = c_long::MIN;
-const LONG_MAX: c_long = c_long::MAX;
-const FLOATNULLVALUE: f32 = f32::NAN;
-const DOUBLENULLVALUE: f64 = f64::NAN;
 
 use crate::NullValue;
 use crate::aliases::rust_api::*;
@@ -2582,6 +2572,44 @@ pub fn ffiter_safe(
         None,
     }
 
+    impl ColNullValue {
+        /// The null value as the C `union` held it: the bytes of the value
+        /// itself, in the column's own type.
+        ///
+        /// The C passes `col[jj].null` -- a `char[8]` union -- straight to the
+        /// read routines as the `void*` null value, and copies it into the
+        /// first array element for the caller. A Rust enum cannot stand in for
+        /// that union: its first bytes are the discriminant, and where the
+        /// payload lands is not something the layout promises. Casting a
+        /// `*const ColNullValue` to `*const f64` therefore reads the tag, and
+        /// which garbage that yields varies by platform -- `c_long` is 4 bytes
+        /// here and 8 on Linux, so the two do not even agree on the size of
+        /// the enum's variants.
+        fn to_bytes(self) -> [u8; 8] {
+            let mut bytes = [0u8; 8];
+            {
+                let mut put = |src: &[u8]| bytes[..src.len()].copy_from_slice(src);
+                match self {
+                    ColNullValue::UCharNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::SCharNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::IntNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::ShortNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::LongNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::UIntNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::UShortNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::ULongNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::FloatNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::DoubleNull(v) => put(&v.to_ne_bytes()),
+                    ColNullValue::LONGLONGNull(v) => put(&v.to_ne_bytes()),
+                    /* a string null is a `char*` the caller already holds, and
+                    the None case has no value to hand out */
+                    ColNullValue::StringNull(_) | ColNullValue::None => {}
+                }
+            }
+            bytes
+        }
+    }
+
     let mut dataptr: *mut core::ffi::c_void = core::ptr::null_mut();
     let mut defaultnull: *mut core::ffi::c_void = core::ptr::null_mut();
     let mut col: Vec<ColNulls> = Vec::new();
@@ -3351,11 +3379,11 @@ pub fn ffiter_safe(
                             || typecode.abs() == TINT
                             || typecode.abs() == TLONGLONG
                         {
-                            tnull = tnull.min(c_long::from(SHRT_MAX));
-                            tnull = tnull.max(c_long::from(SHRT_MIN));
+                            tnull = tnull.min(c_long::from(c_short::MAX));
+                            tnull = tnull.max(c_long::from(c_short::MIN));
                             col[jj].null = ColNullValue::ShortNull(tnull as c_short);
                         } else {
-                            col[jj].null = ColNullValue::ShortNull(SHRT_MIN); /* use minimum as null */
+                            col[jj].null = ColNullValue::ShortNull(c_short::MIN); /* use minimum as null */
                         }
                     }
                     TUSHORT => {
@@ -3406,7 +3434,7 @@ pub fn ffiter_safe(
                             tnull = tnull.max(0);
                             col[jj].null = ColNullValue::UIntNull(tnull as c_uint);
                         } else {
-                            col[jj].null = ColNullValue::UIntNull(UINT_MAX); /* use maximum as null */
+                            col[jj].null = ColNullValue::UIntNull(c_uint::MAX); /* use maximum as null */
                         }
                     }
                     TLONG => {
@@ -3605,6 +3633,9 @@ pub fn ffiter_safe(
                 /*  read input columns from FITS file(s)  */
                 for jj in 0..n_cols as usize {
                     if cols[jj].iotype != OUTPUT_COL && cols[jj].iotype != TEMPORARY_COL {
+                        /* the null value's own bytes, standing in for the C
+                        union that `defaultnull` points at */
+                        let mut nullbytes = col[jj].null.to_bytes();
                         if cols[jj].datatype == TSTRING {
                             stringptr = cols[jj].array.cast::<*mut c_char>();
                             dataptr = stringptr.add(1).cast::<c_void>();
@@ -3614,7 +3645,7 @@ pub fn ffiter_safe(
                             }; /* ptr to the null value */
                         } else {
                             dataptr = cols[jj].array.add(col[jj].nullsize);
-                            defaultnull = &col[jj].null as *const ColNullValue as *mut c_void; /* ptr to the null value */
+                            defaultnull = nullbytes.as_mut_ptr().cast::<c_void>(); /* ptr to the null value */
                         }
 
                         if hdutype == IMAGE_HDU {
