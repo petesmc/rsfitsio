@@ -428,6 +428,45 @@ impl ColumnStore {
 }
 
 impl Expr {
+    /// Whether this expression has the same value in every row.
+    ///
+    /// The arena answers this by having *folded* the value at parse time --
+    /// `New_BinOp` and friends run a node's `DoOp` as soon as all its subnodes
+    /// are constant -- and `ffiprs` reports the answer as a negative `nelem`.
+    /// Callers depend on it: a constant result is read once rather than per
+    /// row. This is the same question asked of the tree instead.
+    pub(crate) fn is_const(&self) -> bool {
+        match self {
+            Expr::Literal(_) => true,
+            /* the data, the row number, and anything carrying state across
+            rows are by definition not */
+            Expr::Column(_) | Expr::Offset { .. } | Expr::RowNumber => false,
+            Expr::Accum { .. } => false,
+            /* a generator draws afresh every time it is asked */
+            Expr::Call {
+                func: Func::Random | Func::RandomN | Func::RandomP,
+                ..
+            } => false,
+            /* `#NULL` and `#SNULL` are function nodes in the arena, filling a
+            row buffer rather than folding to a value */
+            Expr::Null(_) => false,
+            /* A vector never folds, however constant its entries: the arena
+            leaves `New_Vector` and `ARRAY` as row operations because their
+            result is more than one element, and callers read a constant
+            result once rather than per row. Anything built on one inherits
+            this through the child walk. */
+            Expr::Vector(_)
+            | Expr::Call {
+                func: Func::Array, ..
+            } => false,
+            _ => {
+                let mut all = true;
+                self.for_each_child(&mut |c| all &= c.is_const());
+                all
+            }
+        }
+    }
+
     /// How far this expression reaches either side of the row being evaluated.
     ///
     /// `(0, 0)` for anything without a row offset, which is almost everything.
@@ -2992,6 +3031,76 @@ mod tests {
         assert_eq!(a.data(), &ArrayData::Long(vec![1, 2, 11, 12]));
         assert_eq!(a.nelem(), 2, "the slice keeps the remaining axis");
         assert_eq!(longs(&slice(3).evaluate(&b).unwrap()), vec![5, 6, 15, 16]);
+    }
+
+    /// `is_const` has to agree with the arena, which decides by whether it
+    /// managed to fold. The three rules that are not obvious were all found by
+    /// diffing the two over the corpus rather than reasoned out.
+    #[test]
+    fn constant_folding_agrees_with_what_the_arena_folds() {
+        let lit = || Expr::Literal(Scalar::Long(1));
+        assert!(lit().is_const());
+        assert!(!Expr::Column(0).is_const());
+        assert!(!Expr::RowNumber.is_const());
+
+        /* an operator is constant when its operands are */
+        assert!(
+            Expr::Arith {
+                op: Arith::Add,
+                lhs: Box::new(lit()),
+                rhs: Box::new(lit()),
+            }
+            .is_const()
+        );
+        assert!(
+            !Expr::Arith {
+                op: Arith::Add,
+                lhs: Box::new(lit()),
+                rhs: Box::new(Expr::Column(0)),
+            }
+            .is_const()
+        );
+
+        /* a vector never folds, however constant its entries, because its
+        result is more than one element */
+        let vec = Expr::Vector(vec![lit(), lit()]);
+        assert!(!vec.is_const());
+        /* and that carries to anything built on one */
+        assert!(
+            !Expr::Call {
+                func: Func::Sum,
+                args: vec![vec.clone()],
+            }
+            .is_const()
+        );
+        assert!(
+            !Expr::Call {
+                func: Func::Array,
+                args: vec![lit(), lit()],
+            }
+            .is_const(),
+            "ARRAY yields a vector even from constant arguments"
+        );
+
+        /* #NULL is a row operation in the arena, not a folded value */
+        assert!(!Expr::Null(ValueSort::Long).is_const());
+
+        /* a generator draws afresh, and ACCUM carries state between rows */
+        assert!(
+            !Expr::Call {
+                func: Func::Random,
+                args: vec![],
+            }
+            .is_const()
+        );
+        assert!(
+            !Expr::Accum {
+                id: 0,
+                diff: false,
+                arg: Box::new(lit()),
+            }
+            .is_const()
+        );
     }
 
     #[test]

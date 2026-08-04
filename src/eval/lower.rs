@@ -565,6 +565,18 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             if let Some(folded) = fold_shape_fn(name, args, names, cols)? {
                 return Ok(folded);
             }
+            /* A bit string carries no undef flags, so every one of its bits is
+            valid and NVALID is its width -- which the arena also settles at
+            parse time rather than counting per row. */
+            if name.as_slice() == b"NVALID" && args.len() == 1 {
+                let arg = lower(&args[0], names, cols)?;
+                if arg.sort(&|i| cols.sort(i)) == ValueSort::Bits {
+                    let width = shape_of(&arg, cols)
+                        .map(|s| s.nelem)
+                        .ok_or(Unsupported("NVALID over an unknown shape"))?;
+                    return Ok(Expr::Literal(Scalar::Long(width)));
+                }
+            }
             /* ACCUM and SEQDIFF carry a running value between rows and
             batches, so each gets a slot rather than being a plain kernel */
             if matches!(name.as_slice(), b"ACCUM" | b"SEQDIFF") {
