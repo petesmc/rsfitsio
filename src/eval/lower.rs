@@ -456,13 +456,13 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 if idx.len() != 1 || naxes.is_empty() {
                     return Err(Unsupported("subscript slice"));
                 }
-                let Some(index) = const_long(&idx[0]) else {
-                    return Err(Unsupported("subscript slice with a computed index"));
-                };
+                /* the index need not be constant: `MATRIX[INTCOL]` picks a
+                different slice per row, which `Do_Deref` handles in its own
+                final branch */
                 let inner = &naxes[..naxes.len() - 1];
                 return Ok(Expr::Slice {
                     base: Box::new(lowered_base),
-                    index,
+                    index: Box::new(lower(&idx[0], names, cols)?),
                     run: inner.iter().product::<usize>().max(1),
                     axis_len: *naxes.last().unwrap(),
                     naxes: inner.to_vec(),

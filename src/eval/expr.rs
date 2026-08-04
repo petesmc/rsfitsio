@@ -238,8 +238,9 @@ pub(crate) enum Expr {
     /// engine only does this for a constant index.
     Slice {
         base: Box<Expr>,
-        /// One-based index along the outermost axis.
-        index: c_long,
+        /// One-based index along the outermost axis, which need not be
+        /// constant: `MATRIX[INTCOL]` picks a different slice per row.
+        index: Box<Expr>,
         /// Elements in the slice, the product of the remaining axes.
         run: usize,
         /// Length of the axis being indexed, for the range check.
@@ -476,7 +477,10 @@ impl Expr {
                 f(base);
                 idx.iter().for_each(&mut *f);
             }
-            Expr::Slice { base, .. } => f(base),
+            Expr::Slice { base, index, .. } => {
+                f(base);
+                f(index);
+            }
             Expr::Vector(items) | Expr::Call { args: items, .. } => items.iter().for_each(&mut *f),
             Expr::IfThenElse { cond, then, els } => {
                 f(cond);
@@ -996,14 +1000,8 @@ impl Expr {
                 naxes,
             } => {
                 let v = base.evaluate(batch)?;
-                slice_of(
-                    &v,
-                    *index,
-                    *run,
-                    *axis_len,
-                    naxes,
-                    batch.n_rows.max(0) as usize,
-                )
+                let i = index.evaluate(batch)?;
+                slice_of(&v, &i, *run, *axis_len, naxes, batch.n_rows.max(0) as usize)
             }
 
             Expr::Vector(items) => {
@@ -1414,23 +1412,32 @@ fn text_if_then_else(
 /// through: each row yields the `run` elements starting at `run * (i - 1)`.
 fn slice_of(
     v: &ColumnarValue,
-    index: c_long,
+    index: &ColumnarValue,
     run: usize,
     axis_len: usize,
     naxes: &[usize],
     rows: usize,
 ) -> Result<ColumnarValue, ValueError> {
-    if index < 1 || index as usize > axis_len {
-        return Err(ValueError::OutOfRange);
-    }
     let ColumnarValue::Array(a) = v else {
         return Ok(ColumnarValue::Null(v.sort()));
     };
+    let idx = index.numeric("subscript")?;
     let src_nelem = a.nelem().max(1);
-    let start = run * (index as usize - 1);
-    let picked: Vec<Option<usize>> = (0..rows)
-        .flat_map(|r| (0..run).map(move |e| Some(r * src_nelem + start + e)))
-        .collect();
+
+    let mut picked: Vec<Option<usize>> = Vec::with_capacity(rows * run);
+    for r in 0..rows {
+        let (i, null) = idx.get_i64(r, 1);
+        if null {
+            /* an undefined index picks nothing, so the whole slice is */
+            picked.extend((0..run).map(|_| None));
+            continue;
+        }
+        if i < 1 || i as usize > axis_len {
+            return Err(ValueError::OutOfRange);
+        }
+        let start = run * (i as usize - 1);
+        picked.extend((0..run).map(|e| Some(r * src_nelem + start + e)));
+    }
     Ok(ColumnarValue::Array(
         gather_at(a, &picked)
             .with_nelem(run)
@@ -2974,7 +2981,7 @@ mod tests {
         /* a 2x3 column: M[1] is its first pair, M[3] its last */
         let slice = |i: c_long| Expr::Slice {
             base: Box::new(Expr::Column(0)),
-            index: i,
+            index: Box::new(Expr::Literal(Scalar::Long(i))),
             run: 2,
             axis_len: 3,
             naxes: vec![2],
@@ -2988,11 +2995,47 @@ mod tests {
     }
 
     #[test]
+    fn a_slice_index_may_differ_per_row() {
+        /* a 2x3 column, taking the first pair from row 1 and the third from
+        row 2 -- MATRIX[INTCOL] rather than MATRIX[1] */
+        let mut b = matrix_batch();
+        b.columns.push(long_col(&[1, 3]));
+        let e = Expr::Slice {
+            base: Box::new(Expr::Column(0)),
+            index: Box::new(Expr::Column(1)),
+            run: 2,
+            axis_len: 3,
+            naxes: vec![2],
+        };
+        assert_eq!(longs(&e.evaluate(&b).unwrap()), vec![1, 2, 15, 16]);
+    }
+
+    #[test]
+    fn an_undefined_slice_index_leaves_the_whole_slice_undefined() {
+        let mut b = matrix_batch();
+        let mut idx = long_col(&[1, 0]);
+        idx.nulls = vec![false, true];
+        b.columns.push(idx);
+        let e = Expr::Slice {
+            base: Box::new(Expr::Column(0)),
+            index: Box::new(Expr::Column(1)),
+            run: 2,
+            axis_len: 3,
+            naxes: vec![2],
+        };
+        let ColumnarValue::Array(a) = e.evaluate(&b).unwrap() else {
+            panic!("expected an array")
+        };
+        assert!(!a.is_null(0) && !a.is_null(1), "row 1 has a real index");
+        assert!(a.is_null(2) && a.is_null(3), "row 2's index is undefined");
+    }
+
+    #[test]
     fn a_slice_index_is_checked_against_the_outermost_axis() {
         let b = matrix_batch();
         let slice = |i: c_long| Expr::Slice {
             base: Box::new(Expr::Column(0)),
-            index: i,
+            index: Box::new(Expr::Literal(Scalar::Long(i))),
             run: 2,
             axis_len: 3,
             naxes: vec![2],
