@@ -18,7 +18,7 @@ use core::slice;
 use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{calloc, free, malloc, memcpy, time, time_t};
+use libc::{calloc, free, malloc, memcpy};
 
 pub(crate) mod func;
 
@@ -82,7 +82,7 @@ fn tanh(x: f64) -> f64 {
     x.tanh()
 }
 
-use crate::c_types::{c_char, c_double, c_int, c_long, c_uint, c_ulong, c_void};
+use crate::c_types::{c_char, c_double, c_int, c_long, c_ulong, c_void};
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{
     BufferKind, ColumnSort, FuncOp, MAXDIMS, MAXVARNAME, Node, NodeValue, OpCode, Operation,
@@ -96,9 +96,7 @@ use crate::fitsio::{LONG_MAX, LONG_MIN, LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTA
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkyd_safe, ffgkyj_safe, ffgkys_safe};
 use crate::region::{MY_PI, SAORegion, WCSdata, fits_in_region, fits_read_rgnfile};
-use crate::simplerng::{
-    simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform, simplerng_srand,
-};
+use crate::simplerng::{simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform};
 use crate::wcssub::ffgtcs_safe;
 use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
 use crate::wrappers::{strcpy_safe, strncat_safe, strncpy_safe};
