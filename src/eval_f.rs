@@ -221,7 +221,7 @@ pub fn fffrow_safe(
 
     if constant {
         /* No need to call parser... have result from ffiprs */
-        result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
+        result = constant_logical(&lParse);
         *n_good_rows = nrows;
 
         for elem in 0..nrows {
@@ -448,7 +448,7 @@ pub fn ffsrow_safe(
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
 
-            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
+            result = constant_logical(&lParse);
 
             for ntodo in 0..inExt.numRows {
                 *Info.dataPtr.cast::<c_char>().add(ntodo as usize) = result;
@@ -1533,6 +1533,19 @@ pub(crate) fn ffiprs(
     *status
 }
 
+/// The value of an expression that `ffiprs` reported as a constant boolean.
+///
+/// Three callers take this shortcut: a constant needs no per-row evaluation,
+/// so they read the folded value once and fill every row with it.
+fn constant_logical(lParse: &ParseData) -> c_char {
+    use crate::eval::value::{ColumnarValue, Scalar};
+    match lParse.expr_tree.as_ref().and_then(|t| t.fold()) {
+        Some(ColumnarValue::Scalar(Scalar::Boolean(b))) => c_char::from(b),
+        /* an undefined constant selects nothing, as a false one does */
+        _ => 0,
+    }
+}
+
 /*---------------------------------------------------------------------------*/
 /// Clear the parser, making it ready to accept a new expression.
 pub(crate) fn ffcprs(lParse: &mut ParseData) {
@@ -1756,7 +1769,7 @@ pub(crate) fn fits_parser_workfn_safe(
                 } else {
                     zeros.as_ptr() as *mut c_void
                 };
-                (pv.repeat) = lParse.Nodes[lParse.resultNode as usize].value.nelem;
+                (pv.repeat) = lParse.result_info.as_ref().map_or(0, |i| i.nelem);
             }
 
             /* Determine the size of each element of the returned result */
@@ -1792,7 +1805,11 @@ pub(crate) fn fits_parser_workfn_safe(
             /* Determine the size of each element of the calculated result */
             /*   (only matters for numeric/logical data)                   */
 
-            match lParse.Nodes[lParse.resultNode as usize].ntype {
+            match lParse
+                .result_info
+                .as_ref()
+                .map_or(ValueSort::Long, |i| i.sort)
+            {
                 ValueSort::Boolean => {
                     (pv.resDataSize) = size_of::<c_char>() as c_long;
                 }
@@ -3526,7 +3543,7 @@ pub fn ffffrw_safer(
     *rownum = 0;
     {
         if constant != 0 {
-            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
+            result = constant_logical(&lParse);
             if result != 0 {
                 ffgnrw_safe(fptr, &mut nelem, status);
                 if nelem != 0 {
