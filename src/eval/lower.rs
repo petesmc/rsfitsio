@@ -275,6 +275,11 @@ fn fold_shape_fn(
         return Err(Unsupported("shape function with the wrong arity"));
     }
     let arg = lower(&args[0], names, cols)?;
+    /* NAXIS asks about a numeric value's axes; a boolean, string or bit
+    string reaches a different list in the arena and is not on it */
+    if name == b"NAXIS" && !arg.sort(&|i| cols.sort(i)).is_expr() {
+        return Err(Unsupported("NAXIS of a sort that has no axes"));
+    }
     let shape = shape_of(&arg, cols).ok_or(Unsupported("shape function on an unknown shape"))?;
 
     let v = match name {
@@ -342,11 +347,57 @@ fn check_conditional(
     if tx == ValueSort::Bits || ty == ValueSort::Bits {
         return Err(Unsupported("'?:' is not defined for bit strings"));
     }
-    /* a string branch pairs only with another string */
-    if (tx == ValueSort::String || ty == ValueSort::String) && tx != ty {
-        return Err(Unsupported("'?:' branches have incompatible types"));
+    /* a string branch pairs only with another string, and two strings pair
+    whatever their widths -- the shape check below is about vectors, where
+    `nelem` counts elements rather than characters */
+    if tx == ValueSort::String || ty == ValueSort::String {
+        if tx != ty {
+            return Err(Unsupported("'?:' branches have incompatible types"));
+        }
+        /* there is no vector of strings, so a per-element condition has
+        nowhere to put its answers */
+        if shape_of(cond, cols).is_some_and(|s| s.nelem != 1) {
+            return Err(Unsupported("cannot have a vector string column"));
+        }
+        return Ok(());
+    }
+    if !dims_ok(then, els, cols) {
+        return Err(Unsupported("incompatible dimensions in '?:' branches"));
     }
     Ok(())
+}
+
+/// A lowered expression's value when it is a plain integer constant.
+///
+/// `-1` is a negation of a literal rather than a literal, which is why this
+/// asks the tree rather than matching one node.
+fn const_expr_long(e: &Expr) -> Option<c_long> {
+    match e {
+        Expr::Literal(Scalar::Long(v)) => Some(*v),
+        Expr::Literal(Scalar::Double(v)) => Some(*v as c_long),
+        Expr::Unary {
+            op: Unary::Neg,
+            arg,
+        } => const_expr_long(arg).map(|v| -v),
+        _ => None,
+    }
+}
+
+/// Whether two operands' shapes can meet elementwise, per `Test_Dims`.
+///
+/// A scalar broadcasts against anything. Otherwise the element counts and the
+/// axes must match, so a 3-vector and a 2x3 matrix do not pair even though
+/// neither is a scalar.
+///
+/// `Test_Dims` also compares the operands' sorts, but every caller that
+/// reaches it has promoted them to a common sort first -- which is why
+/// `IVEC > VECCOL`, a long vector against a double one, is accepted. Comparing
+/// the sorts here, before any promotion, would reject it.
+fn dims_ok(a: &Expr, b: &Expr, cols: &Columns) -> bool {
+    let (Some(sa), Some(sb)) = (shape_of(a, cols), shape_of(b, cols)) else {
+        return true;
+    };
+    sa.nelem == 1 || sb.nelem == 1 || (sa.nelem == sb.nelem && sa.naxes == sb.naxes)
 }
 
 /// Reject the argument sorts a function is not defined for.
@@ -385,8 +436,72 @@ fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), 
         | Func::Stddev
         | Func::Median
         | Func::RandomP => args.first().is_some_and(numeric),
-        /* two numbers, no coercion */
-        Func::Atan2 | Func::Min | Func::Max | Func::SetNull => args.iter().all(numeric),
+        /* two numbers of matching shape, no coercion */
+        Func::Atan2 | Func::Min | Func::Max => {
+            args.iter().all(numeric) && dims_ok(&args[0], &args[1], cols)
+        }
+        /* the geometric predicates likewise pair their coordinates */
+        Func::AngSep | Func::Near | Func::Circle | Func::Box | Func::Ellipse => {
+            args.windows(2).all(|w| dims_ok(&w[0], &w[1], cols))
+        }
+        /* SETNULL's sentinel must be a scalar constant, since it is compared
+        against every element */
+        Func::SetNull => {
+            args.iter().all(numeric)
+                && args.first().is_some_and(|a| {
+                    a.is_const() && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
+                })
+        }
+        /* ARRAY takes something numeric and a *constant* shape: New_Array
+        needs the dimensions at parse time to size the result */
+        Func::Array => {
+            args.first().is_some_and(|a| {
+                let t = sort(a);
+                t == ValueSort::Boolean || t.is_expr()
+            }) && args.get(1).is_some_and(|d| const_dims(d).is_some())
+        }
+        /* The one-argument reductions dispatch on the argument's sort, and
+        each sort admits a different set. A boolean can be summed but not
+        MIN'd; a string can only be counted; a bit string does all but
+        ELEMENTNUM. */
+        Func::Sum => args
+            .first()
+            .is_some_and(|a| numeric(a) || matches!(sort(a), ValueSort::Boolean | ValueSort::Bits)),
+        Func::Min1 | Func::Max1 => args
+            .first()
+            .is_some_and(|a| numeric(a) || sort(a) == ValueSort::Bits),
+        Func::NValid => args
+            .first()
+            .is_some_and(|a| numeric(a) || matches!(sort(a), ValueSort::String | ValueSort::Bits)),
+        Func::ElementNum => args.first().is_some_and(numeric),
+        /* ISNULL has no bit-string form -- a bit string carries no flags */
+        Func::IsNull => args.first().is_some_and(|a| sort(a) != ValueSort::Bits),
+        /* STRSTR compares two strings */
+        Func::StrStr => args.iter().all(|a| sort(a) == ValueSort::String),
+        /* STRMID takes a string and two scalar integers, and its length must
+        be a usable width */
+        Func::StrMid => {
+            args.first().is_some_and(|a| sort(a) == ValueSort::String)
+                && args[1..].iter().all(|a| {
+                    sort(a) == ValueSort::Long && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
+                })
+                && match args.get(2).and_then(const_expr_long) {
+                    Some(n) => (1..=255).contains(&n),
+                    None => true,
+                }
+        }
+        /* DEFNULL has no bit-string form, and a string pairs only with a
+        string, a boolean only with a boolean */
+        Func::DefNull => {
+            let (ta, tb) = (sort(&args[0]), sort(&args[1]));
+            ta != ValueSort::Bits
+                && tb != ValueSort::Bits
+                && (ta == ValueSort::String) == (tb == ValueSort::String)
+                && (ta == ValueSort::Boolean) == (tb == ValueSort::Boolean)
+                /* two strings pair whatever their widths: the shape check is
+                about vectors, where `nelem` counts elements not characters */
+                && (ta == ValueSort::String || dims_ok(&args[0], &args[1], cols))
+        }
         _ => true,
     };
     if ok {
@@ -448,13 +563,19 @@ fn check_binary_operands(
                 || (is_expr(ta) && is_expr(tb))
         }
     };
-    if ok {
-        Ok(())
-    } else {
-        Err(Unsupported(
+    if !ok {
+        return Err(Unsupported(
             "operator applied to sorts it is not defined for",
-        ))
+        ));
     }
+    /* and elementwise operators need operands of matching shape: a 3-vector
+    and a 2x3 matrix do not pair. Text is exempt -- its `nelem` is a width. */
+    let text = matches!(ta, ValueSort::String | ValueSort::Bits)
+        || matches!(tb, ValueSort::String | ValueSort::Bits);
+    if !text && !dims_ok(lhs, rhs, cols) {
+        return Err(Unsupported("operands have incompatible dimensions"));
+    }
+    Ok(())
 }
 
 /// Whether an expression is textual, which decides whether `+` concatenates
@@ -608,6 +729,15 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         /* `x = lo : hi` desugars to `lo <= x && x <= hi`, as `eval.y` did */
         AstKind::Range { val, lo, hi } => {
             let v = lower(val, names, cols)?;
+            let l = lower(lo, names, cols)?;
+            let h = lower(hi, names, cols)?;
+            /* `x = lo : hi` is two comparisons, so all three must be numbers */
+            if ![&v, &l, &h]
+                .iter()
+                .all(|e| e.sort(&|i| cols.sort(i)).is_expr())
+            {
+                return Err(Unsupported("range test needs numeric operands"));
+            }
             Ok(Expr::Logic {
                 op: Logic::And,
                 lhs: Box::new(Expr::Compare {
@@ -657,6 +787,16 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         computed like `(VECCOL + 1)[2]`. */
         AstKind::Deref { base, idx } => {
             let lowered_base = lower(base, names, cols)?;
+            /* A string is one value per row however wide, so it has no
+            elements to index. A scalar has nothing to index either -- which
+            is `New_Deref`'s "Cannot index a scalar value" -- while a bit
+            string does, one per bit. */
+            if lowered_base.sort(&|i| cols.sort(i)) == ValueSort::String {
+                return Err(Unsupported("strings cannot be subscripted"));
+            }
+            if shape_of(&lowered_base, cols).is_some_and(|s| s.nelem == 1) {
+                return Err(Unsupported("a scalar has no elements to index"));
+            }
             let naxes: Vec<usize> = match shape_of(&lowered_base, cols) {
                 Some(shape) => shape.naxes.iter().map(|&n| n.max(0) as usize).collect(),
                 None => return Err(Unsupported("subscript of an unknown shape")),
@@ -692,7 +832,16 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         AstKind::Vector(items) => {
             let lowered: Result<Vec<Expr>, Unsupported> =
                 items.iter().map(|e| lower(e, names, cols)).collect();
-            Ok(Expr::Vector(lowered?))
+            let lowered = lowered?;
+            /* a vector holds numbers or booleans; there is no vector of
+            strings or of bit strings */
+            if lowered.iter().any(|e| {
+                !matches!(e.sort(&|i| cols.sort(i)), ValueSort::Boolean)
+                    && !e.sort(&|i| cols.sort(i)).is_expr()
+            }) {
+                return Err(Unsupported("vector elements must be numeric or boolean"));
+            }
+            Ok(Expr::Vector(lowered))
         }
         AstKind::Call { kind, name, args } => {
             /* ISNULL lexes as a BFUNCTION; the other names in that class are
@@ -1099,6 +1248,33 @@ mod tests {
             assert!(try_lower(src).is_err(), "should refuse: {src}");
         }
         for src in ["-1", "!T", "!b1010", "T ? 1 : 2", "T ? 'a' : 'b'", "(int)T"] {
+            assert!(try_lower(src).is_ok(), "should accept: {src}");
+        }
+    }
+
+    /// Shape compatibility, which is what stops a 3-vector meeting a 2x3
+    /// matrix. The subtlety is that it must *not* compare sorts: every caller
+    /// promotes to a common one first, so `IVEC > VECCOL` is fine.
+    #[test]
+    fn operands_must_have_compatible_shapes() {
+        for src in [
+            "{1,2,3} + {1,2}",
+            "{1,2,3} > {1,2}",
+            "MIN({1,2,3},{1,2})",
+            "ARCTAN2({1,2,3},{1,2})",
+            "T ? {1,2,3} : {1,2}",
+        ] {
+            assert!(try_lower(src).is_err(), "should refuse: {src}");
+        }
+        for src in [
+            /* a scalar broadcasts against anything */
+            "{1,2,3} + 1",
+            "1 + {1,2,3}",
+            "{1,2,3} + {4,5,6}",
+            /* and two strings pair whatever their widths */
+            "T ? 'big' : 'small'",
+            "DEFNULL('ab', 'cdef')",
+        ] {
             assert!(try_lower(src).is_ok(), "should accept: {src}");
         }
     }
