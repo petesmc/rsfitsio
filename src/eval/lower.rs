@@ -306,6 +306,98 @@ fn const_dims(e: &Expr) -> Option<Vec<c_long>> {
     }
 }
 
+/// Reject the operand sorts a unary operator is not defined for.
+fn check_unary_operand(op: UnOp, arg: &Expr, cols: &Columns) -> Result<(), Unsupported> {
+    let t = arg.sort(&|i| cols.sort(i));
+    let ok = match op {
+        /* `-x` and `+x` want a number */
+        UnOp::Neg | UnOp::Plus => t.is_expr(),
+        /* `!` tests a boolean or complements a bit string */
+        UnOp::Not => matches!(t, ValueSort::Boolean | ValueSort::Bits),
+        /* the casts take anything numeric, booleans included */
+        UnOp::IntCast | UnOp::FltCast => t == ValueSort::Boolean || t.is_expr(),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(Unsupported(
+            "unary operator applied to a sort it is not defined for",
+        ))
+    }
+}
+
+/// Reject the branches and condition `?:` is not defined for.
+fn check_conditional(
+    cond: &Expr,
+    then: &Expr,
+    els: &Expr,
+    cols: &Columns,
+) -> Result<(), Unsupported> {
+    let sort = |e: &Expr| e.sort(&|i| cols.sort(i));
+    if sort(cond) != ValueSort::Boolean {
+        return Err(Unsupported("the condition of '?:' must be boolean"));
+    }
+    let (tx, ty) = (sort(then), sort(els));
+    /* there is no conditional over bit strings at all */
+    if tx == ValueSort::Bits || ty == ValueSort::Bits {
+        return Err(Unsupported("'?:' is not defined for bit strings"));
+    }
+    /* a string branch pairs only with another string */
+    if (tx == ValueSort::String || ty == ValueSort::String) && tx != ty {
+        return Err(Unsupported("'?:' branches have incompatible types"));
+    }
+    Ok(())
+}
+
+/// Reject the argument sorts a function is not defined for.
+///
+/// `parser::lower` dispatches its one-argument functions on the argument's
+/// sort -- a boolean argument reaches a short list, a string reaches only
+/// `NVALID`, a bit string its own list -- and the numeric ones are what the
+/// rest fall through to. The two-argument numeric functions then require both
+/// arguments to be numbers outright.
+fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), Unsupported> {
+    let sort = |e: &Expr| e.sort(&|i| cols.sort(i));
+    let numeric = |e: &Expr| sort(e).is_expr();
+
+    let ok = match func {
+        /* the transcendentals and the other one-argument numeric kernels take
+        a number: a boolean, string or bit-string argument reaches a different
+        list in the arena, and is not on it */
+        Func::Sin
+        | Func::Cos
+        | Func::Tan
+        | Func::Asin
+        | Func::Acos
+        | Func::Atan
+        | Func::Sinh
+        | Func::Cosh
+        | Func::Tanh
+        | Func::Exp
+        | Func::Ln
+        | Func::Log10
+        | Func::Sqrt
+        | Func::Ceil
+        | Func::Floor
+        | Func::Round
+        | Func::Abs
+        | Func::Average
+        | Func::Stddev
+        | Func::Median
+        | Func::RandomP => args.first().is_some_and(numeric),
+        /* two numbers, no coercion */
+        Func::Atan2 | Func::Min | Func::Max | Func::SetNull => args.iter().all(numeric),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(Unsupported(
+            "function applied to sorts it is not defined for",
+        ))
+    }
+}
+
 /// Reject the operand sorts an operator is not defined for.
 ///
 /// A transcription of the `match (ta, tb)` tables in `parser::lower`, which is
@@ -430,6 +522,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
 
         AstKind::Unary { op, arg } => {
             let inner = Box::new(lower(arg, names, cols)?);
+            check_unary_operand(*op, &inner, cols)?;
             Ok(Expr::Unary {
                 op: match op {
                     UnOp::Neg => Unary::Neg,
@@ -504,11 +597,13 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
         }
 
-        AstKind::Ternary { cond, then, els } => Ok(Expr::IfThenElse {
-            cond: Box::new(lower(cond, names, cols)?),
-            then: Box::new(lower(then, names, cols)?),
-            els: Box::new(lower(els, names, cols)?),
-        }),
+        AstKind::Ternary { cond, then, els } => {
+            let cond = Box::new(lower(cond, names, cols)?);
+            let then = Box::new(lower(then, names, cols)?);
+            let els = Box::new(lower(els, names, cols)?);
+            check_conditional(&cond, &then, &els, cols)?;
+            Ok(Expr::IfThenElse { cond, then, els })
+        }
 
         /* `x = lo : hi` desugars to `lo <= x && x <= hi`, as `eval.y` did */
         AstKind::Range { val, lo, hi } => {
@@ -736,6 +831,9 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
             let lowered: Result<Vec<Expr>, Unsupported> =
                 args.iter().map(|a| lower(a, names, cols)).collect();
+            let lowered = lowered?;
+            check_call_operands(func, &lowered, cols)?;
+            let lowered: Result<Vec<Expr>, Unsupported> = Ok(lowered);
             Ok(Expr::Call {
                 func,
                 args: lowered?,
@@ -960,6 +1058,47 @@ mod tests {
             "2 * T",
             "T * 2",
         ] {
+            assert!(try_lower(src).is_ok(), "should accept: {src}");
+        }
+    }
+
+    #[test]
+    fn a_function_refuses_argument_sorts_it_is_not_defined_for() {
+        for src in [
+            /* the one-argument numeric kernels want a number */
+            "SIN(T)",
+            "ABS('ab')",
+            "MEDIAN(b1010)",
+            /* and the two-argument ones want two, with no coercion */
+            "MIN(1,'a')",
+            "MAX(b1010,1)",
+            "ARCTAN2(T,1)",
+            "SETNULL('a',1)",
+        ] {
+            assert!(try_lower(src).is_err(), "should refuse: {src}");
+        }
+        for src in ["SIN(1)", "ABS(-2)", "MIN(1,2)", "ARCTAN2(1,2)"] {
+            assert!(try_lower(src).is_ok(), "should accept: {src}");
+        }
+    }
+
+    #[test]
+    fn a_unary_operator_and_a_conditional_refuse_what_they_cannot_take() {
+        for src in [
+            "-'ab'",
+            "-b1010",
+            "!1",
+            "!'ab'",
+            /* no conditional over bit strings, and a string branch pairs
+            only with another string */
+            "T ? b1010 : b0101",
+            "T ? 'a' : 1",
+            /* and the condition itself must be boolean */
+            "1 ? 2 : 3",
+        ] {
+            assert!(try_lower(src).is_err(), "should refuse: {src}");
+        }
+        for src in ["-1", "!T", "!b1010", "T ? 1 : 2", "T ? 'a' : 'b'", "(int)T"] {
             assert!(try_lower(src).is_ok(), "should accept: {src}");
         }
     }
