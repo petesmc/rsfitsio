@@ -833,9 +833,38 @@ does three jobs, only the first of which the evaluator ever needed:
    it. This is the real obstacle, not the node building.
 
 Jobs 2 and 3 have to move before `New_*`, `Alloc_Node`, the `Do_*` family and
-`eval_y/func.rs` can go -- around 9,000 lines. The groundwork is done: sort and
-shape are now available from the tree without nodes, which is what a
-node-free type checker would need.
+`eval_y/func.rs` can go -- around 9,000 lines.
+
+**Job 3 is now done in one direction.** `eval::lower` carries the whole type
+system: operator and function argument sorts, unary and conditional rules,
+shape compatibility, and the specific checks on subscripts, ranges, vectors,
+`ARRAY`, `DEFNULL`, `STRMID` and the rest. It was built by running both
+lowerings over the corpus and comparing their accept/reject decisions -- 797
+disagreements, closed to none, in both directions and across the whole suite.
+
+What has *not* happened is the swap. `parser::lower` still runs, still raises
+the errors callers see, and still builds the arena. Making `eval::lower` the
+validator needs three more things:
+
+1. **Errors with positions.** `eval::lower` returns `Unsupported(&'static str)`;
+   callers need a `ParseError` with a position and the offending text. This is
+   also where the 42 messages either get reproduced or deliberately changed --
+   the corpus only records `ERR 431`, so it will not notice either way, but
+   users see the text. That is a decision, not a transcription.
+2. **The GTI and region loads.** `New_GTI` and `New_REG` read their files while
+   building nodes, and `New_GTI` folds constants through `DoOp` on the way out,
+   so the loading is not a clean lift.
+3. **The deletion**, once nothing else needs a node.
+
+Three of the rules were not what the arena's error message said, which is worth
+remembering when reading the rest: the 19 "Couldn't build node structure: out
+of memory?" are `ARRAY` with a non-constant shape; a subscript is refused for a
+string and for a scalar but *not* for a bit string; and `Test_Dims` compares
+operand sorts even though every caller has promoted them to a common sort
+first, so comparing them earlier rejects `IVEC > VECCOL`. Each surfaced as an
+over-rejection -- a passing test that began failing because an expression the
+arena accepts had no tree to evaluate. That direction is the one worth
+instrumenting for.
 
 #### How each step was checked
 
