@@ -799,113 +799,62 @@ type erasure and the manual memory are not. So:
 
 ### 10.3 Status
 
-The new evaluator is **on**, and the `new-eval` feature flag that used to gate
-it is gone. `src/eval/` holds the value model, the kernels, the `Expr` tree,
-the `Ast -> Expr` lowering and the bridge that writes a result back into the
-arena's result node. **1,488 of the corpus's 1,852 expressions go through it**,
-and all 1,852 still match the golden file byte for byte.
+**The evaluator migration is complete.** `src/eval/` holds the value model, the
+kernels, the `Expr` tree, the `Ast -> Expr` lowering and the bridge that writes
+an answer back. Every expression the parser accepts is lowered and evaluated
+there; all 1,852 corpus lines match the golden byte for byte, and the C oracle
+still reports only the five documented `ANGSEP` divergences.
 
-The arena walk in `eval_y` has not gone away, and is not expected to: it is
-what the evaluator falls back *to*. The fallback is explicit -- `eval::lower`
-returns `Unsupported("...")` naming the construct, and `bridge::evaluate`
-returns whether it handled the batch -- so what goes where is greppable rather
-than mysterious. Counting the corpus by reason:
+The `new-eval` feature flag is gone, and so is `Evaluate_Parser_arena`. There
+is no fallback: if the lowering ever failed, `Evaluate_Parser` would say so and
+set a status rather than quietly evaluate nothing. Nothing in the test suite
+reaches that.
 
-| remaining | reason |
-|---:|---|
-| 90 | bit-string **result** (see below) |
-| 10 | the random generators (see below) |
+The result no longer lives in the arena either. `ParseData::result` is the
+expression's own node, and what callers need to know about it before any row is
+evaluated -- datatype, `nelem`, `naxis`, `naxes`, whether it is constant, and a
+constant's value -- comes from `ResultInfo` and `Expr::fold`, computed from the
+tree at parse time.
 
-Counting fallbacks by reason overstates what is left, because many of those
-expressions do not evaluate under the old engine either. Of the 128 that once
-fell back for a bit string, only 29 produce a retrievable answer; the rest are
-parse errors reaching an operand, or bit-valued results the caller can never
-read. **A bit-valued result is always an error** — 432 for a row-varying one,
-433 for a constant — so those are deliberately left with the arena rather than
-lowered just to reproduce the error, which would move the counter without
-moving any real work. Bit-valued *subexpressions* are evaluated normally;
-`parser::mod` checks only the top-level sort.
+#### What is still built, and why
 
-The same caution applies to reading the string count, for the opposite reason:
-the corpus harness prints only *metadata* for a `dt=16` result, never the text,
-so no corpus line arbitrates a string-valued answer. Those are covered by the
-`ffcalc`/`fffrow` tests in `eval_f.rs` instead, which compare through a boolean
-(`STRMID(STRCOL,1,3) == 'alp'`) or read the written column back.
+The arena is still *constructed*, and deleting that is a separate project. It
+does three jobs, only the first of which the evaluator ever needed:
 
-**Nothing is left that does real work.** Every expression the corpus can
-evaluate now goes through the new evaluator except the two categories that are
-excluded on purpose, and both are excluded because putting them through it
-would move the counter without verifying anything:
+1. **Nodes to evaluate.** Dead -- nothing walks them.
+2. **Loading files at parse time.** `New_GTI` and `New_REG` read the GTI
+   extension and the region file, roughly 640 lines of HDU navigation. The
+   columnar lowering picks up what they loaded rather than repeating it, which
+   is why porting the GTI and region functions did not need any of it.
+3. **Semantic validation.** `parser/lower.rs` raises 42 distinct parse errors,
+   and its type checking is expressed by querying the nodes it builds --
+   `ntype(n)`, `size(n)`, `is_const(n)`. Every rejection in the language is
+   phrased against the arena, and the corpus's 264 parse-error lines exercise
+   it. This is the real obstacle, not the node building.
 
-* a **bit-valued result** is always an error to retrieve, 432 for a
-  row-varying one and 433 for a constant;
-* the **random generators** draw from a global `time()`-seeded generator, so
-  the corpus runs them parse-only and never compares a value.
+Jobs 2 and 3 have to move before `New_*`, `Alloc_Node`, the `Do_*` family and
+`eval_y/func.rs` can go -- around 9,000 lines. The groundwork is done: sort and
+shape are now available from the tree without nodes, which is what a
+node-free type checker would need.
 
-The other 264 corpus lines never reach the lowering at all -- they are parse
-errors, which the front end already owns.
+#### How each step was checked
 
-The structural item is **done**. `NELEM`, `NAXIS` and `NAXES` are answers about
-the expression rather than about the data, so they fold to a constant at
-lowering time exactly as the arena folds them at parse time. That needed a
-static `shape_of` pass over the lowered `Expr`, which recomputes what the arena
-tracks while building nodes: `New_BinOp`'s rule that the non-scalar operand's
-shape wins, plus the two cases where that is not it —
+Every piece of the descriptor was diffed against the arena's result node over
+all 1,852 corpus expressions *before* anything depended on it. That found 218
+disagreements across three commits, none of which had been reasoned out:
 
-* text `+` **concatenates**, so `NELEM(STRCOL+STRCOL)` is 20, not 10;
-* a vector literal **expands** nested vectors, so `NELEM({IVEC,0})` is 6, not 2.
+* **76** on constant-ness -- a vector never folds however constant its entries;
+  `#NULL` is a row operation; `NVALID` over a bit string is settled at parse
+  time.
+* **140** on shape and sort -- almost all from one wrong premise, that a
+  string's `nelem` relates to its axes the way a vector's does. It does not: a
+  text value is one value per row, and its `nelem` is the *width*.
+* **2** on the folded value -- a kernel that always builds an array against an
+  arena that folds to a scalar.
 
-Neither is visible in the corpus (its `NELEM({1,2,3})` has only scalar entries);
-the second was caught by `test_ffcrow_vector_literal`.
-
-A column's element count is also not always the product of its axes — a string
-or bit-string column is one entry per row on one axis, and its `nelem` is the
-declared *width* — so `Columns` carries both, and the sorts too, since whether
-`+` concatenates depends on them.
-
-The other structural item — subscripting — is **done**. `Array` now carries
-`naxes`, and `parser::mod` hands the per-column shapes to the lowering so it
-can tell an element from a slice at lowering time: `M[1,1]` on a 2×3 column
-lowers, `M[1]` returns `Unsupported("subscript slice")` and falls back, because
-selecting a slice needs a shape-aware gather rather than one element per row.
-Out-of-range subscripts are a range error at evaluation, matching `Do_Deref`.
-
-Done: the sixteen transcendentals, `ABS`, `ARCTAN2`, two-argument `MIN`/`MAX`,
-`ISNULL`, `DEFNULL`, `SETNULL`, the bitwise operators, the reductions
-`SUM`, `AVERAGE`, `STDDEV`, `MEDIAN`, `NVALID` and one-argument `MIN`/`MAX`,
-vector literals, subscripts both full and partial, row offsets over every
-column sort, `#SNULL`, string keywords, `ACCUM`, `SEQDIFF`,
-`ELEMENTNUM`,
-`AXISELEM`, `ARRAY`, `ANGSEP` and the region
-predicates `NEAR`/`CIRCLE`/`BOX`/`ELLIPSE`, the shape functions
-`NELEM`/`NAXIS`/`NAXES`, the bit strings — `&`, `|`, `!`, `+`
-and the six comparisons, plus `SUM` and `NVALID` over one — and the strings:
-the six comparisons, `+`, `STRSTR`, `STRMID`, `NVALID`, and a conditional whose
-branches are strings.
-
-The random generators are left with the arena deliberately. `RANDOM`,
-`RANDOMN` and `RANDOMP` draw from a global generator seeded from `time()`, so
-the corpus runs them **parse-only** -- no value is ever compared. Porting them
-would move the counter by ten without putting a single verified value through
-the new evaluator, which is the same reason bit-valued results stay where they
-are.
-
-### 10.5 ACCUM and SEQDIFF carry between batches
-
-These two are the only operators with state. `ACCUM` is a running total and
-`SEQDIFF` a running difference, both over the row-major element sequence and
-both continuing across batch boundaries -- the engine keeps that running value
-in the constant subnode each is paired with, writing it back after every batch.
-
-Here each gets a slot in `ParseData::accum_state`, handed to the batch on the
-way in and taken back on the way out, so `Expr::evaluate` stays a `&self` walk.
-The corpus is one batch of three rows, so it cannot test the carry at all; unit
-tests evaluate two consecutive batches sharing one accumulator.
-
-The null rules differ between the two and are worth stating: `ACCUM` skips
-undefined elements -- they add nothing -- and its result is never undefined,
-while `SEQDIFF` is undefined both *at* a gap and immediately *after* one, since
-it has no defined predecessor to difference against.
+The technique is worth repeating for jobs 2 and 3: build the replacement, diff
+it against what it replaces across the corpus, and only then switch anything
+over.
 
 ### 10.4 Row offsets, and declining a batch
 
@@ -916,12 +865,14 @@ and a column reference is the chunk sliced at a shift of zero. Three cases:
 * the row is outside the **table** — undefined, as `Do_Offset` reports it;
 * the row is inside the chunk — read at the shift;
 * the row is inside the table but outside the **chunk** — the file has to be
-  read again, which only the engine's reload path does.
+  read again.
 
-That last case is why `bridge::evaluate` now returns a bool. It declines the
-batch before writing anything to the result node, and `Evaluate_Parser` walks
-the arena for it instead. The fallback is therefore per *batch* as well as per
-expression.
+`Do_Offset` did that read part-way through evaluating. The columnar evaluator
+cannot: it walks a batch by reference. So the load moved to the front --
+`Expr::offset_range` says how far the tree reaches either side, and
+`Batch::widen` loads that window once, clipped to the table, before any kernel
+runs. Evaluation stays a pure function of the batch, and a row still outside
+the window is one the table does not have.
 
 Worth knowing when changing this: **the corpus cannot reach the reload case.**
 Its table is 3 rows in a single chunk, so every offset either lands in the
