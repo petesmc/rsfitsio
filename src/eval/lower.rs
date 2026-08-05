@@ -500,7 +500,15 @@ fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), 
                 && (ta == ValueSort::Boolean) == (tb == ValueSort::Boolean)
                 /* two strings pair whatever their widths: the shape check is
                 about vectors, where `nelem` counts elements not characters */
-                && (ta == ValueSort::String || dims_ok(&args[0], &args[1], cols))
+                && (ta == ValueSort::String || {
+                    /* and the fallback cannot be larger than what it fills */
+                    let (sa, sb) = (shape_of(&args[0], cols), shape_of(&args[1], cols));
+                    dims_ok(&args[0], &args[1], cols)
+                        && match (sa, sb) {
+                            (Some(x), Some(y)) => x.nelem >= y.nelem,
+                            _ => true,
+                        }
+                })
         }
         _ => true,
     };
@@ -796,6 +804,17 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
             if shape_of(&lowered_base, cols).is_some_and(|s| s.nelem == 1) {
                 return Err(Unsupported("a scalar has no elements to index"));
+            }
+            /* every subscript is a single integer: `New_Deref` refuses an
+            array as an index value, and anything that is not a Long */
+            for i in idx {
+                let e = lower(i, names, cols)?;
+                if e.sort(&|c| cols.sort(c)) != ValueSort::Long {
+                    return Err(Unsupported("an index must be an integer"));
+                }
+                if shape_of(&e, cols).is_some_and(|s| s.nelem != 1) {
+                    return Err(Unsupported("an array cannot be an index"));
+                }
             }
             let naxes: Vec<usize> = match shape_of(&lowered_base, cols) {
                 Some(shape) => shape.naxes.iter().map(|&n| n.max(0) as usize).collect(),
@@ -1277,6 +1296,20 @@ mod tests {
         ] {
             assert!(try_lower(src).is_ok(), "should accept: {src}");
         }
+    }
+
+    #[test]
+    fn a_subscript_index_must_be_a_single_integer() {
+        for src in ["{1,2,3}['a']", "{1,2,3}[1.5]", "{1,2,3}[{1,2,3}]"] {
+            assert!(try_lower(src).is_err(), "should refuse: {src}");
+        }
+        assert!(try_lower("{1,2,3}[2]").is_ok());
+    }
+
+    #[test]
+    fn defnulls_fallback_cannot_be_larger_than_what_it_fills() {
+        assert!(try_lower("DEFNULL(0,{1,2,3})").is_err());
+        assert!(try_lower("DEFNULL({1,2,3},0)").is_ok());
     }
 
     #[test]
