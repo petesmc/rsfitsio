@@ -306,6 +306,65 @@ fn const_dims(e: &Expr) -> Option<Vec<c_long>> {
     }
 }
 
+/// Reject the operand sorts an operator is not defined for.
+///
+/// A transcription of the `match (ta, tb)` tables in `parser::lower`, which is
+/// where the language's type rules live. They are expressed there against the
+/// arena nodes being built; here they are asked of the tree.
+fn check_binary_operands(
+    op: BinOp,
+    lhs: &Expr,
+    rhs: &Expr,
+    cols: &Columns,
+) -> Result<(), Unsupported> {
+    let sort = |e: &Expr| e.sort(&|i| cols.sort(i));
+    let (ta, tb) = (sort(lhs), sort(rhs));
+    /* `expr` -- what arithmetic accepts, which excludes booleans and text */
+    let is_expr = |t: ValueSort| t.is_expr();
+
+    let ok = match op {
+        /* `+` also concatenates two strings or two bit strings */
+        BinOp::Add => {
+            (ta == tb && matches!(ta, ValueSort::String | ValueSort::Bits))
+                || (is_expr(ta) && is_expr(tb))
+        }
+        /* `*` coerces a boolean operand, the others do not */
+        BinOp::Mul => {
+            (is_expr(ta) && tb == ValueSort::Boolean)
+                || (ta == ValueSort::Boolean && is_expr(tb))
+                || (is_expr(ta) && is_expr(tb))
+        }
+        BinOp::Sub | BinOp::Div | BinOp::Mod | BinOp::Pow | BinOp::Approx => {
+            is_expr(ta) && is_expr(tb)
+        }
+        /* only (bit OP bit) and (int OP int) */
+        BinOp::BitAnd | BinOp::BitOr => {
+            (ta == ValueSort::Bits && tb == ValueSort::Bits)
+                || (ta == ValueSort::Long && tb == ValueSort::Long)
+        }
+        /* `^^` has no bit-string form */
+        BinOp::BitXor => ta == ValueSort::Long && tb == ValueSort::Long,
+        BinOp::And | BinOp::Or => ta == ValueSort::Boolean && tb == ValueSort::Boolean,
+        /* text compares with text, booleans only for equality, and otherwise
+        both sides must be numeric */
+        BinOp::Eq | BinOp::Ne => {
+            (ta == tb && matches!(ta, ValueSort::String | ValueSort::Bits | ValueSort::Boolean))
+                || (is_expr(ta) && is_expr(tb))
+        }
+        BinOp::Gt | BinOp::Lt | BinOp::Gte | BinOp::Lte => {
+            (ta == tb && matches!(ta, ValueSort::String | ValueSort::Bits))
+                || (is_expr(ta) && is_expr(tb))
+        }
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(Unsupported(
+            "operator applied to sorts it is not defined for",
+        ))
+    }
+}
+
 /// Whether an expression is textual, which decides whether `+` concatenates
 /// and whether a comparison collapses to a single element.
 ///
@@ -388,6 +447,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         AstKind::Binary { op, lhs, rhs } => {
             let l = Box::new(lower(lhs, names, cols)?);
             let r = Box::new(lower(rhs, names, cols)?);
+            check_binary_operands(*op, &l, &r, cols)?;
             if let Some(a) = arith_of(*op) {
                 return Ok(Expr::Arith {
                     op: a,
@@ -854,6 +914,53 @@ mod tests {
     fn the_bitwise_operators_lower() {
         for src in ["1 & 2", "1 | 2", "1 ^^ 2"] {
             assert!(try_lower(src).is_ok(), "src: {src}");
+        }
+    }
+
+    /// The operator type rules, which decide what the language rejects. They
+    /// live in `parser::lower` as `match (ta, tb)` tables against the arena's
+    /// nodes; these are the same rules asked of the tree.
+    #[test]
+    fn an_operator_refuses_sorts_it_is_not_defined_for() {
+        for src in [
+            /* bitwise takes (bit OP bit) or (int OP int), nothing else */
+            "b1010 & 3",
+            "2.5 | 1",
+            "'ab' & 'cd'",
+            /* ^^ has no bit-string form at all */
+            "b1010 ^^ b1010",
+            /* && and || are boolean only */
+            "1 && 2",
+            "'a' || T",
+            /* ordering is not defined across sorts, nor on booleans */
+            "'ab' > 1",
+            "T > F",
+            "b1010 > 'ab'",
+            /* arithmetic other than + and * takes numbers */
+            "'ab' - 'cd'",
+            "b1010 / 2",
+        ] {
+            assert!(try_lower(src).is_err(), "should refuse: {src}");
+        }
+
+        for src in [
+            /* the forms that are defined */
+            "b1010 & b0101",
+            "1 & 2",
+            "1 ^^ 2",
+            "T && F",
+            "'ab' + 'cd'",
+            "b1010 + b0101",
+            "1 + 2",
+            "'ab' == 'cd'",
+            "b1010 == b0101",
+            "T == F",
+            "1 > 2",
+            /* `*` coerces a boolean operand, unlike the others */
+            "2 * T",
+            "T * 2",
+        ] {
+            assert!(try_lower(src).is_ok(), "should accept: {src}");
         }
     }
 
