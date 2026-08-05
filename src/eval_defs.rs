@@ -691,6 +691,12 @@ pub(crate) struct ParseData {
     /// The result's datatype, shape and constant-ness, answered from
     /// `expr_tree` at parse time. `ffiprs` reports it.
     pub result_info: Option<crate::eval::expr::ResultInfo>,
+    /// Where an evaluated batch's answer lands, and what callers read it from.
+    ///
+    /// This was the arena node `resultNode` pointed at. It is a `Node` still,
+    /// because the buffer layout is what every reader expects, but it is the
+    /// expression's own -- nothing in `Nodes` describes the result any more.
+    pub result: Node,
     /// The running values of the expression's `ACCUM`/`SEQDIFF` nodes, which
     /// have to survive from one batch to the next.
     pub accum_state: Vec<crate::eval::expr::AccumState>,
@@ -730,6 +736,7 @@ impl ParseData {
         {
             self.expr_tree = None;
             self.result_info = None;
+            self.result = Node::default();
             self.accum_state = Vec::new();
         }
     }

@@ -1632,73 +1632,70 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
     }
 }
 
+/// Give a node the row buffers its sort needs.
+///
+/// The work is in [`allocate_node_ptrs`], which takes the node on its own so
+/// that the result -- which no longer lives in the arena -- can be allocated
+/// the same way.
 pub(crate) fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
+    let nRows = lParse.nRows;
+    let mut status = lParse.status;
+    allocate_node_ptrs(&mut lParse.Nodes[this_node_idx], nRows, &mut status);
+    lParse.status = status;
+}
+
+pub(crate) fn allocate_node_ptrs(node: &mut Node, nRows: c_long, status: &mut c_int) {
     unsafe {
         let mut elem: c_long = 0;
         let mut row: c_long = 0;
         let mut size: c_long = 0;
-        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
-            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
-        {
+        if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
             let strbuf = malloc(
-                (lParse.nRows as c_ulong)
+                (nRows as c_ulong)
                     .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
                     .try_into()
                     .unwrap(),
             );
-            (lParse.Nodes[this_node_idx])
-                .value
-                .data
-                .set_buffer(BufferKind::Text, strbuf);
-            if !((lParse.Nodes[this_node_idx]).value.data.str_buf()).is_null() {
-                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0);
+            node.value.data.set_buffer(BufferKind::Text, strbuf);
+            if !(node.value.data.str_buf()).is_null() {
+                let fresh20 = &mut *(node.value.data.str_buf()).offset(0);
                 *fresh20 = malloc(
-                    ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
-                        as c_ulong)
+                    ((nRows * (node.value.nelem + 2 as c_long)) as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
                         .try_into()
                         .unwrap(),
                 )
                 .cast::<c_char>();
-                if !(*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0)).is_null() {
+                if !(*(node.value.data.str_buf()).offset(0)).is_null() {
                     row = 0;
                     loop {
                         row += 1;
-                        if row >= lParse.nRows {
+                        if row >= nRows {
                             break;
                         }
-                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                            .offset(row as isize);
-                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                            .offset((row - 1) as isize))
-                        .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
-                        .offset(1);
-                    }
-                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
-                        (lParse.Nodes[this_node_idx]).value.undef =
-                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                .offset((row - 1) as isize))
-                            .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
+                        let fresh21 = &mut *(node.value.data.str_buf()).offset(row as isize);
+                        *fresh21 = (*(node.value.data.str_buf()).offset((row - 1) as isize))
+                            .offset(node.value.nelem as isize)
                             .offset(1);
+                    }
+                    if node.ntype == ValueSort::String {
+                        node.value.undef = (*(node.value.data.str_buf())
+                            .offset((row - 1) as isize))
+                        .offset(node.value.nelem as isize)
+                        .offset(1);
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
+                        node.value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
                     }
                 } else {
-                    lParse.status = MEMORY_ALLOCATION;
-                    free(
-                        (lParse.Nodes[this_node_idx])
-                            .value
-                            .data
-                            .str_buf()
-                            .cast::<c_void>(),
-                    );
+                    (*status) = MEMORY_ALLOCATION;
+                    free(node.value.data.str_buf().cast::<c_void>());
                 }
             } else {
-                lParse.status = MEMORY_ALLOCATION;
+                (*status) = MEMORY_ALLOCATION;
             }
         } else {
-            elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
-            let kind = match (lParse.Nodes[this_node_idx]).ntype {
+            elem = node.value.nelem * nRows;
+            let kind = match node.ntype {
                 ValueSort::Double => {
                     size = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
                     BufferKind::Double
@@ -1721,14 +1718,11 @@ pub(crate) fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                 ((size + 1) as c_ulong).try_into().unwrap(),
                 (elem as c_ulong).try_into().unwrap(),
             );
-            (lParse.Nodes[this_node_idx])
-                .value
-                .data
-                .set_buffer(kind, buf);
-            if ((lParse.Nodes[this_node_idx]).value.data.raw()).is_null() {
-                lParse.status = MEMORY_ALLOCATION;
+            node.value.data.set_buffer(kind, buf);
+            if (node.value.data.raw()).is_null() {
+                (*status) = MEMORY_ALLOCATION;
             } else {
-                (lParse.Nodes[this_node_idx]).value.undef = (lParse.Nodes[this_node_idx])
+                node.value.undef = node
                     .value
                     .data
                     .raw()

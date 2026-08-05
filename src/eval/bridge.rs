@@ -15,8 +15,7 @@ use super::value::{ArrayData, ColumnarValue, Scalar};
 use crate::c_types::{c_char, c_long, c_uint};
 #[cfg(test)]
 use crate::eval_defs::{BufferKind, ValueSort};
-use crate::eval_defs::{NodeValue, Operation, ParseData};
-use crate::eval_y::Allocate_Ptrs;
+use crate::eval_defs::{MAX_STRLEN, NodeValue, Operation, ParseData};
 use crate::fitscore::ffpmsg_str;
 use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::simplerng::simplerng_srand;
@@ -70,29 +69,42 @@ pub(crate) fn evaluate(lParse: &mut ParseData, first_row: c_long, n_rows: c_long
     }
 }
 
+/// A scalar in the layout the result node holds it.
+///
+/// Used both when an evaluated batch turns out constant and when the parser
+/// seeds the node at parse time -- a constant expression's value has to be
+/// there before any row is evaluated, because a caller writing it to a
+/// keyword never evaluates one.
+pub(crate) fn node_value_of(s: &Scalar) -> NodeValue {
+    match s {
+        Scalar::Boolean(b) => NodeValue::Logical(c_char::from(*b)),
+        Scalar::Long(v) => NodeValue::Long(*v),
+        Scalar::Double(v) => NodeValue::Double(*v),
+        Scalar::Str(v) | Scalar::Bits(v) => {
+            let mut text = [0 as c_char; MAX_STRLEN as usize];
+            let n = v.len().min(text.len() - 1);
+            for (slot, &b) in text.iter_mut().zip(&v[..n]) {
+                *slot = b as c_char;
+            }
+            NodeValue::Text(text)
+        }
+    }
+}
+
 /// Write `value` into the result node, in the shape the arena used.
 fn store(lParse: &mut ParseData, value: &ColumnarValue) {
-    let this = lParse.resultNode as usize;
-
     match value {
-        /* A constant result keeps the node's CONST_OP marking and its scalar
-        slot, exactly as a folded node did. */
-        /* A constant string result is already in the node: the arena folded
-        the same expression at parse time and owns the text buffer, so there
-        is nothing to copy in and its pointer must not be overwritten. */
-        ColumnarValue::Scalar(Scalar::Str(_) | Scalar::Bits(_)) => {
-            lParse.Nodes[this].operation = Operation::Const;
-        }
+        /* A constant result keeps its CONST_OP marking and its scalar slot,
+        exactly as a folded node did.
 
+        The text has to be copied in. While the result lived in the arena this
+        was a no-op -- the arena had folded the same expression and owned the
+        buffer -- but the result is the expression's own node now and starts
+        empty. */
         ColumnarValue::Scalar(s) => {
-            lParse.Nodes[this].operation = Operation::Const;
-            lParse.Nodes[this].value.data = match s {
-                Scalar::Boolean(b) => NodeValue::Logical(c_char::from(*b)),
-                Scalar::Long(v) => NodeValue::Long(*v),
-                Scalar::Double(v) => NodeValue::Double(*v),
-                Scalar::Str(_) | Scalar::Bits(_) => unreachable!("handled above"),
-            };
-            lParse.Nodes[this].value.undef = core::ptr::null_mut();
+            lParse.result.operation = Operation::Const;
+            lParse.result.value.data = node_value_of(s);
+            lParse.result.value.undef = core::ptr::null_mut();
         }
 
         /* A wholly undefined result still gets a row buffer: the engine's
@@ -100,16 +112,20 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
         rather than a flag smuggled into the pointer field. */
         /* A constant node has no row buffer to flag, so an undefined constant
         keeps the scalar slot the arena already gave it. */
-        ColumnarValue::Null(_) if lParse.Nodes[this].operation == Operation::Const => {}
+        ColumnarValue::Null(_) if lParse.result.operation == Operation::Const => {}
 
         ColumnarValue::Null(_) => {
-            Allocate_Ptrs(lParse, this);
+            {
+                let (n_rows, mut st) = (lParse.nRows, lParse.status);
+                crate::eval_y::allocate_node_ptrs(&mut lParse.result, n_rows, &mut st);
+                lParse.status = st;
+            }
             if lParse.status != 0 {
                 return;
             }
-            let n = (lParse.nRows * lParse.Nodes[this].value.nelem).max(0) as usize;
+            let n = (lParse.nRows * lParse.result.value.nelem).max(0) as usize;
             unsafe {
-                let undef = lParse.Nodes[this].value.undef;
+                let undef = lParse.result.value.undef;
                 if !undef.is_null() {
                     core::slice::from_raw_parts_mut(undef, n).fill(1);
                 }
@@ -120,7 +136,7 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
         the answer is row-invariant however it was computed: honour that
         marking and fill the scalar slot, since everything downstream will read
         the node that way rather than looking for a row buffer. */
-        ColumnarValue::Array(a) if lParse.Nodes[this].operation == Operation::Const => {
+        ColumnarValue::Array(a) if lParse.result.operation == Operation::Const => {
             let first = match a.data() {
                 ArrayData::Long(d) => NodeValue::Long(d.first().copied().unwrap_or(0)),
                 ArrayData::Double(d) => NodeValue::Double(d.first().copied().unwrap_or(0.0)),
@@ -129,12 +145,16 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                 }
                 other => unreachable!("lowering refuses {other:?} results"),
             };
-            lParse.Nodes[this].value.data = first;
-            lParse.Nodes[this].value.undef = core::ptr::null_mut();
+            lParse.result.value.data = first;
+            lParse.result.value.undef = core::ptr::null_mut();
         }
 
         ColumnarValue::Array(a) => {
-            Allocate_Ptrs(lParse, this);
+            {
+                let (n_rows, mut st) = (lParse.nRows, lParse.status);
+                crate::eval_y::allocate_node_ptrs(&mut lParse.result, n_rows, &mut st);
+                lParse.status = st;
+            }
             if lParse.status != 0 {
                 return;
             }
@@ -142,15 +162,15 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
             unsafe {
                 match a.data() {
                     ArrayData::Long(d) => {
-                        let buf = lParse.Nodes[this].value.data.lng_buf();
+                        let buf = lParse.result.value.data.lng_buf();
                         core::slice::from_raw_parts_mut(buf, n).copy_from_slice(d);
                     }
                     ArrayData::Double(d) => {
-                        let buf = lParse.Nodes[this].value.data.dbl_buf();
+                        let buf = lParse.result.value.data.dbl_buf();
                         core::slice::from_raw_parts_mut(buf, n).copy_from_slice(d);
                     }
                     ArrayData::Boolean(d) => {
-                        let buf = lParse.Nodes[this].value.data.log_buf();
+                        let buf = lParse.result.value.data.log_buf();
                         let out = core::slice::from_raw_parts_mut(buf, n);
                         for (slot, &v) in out.iter_mut().zip(d) {
                             *slot = c_char::from(v);
@@ -164,8 +184,8 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                     the difference being that a bit node has no undef array,
                     which the guard below already accounts for. */
                     ArrayData::Str(d) | ArrayData::Bits(d) => {
-                        let buf = lParse.Nodes[this].value.data.str_buf();
-                        let width = lParse.Nodes[this].value.nelem.max(0) as usize;
+                        let buf = lParse.result.value.data.str_buf();
+                        let width = lParse.result.value.nelem.max(0) as usize;
                         for (row, text) in d.iter().enumerate() {
                             let dst = *buf.add(row);
                             if dst.is_null() {
@@ -178,7 +198,7 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
                     }
                 }
 
-                let undef = lParse.Nodes[this].value.undef;
+                let undef = lParse.result.value.undef;
                 if !undef.is_null() {
                     let flags = core::slice::from_raw_parts_mut(undef, n);
                     for (slot, i) in flags.iter_mut().zip(0..n) {
@@ -214,24 +234,23 @@ mod tests {
             nRows: n_rows,
             ..Default::default()
         };
-        p.Nodes = vec![Node {
+        /* the result is the expression's own node now, not one of the
+        arena's, so this is all `store` needs */
+        p.result = Node {
             ntype: sort,
             operation: Operation::Op(crate::eval_defs::OpCode::Add),
             ..Default::default()
-        }];
-        p.nNodes = 1;
-        p.nNodesAlloc = 1;
-        p.Nodes[0].value.nelem = nelem;
-        p.resultNode = 0;
+        };
+        p.result.value.nelem = nelem;
         p
     }
 
     #[test]
-    fn a_scalar_result_lands_in_the_nodes_constant_slot() {
+    fn a_scalar_result_lands_in_the_constant_slot() {
         let mut p = parse_data(ValueSort::Long, 1, 3);
         store(&mut p, &ColumnarValue::Scalar(Scalar::Long(42)));
-        assert_eq!(p.Nodes[0].operation, Operation::Const);
-        assert_eq!(p.Nodes[0].value.data.lng(), 42);
+        assert_eq!(p.result.operation, Operation::Const);
+        assert_eq!(p.result.value.data.lng(), 42);
     }
 
     #[test]
@@ -241,7 +260,7 @@ mod tests {
         store(&mut p, &v);
         assert_eq!(p.status, 0);
         unsafe {
-            let buf = p.Nodes[0].value.data.lng_buf();
+            let buf = p.result.value.data.lng_buf();
             assert_eq!(core::slice::from_raw_parts(buf, 3), &[7, -3, 10]);
         }
     }
@@ -255,7 +274,7 @@ mod tests {
         ));
         store(&mut p, &v);
         unsafe {
-            let undef = p.Nodes[0].value.undef;
+            let undef = p.result.value.undef;
             assert!(!undef.is_null(), "Allocate_Ptrs must provide the flags");
             assert_eq!(core::slice::from_raw_parts(undef, 3), &[0, 1, 0]);
         }
@@ -267,7 +286,7 @@ mod tests {
         let v = ColumnarValue::Array(Array::new(ArrayData::Boolean(vec![true, false, true])));
         store(&mut p, &v);
         unsafe {
-            let buf = p.Nodes[0].value.data.log_buf();
+            let buf = p.result.value.data.log_buf();
             assert_eq!(core::slice::from_raw_parts(buf, 3), &[1, 0, 1]);
         }
     }
@@ -285,9 +304,9 @@ mod tests {
             /* reading through the accessor for the expected kind asserts the
             tag, so a mismatch panics rather than silently reinterpreting */
             match kind_for(sort) {
-                BufferKind::Long => assert!(!p.Nodes[0].value.data.lng_buf().is_null()),
-                BufferKind::Double => assert!(!p.Nodes[0].value.data.dbl_buf().is_null()),
-                _ => assert!(!p.Nodes[0].value.data.log_buf().is_null()),
+                BufferKind::Long => assert!(!p.result.value.data.lng_buf().is_null()),
+                BufferKind::Double => assert!(!p.result.value.data.dbl_buf().is_null()),
+                _ => assert!(!p.result.value.data.log_buf().is_null()),
             }
         }
     }

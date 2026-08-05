@@ -143,6 +143,33 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
             .as_ref()
             .ok()
             .and_then(|t| crate::eval::lower::result_info(t, &cols));
+        /* The result no longer lives in the arena, so seed its node from the
+        descriptor: `Allocate_Ptrs` sizes the buffers from the sort and the
+        element count, and readers ask it whether the answer is constant. */
+        if let Some(info) = &lParse.result_info {
+            let mut node = crate::eval_defs::Node {
+                ntype: info.sort,
+                operation: if info.is_const {
+                    crate::eval_defs::Operation::Const
+                } else {
+                    crate::eval_defs::Operation::Op(crate::eval_defs::OpCode::Add)
+                },
+                ..Default::default()
+            };
+            node.value.nelem = info.nelem;
+            node.value.naxis = info.naxis;
+            node.value.naxes = info.naxes;
+            /* A constant's value has to be there before any row is evaluated:
+            a caller writing it to a keyword never evaluates one. The arena
+            got this by folding at parse time; the tree folds it here. */
+            if info.is_const
+                && let Some(t) = lParse.expr_tree.as_ref().or(lowered.as_ref().ok())
+                && let Some(crate::eval::value::ColumnarValue::Scalar(v)) = t.fold()
+            {
+                node.value.data = crate::eval::bridge::node_value_of(&v);
+            }
+            lParse.result = node;
+        }
         lParse.expr_tree = lowered
             .ok()
             /* A bit-string *result* is never retrievable -- the engine reports

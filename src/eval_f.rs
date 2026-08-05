@@ -1222,7 +1222,7 @@ pub fn ffcalc_rng_safe(
     } else {
         /* Put constant result into keyword */
 
-        result = &mut lParse.Nodes[lParse.resultNode as usize];
+        result = &mut lParse.result;
         match Info.datatype {
             TDOUBLE => {
                 ffukyd_safe(
@@ -1912,7 +1912,7 @@ pub(crate) fn fits_parser_workfn_safe(
 
             /*  Copy results into data array  */
 
-            result = &mut lParse.Nodes[lParse.resultNode as usize];
+            result = &mut lParse.result;
             if result.operation == Operation::Const {
                 constant = 1;
             }
@@ -3416,7 +3416,7 @@ pub fn fffrwc_safe(
 
         if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
-                let result_node = lParse.Nodes[lParse.resultNode as usize];
+                let result_node = lParse.result;
                 result = (result_node).value.data.log();
                 let mut elem = ntimes;
                 while elem > 0 {
@@ -3864,7 +3864,7 @@ pub(crate) fn ffffrw_work_safe(
         Evaluate_Parser(lParse, firstrow, nrows);
 
         if (lParse.status) == 0 {
-            result = &mut lParse.Nodes[lParse.resultNode as usize];
+            result = &mut lParse.result;
             if result.operation == Operation::Const {
                 if result.value.data.log() != 0 {
                     *(workData.prownum) = firstrow;
@@ -4255,7 +4255,7 @@ pub fn fits_pixel_filter_safer(
                 Some(&filter.comment)
             };
 
-            let result = &mut lParse.Nodes[lParse.resultNode as usize];
+            let result = &mut lParse.result;
             match info.datatype {
                 TDOUBLE => {
                     ffukyd_safe(
