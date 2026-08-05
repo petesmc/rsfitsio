@@ -911,6 +911,8 @@ impl Expr {
                 Func::Average | Func::Stddev => ValueSort::Double,
                 Func::Sum | Func::Median | Func::Min1 | Func::Max1 => {
                     match args[0].sort(batch_sorts) {
+                        /* SUM over a bit string counts its set bits */
+                        ValueSort::Bits if *func == Func::Sum => ValueSort::Long,
                         ValueSort::Boolean => ValueSort::Long,
                         other => other,
                     }

@@ -88,9 +88,9 @@ impl Columns {
 /// plus the string and bit-string `+`, which concatenates and so *adds* the
 /// two widths.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Shape {
-    nelem: c_long,
-    naxes: Vec<c_long>,
+pub(crate) struct Shape {
+    pub(crate) nelem: c_long,
+    pub(crate) naxes: Vec<c_long>,
 }
 
 impl Shape {
@@ -127,7 +127,7 @@ impl Shape {
 
 /// The shape of a lowered expression, or `None` when it cannot be determined
 /// statically -- in which case the shape functions over it fall back.
-fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
+pub(crate) fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
     let col_shape = |i: &usize| -> Option<Shape> {
         let (nelem, naxes) = cols.shapes.get(*i)?;
         Some(Shape {
@@ -140,9 +140,13 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
         })
     };
     Some(match e {
-        Expr::Literal(Scalar::Str(v)) | Expr::Literal(Scalar::Bits(v)) => {
-            Shape::flat(v.len() as c_long)
-        }
+        /* A text value is one value per row: its `nelem` is the *width* of
+        the string, and its axes stay one of length one. The arena reports
+        `'abc'` as nelem 3 over naxes [1], not naxes [3]. */
+        Expr::Literal(Scalar::Str(v)) | Expr::Literal(Scalar::Bits(v)) => Shape {
+            nelem: v.len() as c_long,
+            naxes: vec![1],
+        },
         Expr::Literal(_) | Expr::Null(_) | Expr::RowNumber => Shape::scalar(),
         Expr::Column(i) | Expr::Offset { col: i, .. } => col_shape(i)?,
         /* a vector literal expands any entry that is itself a vector, so the
@@ -172,20 +176,34 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
             let (a, b) = (shape_of(lhs, cols)?, shape_of(rhs, cols)?);
             /* `+` over text concatenates, so the widths add */
             if *op == Arith::Add && is_text_expr(lhs, cols) && is_text_expr(rhs, cols) {
-                Shape::flat(a.nelem + b.nelem)
+                /* concatenation adds the widths and leaves the axes alone */
+                Shape {
+                    nelem: a.nelem + b.nelem,
+                    naxes: Shape::combine(&a, &b).naxes,
+                }
             } else {
                 Shape::combine(&a, &b)
             }
         }
         Expr::Compare { lhs, rhs, .. } | Expr::Equality { lhs, rhs, .. } => {
-            Shape::combine(&shape_of(lhs, cols)?, &shape_of(rhs, cols)?)
+            let shape = Shape::combine(&shape_of(lhs, cols)?, &shape_of(rhs, cols)?);
+            /* comparing two texts asks one question of the whole value, so
+            the answer is a single element however wide the operands are */
+            if is_text_expr(lhs, cols) && is_text_expr(rhs, cols) {
+                Shape { nelem: 1, ..shape }
+            } else {
+                shape
+            }
         }
         Expr::Logic { lhs, rhs, .. } => {
             Shape::combine(&shape_of(lhs, cols)?, &shape_of(rhs, cols)?)
         }
-        Expr::IfThenElse { then, els, .. } => {
-            Shape::combine(&shape_of(then, cols)?, &shape_of(els, cols)?)
-        }
+        /* the condition counts too: `VECCOL > 0 ? 1 : 2` asks the question
+        per element and so answers per element, whatever the branches are */
+        Expr::IfThenElse { cond, then, els } => Shape::combine(
+            &shape_of(cond, cols)?,
+            &Shape::combine(&shape_of(then, cols)?, &shape_of(els, cols)?),
+        ),
         /* the reductions collapse a row to one element; the elementwise
         functions keep their argument's shape */
         Expr::Call { func, args } => match func {
@@ -199,6 +217,28 @@ fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
             | Func::StrStr => Shape::scalar(),
             /* a generator with no argument yields one value per row */
             Func::Random | Func::RandomN if args.is_empty() => Shape::scalar(),
+            /* ISNULL asks one question of a whole text value */
+            Func::IsNull if is_text_expr(args.first()?, cols) => Shape {
+                nelem: 1,
+                naxes: shape_of(args.first()?, cols)?.naxes,
+            },
+            /* STRMID's result is as wide as the length it was given, when
+            that is constant; otherwise the arena keeps the source's width */
+            Func::StrMid => {
+                let src = shape_of(args.first()?, cols)?;
+                let width = args
+                    .get(2)
+                    .and_then(|n| match n {
+                        Expr::Literal(Scalar::Long(v)) => Some(*v),
+                        Expr::Literal(Scalar::Double(v)) => Some(*v as c_long),
+                        _ => None,
+                    })
+                    .unwrap_or(src.nelem);
+                Shape {
+                    nelem: width,
+                    naxes: src.naxes,
+                }
+            }
             /* ARRAY's shape is its second argument, which the parser requires
             to be constant, so it is read off the lowered dims directly */
             Func::Array => {
@@ -273,6 +313,11 @@ fn is_text_expr(e: &Expr, cols: &Columns) -> bool {
             matches!(cols.sort(*i), ValueSort::String | ValueSort::Bits)
         }
         Expr::Arith { lhs, .. } => is_text_expr(lhs, cols),
+        /* `!bits` complements a bit string and is still one */
+        Expr::Unary {
+            op: Unary::Not,
+            arg,
+        } => is_text_expr(arg, cols),
         Expr::IfThenElse { then, .. } => is_text_expr(then, cols),
         Expr::Call { func, args } => {
             *func == Func::StrMid || (*func == Func::DefNull && is_text_expr(&args[0], cols))
@@ -837,6 +882,54 @@ mod tests {
     fn the_undefined_string_lowers_as_a_string() {
         /* not as a long, or a conditional with a string branch cannot read it */
         assert_eq!(try_lower("#SNULL"), Ok(Expr::Null(ValueSort::String)));
+    }
+
+    /// The shape rules for text, which a diff against the arena over the
+    /// corpus found and reasoning had not: a text value's `nelem` is the
+    /// *width* of the string and its axes stay one of length one, so the two
+    /// are not related the way they are for a vector.
+    #[test]
+    fn a_text_value_carries_its_width_in_nelem_not_in_its_axes() {
+        let cols = Columns {
+            gti: Default::default(),
+            regions: Default::default(),
+            accums: core::cell::Cell::new(0),
+            shapes: Vec::new(),
+            sorts: Vec::new(),
+        };
+        let shape = |src: &str| {
+            let e = lower(&ast(src), &Resolutions::new(), &cols).expect(src);
+            shape_of(&e, &cols).expect(src)
+        };
+
+        let s = shape("'abc'");
+        assert_eq!((s.nelem, s.naxes.as_slice()), (3, &[1][..]));
+        /* concatenation adds the widths and leaves the axes alone */
+        let s = shape("'ab' + 'cde'");
+        assert_eq!((s.nelem, s.naxes.as_slice()), (5, &[1][..]));
+        /* comparing two texts asks one question of the whole value */
+        let s = shape("'abc' == 'abd'");
+        assert_eq!(s.nelem, 1);
+        /* STRMID is as wide as the length it was given */
+        let s = shape("STRMID('abcdef',2,3)");
+        assert_eq!(s.nelem, 3);
+        /* a bit string works the same way */
+        let s = shape("b1010");
+        assert_eq!((s.nelem, s.naxes.as_slice()), (4, &[1][..]));
+    }
+
+    #[test]
+    fn a_conditional_answers_per_element_of_its_condition() {
+        let cols = Columns {
+            gti: Default::default(),
+            regions: Default::default(),
+            accums: core::cell::Cell::new(0),
+            shapes: Vec::new(),
+            sorts: Vec::new(),
+        };
+        /* the branches are scalars, but the question is asked per element */
+        let e = lower(&ast("{1,2,3} > 0 ? 1 : 2"), &Resolutions::new(), &cols).unwrap();
+        assert_eq!(shape_of(&e, &cols).unwrap().nelem, 3);
     }
 
     #[test]
