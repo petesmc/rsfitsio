@@ -688,6 +688,9 @@ pub(crate) struct ParseData {
     /// handle every construct in it. `None` means the `Node` arena evaluates
     /// this expression, which is still the case for most of them.
     pub expr_tree: Option<crate::eval::expr::Expr>,
+    /// The result's datatype, shape and constant-ness, answered from
+    /// `expr_tree` at parse time. `ffiprs` reports it.
+    pub result_info: Option<crate::eval::expr::ResultInfo>,
     /// The running values of the expression's `ACCUM`/`SEQDIFF` nodes, which
     /// have to survive from one batch to the next.
     pub accum_state: Vec<crate::eval::expr::AccumState>,
@@ -726,6 +729,7 @@ impl ParseData {
         self.status = Default::default();
         {
             self.expr_tree = None;
+            self.result_info = None;
             self.accum_state = Vec::new();
         }
     }

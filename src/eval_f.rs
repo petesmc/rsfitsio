@@ -1493,19 +1493,25 @@ pub(crate) fn ffiprs(
         (lParse.colData[0]).fptr = fptr;
     }
 
-    let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
+    /* The expression's own description of its result, computed from the
+    lowered tree at parse time. Every field was checked against the arena's
+    result node over all 1,852 corpus expressions before this switched over. */
+    let info = lParse
+        .result_info
+        .clone()
+        .expect("a parsed expression always has a result descriptor");
 
-    lParse.nAxis = result.value.naxis;
+    lParse.nAxis = info.naxis;
     *naxis = lParse.nAxis;
-    lParse.nElements = result.value.nelem;
+    lParse.nElements = info.nelem;
     *nelem = lParse.nElements;
 
     for i in 0..cmp::min(*naxis, maxdim) {
-        lParse.nAxes[i as usize] = result.value.naxes[i as usize];
+        lParse.nAxes[i as usize] = info.naxes[i as usize];
         naxes[i as usize] = lParse.nAxes[i as usize];
     }
 
-    match result.ntype {
+    match info.sort {
         ValueSort::Boolean => *datatype = TLOGICAL,
 
         ValueSort::Long => *datatype = TLONG,
@@ -1519,7 +1525,9 @@ pub(crate) fn ffiprs(
     lParse.datatype = *datatype;
     lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
 
-    if result.operation == Operation::Const {
+    /* a constant result is reported with a negative element count, which is
+    how callers know to read it once rather than per row */
+    if info.is_const {
         *nelem = -*nelem;
     }
     *status

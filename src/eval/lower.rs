@@ -8,10 +8,11 @@
 //! Name resolution has already happened — `parser::resolve` ran before the
 //! parse — so a name here is a column index or a folded constant.
 
-use super::expr::{Expr, Func, GtiIntervals, Logic, Unary};
+use super::expr::{Expr, Func, GtiIntervals, Logic, ResultInfo, Unary};
 use super::kernel::{Arith, Compare};
 use super::value::Scalar;
-use crate::c_types::c_long;
+use crate::c_types::{c_int, c_long};
+use crate::eval_defs::MAXDIMS;
 use crate::eval_defs::{ColumnSort, ParserValue, ValueSort};
 use crate::parser::ast::{Ast, AstKind, BinOp, UnOp};
 use crate::parser::resolve::Resolutions;
@@ -305,25 +306,37 @@ fn const_dims(e: &Expr) -> Option<Vec<c_long>> {
     }
 }
 
-/// Whether an expression is textual, which decides whether `+` concatenates.
+/// Whether an expression is textual, which decides whether `+` concatenates
+/// and whether a comparison collapses to a single element.
+///
+/// This asks the tree for its sort rather than pattern-matching the shapes
+/// that usually carry text: an earlier version listed the cases by hand and
+/// missed `#SNULL`, so `ISNULL(cond ? #snull : STRCOL)` reported the string's
+/// width where the arena reported one element.
 fn is_text_expr(e: &Expr, cols: &Columns) -> bool {
-    match e {
-        Expr::Literal(Scalar::Str(_) | Scalar::Bits(_)) => true,
-        Expr::Column(i) | Expr::Offset { col: i, .. } => {
-            matches!(cols.sort(*i), ValueSort::String | ValueSort::Bits)
-        }
-        Expr::Arith { lhs, .. } => is_text_expr(lhs, cols),
-        /* `!bits` complements a bit string and is still one */
-        Expr::Unary {
-            op: Unary::Not,
-            arg,
-        } => is_text_expr(arg, cols),
-        Expr::IfThenElse { then, .. } => is_text_expr(then, cols),
-        Expr::Call { func, args } => {
-            *func == Func::StrMid || (*func == Func::DefNull && is_text_expr(&args[0], cols))
-        }
-        _ => false,
+    matches!(
+        e.sort(&|i| cols.sort(i)),
+        ValueSort::String | ValueSort::Bits
+    )
+}
+
+/// Everything a caller needs to know about a lowered expression's result.
+///
+/// This is what the arena's result node used to be asked for, answered from
+/// the tree instead.
+pub(crate) fn result_info(e: &Expr, cols: &Columns) -> Option<ResultInfo> {
+    let shape = shape_of(e, cols)?;
+    let mut naxes = [0 as c_long; MAXDIMS as usize];
+    for (slot, &n) in naxes.iter_mut().zip(shape.naxes.iter()) {
+        *slot = n;
     }
+    Some(ResultInfo {
+        sort: e.sort(&|i| cols.sort(i)),
+        nelem: shape.nelem,
+        naxis: shape.naxes.len().min(MAXDIMS as usize) as c_int,
+        naxes,
+        is_const: e.is_const(),
+    })
 }
 
 /// Lower a whole expression, or report the first construct not yet ported.

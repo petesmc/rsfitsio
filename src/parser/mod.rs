@@ -139,6 +139,10 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
         let lowered = crate::eval::lower::lower(&tree, &names, &cols);
         /* one running-value slot per ACCUM/SEQDIFF the lowering handed out */
         lParse.accum_state = vec![Default::default(); cols.accums.get()];
+        lParse.result_info = lowered
+            .as_ref()
+            .ok()
+            .and_then(|t| crate::eval::lower::result_info(t, &cols));
         lParse.expr_tree = lowered
             .ok()
             /* A bit-string *result* is never retrievable -- the engine reports
