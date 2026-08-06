@@ -980,3 +980,86 @@ places where the engine does something other than the obvious:
   `set_null_const` copies the value and never compares, so `SETNULL(1,1)` is 1
   rather than null. CFITSIO agrees, so this is the contract rather than a
   transpilation slip — but it is almost certainly an upstream bug.
+
+### 10.6 Making the parser say what CFITSIO says
+
+rsfitsio's error stack is public: a consumer can read it with `fits_read_errmsg`
+and compare it against what the C library says. So the messages are part of the
+behaviour to be reproduced, not an implementation detail the rewrite was free to
+improve on — which it had been doing.
+
+Nothing in the suite would have caught the drift. The golden file records
+*whether* an expression was rejected, and the status code, but never the
+wording, so all of this passed for as long as it existed. `CORPUS_MSGS=1` on the
+corpus test now dumps the stack in the same shape `ORACLE_MSGS=1` gets from the
+real library; joined on the expression, the two disagreed on **856 of the 1011
+corpus expressions both reject**. Each disagreement named a rule to go and look
+at, which is the only reason this was tractable — the categories below are not
+ones that could have been reasoned out from the source.
+
+**Wording that was never CFITSIO's.** The largest group by far. The nom front
+end knows what it expected and where, so it said so: `expected ')'`,
+`unexpected trailing input`, `unary '-' needs a number`, `'?:' branches have
+incompatible types`. Bison had no such detail to give — a token sequence with no
+production simply failed — and `yyerror` pushed the bare string `syntax error`.
+The descriptive text is now the `Syntax` payload, kept for backtraces, and
+`report` emits what bison emitted.
+
+An earlier note in this document had this backwards: it proposed replicating the
+*arena's* messages, on the reasoning that the arena was the reference. It is
+not. Several of those messages are inventions of the nom rewrite too, and
+`parser/lower.rs` is no more authoritative about them than `eval::lower` is. The
+reference is the C library, and the oracle is how you ask it.
+
+**A fixed buffer, two rules deep.** `yyerror` copies into `char msg[80]` and
+NUL-terminates at 79, so every parser message is cut there *before* reaching the
+stack. `ffpmsg` then splits at 80 and would have carried the remainder onto a
+second entry — which is what rsfitsio was doing, reporting the bitwise complaint
+as `...(int OP int) a` followed by `re allowed`. The truncation belongs at the
+`yyerror` end, not the `ffpmsg` end; both chunk at 80 and only one also
+truncates.
+
+**Which production would have reduced.** The C grammar is type-stratified, so a
+function call is a production over a fixed list of argument sorts and the "not
+supported" message is a literal attached to whichever one reduced. Two things
+follow that no amount of reading the message text would suggest:
+
+* The message names the *production*, not the arguments as written.
+  `MIN(BOOLCOL,BOOLCOL)` is a `Boolean Function(expr,expr)` — it reduces by
+  `bexpr: FUNCTION bexpr ',' bexpr ')'`, whose literal says `expr,expr`.
+* A shape with no production never reaches an action, so bison fails first and
+  the message is a plain `syntax error`. `MIN(1,2,3)` is one: there is no
+  three-argument numeric production, though there *is* a four-argument one. So
+  is `MIN(INTCOL,BOOLCOL)`, while the reversed `MIN(BOOLCOL,INTCOL)` has one.
+
+Which layer a call belongs to is the lexer's doing rather than the grammar's —
+`BOX`, `CIRCLE`, `ELLIPSE`, `NEAR` and `ISNULL` come back as `BFUNCTION` — which
+is why `NEAR(1)` and `NOSUCHFUNC(1)` differ despite the identical shape. The
+table in `unsupported` is transcribed from `eval.y`; the hand-written argument
+labels it replaced described the call as written and could not express any of
+this.
+
+**`TEST` is silent.** `#define TEST(a) if( (a)<0 ) YYERROR`. The builder that
+returned the negative index has already pushed its own message and set the
+status, so `INTCOL[1]` reports `Cannot index a scalar value` and nothing after
+it. rsfitsio was appending `Couldn't build node structure: out of memory?` —
+a real CFITSIO message, but one that belongs to the top-level `line:` rule and a
+node no production tested. Hence the `Aborted` error kind, which reports
+nothing.
+
+**`yyerror` guarded the status, not the message.** Only the assignment is
+conditional (`if( !lParse->status ) lParse->status = PARSE_SYNTAX_ERR;`), so an
+expression that both fails to resolve a name and fails to parse reports the
+resolver's messages *and* a syntax error. `1 + NOSUCHCOL` is one; so is `0x`,
+whose trailing `x` lexes as a name. rsfitsio was dropping the second.
+
+**Six that remain, and why they are not worth a pipeline change.** They differ
+in the *order* of the messages, never the text. CFITSIO lexes on demand as bison
+asks for tokens, so `$a` reports the bad character before the name after it is
+resolved, while `1.e5` resolves `e5` first and reports the syntax error after.
+rsfitsio resolves every name in a pass before parsing, so its syntax error is
+always last. Matching this means resolving on demand during the parse — a change
+to the shape of the pipeline for six malformed inputs — and the swap in §10.3
+will revisit that code anyway.
+
+Final state: **1005 of 1011** exact matches, from 155 before any of this.
