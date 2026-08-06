@@ -20,15 +20,49 @@
 
 use super::ast::{Ast, AstKind};
 use super::error::ParseError;
-use super::lower::{GtiData, GtiLoads, RegionData, RegionLoads};
 use super::resolve::Resolutions;
 use super::token::CallKind;
-use crate::c_types::{c_char, c_int};
+use crate::c_types::{c_char, c_double, c_int};
 use crate::eval_defs::{ColumnSort, FuncOp, ParseData, ParserValue};
 use crate::eval_y::{load_gti, load_region};
 use crate::fitscore::ffgcno_safe;
 use crate::fitscore::ffpmsg_str;
+use crate::region::SAORegion;
 use bytemuck::cast_slice;
+use std::collections::HashMap;
+
+/// The good-time intervals a `GTIFILTER`/`GTIFIND` call loaded, and whether
+/// they came back in ascending order.
+///
+/// [`load_all`] reads these once, before lowering, and the evaluator uses
+/// that load rather than repeating four hundred lines of HDU navigation -- in
+/// the same way [`Resolutions`] hands it the already-resolved column names.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct GtiData {
+    pub(crate) start: Vec<c_double>,
+    pub(crate) stop: Vec<c_double>,
+    pub(crate) ordered: bool,
+    /// The column the times come from when the call did not name an
+    /// expression -- `gtifilter()` means the TIME column, which is resolved
+    /// here and which the source text does not mention.
+    pub(crate) time_col: Option<c_int>,
+}
+
+/// The GTI loads of one expression, keyed by the call's byte offset.
+pub(crate) type GtiLoads = HashMap<usize, GtiData>;
+
+/// The regions of one expression, keyed by the call's byte offset.
+pub(crate) type RegionLoads = HashMap<usize, RegionData>;
+
+/// The region a `REGFILTER` call parsed, and the coordinate columns it used.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RegionData {
+    pub(crate) region: SAORegion,
+    /// The X and Y columns resolved when the call did not name expressions,
+    /// as `regfilter("f.reg")` does not.
+    pub(crate) x_col: Option<c_int>,
+    pub(crate) y_col: Option<c_int>,
+}
 
 /// A NUL-terminated buffer, as the loaders take.
 fn cstr(b: &[u8]) -> Vec<c_char> {

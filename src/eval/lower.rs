@@ -83,9 +83,9 @@ fn const_long(ast: &Ast) -> Option<c_long> {
 pub(crate) struct Columns {
     /// What each GTI call read while the arena was built, keyed by the call's
     /// byte offset. The file navigation happens once, there.
-    pub(crate) gti: crate::parser::lower::GtiLoads,
+    pub(crate) gti: crate::parser::externals::GtiLoads,
     /// And the region each `REGFILTER` parsed.
-    pub(crate) regions: crate::parser::lower::RegionLoads,
+    pub(crate) regions: crate::parser::externals::RegionLoads,
     /// Hands out a slot to each `ACCUM`/`SEQDIFF` as it is lowered, so the
     /// running values can live in one flat vector that survives between
     /// batches. Interior mutability keeps `lower` taking `&Columns`.

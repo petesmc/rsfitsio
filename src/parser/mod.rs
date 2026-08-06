@@ -21,7 +21,6 @@ pub(crate) mod error;
 pub(crate) mod externals;
 pub(crate) mod grammar;
 pub(crate) mod lexer;
-pub(crate) mod lower;
 pub(crate) mod msg;
 pub(crate) mod resolve;
 pub(crate) mod token;
@@ -105,8 +104,8 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
     /* Read the GTI and region files the expression names, before either
     lowering rather than during one -- see `externals`. The arena builders
     still read them again for their own nodes; that goes when they do. */
-    let mut gti: lower::GtiLoads = Default::default();
-    let mut regions: lower::RegionLoads = Default::default();
+    let mut gti: externals::GtiLoads = Default::default();
+    let mut regions: externals::RegionLoads = Default::default();
     if let Err(e) = externals::load_all(lParse, &tree, &names, &mut gti, &mut regions) {
         /* `fail` leaves a status the loader already set alone -- a file that
         would not open is a 104, not a syntax error -- and returns the 0 that
