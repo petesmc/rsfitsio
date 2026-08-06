@@ -22,14 +22,29 @@
 //! ```text
 //! CORPUS_TRACE=1 cargo test --test test_eval_corpus -- --nocapture
 //! ```
+//!
+//! The golden file records the *decision* but not the wording, so to compare
+//! the error stack itself against CFITSIO's, dump one `expr TAB ERR n |msg |…`
+//! line per expression:
+//!
+//! ```text
+//! CORPUS_MSGS=1 cargo test --test test_eval_corpus -- --nocapture
+//! ```
+//!
+//! and join it on the first field against `ORACLE_MSGS=1 tests/oracle/oracle`,
+//! which emits the same shape from the real library. That is how the parser's
+//! messages were brought to CFITSIO's: the two disagreed on 856 of the 1011
+//! expressions both reject, and each disagreement named the rule that was
+//! wrong. Six remain, differing in the order of the messages rather than their
+//! text -- see PARSER_MIGRATION.md.
 
 #[cfg(test)]
 mod tests {
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::c_types::{c_char, c_int, c_long};
     use rsfitsio::fitsio::{
-        BINARY_TBL, BYTE_IMG, LONGLONG, TBYTE, TDOUBLE, TINT, TLOGICAL, TLONG, TLONGLONG, TSHORT,
-        TSTRING, fitsfile,
+        BINARY_TBL, BYTE_IMG, FLEN_ERRMSG, LONGLONG, TBYTE, TDOUBLE, TINT, TLOGICAL, TLONG,
+        TLONGLONG, TSHORT, TSTRING, fitsfile,
     };
     use std::fmt::Write as _;
 
@@ -220,9 +235,30 @@ mod tests {
             &mut naxes,
             &mut status,
         );
+        let dump_msgs = std::env::var_os("CORPUS_MSGS").is_some();
         if status != 0 {
+            /* drain the stack before clearing it, in the order a caller would
+            see. The oracle prints the same shape, so the two can be joined on
+            the expression -- see the module header. */
+            if dump_msgs {
+                let mut msgs = Vec::new();
+                let mut buf = [0 as c_char; FLEN_ERRMSG];
+                while fits_read_errmsg(&mut buf) != 0 {
+                    msgs.push(
+                        buf.iter()
+                            .take_while(|&&c| c != 0)
+                            .map(|&c| c as u8 as char)
+                            .collect::<String>(),
+                    );
+                }
+                println!("{expr}\tERR {status} |{}", msgs.join(" |"));
+            }
             fits_clear_errmsg();
             return format!("ERR {status}");
+        }
+        if dump_msgs {
+            /* keep a line per expression so the join sees accepts too */
+            println!("{expr}\tOK");
         }
 
         let mut out = String::new();
