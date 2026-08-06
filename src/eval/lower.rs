@@ -295,14 +295,15 @@ fn fold_shape_fn(
         _ => return Ok(None),
     };
     if args.len() != arity {
-        /* a wrong arity is the arena's error to report */
-        return Err(syn("shape function with the wrong arity"));
+        let lowered: Result<Vec<Expr>, Unsupported> =
+            args.iter().map(|a| lower(a, names, cols)).collect();
+        return Err(no_such_call(name, &lowered?, cols));
     }
     let arg = lower(&args[0], names, cols)?;
     /* NAXIS asks about a numeric value's axes; a boolean, string or bit
     string reaches a different list in the arena and is not on it */
     if name == b"NAXIS" && !arg.sort(&|i| cols.sort(i)).is_expr() {
-        return Err(syn("NAXIS of a sort that has no axes"));
+        return Err(no_such_call(name, &[arg], cols));
     }
     let shape = shape_of(&arg, cols).ok_or(syn("shape function on an unknown shape"))?;
 
@@ -381,12 +382,19 @@ fn check_conditional(
         /* there is no vector of strings, so a per-element condition has
         nowhere to put its answers */
         if shape_of(cond, cols).is_some_and(|s| s.nelem != 1) {
-            return Err(syn("cannot have a vector string column"));
+            return Err(sem("Cannot have a vector string column"));
         }
         return Ok(());
     }
+    /* the branches reduced, so this is the action objecting */
     if !dims_ok(then, els, cols) {
-        return Err(syn("incompatible dimensions in '?:' branches"));
+        return Err(sem("Incompatible dimensions in '?:' arguments"));
+    }
+    /* and a per-element condition has to match what it is choosing between */
+    if shape_of(cond, cols).is_some_and(|s| s.nelem != 1)
+        && (!dims_ok(cond, then, cols) || !dims_ok(cond, els, cols))
+    {
+        return Err(sem("Incompatible dimensions in '?:' condition"));
     }
     Ok(())
 }
@@ -479,10 +487,15 @@ fn check_call_operands(
         Func::SetNull => args.iter().all(numeric),
         /* ARRAY takes something numeric and a *constant* shape: New_Array
         needs the dimensions at parse time to size the result */
-        Func::Array => args.first().is_some_and(|a| {
-            let t = sort(a);
-            t == ValueSort::Boolean || t.is_expr()
-        }),
+        /* `V` may be a number or a boolean; `dims` sits in an `expr`
+        position, so anything else there matches no production and never
+        reaches the action that complains about it not being constant */
+        Func::Array => {
+            args.first().is_some_and(|a| {
+                let t = sort(a);
+                t == ValueSort::Boolean || t.is_expr()
+            }) && args.get(1).is_some_and(numeric)
+        }
         /* The one-argument reductions dispatch on the argument's sort, and
         each sort admits a different set. A boolean can be summed but not
         MIN'd; a string can only be counted; a bit string does all but
@@ -653,6 +666,17 @@ fn check_binary_operands(
         }
     };
     if !ok {
+        /* The bitwise operators are the one place where a rejection can come
+        from either side of the line. `bits OP bits` and `expr OP expr` are the
+        only productions, so a boolean or string operand matches nothing and
+        bison fails; but two *numbers* do reduce, and the action then turns
+        them down for not being integers, in its own words. */
+        if matches!(op, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor) && is_expr(ta) && is_expr(tb)
+        {
+            return Err(sem(
+                "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
+            ));
+        }
         return Err(syn("operator applied to sorts it is not defined for"));
     }
     /* and elementwise operators need operands of matching shape: a 3-vector
@@ -660,7 +684,9 @@ fn check_binary_operands(
     let text = matches!(ta, ValueSort::String | ValueSort::Bits)
         || matches!(tb, ValueSort::String | ValueSort::Bits);
     if !text && !dims_ok(lhs, rhs, cols) {
-        return Err(syn("operands have incompatible dimensions"));
+        /* New_BinOp's own complaint: the operands reduced, so this is an
+        action talking, not the grammar */
+        return Err(sem("Array sizes/dims do not match for binary operator"));
     }
     Ok(())
 }
@@ -854,12 +880,19 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             /* `shifted` reads a text column the same way as a numeric one,
             one entry per row, so a string offset needs nothing extra */
             let _ = (name, sort);
+            /* `COLUMN '{' expr '}'` takes a number there, so a boolean or
+            string offset matches nothing and never reaches New_Offset */
+            if !lower(off, names, cols)?.sort(&|i| cols.sort(i)).is_expr() {
+                return Err(syn("offset must be numeric"));
+            }
             match const_long(off) {
                 Some(offset) => Ok(Expr::Offset {
                     col: *index as usize,
                     offset,
                 }),
-                None => Err(syn("row offset that is not a plain constant")),
+                /* the production reduced -- the offset is a number -- and
+                New_Offset's action is what turns it down */
+                None => Err(sem("Offset argument must be a constant integer")),
             }
         }
         /* Subscripting needs the operand's `naxes`, not just its element
@@ -1041,7 +1074,9 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             batches, so each gets a slot rather than being a plain kernel */
             if matches!(name.as_slice(), b"ACCUM" | b"SEQDIFF") {
                 if args.len() != 1 {
-                    return Err(syn("ACCUM with the wrong arity"));
+                    let lowered: Result<Vec<Expr>, Unsupported> =
+                        args.iter().map(|a| lower(a, names, cols)).collect();
+                    return Err(no_such_call(name, &lowered?, cols));
                 }
                 let arg = lower(&args[0], names, cols)?;
                 /* the boolean and bit-string forms take a different path in
@@ -1049,7 +1084,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 they are left with the arena */
                 let sort = arg.sort(&|i| cols.sort(i));
                 if !matches!(sort, ValueSort::Long | ValueSort::Double) {
-                    return Err(syn("ACCUM over a non-numeric argument"));
+                    return Err(no_such_call(name, &[arg], cols));
                 }
                 let id = cols.accums.get();
                 cols.accums.set(id + 1);
