@@ -752,23 +752,29 @@ pub(crate) fn read_gti_intervals(
     }
 }
 
-pub(crate) fn New_GTI(
+/// Open a GTI extension and read its intervals.
+///
+/// Everything `New_GTI` does with the file: find the extension, whether in the
+/// event file or another, locate the START and STOP columns, read them, and
+/// close up afterwards. Split out because none of it needs the arena -- the
+/// intervals come back in a `Vec`, and it is the caller that decides whether to
+/// put them in a node.
+///
+/// Returns the row count and, when there are rows, the intervals and whether
+/// they are time-ordered.
+#[allow(clippy::type_complexity)]
+pub(crate) fn load_gti(
     lParse: &mut ParseData,
     Op: FuncOp,
     mut fname: *mut c_char,
-    mut Node1: c_int,
-    mut Node2: c_int,
     start: *mut c_char,
     stop: *mut c_char,
-) -> c_int {
+) -> Option<(c_long, Option<(Vec<c_double>, bool)>)> {
     unsafe {
         let mut fptr: *mut fitsfile = core::ptr::null_mut();
-        let this_node_idx: usize;
         let mut i: c_int = 0;
-        let mut n: c_int = 0;
         let mut startCol: c_int = 0;
         let mut stopCol: c_int = 0;
-        let mut Node0: c_int = 0;
         let mut hdutype: c_int = 0;
         let mut hdunum: c_int = 0;
         let mut evthdu: c_int = 0;
@@ -780,47 +786,9 @@ pub(crate) fn New_GTI(
         let mut nrows: c_long = 0;
         let mut timeZeroI: [c_double; 2] = [0.; 2];
         let mut timeZeroF: [c_double; 2] = [0.; 2];
-        let dt: c_double = 0.0;
-        let timeSpan: c_double = 0.0;
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
-
-        if (Op == FuncOp::GtiFilt || Op == FuncOp::GtiFind) && Node1 == -99 {
-            if let Some(ParserValue::Column {
-                index,
-                sort: ColumnSort::Numeric,
-            }) = fits_parser_yyGetVariable(lParse, cs!(c"TIME"))
-            {
-                Node1 = New_Column(lParse, index);
-            } else {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
-                );
-                return -(1);
-            }
-        }
-
-        if Op == FuncOp::GtiOver {
-            if Node1 == -99 || Node2 == -99 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
-                );
-                return -(1);
-            }
-            Node2 = New_Unary(lParse, ValueSort::Double, None, Node2);
-            if Node2 < 0 {
-                return -(1);
-            }
-        }
-
-        Node1 = New_Unary(lParse, ValueSort::Double, None, Node1);
-
-        if Node1 < 0 {
-            return -(1);
-        }
-
+        let _ = &mut i;
         fptr = lParse.def_fptr;
         let fptr = fptr.as_mut().unwrap();
 
@@ -882,11 +850,11 @@ pub(crate) fn New_GTI(
                             lParse,
                             cs!(c"Cannot use primary array for GTI filter"),
                         );
-                        return -(1);
+                        return None;
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"File extension specifier lacks closing ']'"));
-                    return -(1);
+                    return None;
                 }
             }
             b'+' => {
@@ -900,7 +868,7 @@ pub(crate) fn New_GTI(
                         lParse,
                         cs!(c"Cannot use primary array for GTI filter / GTIFIND"),
                     );
-                    return -(1);
+                    return None;
                 }
             }
             _ => {
@@ -923,7 +891,7 @@ pub(crate) fn New_GTI(
         }
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  If at primary, search for GTI extension  */
@@ -950,7 +918,7 @@ pub(crate) fn New_GTI(
                 if lParse.status == 107 as c_int {
                     fits_parser_yyerror(lParse, cs!(c"GTI extension not found in this file"));
                 }
-                return -(1);
+                return None;
             }
         }
 
@@ -973,7 +941,7 @@ pub(crate) fn New_GTI(
         );
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  Look for TIMEZERO keywords in GTI extension  */
@@ -993,26 +961,107 @@ pub(crate) fn New_GTI(
         /* Read the GTI before building anything: the intervals used to be
         read into a node's buffer, so the node had to exist first. */
         if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
-            return -(1);
+            return None;
         }
         let loaded = if nrows != 0 {
-            match read_gti_intervals(
-                lParse,
-                fptr,
-                startCol,
-                stopCol,
-                nrows,
-                &timeZeroI,
-                &timeZeroF,
-                Op == FuncOp::GtiOver,
-            ) {
-                Some(v) => Some(v),
-                None => return -(1),
+            {
+                let v = read_gti_intervals(
+                    lParse,
+                    fptr,
+                    startCol,
+                    stopCol,
+                    nrows,
+                    &timeZeroI,
+                    &timeZeroF,
+                    Op == FuncOp::GtiOver,
+                )?;
+                Some(v)
             }
         } else {
             None
         };
 
+        if samefile != 0 {
+            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
+        } else {
+            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
+        }
+        Some((nrows, loaded))
+    }
+}
+
+pub(crate) fn New_GTI(
+    lParse: &mut ParseData,
+    Op: FuncOp,
+    fname: *mut c_char,
+    mut Node1: c_int,
+    mut Node2: c_int,
+    start: *mut c_char,
+    stop: *mut c_char,
+) -> c_int {
+    unsafe {
+        let fptr: *mut fitsfile = core::ptr::null_mut();
+        let this_node_idx: usize;
+        let mut i: c_int = 0;
+        let mut n: c_int = 0;
+        let startCol: c_int = 0;
+        let stopCol: c_int = 0;
+        let mut Node0: c_int = 0;
+        let hdutype: c_int = 0;
+        let hdunum: c_int = 0;
+        let evthdu: c_int = 0;
+        let samefile: c_int = 0;
+        let extvers: c_int = 0;
+        let movetotype: c_int = 0;
+        let tstat: c_int = 0;
+        let extname: [c_char; 100] = [0; 100];
+        let nrows: c_long = 0;
+        let timeZeroI: [c_double; 2] = [0.; 2];
+        let timeZeroF: [c_double; 2] = [0.; 2];
+        let dt: c_double = 0.0;
+        let timeSpan: c_double = 0.0;
+        let xcol: [c_char; 20] = [0; 20];
+        let xexpr: [c_char; 20] = [0; 20];
+
+        if (Op == FuncOp::GtiFilt || Op == FuncOp::GtiFind) && Node1 == -99 {
+            if let Some(ParserValue::Column {
+                index,
+                sort: ColumnSort::Numeric,
+            }) = fits_parser_yyGetVariable(lParse, cs!(c"TIME"))
+            {
+                Node1 = New_Column(lParse, index);
+            } else {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
+                );
+                return -(1);
+            }
+        }
+
+        if Op == FuncOp::GtiOver {
+            if Node1 == -99 || Node2 == -99 {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
+                );
+                return -(1);
+            }
+            Node2 = New_Unary(lParse, ValueSort::Double, None, Node2);
+            if Node2 < 0 {
+                return -(1);
+            }
+        }
+
+        Node1 = New_Unary(lParse, ValueSort::Double, None, Node1);
+
+        if Node1 < 0 {
+            return -(1);
+        }
+
+        let Some((nrows, loaded)) = load_gti(lParse, Op, fname, start, stop) else {
+            return -(1);
+        };
         /* the node that holds the intervals, allocated once they exist */
         Node0 = Alloc_Node(lParse);
         if Node0 < 0 {
@@ -1103,11 +1152,6 @@ pub(crate) fn New_GTI(
             }
         }
 
-        if samefile != 0 {
-            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
-        } else {
-            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
-        }
         n
     }
 }
