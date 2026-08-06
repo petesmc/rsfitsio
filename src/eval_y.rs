@@ -1156,6 +1156,60 @@ pub(crate) fn New_GTI(
     }
 }
 
+/// Read a region file, in the coordinate system the X and Y columns describe.
+///
+/// The WCS lookup and the region parse, split out of `New_REG`. It takes the
+/// two column *numbers* rather than the nodes they came from, which is the
+/// only thing that tied this part to the arena.
+pub(crate) fn load_region(
+    lParse: &mut ParseData,
+    fname: *mut c_char,
+    Xcol: c_int,
+    Ycol: c_int,
+) -> Option<Box<SAORegion>> {
+    unsafe {
+        let mut wcs = WCSdata::default();
+        let mut tstat: c_int = 0;
+        wcs.exists = false;
+        if Xcol > 0 && Ycol > 0 {
+            let fptr = lParse.def_fptr.as_mut().unwrap();
+            ffgtcs_safe(
+                fptr,
+                Xcol,
+                Ycol,
+                &mut wcs.xrefval,
+                &mut wcs.yrefval,
+                &mut wcs.xrefpix,
+                &mut wcs.yrefpix,
+                &mut wcs.xinc,
+                &mut wcs.yinc,
+                &mut wcs.rot,
+                &mut (wcs.dtype),
+                &mut tstat,
+            );
+            /* 505 is "this file has no WCS", which is not an error -- the
+            region is then read in pixel coordinates */
+            if tstat == 505 as c_int {
+                wcs.exists = false;
+            } else if tstat != 0 {
+                lParse.status = tstat;
+                return None;
+            } else {
+                wcs.exists = true;
+            }
+        }
+        let fname_slice = CStr::from_ptr(fname);
+        let mut rgn: Option<Box<SAORegion>> = None;
+        fits_read_rgnfile(
+            cast_slice(fname_slice.to_bytes_with_nul()),
+            &mut wcs,
+            &mut rgn,
+            &mut lParse.status,
+        );
+        if lParse.status != 0 { None } else { rgn }
+    }
+}
+
 pub(crate) fn New_REG(
     lParse: &mut ParseData,
     fname: *mut c_char,
@@ -1170,8 +1224,8 @@ pub(crate) fn New_REG(
         let mut Node0: c_int = 0;
         let mut Xcol: c_int = 0;
         let mut Ycol: c_int = 0;
-        let mut tstat: c_int = 0;
-        let mut wcs: WCSdata = WCSdata {
+        let tstat: c_int = 0;
+        let wcs: WCSdata = WCSdata {
             exists: false,
             xrefval: 0.,
             yrefval: 0.,
@@ -1312,49 +1366,11 @@ pub(crate) fn New_REG(
                     return -(1);
                 }
             }
-            wcs.exists = false;
-            if Xcol > 0 && Ycol > 0 {
-                tstat = 0;
-                let fptr = lParse.def_fptr.as_mut().unwrap();
-                ffgtcs_safe(
-                    fptr,
-                    Xcol,
-                    Ycol,
-                    &mut wcs.xrefval,
-                    &mut wcs.yrefval,
-                    &mut wcs.xrefpix,
-                    &mut wcs.yrefpix,
-                    &mut wcs.xinc,
-                    &mut wcs.yinc,
-                    &mut wcs.rot,
-                    &mut (wcs.dtype),
-                    &mut tstat,
-                );
-                if tstat == 505 as c_int {
-                    wcs.exists = false;
-                } else if tstat != 0 {
-                    lParse.status = tstat;
-                    Free_Last_Node(lParse);
-                    return -(1);
-                } else {
-                    wcs.exists = true;
-                }
-            }
-
-            /* the region is allocated by fits_read_rgnfile; hand ownership of
-            it to the node, which frees it again in ffcprs */
-            let fname_slice = CStr::from_ptr(fname);
-            let mut rgn: Option<Box<SAORegion>> = None;
-            fits_read_rgnfile(
-                cast_slice(fname_slice.to_bytes_with_nul()),
-                &mut wcs,
-                &mut rgn,
-                &mut lParse.status,
-            );
-            if lParse.status != 0 {
+            let Some(region) = load_region(lParse, fname, Xcol, Ycol) else {
                 Free_Last_Node(lParse);
                 return -(1);
-            }
+            };
+            let rgn = Some(region);
             let Rgn: *mut SAORegion = match rgn {
                 Some(rgn) => Box::into_raw(rgn),
                 None => ptr::null_mut(),
