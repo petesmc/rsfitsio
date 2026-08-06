@@ -28,6 +28,33 @@ pub(crate) struct ParseError {
     pub(crate) text: Vec<u8>,
 }
 
+/// Push a parser message the way the bison `yyerror` did.
+///
+/// ```c
+/// static void yyerror(yyscan_t scanner, ParseData *lParse, char *s)
+/// {
+///     char msg[80];
+///     strncpy(msg, s, 80);
+///     msg[79] = '\0';
+///     ffpmsg(msg);
+/// }
+/// ```
+///
+/// The fixed buffer means every message the parser raises is cut to 79
+/// characters *before* it reaches the stack, so the longer ones -- the bitwise
+/// and combined-string-length complaints -- lose their tails. `ffpmsg` itself
+/// splits at 80 and would otherwise carry the remainder onto a second entry,
+/// which is why the truncation has to happen here rather than there.
+fn yyerror(msg: &str) {
+    /* byte-wise, as `strncpy` is; the messages are all ASCII literals, and a
+    char boundary is only in question if one ever stops being */
+    let clamped = match msg.char_indices().nth(79) {
+        Some((i, _)) => &msg[..i],
+        None => msg,
+    };
+    ffpmsg_str(clamped);
+}
+
 impl ParseError {
     pub(crate) fn new(kind: ParseErrorKind, at: usize, text: &[u8]) -> Self {
         ParseError {
@@ -52,16 +79,15 @@ impl ParseError {
         let excerpt = String::from_utf8_lossy(&self.text);
         match &self.kind {
             ParseErrorKind::TooLong(what) => {
-                ffpmsg_str(&format!("{what} exceeds maximum length: '{excerpt}...'"));
+                yyerror(&format!("{what} exceeds maximum length: '{excerpt}...'"));
             }
-            ParseErrorKind::Syntax(msg) => {
-                if self.text.is_empty() {
-                    ffpmsg_str(msg);
-                } else {
-                    ffpmsg_str(&format!("{msg} at '{excerpt}'"));
-                }
-            }
-            ParseErrorKind::Semantic(msg) => ffpmsg_str(msg),
+            /* bison's `yyerror` pushed the bare message and nothing else, so
+            no position or excerpt is appended here even though `at` and `text`
+            carry one -- a consumer comparing error text against CFITSIO's must
+            see the same string. The offset is still kept on the error for
+            debugging and for callers that want to point at the token. */
+            ParseErrorKind::Syntax(msg) => yyerror(msg),
+            ParseErrorKind::Semantic(msg) => yyerror(msg),
         }
     }
 }
