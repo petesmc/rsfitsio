@@ -21,6 +21,7 @@ pub(crate) mod error;
 pub(crate) mod grammar;
 pub(crate) mod lexer;
 pub(crate) mod lower;
+pub(crate) mod msg;
 pub(crate) mod resolve;
 pub(crate) mod token;
 
