@@ -1063,3 +1063,52 @@ to the shape of the pipeline for six malformed inputs — and the swap in §10.3
 will revisit that code anyway.
 
 Final state: **1005 of 1011** exact matches, from 155 before any of this.
+
+### 10.7 What the swap still needs
+
+The wording gap is closed: reporting `eval::lower`'s message in place of the
+arena's over the corpus leaves six differences, and they are the same six the
+arena has (§10.6). So the two validators now agree on *what* to reject and on
+what to say about it, which was the last thing blocking the swap.
+
+What remains is structural, and it is one thing: **the GTI and region loads
+still come from the arena.**
+
+`eval::lower` walks the tree with a shared borrow and gets its intervals and
+regions from `Columns`, keyed by the call's byte offset — a table `parser::lower`
+fills in as it builds nodes, by calling `New_GTI`/`New_REG` and then reading the
+loaded data back off the node. The file work needs `&mut ParseData`, so it
+cannot move into the columnar lowering as it stands. It has to become a pass
+over the `Ast`, before either lowering, handing both the same table.
+
+`load_gti` and `load_region` are already extracted for this. The catch is that
+the file read is not all `New_GTI` and `New_REG` do, and a pass that only calls
+those two would silently drop the rest:
+
+* `GTIFILTER`/`GTIFIND` with no time argument resolve the `TIME` column
+  themselves, and report `Could not build TIME column for GTIFILTER/GTIFIND`
+  when there isn't one. The corpus covers this — `GTIFILTER()` on a table with
+  no `TIME` is three of the lines.
+* `GTIOVERLAP` requires both a start and a stop expression, with its own
+  message.
+* `REGFILTER` resolves `X` and `Y` the same way, each with its own message, and
+  when given a fourth argument splits that string on space-or-comma into two
+  column *names* and looks up their numbers with `ffgcno` — the
+  `Could not extract valid pair of column names from REGFILTER` path. Those
+  numbers are what `load_region` needs for the WCS.
+* Both then check that their coordinate arguments have compatible dimensions.
+
+So the pass is not a thin wrapper; it is where those checks move to. The order
+matters too: the loads must happen before validation, because whether
+`GTIFILTER('nosuch.gti')` is an error at all depends on the file opening.
+
+Verify it the way everything else here was verified — build the pass, diff the
+`GtiLoads`/`RegionLoads` it produces against what the arena records for the
+same expression, and only then switch. `EVAL_MSGS=1` (§10.6) already reports
+the columnar lowering's rejection in place of the arena's; once the loads no
+longer depend on the arena having run, the 30 differences that env var still
+shows will go too, since every one of them is the arena's builder having
+already pushed the message that this lowering then pushes again.
+
+After that: `parser::lower`'s node building, `New_*`, `Alloc_Node`, the `Do_*`
+family and `eval_y/func.rs`, which is where the ~9,000 lines go.
