@@ -15,17 +15,41 @@ use crate::c_types::{c_int, c_long};
 use crate::eval_defs::MAXDIMS;
 use crate::eval_defs::{ColumnSort, ParserValue, ValueSort};
 use crate::parser::ast::{Ast, AstKind, BinOp, UnOp};
+use crate::parser::error::ParseError;
 use crate::parser::resolve::Resolutions;
 use crate::parser::token::CallKind;
 
 /// Why an expression could not be lowered to an [`Expr`].
 ///
-/// Carries the construct's name so that a corpus divergence points straight at
-/// what is still missing rather than at "something".
+/// Carries a [`ParseError`], because this lowering is taking over the job of
+/// deciding what the library rejects and of saying what CFITSIO says about it.
+/// A `Syntax` payload is a reason rather than a message -- it reports as the
+/// bare "syntax error" bison gave -- so a site that needs a specific wording
+/// has to say so with [`sem`]. See `parser::msg` and PARSER_MIGRATION.md §10.6.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Unsupported(pub(crate) &'static str);
+pub(crate) struct Unsupported(pub(crate) ParseError);
+
+/// A rejection the C grammar made by having no production for it.
+fn syn(reason: &'static str) -> Unsupported {
+    Unsupported(ParseError::syntax(reason, 0, b""))
+}
+
+/// A rejection a semantic action made, with the wording it used.
+fn sem(msg: &str) -> Unsupported {
+    Unsupported(ParseError::semantic(msg))
+}
 
 type Res = Result<Expr, Unsupported>;
+
+/// The rejection CFITSIO's grammar would give for a call it cannot reduce.
+///
+/// The arguments have to be lowered first: the message names the production
+/// that would have reduced, and that is chosen by their sorts. Reducing the
+/// arguments before the action runs is the C's order too.
+fn no_such_call(name: &[u8], args: &[Expr], cols: &Columns) -> Unsupported {
+    let sorts: Vec<ValueSort> = args.iter().map(|a| a.sort(&|i| cols.sort(i))).collect();
+    Unsupported(crate::parser::msg::unsupported(name, &sorts))
+}
 
 /// The constant an offset names, when it is written plainly enough to fold
 /// here. Anything else -- `INTCOL{1+1}` -- is left to the arena, which already
@@ -272,21 +296,21 @@ fn fold_shape_fn(
     };
     if args.len() != arity {
         /* a wrong arity is the arena's error to report */
-        return Err(Unsupported("shape function with the wrong arity"));
+        return Err(syn("shape function with the wrong arity"));
     }
     let arg = lower(&args[0], names, cols)?;
     /* NAXIS asks about a numeric value's axes; a boolean, string or bit
     string reaches a different list in the arena and is not on it */
     if name == b"NAXIS" && !arg.sort(&|i| cols.sort(i)).is_expr() {
-        return Err(Unsupported("NAXIS of a sort that has no axes"));
+        return Err(syn("NAXIS of a sort that has no axes"));
     }
-    let shape = shape_of(&arg, cols).ok_or(Unsupported("shape function on an unknown shape"))?;
+    let shape = shape_of(&arg, cols).ok_or(syn("shape function on an unknown shape"))?;
 
     let v = match name {
         b"NELEM" => shape.nelem,
         b"NAXIS" => shape.naxis(),
         _ => {
-            let n = const_long(&args[1]).ok_or(Unsupported("NAXES axis is not a constant"))?;
+            let n = const_long(&args[1]).ok_or(syn("NAXES axis is not a constant"))?;
             shape.axis(n)
         }
     };
@@ -325,7 +349,7 @@ fn check_unary_operand(op: UnOp, arg: &Expr, cols: &Columns) -> Result<(), Unsup
     if ok {
         Ok(())
     } else {
-        Err(Unsupported(
+        Err(syn(
             "unary operator applied to a sort it is not defined for",
         ))
     }
@@ -340,29 +364,29 @@ fn check_conditional(
 ) -> Result<(), Unsupported> {
     let sort = |e: &Expr| e.sort(&|i| cols.sort(i));
     if sort(cond) != ValueSort::Boolean {
-        return Err(Unsupported("the condition of '?:' must be boolean"));
+        return Err(syn("the condition of '?:' must be boolean"));
     }
     let (tx, ty) = (sort(then), sort(els));
     /* there is no conditional over bit strings at all */
     if tx == ValueSort::Bits || ty == ValueSort::Bits {
-        return Err(Unsupported("'?:' is not defined for bit strings"));
+        return Err(syn("'?:' is not defined for bit strings"));
     }
     /* a string branch pairs only with another string, and two strings pair
     whatever their widths -- the shape check below is about vectors, where
     `nelem` counts elements rather than characters */
     if tx == ValueSort::String || ty == ValueSort::String {
         if tx != ty {
-            return Err(Unsupported("'?:' branches have incompatible types"));
+            return Err(syn("'?:' branches have incompatible types"));
         }
         /* there is no vector of strings, so a per-element condition has
         nowhere to put its answers */
         if shape_of(cond, cols).is_some_and(|s| s.nelem != 1) {
-            return Err(Unsupported("cannot have a vector string column"));
+            return Err(syn("cannot have a vector string column"));
         }
         return Ok(());
     }
     if !dims_ok(then, els, cols) {
-        return Err(Unsupported("incompatible dimensions in '?:' branches"));
+        return Err(syn("incompatible dimensions in '?:' branches"));
     }
     Ok(())
 }
@@ -407,7 +431,12 @@ fn dims_ok(a: &Expr, b: &Expr, cols: &Columns) -> bool {
 /// `NVALID`, a bit string its own list -- and the numeric ones are what the
 /// rest fall through to. The two-argument numeric functions then require both
 /// arguments to be numbers outright.
-fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), Unsupported> {
+fn check_call_operands(
+    func: Func,
+    name: &[u8],
+    args: &[Expr],
+    cols: &Columns,
+) -> Result<(), Unsupported> {
     let sort = |e: &Expr| e.sort(&|i| cols.sort(i));
     let numeric = |e: &Expr| sort(e).is_expr();
 
@@ -437,29 +466,23 @@ fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), 
         | Func::Median
         | Func::RandomP => args.first().is_some_and(numeric),
         /* two numbers of matching shape, no coercion */
-        Func::Atan2 | Func::Min | Func::Max => {
-            args.iter().all(numeric) && dims_ok(&args[0], &args[1], cols)
-        }
-        /* the geometric predicates likewise pair their coordinates */
+        Func::Atan2 | Func::Min | Func::Max => args.iter().all(numeric),
+        /* the geometric predicates take numbers; their pairwise dimension
+        rule is checked below, where it has a message of its own */
         Func::AngSep | Func::Near | Func::Circle | Func::Box | Func::Ellipse => {
-            args.windows(2).all(|w| dims_ok(&w[0], &w[1], cols))
+            args.iter().all(numeric)
         }
         /* SETNULL's sentinel must be a scalar constant, since it is compared
         against every element */
-        Func::SetNull => {
-            args.iter().all(numeric)
-                && args.first().is_some_and(|a| {
-                    a.is_const() && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
-                })
-        }
+        /* the sorts are the production's business; the sentinel being a
+        scalar constant is the action's, and it says so */
+        Func::SetNull => args.iter().all(numeric),
         /* ARRAY takes something numeric and a *constant* shape: New_Array
         needs the dimensions at parse time to size the result */
-        Func::Array => {
-            args.first().is_some_and(|a| {
-                let t = sort(a);
-                t == ValueSort::Boolean || t.is_expr()
-            }) && args.get(1).is_some_and(|d| const_dims(d).is_some())
-        }
+        Func::Array => args.first().is_some_and(|a| {
+            let t = sort(a);
+            t == ValueSort::Boolean || t.is_expr()
+        }),
         /* The one-argument reductions dispatch on the argument's sort, and
         each sort admits a different set. A boolean can be summed but not
         MIN'd; a string can only be counted; a bit string does all but
@@ -480,15 +503,10 @@ fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), 
         Func::StrStr => args.iter().all(|a| sort(a) == ValueSort::String),
         /* STRMID takes a string and two scalar integers, and its length must
         be a usable width */
+        /* only the sorts here; the scalar-integer and width rules below */
         Func::StrMid => {
             args.first().is_some_and(|a| sort(a) == ValueSort::String)
-                && args[1..].iter().all(|a| {
-                    sort(a) == ValueSort::Long && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
-                })
-                && match args.get(2).and_then(const_expr_long) {
-                    Some(n) => (1..=255).contains(&n),
-                    None => true,
-                }
+                && args[1..].iter().all(|a| sort(a).is_expr())
         }
         /* DEFNULL has no bit-string form, and a string pairs only with a
         string, a boolean only with a boolean */
@@ -498,27 +516,90 @@ fn check_call_operands(func: Func, args: &[Expr], cols: &Columns) -> Result<(), 
                 && tb != ValueSort::Bits
                 && (ta == ValueSort::String) == (tb == ValueSort::String)
                 && (ta == ValueSort::Boolean) == (tb == ValueSort::Boolean)
-                /* two strings pair whatever their widths: the shape check is
-                about vectors, where `nelem` counts elements not characters */
-                && (ta == ValueSort::String || {
-                    /* and the fallback cannot be larger than what it fills */
-                    let (sa, sb) = (shape_of(&args[0], cols), shape_of(&args[1], cols));
-                    dims_ok(&args[0], &args[1], cols)
-                        && match (sa, sb) {
-                            (Some(x), Some(y)) => x.nelem >= y.nelem,
-                            _ => true,
-                        }
-                })
+            /* two strings pair whatever their widths: the shape check is
+            about vectors, where `nelem` counts elements not characters */
+            /* the dimension rule has its own message, below */
         }
         _ => true,
     };
-    if ok {
-        Ok(())
-    } else {
-        Err(Unsupported(
-            "function applied to sorts it is not defined for",
-        ))
+    if !ok {
+        /* no production takes these sorts, so bison never reached an action */
+        return Err(no_such_call(name, args, cols));
     }
+
+    /* Past here the call reduced and the production's own action is running,
+    so each complaint is one CFITSIO makes in its own words. */
+    let dims_msg = |what: &str| {
+        sem(&format!(
+            "Dimensions of {what} arguments are not compatible"
+        ))
+    };
+    match func {
+        Func::Atan2 if !dims_ok(&args[0], &args[1], cols) => {
+            return Err(dims_msg("arctan2"));
+        }
+        Func::Min | Func::Max if !dims_ok(&args[0], &args[1], cols) => {
+            return Err(sem(&format!(
+                "Dimensions of {}(a,b) arguments are not compatible",
+                String::from_utf8_lossy(name).to_lowercase()
+            )));
+        }
+        Func::AngSep | Func::Near | Func::Circle | Func::Box | Func::Ellipse
+            if !args.windows(2).all(|w| dims_ok(&w[0], &w[1], cols)) =>
+        {
+            /* BOX and ELLIPSE share a production and so share its wording */
+            let what = match func {
+                Func::AngSep => "ANGSEP",
+                Func::Near => "NEAR",
+                Func::Circle => "CIRCLE",
+                _ => "BOX or ELLIPSE",
+            };
+            return Err(dims_msg(what));
+        }
+        Func::SetNull
+            if !args.first().is_some_and(|a| {
+                a.is_const() && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
+            }) =>
+        {
+            return Err(sem("SETNULL first argument must be a scalar constant"));
+        }
+        Func::Array if !args.get(1).is_some_and(|d| const_dims(d).is_some()) => {
+            return Err(sem(
+                "ARRAY(V,dims) dims must be either integer or const vector",
+            ));
+        }
+        Func::StrMid => {
+            if !args[1..].iter().all(|a| {
+                a.sort(&|i| cols.sort(i)) == ValueSort::Long
+                    && shape_of(a, cols).is_some_and(|s| s.nelem == 1)
+            }) {
+                return Err(sem(
+                    "When using STRMID(S,P,N), P and N must be integers (and not vector columns)",
+                ));
+            }
+            if let Some(n) = args.get(2).and_then(const_expr_long)
+                && !(1..=255).contains(&n)
+            {
+                return Err(sem("STRMID(S,P,N), N must be 1-255"));
+            }
+        }
+        Func::DefNull => {
+            let sa = args[0].sort(&|i| cols.sort(i));
+            /* two strings pair whatever their widths: the shape check is about
+            vectors, where `nelem` counts elements not characters */
+            if sa != ValueSort::String {
+                let big_enough = match (shape_of(&args[0], cols), shape_of(&args[1], cols)) {
+                    (Some(x), Some(y)) => x.nelem >= y.nelem,
+                    _ => true,
+                };
+                if !dims_ok(&args[0], &args[1], cols) || !big_enough {
+                    return Err(dims_msg("DEFNULL"));
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Reject the operand sorts an operator is not defined for.
@@ -572,16 +653,14 @@ fn check_binary_operands(
         }
     };
     if !ok {
-        return Err(Unsupported(
-            "operator applied to sorts it is not defined for",
-        ));
+        return Err(syn("operator applied to sorts it is not defined for"));
     }
     /* and elementwise operators need operands of matching shape: a 3-vector
     and a 2x3 matrix do not pair. Text is exempt -- its `nelem` is a width. */
     let text = matches!(ta, ValueSort::String | ValueSort::Bits)
         || matches!(tb, ValueSort::String | ValueSort::Bits);
     if !text && !dims_ok(lhs, rhs, cols) {
-        return Err(Unsupported("operands have incompatible dimensions"));
+        return Err(syn("operands have incompatible dimensions"));
     }
     Ok(())
 }
@@ -646,7 +725,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                     .map(|&c| c as u8)
                     .collect(),
             ))),
-            None => Err(Unsupported("unresolved name")),
+            None => Err(syn("unresolved name")),
         },
 
         AstKind::Unary { op, arg } => {
@@ -722,7 +801,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                     lhs: l,
                     rhs: r,
                 }),
-                _ => Err(Unsupported("operator")),
+                _ => Err(syn("operator")),
             }
         }
 
@@ -744,7 +823,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 .iter()
                 .all(|e| e.sort(&|i| cols.sort(i)).is_expr())
             {
-                return Err(Unsupported("range test needs numeric operands"));
+                return Err(syn("range test needs numeric operands"));
             }
             Ok(Expr::Logic {
                 op: Logic::And,
@@ -770,7 +849,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
         so it is folded here rather than evaluated per row. */
         AstKind::Offset { name, off } => {
             let Some(ParserValue::Column { index, sort }) = names.get(&ast.at) else {
-                return Err(Unsupported("row offset of a non-column"));
+                return Err(syn("row offset of a non-column"));
             };
             /* `shifted` reads a text column the same way as a numeric one,
             one entry per row, so a string offset needs nothing extra */
@@ -780,7 +859,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                     col: *index as usize,
                     offset,
                 }),
-                None => Err(Unsupported("row offset that is not a plain constant")),
+                None => Err(syn("row offset that is not a plain constant")),
             }
         }
         /* Subscripting needs the operand's `naxes`, not just its element
@@ -800,25 +879,25 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             is `New_Deref`'s "Cannot index a scalar value" -- while a bit
             string does, one per bit. */
             if lowered_base.sort(&|i| cols.sort(i)) == ValueSort::String {
-                return Err(Unsupported("strings cannot be subscripted"));
+                return Err(syn("strings cannot be subscripted"));
             }
             if shape_of(&lowered_base, cols).is_some_and(|s| s.nelem == 1) {
-                return Err(Unsupported("a scalar has no elements to index"));
+                return Err(syn("a scalar has no elements to index"));
             }
             /* every subscript is a single integer: `New_Deref` refuses an
             array as an index value, and anything that is not a Long */
             for i in idx {
                 let e = lower(i, names, cols)?;
                 if e.sort(&|c| cols.sort(c)) != ValueSort::Long {
-                    return Err(Unsupported("an index must be an integer"));
+                    return Err(syn("an index must be an integer"));
                 }
                 if shape_of(&e, cols).is_some_and(|s| s.nelem != 1) {
-                    return Err(Unsupported("an array cannot be an index"));
+                    return Err(syn("an array cannot be an index"));
                 }
             }
             let naxes: Vec<usize> = match shape_of(&lowered_base, cols) {
                 Some(shape) => shape.naxes.iter().map(|&n| n.max(0) as usize).collect(),
-                None => return Err(Unsupported("subscript of an unknown shape")),
+                None => return Err(syn("subscript of an unknown shape")),
             };
             /* One index against a shape with more axes selects a slice
             rather than an element -- the engine only does that for a constant
@@ -826,7 +905,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             handles, so anything else still falls back. */
             if naxes.len() != idx.len() {
                 if idx.len() != 1 || naxes.is_empty() {
-                    return Err(Unsupported("subscript slice"));
+                    return Err(syn("subscript slice"));
                 }
                 /* the index need not be constant: `MATRIX[INTCOL]` picks a
                 different slice per row, which `Do_Deref` handles in its own
@@ -858,7 +937,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 !matches!(e.sort(&|i| cols.sort(i)), ValueSort::Boolean)
                     && !e.sort(&|i| cols.sort(i)).is_expr()
             }) {
-                return Err(Unsupported("vector elements must be numeric or boolean"));
+                return Err(syn("vector elements must be numeric or boolean"));
             }
             Ok(Expr::Vector(lowered))
         }
@@ -870,7 +949,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             again. GTIOVERLAP and the region filters are not ported yet. */
             if *kind == CallKind::RegFilter {
                 let Some(region) = cols.regions.get(&ast.at) else {
-                    return Err(Unsupported("REGFILTER with no recorded region"));
+                    return Err(syn("REGFILTER with no recorded region"));
                 };
                 /* the coordinates are the second and third arguments when
                 given, and the X and Y columns New_REG resolved otherwise */
@@ -880,7 +959,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                     columns New_REG resolved */
                     _ => match (region.x_col, region.y_col) {
                         (Some(x), Some(y)) => (Expr::Column(x as usize), Expr::Column(y as usize)),
-                        _ => return Err(Unsupported("REGFILTER with no coordinate columns")),
+                        _ => return Err(syn("REGFILTER with no coordinate columns")),
                     },
                 };
                 return Ok(Expr::RegFilter {
@@ -891,10 +970,10 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
             if *kind == CallKind::GtiOverlap {
                 let Some(data) = cols.gti.get(&ast.at) else {
-                    return Err(Unsupported("GTI call with no recorded load"));
+                    return Err(syn("GTI call with no recorded load"));
                 };
                 if args.len() < 3 {
-                    return Err(Unsupported("GTIOVERLAP with too few arguments"));
+                    return Err(syn("GTIOVERLAP with too few arguments"));
                 }
                 return Ok(Expr::GtiOverlap {
                     start: Box::new(lower(&args[1], names, cols)?),
@@ -908,7 +987,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
             if matches!(kind, CallKind::GtiFilter | CallKind::GtiFind) {
                 let Some(data) = cols.gti.get(&ast.at) else {
-                    return Err(Unsupported("GTI call with no recorded load"));
+                    return Err(syn("GTI call with no recorded load"));
                 };
                 /* the time is the second argument when there is one, and the
                 column `New_GTI` resolved otherwise */
@@ -916,7 +995,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                     Some(a) => lower(a, names, cols)?,
                     None => match data.time_col {
                         Some(c) => Expr::Column(c as usize),
-                        None => return Err(Unsupported("GTI call with no time column")),
+                        None => return Err(syn("GTI call with no time column")),
                     },
                 };
                 return Ok(Expr::Gti {
@@ -938,7 +1017,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 /* STRSTR is the only IFunction */
                 || *kind == CallKind::IFunction;
             if !admissible {
-                return Err(Unsupported("function call"));
+                return Err(syn("function call"));
             }
             /* The shape functions are answers about the expression, not about
             the data, so they fold to a constant here exactly as the arena
@@ -954,7 +1033,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 if arg.sort(&|i| cols.sort(i)) == ValueSort::Bits {
                     let width = shape_of(&arg, cols)
                         .map(|s| s.nelem)
-                        .ok_or(Unsupported("NVALID over an unknown shape"))?;
+                        .ok_or(syn("NVALID over an unknown shape"))?;
                     return Ok(Expr::Literal(Scalar::Long(width)));
                 }
             }
@@ -962,7 +1041,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             batches, so each gets a slot rather than being a plain kernel */
             if matches!(name.as_slice(), b"ACCUM" | b"SEQDIFF") {
                 if args.len() != 1 {
-                    return Err(Unsupported("ACCUM with the wrong arity"));
+                    return Err(syn("ACCUM with the wrong arity"));
                 }
                 let arg = lower(&args[0], names, cols)?;
                 /* the boolean and bit-string forms take a different path in
@@ -970,7 +1049,7 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 they are left with the arena */
                 let sort = arg.sort(&|i| cols.sort(i));
                 if !matches!(sort, ValueSort::Long | ValueSort::Double) {
-                    return Err(Unsupported("ACCUM over a non-numeric argument"));
+                    return Err(syn("ACCUM over a non-numeric argument"));
                 }
                 let id = cols.accums.get();
                 cols.accums.set(id + 1);
@@ -982,6 +1061,13 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             }
             /* MIN and MAX map elementwise with two arguments and reduce with
             one, so the arity picks the kernel */
+            /* before deciding whether the call is admissible at all, since
+            what CFITSIO says about one that is not depends on the sorts of its
+            arguments -- and since an error inside an argument surfaces first,
+            as it does in the C */
+            let lowered: Result<Vec<Expr>, Unsupported> =
+                args.iter().map(|a| lower(a, names, cols)).collect();
+            let lowered = lowered?;
             let (func, arity) = match (name.as_slice(), args.len()) {
                 (b"MIN", 1) => (Func::Min1, 1),
                 (b"MAX", 1) => (Func::Max1, 1),
@@ -991,16 +1077,13 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 (b"RANDOMN", n @ (0 | 1)) => (Func::RandomN, n),
                 _ => match func_of(name) {
                     Some(pair) => pair,
-                    None => return Err(Unsupported("function call")),
+                    None => return Err(no_such_call(name, &lowered, cols)),
                 },
             };
             if args.len() != arity {
-                return Err(Unsupported("function call"));
+                return Err(no_such_call(name, &lowered, cols));
             }
-            let lowered: Result<Vec<Expr>, Unsupported> =
-                args.iter().map(|a| lower(a, names, cols)).collect();
-            let lowered = lowered?;
-            check_call_operands(func, &lowered, cols)?;
+            check_call_operands(func, name, &lowered, cols)?;
             let lowered: Result<Vec<Expr>, Unsupported> = Ok(lowered);
             Ok(Expr::Call {
                 func,
@@ -1436,11 +1519,11 @@ mod tests {
     fn a_load_bearing_call_without_its_load_says_so() {
         assert_eq!(
             try_lower("REGFILTER('x.reg', 1, 2)"),
-            Err(Unsupported("REGFILTER with no recorded region"))
+            Err(syn("REGFILTER with no recorded region"))
         );
         assert_eq!(
             try_lower("GTIOVERLAP('f', 1, 2)"),
-            Err(Unsupported("GTI call with no recorded load"))
+            Err(syn("GTI call with no recorded load"))
         );
     }
 
@@ -1449,7 +1532,7 @@ mod tests {
         /* the fallback is per expression, not per node */
         assert_eq!(
             try_lower("1 + REGFILTER('x.reg', 1, 2)"),
-            Err(Unsupported("REGFILTER with no recorded region"))
+            Err(syn("REGFILTER with no recorded region"))
         );
     }
 }
