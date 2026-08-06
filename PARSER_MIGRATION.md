@@ -847,14 +847,37 @@ the errors callers see, and still builds the arena. Making `eval::lower` the
 validator needs three more things:
 
 1. **Errors with positions.** `eval::lower` returns `Unsupported(&'static str)`;
-   callers need a `ParseError` with a position and the offending text. This is
-   also where the 42 messages either get reproduced or deliberately changed --
-   the corpus only records `ERR 431`, so it will not notice either way, but
-   users see the text. That is a decision, not a transcription.
+   callers need a `ParseError` with a position and the offending text. See
+   below for what that involves -- the corpus only records `ERR 431`, so it
+   cannot check any of it.
 2. **The GTI and region loads.** `New_GTI` and `New_REG` read their files while
    building nodes, and `New_GTI` folds constants through `DoOp` on the way out,
    so the loading is not a clean lift.
 3. **The deletion**, once nothing else needs a node.
+
+#### The messages, derived rather than read
+
+Running both lowerings over the corpus and pairing each rejection with the
+arena's message gives the mapping directly. It is smaller than the count of
+messages suggests: eleven of the columnar lowering's reasons are already
+one-to-one with an arena message, and the rest are **formatted, not
+enumerated** --
+
+* `Function({tag}) not supported: {NAME}(` where `{tag}` names what the check
+  *required*, not what it was given: `require_expr` always says `expr`, which
+  is why `MIN(BITS,BOOLCOL)` reports `Function(expr) not supported: MIN(`;
+* `operands of '{op}' have incompatible types`, over the operator's spelling.
+
+So it is roughly six formatters plus the one-to-one cases, not eighty-six hand
+mappings. What it does need is splitting the columnar checks to the arena's
+granularity, since one of them currently stands for eleven arena messages and
+another for eighty-six.
+
+**One message should not be reproduced.** `Couldn't build node structure: out
+of memory?` is what the arena says for a subscript slice, for indexing a
+scalar, for a non-constant `ARRAY` shape and for several other real rejections.
+It is not an allocation failure and never was; reproducing it verbatim would
+carry a misleading message forward for no compatibility gain.
 
 Three of the rules were not what the arena's error message said, which is worth
 remembering when reading the rest: the 19 "Couldn't build node structure: out
