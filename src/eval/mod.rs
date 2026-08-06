@@ -6,8 +6,8 @@
 //! with its own null mask, and each operation is a kernel over two of them.
 //!
 //! There is no longer a `Node` arena, and no fallback: every expression the
-//! library accepts is lowered here, and [`lower`] is what decides whether it
-//! is accepted at all.
+//! library accepts is lowered here, and [`lower::lower`] is what decides
+//! whether it is accepted at all.
 
 pub(crate) mod bits;
 pub(crate) mod bridge;
