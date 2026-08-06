@@ -52,9 +52,23 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
 
     /// Report a failure. A status already set by `getData` or by one of the
     /// node builders wins; only a pure syntax error becomes `PARSE_SYNTAX_ERR`.
+    ///
+    /// Only the *status* is conditional. `yyerror` pushed its message every
+    /// time and guarded nothing but the assignment:
+    ///
+    /// ```c
+    /// if( !lParse->status ) lParse->status = PARSE_SYNTAX_ERR;
+    /// ...
+    /// ffpmsg(msg);
+    /// ```
+    ///
+    /// so an expression that both fails to resolve a name and fails to parse --
+    /// `1 + NOSUCHCOL`, or `0x`, whose trailing `x` lexes as a name -- reports
+    /// the resolver's two messages *and* a syntax error. Suppressing the second
+    /// dropped a message CFITSIO's callers can see.
     fn fail(lParse: &mut ParseData, e: error::ParseError) -> c_int {
+        e.report();
         if lParse.status == 0 {
-            e.report();
             lParse.status = PARSE_SYNTAX_ERR;
         }
         0

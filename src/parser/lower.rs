@@ -98,8 +98,10 @@ fn unsupported(name: &[u8], args: &[ValueSort]) -> ParseError {
 
     if matches!(name, b"BOX" | b"CIRCLE" | b"ELLIPSE" | b"NEAR" | b"ISNULL") {
         return match args.len() {
-            /* one argument of any sort has a production; each says the same */
-            1 => semantic("Boolean Function(expr) not supported"),
+            /* `BFUNCTION expr ')'`, `BFUNCTION bexpr ')'` and `BFUNCTION
+            sexpr ')'` all exist and all say the same thing; there is no
+            `BFUNCTION bits ')'`, so ISNULL(BITS) is a syntax error */
+            1 if args[0] != ValueSort::Bits => semantic("Boolean Function(expr) not supported"),
             3 | 5 if all_num => semantic("Boolean Function not supported"),
             7 if all_num => semantic("SAO Image Function not supported"),
             _ => syntax(),
@@ -203,9 +205,10 @@ impl Lowerer<'_> {
     /// `TEST(a)`: a negative index means the builder failed.
     fn test(&self, n: NodeId) -> LRes {
         if n < 0 {
-            Err(ParseError::semantic(
-                "Couldn't build node structure: out of memory?",
-            ))
+            /* `#define TEST(a) if( (a)<0 ) YYERROR` -- silent. Whichever
+            builder returned the negative index has already pushed its own
+            message and set the status. */
+            Err(ParseError::aborted())
         } else {
             Ok(n)
         }
@@ -404,6 +407,12 @@ impl Lowerer<'_> {
             AstKind::Offset { name, off } => {
                 let col = self.resolve_column(name, a.at)?;
                 let o = self.lower(off)?;
+                /* `COLUMN '{' expr '}'` takes an `expr`, so a boolean or string
+                offset matches no production; the action's own complaint below
+                is only ever about a number that is the wrong kind of number */
+                if !is_expr(self.ntype(o)) {
+                    return Err(ParseError::syntax("offset must be numeric", a.at, b"{"));
+                }
                 if self.ntype(o) != ValueSort::Long || !self.is_const(o) {
                     return Err(ParseError::semantic(
                         "Offset argument must be a constant integer",
@@ -476,7 +485,13 @@ impl Lowerer<'_> {
         let mut h = self.lower(hi)?;
         for n in [v, l, h] {
             if !is_expr(self.ntype(n)) {
-                return Err(ParseError::semantic("range test needs numeric operands"));
+                /* `bexpr: expr '=' expr ':' expr` is the only range production,
+                so a non-numeric operand matches nothing and bison reports it */
+                return Err(ParseError::syntax(
+                    "range test needs numeric operands",
+                    0,
+                    b"",
+                ));
             }
         }
         self.promote(&mut v, &mut l);
@@ -501,6 +516,17 @@ impl Lowerer<'_> {
         let mut dims = [0 as NodeId; 5];
         for (slot, e) in dims.iter_mut().zip(idx) {
             *slot = self.lower(e)?;
+            /* every subscript production takes `expr` in the index positions,
+            so a boolean or string index matches none of them and never reaches
+            New_Deref -- which is what reports "Index value must be an integer
+            type", and only ever sees the numbers that did parse */
+            if !is_expr(self.ntype(*slot)) {
+                return Err(ParseError::syntax(
+                    "subscript index must be numeric",
+                    at,
+                    b"[",
+                ));
+            }
         }
         let r = New_Deref(
             self.p,
@@ -961,28 +987,23 @@ impl Lowerer<'_> {
                     }
                 }
             }
-            (b"NEAR", 3) => self.region_fct(FuncOp::Near, &ns, "NEAR"),
-            (b"CIRCLE", 5) => self.region_fct(FuncOp::Circle, &ns, "CIRCLE"),
-            (b"BOX", 7) => self.region_fct(FuncOp::Box, &ns, "BOX or ELLIPSE"),
-            (b"ELLIPSE", 7) => self.region_fct(FuncOp::Ellipse, &ns, "BOX or ELLIPSE"),
-            _ => Err(ParseError::syntax(
-                format!(
-                    "Boolean Function {}() with {} argument(s) not supported",
-                    String::from_utf8_lossy(name),
-                    ns.len()
-                ),
-                at,
-                name,
-            )),
+            (b"NEAR", 3) => self.region_fct(FuncOp::Near, &ns, name, "NEAR"),
+            (b"CIRCLE", 5) => self.region_fct(FuncOp::Circle, &ns, name, "CIRCLE"),
+            (b"BOX", 7) => self.region_fct(FuncOp::Box, &ns, name, "BOX or ELLIPSE"),
+            (b"ELLIPSE", 7) => self.region_fct(FuncOp::Ellipse, &ns, name, "BOX or ELLIPSE"),
+            _ => {
+                let ts = self.sorts(&ns);
+                Err(unsupported(name, &ts))
+            }
         }
     }
 
     /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to ValueSort::Double, all
     /// dimensions pairwise compatible, then propagate the largest shape.
-    fn region_fct(&mut self, op: FuncOp, ns: &[NodeId], what: &str) -> LRes {
+    fn region_fct(&mut self, op: FuncOp, ns: &[NodeId], name: &[u8], what: &str) -> LRes {
         let ts = self.sorts(ns);
         for &n in ns {
-            self.require_expr(n, what.as_bytes(), &ts)?;
+            self.require_expr(n, name, &ts)?;
         }
         let ds: Vec<NodeId> = ns.iter().map(|&n| self.as_double(n)).collect();
         for w in ds.windows(2) {
@@ -1019,15 +1040,10 @@ impl Lowerer<'_> {
             2 => self.func2(name, ns[0], ns[1]),
             3 => self.func3(name, ns[0], ns[1], ns[2]),
             4 => self.func4(name, &ns),
-            _ => Err(ParseError::syntax(
-                format!(
-                    "{}() with {} arguments is not supported",
-                    String::from_utf8_lossy(name),
-                    ns.len()
-                ),
-                at,
-                name,
-            )),
+            _ => {
+                let ts = self.sorts(&ns);
+                Err(unsupported(name, &ts))
+            }
         }
     }
 

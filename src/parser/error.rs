@@ -13,10 +13,29 @@ pub(crate) enum ParseErrorKind {
     /// matching the wording of the C messages ("Bit string", "Variable", …).
     TooLong(String),
     /// The token stream did not match the grammar.
+    ///
+    /// The payload is a *reason*, for whoever is reading this code or a
+    /// backtrace -- it is deliberately not what gets reported. Bison had no
+    /// such detail to give: a token sequence with no production simply failed,
+    /// and `yyerror` pushed the bare string "syntax error". Since the nom front
+    /// end knows exactly what it wanted and where, it would be easy to say so,
+    /// but a caller diffing rsfitsio's error stack against CFITSIO's has to see
+    /// the same text. See `report`.
     Syntax(String),
     /// The expression parsed but is not well typed, or violates one of the
     /// structural constraints in `PARSER_SPEC.md` §3.4.
     Semantic(String),
+    /// A node builder failed and has already said why.
+    ///
+    /// `#define TEST(a) if( (a)<0 ) YYERROR` -- the check the C makes after
+    /// almost every `New_*` call is silent. The builder pushed its own message
+    /// and set the status; `YYERROR` only unwinds. So `INTCOL[1]` reports
+    /// "Cannot index a scalar value" and nothing after it.
+    ///
+    /// "Couldn't build node structure: out of memory?" is *not* this case: it
+    /// belongs to the top-level `line:` rule, for a node that came back
+    /// negative without any production having tested it.
+    Aborted,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +93,11 @@ impl ParseError {
         Self::new(ParseErrorKind::Semantic(msg.into()), 0, b"")
     }
 
+    /// A builder failed having already reported. See [`ParseErrorKind::Aborted`].
+    pub(crate) fn aborted() -> Self {
+        Self::new(ParseErrorKind::Aborted, 0, b"")
+    }
+
     /// Render to the CFITSIO error stack, the way the C did.
     pub(crate) fn report(&self) {
         let excerpt = String::from_utf8_lossy(&self.text);
@@ -81,13 +105,16 @@ impl ParseError {
             ParseErrorKind::TooLong(what) => {
                 yyerror(&format!("{what} exceeds maximum length: '{excerpt}...'"));
             }
-            /* bison's `yyerror` pushed the bare message and nothing else, so
-            no position or excerpt is appended here even though `at` and `text`
-            carry one -- a consumer comparing error text against CFITSIO's must
-            see the same string. The offset is still kept on the error for
-            debugging and for callers that want to point at the token. */
-            ParseErrorKind::Syntax(msg) => yyerror(msg),
+            /* Everything the grammar rejects reaches the stack as this one
+            string, whatever the `Syntax` payload says and wherever it was
+            raised -- see the variant's own note. No position or excerpt is
+            appended either, though `at` and `text` carry one, because bison
+            pushed the bare message and nothing else. Both are still kept on the
+            error for debugging and for callers that want to point at a token. */
+            ParseErrorKind::Syntax(_) => yyerror("syntax error"),
             ParseErrorKind::Semantic(msg) => yyerror(msg),
+            /* the builder has already reported; TEST() adds nothing */
+            ParseErrorKind::Aborted => {}
         }
     }
 }
