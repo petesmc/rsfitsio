@@ -61,13 +61,74 @@ fn cstr(b: &[u8]) -> Vec<c_char> {
 
 /// A function called with argument sorts it has no form for.
 ///
-/// The wording is CFITSIO's, which names the sorts and *not* the function --
-/// `Function(bool) not supported`, never `... : SIN(`. Checked against the
-/// library with `ORACLE_MSGS=1 tests/oracle/oracle`. `name` is kept for the
-/// caller's own use rather than the message.
-fn unsupported(what: &str, name: &[u8]) -> ParseError {
-    let _ = name;
-    ParseError::semantic(format!("Function({what}) not supported"))
+/// CFITSIO's grammar is type-stratified -- `expr`, `bexpr`, `sexpr` and `bits`
+/// are separate nonterminals -- so a call is a production over a *fixed* list
+/// of argument sorts, and the message is a literal attached to whichever
+/// production reduced. Two consequences, both of which the wording here has to
+/// follow:
+///
+///   * The message names the production, not the arguments as written. That is
+///     why `MIN(BOOLCOL,BOOLCOL)` reports `Boolean Function(expr,expr)` and not
+///     anything mentioning `bool` -- it reduced by `bexpr: FUNCTION bexpr ','
+///     bexpr ')'`, whose literal says `expr,expr`.
+///
+///   * A shape with no production at all never reaches an action, so bison
+///     fails first and the message is a bare `syntax error`. `MIN(1,2,3)` is
+///     one of these: there is no three-argument numeric production, though
+///     there is a four-argument one.
+///
+/// Which layer a call belongs to is the lexer's doing, not the grammar's --
+/// `BOX`/`CIRCLE`/`ELLIPSE`/`NEAR`/`ISNULL` come back as `BFUNCTION` and get
+/// the `Boolean Function...` wordings, everything else as `FUNCTION`. That is
+/// why `NEAR(1)` and `NOSUCHFUNC(1)` differ despite the identical shape.
+///
+/// The name itself only decides whether the production's action *accepts* the
+/// call; when it does not, the production's literal is what reaches the stack.
+/// Derived from `eval.y` and checked against the library with
+/// `ORACLE_MSGS=1 tests/oracle/oracle`.
+fn unsupported(name: &[u8], args: &[ValueSort]) -> ParseError {
+    /* no production matched, so bison reported the error itself. The offset is
+    not part of a rendered message -- see `ParseError::report` -- so nothing is
+    lost by not threading one down to here. */
+    let syntax = || ParseError::syntax("syntax error", 0, b"");
+    let semantic = |m: &str| ParseError::semantic(m);
+
+    let num = |t: &ValueSort| is_expr(*t);
+    let all_num = args.iter().all(num);
+
+    if matches!(name, b"BOX" | b"CIRCLE" | b"ELLIPSE" | b"NEAR" | b"ISNULL") {
+        return match args.len() {
+            /* one argument of any sort has a production; each says the same */
+            1 => semantic("Boolean Function(expr) not supported"),
+            3 | 5 if all_num => semantic("Boolean Function not supported"),
+            7 if all_num => semantic("SAO Image Function not supported"),
+            _ => syntax(),
+        };
+    }
+    /* STRSTR is the only IFUNCTION and its one production is always valid, so
+    any shape reaching here matched nothing. */
+    if name == b"STRSTR" {
+        return syntax();
+    }
+
+    match args {
+        [] => semantic("Function() not supported"),
+        [ValueSort::Boolean] => semantic("Function(bool) not supported"),
+        [ValueSort::String] => semantic("Function(str) not supported"),
+        [ValueSort::Bits] => semantic("Function(bits) not supported"),
+        [t] if num(t) => semantic("Function(expr) not supported"),
+        [ValueSort::Boolean, b] if num(b) => semantic("Function(bool,expr) not supported"),
+        [ValueSort::Boolean, ValueSort::Boolean] => {
+            semantic("Boolean Function(expr,expr) not supported")
+        }
+        [ValueSort::String, ValueSort::String] => semantic("Function(string,string) not supported"),
+        [a, b] if num(a) && num(b) => semantic("Function(expr,expr) not supported"),
+        [ValueSort::String, b, c] if num(b) && num(c) => {
+            semantic("Function(string,expr,expr) not supported")
+        }
+        _ if args.len() == 4 && all_num => semantic("Function(expr,expr,expr,expr) not supported"),
+        _ => syntax(),
+    }
 }
 
 /// The good-time intervals a `GTIFILTER`/`GTIFIND` call loaded, and whether
@@ -579,6 +640,15 @@ impl Lowerer<'_> {
                     self.set_size(n, sz);
                     return Ok(n);
                 }
+                /* The C grammar has only `bits OP bits` and `expr OP expr`, so
+                a boolean, string or mixed pair matches no production at all and
+                bison reports a bare syntax error before any action runs. The
+                message below belongs to the numeric rule, which accepts the
+                pair and then rejects it for not being integral -- so it is
+                reached only when both sides are already numbers. */
+                if !is_expr(ta) || !is_expr(tb) {
+                    return Err(self.bad_operands(if op == BinOp::BitAnd { "&" } else { "|" }, at));
+                }
                 if ta != ValueSort::Long || tb != ValueSort::Long {
                     return Err(ParseError::semantic(
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
@@ -586,7 +656,12 @@ impl Lowerer<'_> {
                 }
                 New_BinOp(self.p, ta, a, ch, b)
             }
+            /* `bits` has `&`, `|` and `+` but no XOR, so unlike the two above
+            this one has a numeric production and nothing else. */
             BinOp::BitXor => {
+                if !is_expr(ta) || !is_expr(tb) {
+                    return Err(self.bad_operands("^^", at));
+                }
                 if ta != ValueSort::Long || tb != ValueSort::Long {
                     return Err(ParseError::semantic(
                         "Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed",
@@ -621,24 +696,47 @@ impl Lowerer<'_> {
         self.test(r)
     }
 
+    /// The sorts of a call's arguments, in order.
+    ///
+    /// `unsupported` needs the whole list, not just the argument that failed:
+    /// the message names the production that would have reduced, and that is
+    /// chosen by the full signature.
+    fn sorts(&self, ns: &[NodeId]) -> Vec<ValueSort> {
+        ns.iter().map(|&n| self.ntype(n)).collect()
+    }
+
     /// `FUNCTION expr …` productions accept only `expr` operands. Without this
     /// a string or bit-string argument reaches `Do_Func`, which reads the
     /// buffer through a `*long` and segfaults.
-    fn require_expr(&self, n: NodeId, name: &[u8]) -> Result<(), ParseError> {
+    fn require_expr(&self, n: NodeId, name: &[u8], all: &[ValueSort]) -> Result<(), ParseError> {
         if is_expr(self.ntype(n)) {
             Ok(())
         } else {
-            Err(unsupported("expr", name))
+            Err(unsupported(name, all))
         }
     }
 
     /// `FUNCTION (expr|bexpr) …`: the first argument of AXISELEM / NAXES /
     /// ARRAY may also be boolean.
-    fn require_numeric(&self, n: NodeId, name: &[u8]) -> Result<(), ParseError> {
+    fn require_numeric(&self, n: NodeId, name: &[u8], all: &[ValueSort]) -> Result<(), ParseError> {
         if is_numeric(self.ntype(n)) {
             Ok(())
         } else {
-            Err(unsupported("expr", name))
+            Err(unsupported(name, all))
+        }
+    }
+
+    /// The `expr` positions of the GTI and region calls.
+    ///
+    /// `GTIFILTER STRING ',' expr ')'` and its neighbours are productions in
+    /// their own right, over their own tokens, and none of them carries a
+    /// "not supported" wording -- so an argument of the wrong sort matches no
+    /// production and bison reports a bare syntax error.
+    fn require_expr_arg(&self, n: NodeId) -> Result<(), ParseError> {
+        if is_expr(self.ntype(n)) {
+            Ok(())
+        } else {
+            Err(ParseError::syntax("syntax error", 0, b""))
         }
     }
 
@@ -803,7 +901,7 @@ impl Lowerer<'_> {
                 /* STRSTR(sexpr, sexpr) */
                 let [s, sub] = self.lower_n::<2>(args, name, at)?;
                 if self.ntype(s) != ValueSort::String || self.ntype(sub) != ValueSort::String {
-                    return Err(unsupported("string,string", name));
+                    return Err(unsupported(name, &[self.ntype(s), self.ntype(sub)]));
                 }
                 let n = self.func(Some(ValueSort::Long), FuncOp::StrPos, &[s, sub]);
                 self.test(n)
@@ -853,7 +951,7 @@ impl Lowerer<'_> {
                         self.test(n)
                     }
                     /* spec 3.4 (7): ISNULL is not defined for bit strings */
-                    ValueSort::Bits => Err(unsupported("bits", name)),
+                    ValueSort::Bits => Err(unsupported(name, &[ValueSort::Bits])),
                     _ => {
                         let n = self.func(None, FuncOp::IsNull, &[a]);
                         let n = self.test(n)?;
@@ -882,8 +980,9 @@ impl Lowerer<'_> {
     /// `NEAR`, `CIRCLE`, `BOX` and `ELLIPSE`: all arguments to ValueSort::Double, all
     /// dimensions pairwise compatible, then propagate the largest shape.
     fn region_fct(&mut self, op: FuncOp, ns: &[NodeId], what: &str) -> LRes {
+        let ts = self.sorts(ns);
         for &n in ns {
-            self.require_expr(n, what.as_bytes())?;
+            self.require_expr(n, what.as_bytes(), &ts)?;
         }
         let ds: Vec<NodeId> = ns.iter().map(|&n| self.as_double(n)).collect();
         for w in ds.windows(2) {
@@ -914,7 +1013,7 @@ impl Lowerer<'_> {
                     let n = self.func(Some(ValueSort::Double), FuncOp::GasRnd, &[]);
                     self.test(n)
                 }
-                _ => Err(unsupported("", name)),
+                _ => Err(unsupported(name, &[])),
             },
             1 => self.func1(name, ns[0]),
             2 => self.func2(name, ns[0], ns[1]),
@@ -952,14 +1051,14 @@ impl Lowerer<'_> {
                 /* `FUNCTION bexpr ')'` supports only SUM, NELEM and ACCUM.
                 Falling through to the numeric list would accept `ABS(BOOLCOL)`
                 and then hand Do_Func a char buffer to read through a *long. */
-                _ => Err(unsupported("bool", name)),
+                _ => Err(unsupported(name, &[t])),
             },
             ValueSort::String => match name {
                 b"NVALID" => {
                     let n = self.func(Some(ValueSort::Long), FuncOp::NonNull, &[a]);
                     self.test(n)
                 }
-                _ => Err(unsupported("str", name)),
+                _ => Err(unsupported(name, &[t])),
             },
             ValueSort::Bits => match name {
                 /* bit arrays have no NULLs, so NVALID is the element count */
@@ -985,7 +1084,7 @@ impl Lowerer<'_> {
                     Ok(n)
                 }
                 b"ACCUM" => self.accum(a, ValueSort::Long, OpCode::Accum),
-                _ => Err(unsupported("bits", name)),
+                _ => Err(unsupported(name, &[t])),
             },
             _ => self.func1_numeric(name, a),
         }
@@ -1082,7 +1181,7 @@ impl Lowerer<'_> {
                         self.set_ntype(n, ValueSort::Long);
                         return Ok(n);
                     }
-                    _ => return Err(unsupported("expr", name)),
+                    _ => return Err(unsupported(name, &[t])),
                 };
                 self.func(None, op, &[d])
             }
@@ -1104,7 +1203,7 @@ impl Lowerer<'_> {
                 }
                 if ta == ValueSort::String || tb == ValueSort::String {
                     if ta != tb {
-                        return Err(unsupported("string,expr", name));
+                        return Err(unsupported(name, &[ta, tb]));
                     }
                     let out = self.size(a).max(self.size(b)) as c_int;
                     let n = self.func_size(None, FuncOp::DefNull, &[a, b], out);
@@ -1115,12 +1214,12 @@ impl Lowerer<'_> {
                     }
                     return Ok(n);
                 }
-                self.require_numeric(a, name)?;
-                self.require_numeric(b, name)?;
+                self.require_numeric(a, name, &[ta, tb])?;
+                self.require_numeric(b, name, &[ta, tb])?;
                 /* `FUNCTION expr ',' expr` and `FUNCTION bexpr ',' bexpr` are
                 separate productions; there is no mixed form */
                 if (ta == ValueSort::Boolean) != (tb == ValueSort::Boolean) {
-                    return Err(unsupported("expr,expr", name));
+                    return Err(unsupported(name, &[ta, tb]));
                 }
                 if !(self.size(a) >= self.size(b) && self.dims_ok(a, b)) {
                     return Err(ParseError::semantic(
@@ -1135,8 +1234,8 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"ARCTAN2" => {
-                self.require_expr(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_expr(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 let a = self.as_double(a);
                 let b = self.as_double(b);
                 if !self.dims_ok(a, b) {
@@ -1150,8 +1249,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"MIN" | b"MAX" => {
-                self.require_expr(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_expr(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 let (mut a, mut b) = (a, b);
                 self.promote(&mut a, &mut b);
                 if !self.dims_ok(a, b) {
@@ -1171,8 +1270,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"SETNULL" => {
-                self.require_expr(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_expr(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 if !self.is_const(a) || self.size(a) != 1 {
                     return Err(ParseError::semantic(
                         "SETNULL first argument must be a scalar constant",
@@ -1188,8 +1287,8 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"AXISELEM" => {
-                self.require_numeric(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_numeric(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 if !self.is_const(b) || self.size(b) != 1 {
                     return Err(ParseError::semantic(
                         "AXISELEM second argument must be a scalar constant",
@@ -1206,8 +1305,8 @@ impl Lowerer<'_> {
                 Ok(n)
             }
             b"NAXES" => {
-                self.require_numeric(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_numeric(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 if !self.is_const(b) || self.size(b) != 1 {
                     return Err(ParseError::semantic(
                         "NAXES second argument must be a scalar constant",
@@ -1232,21 +1331,21 @@ impl Lowerer<'_> {
                 self.test(n)
             }
             b"ARRAY" => {
-                self.require_numeric(a, name)?;
-                self.require_expr(b, name)?;
+                self.require_numeric(a, name, &[ta, tb])?;
+                self.require_expr(b, name, &[ta, tb])?;
                 let n = New_Array(self.p, a, b);
                 self.test(n)
             }
-            _ => Err(unsupported("expr,expr", name)),
+            _ => Err(unsupported(name, &[ta, tb])),
         }
     }
 
     fn func3(&mut self, name: &[u8], s: NodeId, pos: NodeId, len: NodeId) -> LRes {
         if name != b"STRMID" {
-            return Err(unsupported("expr,expr,expr", name));
+            return Err(unsupported(name, &self.sorts(&[s, pos, len])));
         }
         if self.ntype(s) != ValueSort::String {
-            return Err(unsupported("string,expr,expr", name));
+            return Err(unsupported(name, &self.sorts(&[s, pos, len])));
         }
         if self.ntype(pos) != ValueSort::Long
             || self.size(pos) != 1
@@ -1272,10 +1371,11 @@ impl Lowerer<'_> {
 
     fn func4(&mut self, name: &[u8], ns: &[NodeId]) -> LRes {
         if name != b"ANGSEP" {
-            return Err(unsupported("expr,expr,expr,expr", name));
+            return Err(unsupported(name, &self.sorts(ns)));
         }
+        let ts = self.sorts(ns);
         for &n in ns {
-            self.require_expr(n, name)?;
+            self.require_expr(n, name, &ts)?;
         }
         let ds: Vec<NodeId> = ns.iter().map(|&n| self.as_double(n)).collect();
         for w in ds.windows(2) {
@@ -1325,12 +1425,12 @@ impl Lowerer<'_> {
             2 => {
                 fname = self.literal_str(&args[0], name)?;
                 node1 = self.lower(&args[1])?;
-                self.require_expr(node1, name)?;
+                self.require_expr_arg(node1)?;
             }
             4 => {
                 fname = self.literal_str(&args[0], name)?;
                 node1 = self.lower(&args[1])?;
-                self.require_expr(node1, name)?;
+                self.require_expr_arg(node1)?;
                 start = self.literal_str(&args[2], name)?;
                 stop = self.literal_str(&args[3], name)?;
             }
@@ -1442,8 +1542,8 @@ impl Lowerer<'_> {
         let mut fname = self.literal_str(&args[0], name)?;
         let n1 = self.lower(&args[1])?;
         let n2 = self.lower(&args[2])?;
-        self.require_expr(n1, name)?;
-        self.require_expr(n2, name)?;
+        self.require_expr_arg(n1)?;
+        self.require_expr_arg(n2)?;
         if args.len() == 5 {
             start = self.literal_str(&args[3], name)?;
             stop = self.literal_str(&args[4], name)?;
@@ -1480,8 +1580,8 @@ impl Lowerer<'_> {
         if args.len() >= 3 {
             nx = self.lower(&args[1])?;
             ny = self.lower(&args[2])?;
-            self.require_expr(nx, name)?;
-            self.require_expr(ny, name)?;
+            self.require_expr_arg(nx)?;
+            self.require_expr_arg(ny)?;
         }
         if args.len() == 4 {
             cols = self.literal_str(&args[3], name)?;
