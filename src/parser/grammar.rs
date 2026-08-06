@@ -411,7 +411,8 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            _ => return Err(self.err("expected an expression")),
+            /* CFITSIO reports bison's own text here; see bad_operands */
+            _ => return Err(self.err("syntax error")),
         };
 
         Ok(Ast::new(kind, at))

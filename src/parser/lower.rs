@@ -59,11 +59,15 @@ fn cstr(b: &[u8]) -> Vec<c_char> {
     v
 }
 
+/// A function called with argument sorts it has no form for.
+///
+/// The wording is CFITSIO's, which names the sorts and *not* the function --
+/// `Function(bool) not supported`, never `... : SIN(`. Checked against the
+/// library with `ORACLE_MSGS=1 tests/oracle/oracle`. `name` is kept for the
+/// caller's own use rather than the message.
 fn unsupported(what: &str, name: &[u8]) -> ParseError {
-    ParseError::semantic(format!(
-        "Function({what}) not supported: {}(",
-        String::from_utf8_lossy(name)
-    ))
+    let _ = name;
+    ParseError::semantic(format!("Function({what}) not supported"))
 }
 
 /// The good-time intervals a `GTIFILTER`/`GTIFIND` call loaded, and whether
@@ -385,11 +389,7 @@ impl Lowerer<'_> {
                 ValueSort::Boolean => New_Unary(self.p, ValueSort::Boolean, Some(OpCode::Not), n),
                 ValueSort::Bits => New_Unary(self.p, ValueSort::Bits, Some(OpCode::Not), n),
                 _ => {
-                    return Err(ParseError::syntax(
-                        "'!' needs a boolean or bit-string operand",
-                        at,
-                        b"!",
-                    ));
+                    return Err(ParseError::syntax("syntax error", at, b"!"));
                 }
             },
             UnOp::IntCast => {
@@ -642,12 +642,20 @@ impl Lowerer<'_> {
         }
     }
 
+    /// Operands an operator is not defined for.
+    ///
+    /// CFITSIO's grammar is type-stratified -- `expr`, `bexpr`, `sexpr` and
+    /// `bits` are separate nonterminals -- so it does not diagnose these as
+    /// type errors at all: no production matches and bison reports `syntax
+    /// error`. Checked against the real library with
+    /// `ORACLE_MSGS=1 tests/oracle/oracle`, which answers `syntax error` to
+    /// `1 && 2`, `'ab' > 1` and every other combination this rejects.
+    ///
+    /// The message a caller reads back with `fits_read_errmsg` is part of the
+    /// library's behaviour, so it says what CFITSIO says. `op` and `at` still
+    /// place the error.
     fn bad_operands(&self, op: &str, at: usize) -> ParseError {
-        ParseError::syntax(
-            format!("operands of '{op}' have incompatible types"),
-            at,
-            op.as_bytes(),
-        )
+        ParseError::syntax("syntax error", at, op.as_bytes())
     }
 
     /// `expr OP expr` with numeric promotion, the shape of most `eval.y`
@@ -721,11 +729,7 @@ impl Lowerer<'_> {
 
         /* spec 3.4 (5): there is no `bexpr '?' bits ':' bits` */
         if tx == ValueSort::Bits || ty == ValueSort::Bits {
-            return Err(ParseError::syntax(
-                "'?:' is not defined for bit strings",
-                at,
-                b"?",
-            ));
+            return Err(ParseError::syntax("syntax error", at, b"?"));
         }
 
         if tx == ValueSort::String || ty == ValueSort::String {
@@ -1094,7 +1098,9 @@ impl Lowerer<'_> {
             b"DEFNULL" => {
                 /* spec 3.4 (8): no DEFNULL over bit strings */
                 if ta == ValueSort::Bits || tb == ValueSort::Bits {
-                    return Err(unsupported("bits,bits", name));
+                    /* CFITSIO's grammar has no `FUNCTION bits ',' bits`
+                    production at all, so it reports a syntax error */
+                    return Err(ParseError::semantic("syntax error"));
                 }
                 if ta == ValueSort::String || tb == ValueSort::String {
                     if ta != tb {
