@@ -816,9 +816,8 @@ pub(crate) fn New_GTI(
         }
 
         Node1 = New_Unary(lParse, ValueSort::Double, None, Node1);
-        Node0 = Alloc_Node(lParse);
 
-        if Node1 < 0 || Node0 < 0 {
+        if Node1 < 0 {
             return -(1);
         }
 
@@ -991,6 +990,35 @@ pub(crate) fn New_GTI(
         } else {
             timeZeroF[1] = 0.0;
         }
+        /* Read the GTI before building anything: the intervals used to be
+        read into a node's buffer, so the node had to exist first. */
+        if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
+            return -(1);
+        }
+        let loaded = if nrows != 0 {
+            match read_gti_intervals(
+                lParse,
+                fptr,
+                startCol,
+                stopCol,
+                nrows,
+                &timeZeroI,
+                &timeZeroF,
+                Op == FuncOp::GtiOver,
+            ) {
+                Some(v) => Some(v),
+                None => return -(1),
+            }
+        } else {
+            None
+        };
+
+        /* the node that holds the intervals, allocated once they exist */
+        Node0 = Alloc_Node(lParse);
+        if Node0 < 0 {
+            return -(1);
+        }
+
         n = Alloc_Node(lParse);
         if n >= 0 {
             this_node_idx = n as usize;
@@ -1039,25 +1067,10 @@ pub(crate) fn New_GTI(
             (lParse.Nodes[that0_idx]).DoOp = None;
             (lParse.Nodes[that0_idx]).value.data = NodeValue::Empty;
 
-            /*  Read in START/STOP times  */
-            if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
-                return -(1);
-            }
+            /*  The intervals were read before any node existed to hold them  */
             (lParse.Nodes[that0_idx]).value.nelem = nrows;
-            if nrows != 0 {
-                let Some((times, ordered)) = read_gti_intervals(
-                    lParse,
-                    fptr,
-                    startCol,
-                    stopCol,
-                    nrows,
-                    &timeZeroI,
-                    &timeZeroF,
-                    Op == FuncOp::GtiOver,
-                ) else {
-                    return -(1);
-                };
-                (lParse.Nodes[that0_idx]).gti_ordered = ordered;
+            if let Some((times, ordered)) = &loaded {
+                (lParse.Nodes[that0_idx]).gti_ordered = *ordered;
                 /* hand the intervals to the node in the layout `Do_GTI` reads:
                 the starts, then the stops */
                 let gtibuf = malloc(
@@ -1075,7 +1088,7 @@ pub(crate) fn New_GTI(
                     lParse.status = 113 as c_int;
                     return -(1);
                 }
-                core::slice::from_raw_parts_mut(dst, times.len()).copy_from_slice(&times);
+                core::slice::from_raw_parts_mut(dst, times.len()).copy_from_slice(times);
             }
             /* If Node1 is constant (gtifilt_fct) or
             Node1 and Node2 are constant (gtiover_fct), then evaluate now */
