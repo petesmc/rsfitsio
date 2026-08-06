@@ -67,7 +67,7 @@ fn cstr(b: &[u8]) -> Vec<c_char> {
 /// them here lets the columnar evaluator use the same load rather than
 /// repeating four hundred lines of HDU navigation, in the same way
 /// [`Resolutions`] hands it the already-resolved column names.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct GtiData {
     pub(crate) start: Vec<c_double>,
     pub(crate) stop: Vec<c_double>,
@@ -85,7 +85,7 @@ pub(crate) type GtiLoads = HashMap<usize, GtiData>;
 pub(crate) type RegionLoads = HashMap<usize, RegionData>;
 
 /// The region a `REGFILTER` call parsed, and the coordinate columns it used.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RegionData {
     pub(crate) region: SAORegion,
     /// The X and Y columns `New_REG` resolved when the call did not name
@@ -98,10 +98,6 @@ pub(crate) struct Lowerer<'a> {
     pub(crate) p: &'a mut ParseData,
     /// Names already resolved by [`super::resolve`], keyed by byte offset.
     pub(crate) names: &'a Resolutions,
-    /// What each GTI call read, for the columnar lowering that follows.
-    pub(crate) gti: GtiLoads,
-    /// And likewise the region each `REGFILTER` parsed.
-    pub(crate) regions: RegionLoads,
 }
 
 impl Lowerer<'_> {
@@ -1398,75 +1394,7 @@ impl Lowerer<'_> {
             stop.as_mut_ptr(),
         );
         let n = self.test(n)?;
-        self.record_gti(n, at);
         Ok(n)
-    }
-
-    /// Copy the region `New_REG` just parsed out of the node holding it.
-    ///
-    /// The node owns a raw `SAORegion` for the arena's own use, so this takes
-    /// a clone rather than the pointer: two owners of one leaked box is not
-    /// worth the saving.
-    fn record_region(&mut self, n: NodeId, at: usize) {
-        let held = &self.p.Nodes[self.p.Nodes[n as usize].SubNodes[0]];
-        let raw = held.value.data.raw().cast::<SAORegion>();
-        if raw.is_null() {
-            return;
-        }
-        let region = unsafe { (*raw).clone() };
-        let node = &self.p.Nodes[n as usize];
-        let x_col = self.p.Nodes[node.SubNodes[1]].operation.column();
-        let y_col = self.p.Nodes[node.SubNodes[2]].operation.column();
-        self.regions.insert(
-            at,
-            RegionData {
-                region,
-                x_col,
-                y_col,
-            },
-        );
-    }
-
-    /// Copy the intervals `New_GTI` just loaded out of the node holding them.
-    ///
-    /// They live in the first subnode as one buffer of `2 * nGTI` doubles:
-    /// the starts, then the stops.
-    fn record_gti(&mut self, n: NodeId, at: usize) {
-        let node = &self.p.Nodes[n as usize];
-        let times = node.SubNodes[0];
-        let held = &self.p.Nodes[times];
-        let count = held.value.nelem.max(0) as usize;
-        let time_col0 = self.p.Nodes[node.SubNodes[1]].operation.column();
-        if count == 0 {
-            self.gti.insert(
-                at,
-                GtiData {
-                    time_col: time_col0,
-                    ..Default::default()
-                },
-            );
-            return;
-        }
-        let ordered = held.gti_ordered;
-        /* the time subnode, for the forms that did not spell one out */
-        let time_col = self.p.Nodes[node.SubNodes[1]].operation.column();
-        let buf = unsafe {
-            let p = held.value.data.dbl_buf();
-            if p.is_null() {
-                &[][..]
-            } else {
-                core::slice::from_raw_parts(p, count * 2)
-            }
-        };
-        self.gti.insert(
-            at,
-            GtiData {
-                start: buf[..count].to_vec(),
-                stop: buf[count..].to_vec(),
-                ordered,
-                time_col,
-            },
-        );
     }
 
     fn lower_gti_overlap(&mut self, name: &[u8], args: &[Ast], at: usize) -> LRes {
@@ -1501,7 +1429,6 @@ impl Lowerer<'_> {
             stop.as_mut_ptr(),
         );
         let n = self.test(n)?;
-        self.record_gti(n, at);
         Ok(n)
     }
 
@@ -1531,7 +1458,6 @@ impl Lowerer<'_> {
         }
         let n = New_REG(self.p, fname.as_mut_ptr(), nx, ny, cols.as_mut_ptr());
         let n = self.test(n)?;
-        self.record_region(n, at);
         Ok(n)
     }
 }

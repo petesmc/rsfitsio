@@ -18,6 +18,7 @@
 
 pub(crate) mod ast;
 pub(crate) mod error;
+pub(crate) mod externals;
 pub(crate) mod grammar;
 pub(crate) mod lexer;
 pub(crate) mod lower;
@@ -101,21 +102,24 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
         return 0;
     };
 
-    /* the borrow of `lParse` ends with the block, so the result and what the
-    GTI calls read on the way come back out together */
-    let (built, gti, regions) = {
+    /* Read the GTI and region files the expression names, before either
+    lowering rather than during one -- see `externals`. The arena builders
+    still read them again for their own nodes; that goes when they do. */
+    let mut gti: lower::GtiLoads = Default::default();
+    let mut regions: lower::RegionLoads = Default::default();
+    if let Err(e) = externals::load_all(lParse, &tree, &names, &mut gti, &mut regions) {
+        /* `fail` leaves a status the loader already set alone -- a file that
+        would not open is a 104, not a syntax error -- and returns the 0 that
+        says so, exactly as a failed builder did */
+        return fail(lParse, e);
+    }
+
+    let built = {
         let mut lowerer = lower::Lowerer {
-            gti: Default::default(),
-            regions: Default::default(),
             p: lParse,
             names: &names,
         };
-        let built = lowerer.lower(&tree);
-        (
-            built,
-            core::mem::take(&mut lowerer.gti),
-            core::mem::take(&mut lowerer.regions),
-        )
+        lowerer.lower(&tree)
     };
     let status = match built {
         Ok(node) => {
