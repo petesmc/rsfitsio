@@ -7,9 +7,8 @@
 //! thing with `ORACLE_MSGS=1 tests/oracle/oracle` -- see PARSER_MIGRATION.md
 //! §10.6.
 //!
-//! They live here rather than in either lowering because both need them: the
-//! arena builder in `parser::lower` while it is still the validator, and the
-//! columnar lowering in `eval::lower` as it takes that job over.
+//! They live here, beside the grammar they describe, rather than in
+//! `eval::lower` which raises them.
 
 use super::error::ParseError;
 use crate::eval_defs::ValueSort;

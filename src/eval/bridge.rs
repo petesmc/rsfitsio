@@ -111,7 +111,7 @@ fn store(lParse: &mut ParseData, value: &ColumnarValue) {
         null_fct is a rows kernel, so downstream expects per-row undef flags
         rather than a flag smuggled into the pointer field. */
         /* A constant node has no row buffer to flag, so an undefined constant
-        keeps the scalar slot the arena already gave it. */
+        keeps the scalar slot the result descriptor gave it. */
         ColumnarValue::Null(_) if lParse.result.operation == Operation::Const => {}
 
         ColumnarValue::Null(_) => {

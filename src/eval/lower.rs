@@ -1,9 +1,10 @@
-//! `Ast` to [`Expr`], for the subset the new evaluator covers.
+//! `Ast` to [`Expr`], and the language's type rules.
 //!
-//! The port is incremental: anything not yet handled returns
-//! [`Unsupported`], and the caller keeps the `Node` arena for that expression.
-//! That is what lets the new evaluator go in behind a flag and grow one kernel
-//! family at a time, with `tests/test_eval_corpus.rs` proving each step.
+//! This is where the sort information `eval.y` encoded in its four
+//! nonterminals lives now. Lowering an expression is also what decides whether
+//! the library accepts it: an [`Unsupported`] here is the rejection a caller
+//! sees, carrying the message CFITSIO would have given -- see `parser::msg`
+//! and PARSER_MIGRATION.md §10.6.
 //!
 //! Name resolution has already happened — `parser::resolve` ran before the
 //! parse — so a name here is a column index or a folded constant.
@@ -52,8 +53,8 @@ fn no_such_call(name: &[u8], args: &[Expr], cols: &Columns) -> Unsupported {
 }
 
 /// The constant an offset names, when it is written plainly enough to fold
-/// here. Anything else -- `INTCOL{1+1}` -- is left to the arena, which already
-/// folded it at parse time.
+/// here. `eval.y` folded these while building nodes; the same folding happens
+/// here so that `INTCOL{1+1}` is still an offset of two.
 fn const_long(ast: &Ast) -> Option<c_long> {
     match &ast.kind {
         AstKind::Long(v) => Some(*v),
@@ -248,7 +249,7 @@ pub(crate) fn shape_of(e: &Expr, cols: &Columns) -> Option<Shape> {
                 naxes: shape_of(args.first()?, cols)?.naxes,
             },
             /* STRMID's result is as wide as the length it was given, when
-            that is constant; otherwise the arena keeps the source's width */
+            that is constant; otherwise it keeps the source's width */
             Func::StrMid => {
                 let src = shape_of(args.first()?, cols)?;
                 let width = args

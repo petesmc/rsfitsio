@@ -472,10 +472,8 @@ pub(crate) fn load_region(
 
 /// Evaluate the parsed expression for one batch of rows.
 ///
-/// The columnar evaluator in `crate::eval` handles this unless it declined the
-/// expression at lowering or the batch at evaluation, in which case the `Node`
-/// arena walk below still does. Either way the result is written into the
-/// result node, so everything downstream is unchanged. See
+/// The columnar evaluator in `crate::eval` does all of this; the result is
+/// written into the result node, so everything downstream is unchanged. See
 /// `PARSER_MIGRATION.md` section 10.
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
     if lParse.expr_tree.is_some() {

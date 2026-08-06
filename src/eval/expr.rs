@@ -297,8 +297,8 @@ pub(crate) struct Batch {
     pub(crate) columns: Vec<ColumnBatch>,
     pub(crate) n_rows: c_long,
     /// The first row of the chunk the columns were loaded from, and how many
-    /// it holds. A row offset can reach anywhere inside this window; past it
-    /// the engine has to reload, which the arena still does.
+    /// it holds. A row offset can reach anywhere inside this window, and the
+    /// lowering asks for enough rows up front that it never needs more.
     pub(crate) first_data_row: c_long,
     pub(crate) n_data_rows: c_long,
     /// Rows in the whole table, which bounds what a row offset can name at

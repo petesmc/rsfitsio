@@ -3,15 +3,12 @@
 //! These are the two places where parsing an expression touches the filesystem:
 //! a good-time-interval file and an SAO region file, both named by a literal
 //! string inside the expression. `eval.y` did the reading inside `New_GTI` and
-//! `New_REG`, as the arena was built, and `parser::lower` still gets its
-//! [`GtiLoads`] and [`RegionLoads`] by calling those and reading the result
-//! back off the node.
+//! `New_REG`, while it built the nodes for the call.
 //!
-//! That is the last thing tying the columnar lowering to the arena. It walks
-//! the tree with a shared borrow and the file work needs `&mut ParseData`, so
-//! the read has to happen before either lowering rather than during one. Doing
-//! it here, as a pass over the `Ast`, gives both the same table -- keyed by the
-//! call's byte offset, which is what `Columns` already looks them up by.
+//! It happens here instead, as a pass over the `Ast` before lowering, because
+//! the lowering walks the tree with a shared borrow while the file work needs
+//! `&mut ParseData`. The table is keyed by the call's byte offset, which is
+//! what `eval::lower`'s `Columns` looks them up by.
 //!
 //! The file read is not all `New_GTI` and `New_REG` do, and the rest has to
 //! come along or it is silently lost: resolving `TIME`, `X` and `Y` when the

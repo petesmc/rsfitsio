@@ -1,17 +1,13 @@
-//! The replacement expression evaluator.
+//! The expression evaluator.
 //!
-//! `PARSER_MIGRATION.md` §9 sets out the plan: the parser now hands back an
-//! `Ast`, which gives a seam between the front end and the `Node` arena that
-//! `eval_y` still evaluates. This module is the second half of that migration —
-//! a value model where a batch of rows is an owned array with its own null
-//! mask, and each operation is a kernel over two of them.
+//! `PARSER_MIGRATION.md` §9 and §10 set out the migration this completes. The
+//! parser hands back an `Ast`; this module lowers it to an [`expr::Expr`] and
+//! evaluates that -- a value model where a batch of rows is an owned array
+//! with its own null mask, and each operation is a kernel over two of them.
 //!
-//! **This is the evaluator.** Every expression the parser accepts is lowered
-//! here and evaluated here, unless it hits one of the cases the lowering
-//! declines -- a bit-valued result, a random generator, a row offset reaching
-//! outside the loaded chunk -- which still go to the `Node` arena in `eval_y`.
-//! `PARSER_MIGRATION.md` section 10.3 lists them and says why each is where it
-//! is.
+//! There is no longer a `Node` arena, and no fallback: every expression the
+//! library accepts is lowered here, and [`lower`] is what decides whether it
+//! is accepted at all.
 
 pub(crate) mod bits;
 pub(crate) mod bridge;

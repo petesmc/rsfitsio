@@ -816,97 +816,32 @@ evaluated -- datatype, `nelem`, `naxis`, `naxes`, whether it is constant, and a
 constant's value -- comes from `ResultInfo` and `Expr::fold`, computed from the
 tree at parse time.
 
-#### What is still built, and why
+#### The arena is gone
 
-The arena is still *constructed*, and deleting that is a separate project. It
-does three jobs, only the first of which the evaluator ever needed:
+It used to do three jobs, and each was taken away in turn:
 
-1. **Nodes to evaluate.** Dead -- nothing walks them.
+1. **Nodes to evaluate.** Dead once the columnar evaluator was complete --
+   nothing walked them.
 2. **Loading files at parse time.** `New_GTI` and `New_REG` read the GTI
-   extension and the region file, roughly 640 lines of HDU navigation. The
-   columnar lowering picks up what they loaded rather than repeating it, which
-   is why porting the GTI and region functions did not need any of it.
-3. **Semantic validation.** `parser/lower.rs` raises 42 distinct parse errors,
-   and its type checking is expressed by querying the nodes it builds --
-   `ntype(n)`, `size(n)`, `is_const(n)`. Every rejection in the language is
-   phrased against the arena, and the corpus's 264 parse-error lines exercise
-   it. This is the real obstacle, not the node building.
+   extension and the region file, roughly 640 lines of HDU navigation. That is
+   now `parser::externals`, a pass over the `Ast` before lowering (§10.7).
+3. **Semantic validation.** `parser/lower.rs` decided what the library
+   accepted and what it said when it did not. `eval::lower` does that now, in
+   CFITSIO's own wording (§10.6).
 
-Jobs 2 and 3 have to move before `New_*`, `Alloc_Node`, the `Do_*` family and
-`eval_y/func.rs` can go -- around 9,000 lines.
+With all three moved, `parser/lower.rs`, the `New_*` builders, `Alloc_Node`,
+`Free_Last_Node`, `Allocate_Ptrs`, `Evaluate_Node`, the `Do_*` family and
+`eval_y/func.rs` were deleted -- about 10,000 lines. `eval_y.rs` went from 5976
+lines to 884, keeping the GTI and region loads, `fits_parser_yyGetVariable`,
+`allocate_node_ptrs`, `qselect_median`, and an `Evaluate_Parser` that is a
+dispatch to the columnar evaluator.
 
-**Job 3 is now done in one direction.** `eval::lower` carries the whole type
-system: operator and function argument sorts, unary and conditional rules,
-shape compatibility, and the specific checks on subscripts, ranges, vectors,
-`ARRAY`, `DEFNULL`, `STRMID` and the rest. It was built by running both
-lowerings over the corpus and comparing their accept/reject decisions -- 797
-disagreements, closed to none, in both directions and across the whole suite.
-
-What has *not* happened is the swap. `parser::lower` still runs, still raises
-the errors callers see, and still builds the arena. Making `eval::lower` the
-validator needs three more things:
-
-1. **Errors with positions.** `eval::lower` returns `Unsupported(&'static str)`;
-   callers need a `ParseError` with a position and the offending text. See
-   below for what that involves -- the corpus only records `ERR 431`, so it
-   cannot check any of it.
-2. **The GTI and region loads.** `New_GTI` and `New_REG` read their files while
-   building nodes, and `New_GTI` folds constants through `DoOp` on the way out,
-   so the loading is not a clean lift.
-3. **The deletion**, once nothing else needs a node.
-
-#### The messages, derived rather than read
-
-Running both lowerings over the corpus and pairing each rejection with the
-arena's message gives the mapping directly. It is smaller than the count of
-messages suggests: eleven of the columnar lowering's reasons are already
-one-to-one with an arena message, and the rest are **formatted, not
-enumerated** --
-
-* `Function({tag}) not supported: {NAME}(` where `{tag}` names what the check
-  *required*, not what it was given: `require_expr` always says `expr`, which
-  is why `MIN(BITS,BOOLCOL)` reports `Function(expr) not supported: MIN(`;
-* `operands of '{op}' have incompatible types`, over the operator's spelling.
-
-So it is roughly six formatters plus the one-to-one cases, not eighty-six hand
-mappings. What it does need is splitting the columnar checks to the arena's
-granularity, since one of them currently stands for eleven arena messages and
-another for eighty-six.
-
-**One message should not be reproduced.** `Couldn't build node structure: out
-of memory?` is what the arena says for a subscript slice, for indexing a
-scalar, for a non-constant `ARRAY` shape and for several other real rejections.
-It is not an allocation failure and never was; reproducing it verbatim would
-carry a misleading message forward for no compatibility gain.
-
-Three of the rules were not what the arena's error message said, which is worth
-remembering when reading the rest: the 19 "Couldn't build node structure: out
-of memory?" are `ARRAY` with a non-constant shape; a subscript is refused for a
-string and for a scalar but *not* for a bit string; and `Test_Dims` compares
-operand sorts even though every caller has promoted them to a common sort
-first, so comparing them earlier rejects `IVEC > VECCOL`. Each surfaced as an
-over-rejection -- a passing test that began failing because an expression the
-arena accepts had no tree to evaluate. That direction is the one worth
-instrumenting for.
-
-#### How each step was checked
-
-Every piece of the descriptor was diffed against the arena's result node over
-all 1,852 corpus expressions *before* anything depended on it. That found 218
-disagreements across three commits, none of which had been reasoned out:
-
-* **76** on constant-ness -- a vector never folds however constant its entries;
-  `#NULL` is a row operation; `NVALID` over a bit string is settled at parse
-  time.
-* **140** on shape and sort -- almost all from one wrong premise, that a
-  string's `nelem` relates to its axes the way a vector's does. It does not: a
-  text value is one value per row, and its `nelem` is the *width*.
-* **2** on the folded value -- a kernel that always builds an array against an
-  arena that folds to a scalar.
-
-The technique is worth repeating for jobs 2 and 3: build the replacement, diff
-it against what it replaces across the corpus, and only then switch anything
-over.
+Which functions were dead was settled by removing the crate's `dead_code`
+allow and reading the compiler's list, rather than by tracing call graphs by
+hand -- and the same check afterwards confirms nothing left in `eval_y.rs` is
+unreachable. Five unit tests went with it; all five were exercising `Do_Func`'s
+kernels directly, and what they covered is covered by the `eval/` kernels and
+by the corpus.
 
 ### 10.4 Row offsets, and declining a batch
 
@@ -1112,3 +1047,27 @@ already pushed the message that this lowering then pushes again.
 
 After that: `parser::lower`'s node building, `New_*`, `Alloc_Node`, the `Do_*`
 family and `eval_y/func.rs`, which is where the ~9,000 lines go.
+
+### 10.8 Done
+
+The arena is deleted. `parse_expression` is: tokenize, resolve names, parse to
+an `Ast`, read whatever GTI and region files it names, lower to an `Expr`. The
+lowering is what accepts or rejects, and `eval::bridge` evaluates.
+
+What the corpus says, end to end: all 1,852 lines match the golden byte for
+byte, and of the 1,011 expressions both rsfitsio and CFITSIO reject, 1,005
+produce an identical error stack. The six that differ do so in the order of
+their messages, not the text -- CFITSIO interleaves lexing with parsing, so it
+reports a bad character before resolving the name after it, while rsfitsio
+resolves in a pass first.
+
+One thing worth carrying forward from how this went. Every step here was
+verified by diffing against what it replaced -- the arena, or the C library
+through the oracle -- and every step turned up something that could not have
+been reasoned out from the source: that `MIN(1,2,3)` is a syntax error while
+`MIN(1,1,1,1)` is not, that `yyerror` truncates at 79 characters, that `TEST`
+is silent, that a wildcard bit position does not advance the weight. The two
+mistakes that cost the most were both moments of reasoning where measuring was
+available: assuming the arena's messages were CFITSIO's, and writing off nine
+subscript divergences as an artifact of the probe when they were real. When
+there is an oracle, ask it.
