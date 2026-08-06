@@ -915,17 +915,24 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
                 return Err(syn("strings cannot be subscripted"));
             }
             if shape_of(&lowered_base, cols).is_some_and(|s| s.nelem == 1) {
-                return Err(syn("a scalar has no elements to index"));
+                return Err(sem("Cannot index a scalar value"));
             }
             /* every subscript is a single integer: `New_Deref` refuses an
             array as an index value, and anything that is not a Long */
             for i in idx {
                 let e = lower(i, names, cols)?;
-                if e.sort(&|c| cols.sort(c)) != ValueSort::Long {
-                    return Err(syn("an index must be an integer"));
+                let t = e.sort(&|c| cols.sort(c));
+                /* the index positions take an `expr`, so a boolean or string
+                there matches no production and never reaches New_Deref -- it
+                only ever sees numbers, and objects to the non-integer ones */
+                if !t.is_expr() {
+                    return Err(syn("subscript index must be numeric"));
+                }
+                if t != ValueSort::Long {
+                    return Err(sem("Index value must be an integer type"));
                 }
                 if shape_of(&e, cols).is_some_and(|s| s.nelem != 1) {
-                    return Err(syn("an array cannot be an index"));
+                    return Err(sem("Index value must be an integer type"));
                 }
             }
             let naxes: Vec<usize> = match shape_of(&lowered_base, cols) {
@@ -938,7 +945,9 @@ pub(crate) fn lower(ast: &Ast, names: &Resolutions, cols: &Columns) -> Res {
             handles, so anything else still falls back. */
             if naxes.len() != idx.len() {
                 if idx.len() != 1 || naxes.is_empty() {
-                    return Err(syn("subscript slice"));
+                    /* New_Deref takes one index or all of them and nothing
+                    between, and says so */
+                    return Err(sem("Must specify just one or all indices for vector"));
                 }
                 /* the index need not be constant: `MATRIX[INTCOL]` picks a
                 different slice per row, which `Do_Deref` handles in its own

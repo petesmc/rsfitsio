@@ -1475,7 +1475,11 @@ pub(crate) fn ffiprs(
         return *status;
     }
 
-    if lParse.nNodes == 0 {
+    /* `nNodes == 0` was how the C spotted an expression that parsed but built
+    nothing -- a blank line, or only a comment. There is no arena to count now,
+    and the lowering produces a tree for everything else, so its absence is the
+    same signal. */
+    if lParse.expr_tree.is_none() {
         ffpmsg_str("Blank expression");
         *status = PARSE_SYNTAX_ERR;
         return *status;

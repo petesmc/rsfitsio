@@ -114,89 +114,68 @@ pub(crate) fn parse_expression(lParse: &mut ParseData) -> c_int {
         return fail(lParse, e);
     }
 
-    let built = {
-        let mut lowerer = lower::Lowerer {
-            p: lParse,
-            names: &names,
-        };
-        lowerer.lower(&tree)
-    };
-    let status = match built {
-        Ok(node) => {
-            lParse.resultNode = node;
-            0
-        }
-        Err(e) => fail(lParse, e),
+    /* the per-column shapes let the lowering decide whether a subscript
+    names a single element or a slice */
+    let shapes: Vec<(c_long, Vec<c_long>)> = lParse
+        .varData
+        .iter()
+        .map(|v| {
+            (
+                v.nelem,
+                v.naxes[..(v.naxis.max(0) as usize).min(v.naxes.len())]
+                    .iter()
+                    .map(|&n| n.max(0))
+                    .collect(),
+            )
+        })
+        .collect();
+    let cols = crate::eval::lower::Columns {
+        gti,
+        regions,
+        accums: core::cell::Cell::new(0),
+        shapes,
+        sorts: lParse.varData.iter().map(|v| v.dtype).collect(),
     };
 
-    /* The arena is still built either way: `ffiprs` reads the result node for
-    the expression's datatype and shape, and the new evaluator only replaces
-    the per-row computation. */
-    if status == 0 && lParse.status == 0 {
-        /* the per-column shapes let the lowering decide whether a subscript
-        names a single element or a slice */
-        let shapes: Vec<(c_long, Vec<c_long>)> = lParse
-            .varData
-            .iter()
-            .map(|v| {
-                (
-                    v.nelem,
-                    v.naxes[..(v.naxis.max(0) as usize).min(v.naxes.len())]
-                        .iter()
-                        .map(|&n| n.max(0))
-                        .collect(),
-                )
-            })
-            .collect();
-        let cols = crate::eval::lower::Columns {
-            gti,
-            regions,
-            accums: core::cell::Cell::new(0),
-            shapes,
-            sorts: lParse.varData.iter().map(|v| v.dtype).collect(),
+    /* This is the whole of it now: the columnar lowering decides what the
+    library accepts and says what CFITSIO says about what it does not. No
+    `Node` arena is built. */
+    let lowered = match crate::eval::lower::lower(&tree, &names, &cols) {
+        Ok(t) => t,
+        Err(u) => return fail(lParse, u.0),
+    };
+
+    /* one running-value slot per ACCUM/SEQDIFF the lowering handed out */
+    lParse.accum_state = vec![Default::default(); cols.accums.get()];
+    lParse.result_info = crate::eval::lower::result_info(&lowered, &cols);
+
+    /* The result does not live in an arena any more, so seed its node from the
+    descriptor: `Allocate_Ptrs` sizes the buffers from the sort and the element
+    count, and readers ask it whether the answer is constant. */
+    if let Some(info) = &lParse.result_info {
+        let mut node = crate::eval_defs::Node {
+            ntype: info.sort,
+            operation: if info.is_const {
+                crate::eval_defs::Operation::Const
+            } else {
+                crate::eval_defs::Operation::Op(crate::eval_defs::OpCode::Add)
+            },
+            ..Default::default()
         };
-        let lowered = crate::eval::lower::lower(&tree, &names, &cols);
-        /* one running-value slot per ACCUM/SEQDIFF the lowering handed out */
-        lParse.accum_state = vec![Default::default(); cols.accums.get()];
-        lParse.result_info = lowered
-            .as_ref()
-            .ok()
-            .and_then(|t| crate::eval::lower::result_info(t, &cols));
-        /* The result no longer lives in the arena, so seed its node from the
-        descriptor: `Allocate_Ptrs` sizes the buffers from the sort and the
-        element count, and readers ask it whether the answer is constant. */
-        if let Some(info) = &lParse.result_info {
-            let mut node = crate::eval_defs::Node {
-                ntype: info.sort,
-                operation: if info.is_const {
-                    crate::eval_defs::Operation::Const
-                } else {
-                    crate::eval_defs::Operation::Op(crate::eval_defs::OpCode::Add)
-                },
-                ..Default::default()
-            };
-            node.value.nelem = info.nelem;
-            node.value.naxis = info.naxis;
-            node.value.naxes = info.naxes;
-            /* A constant's value has to be there before any row is evaluated:
-            a caller writing it to a keyword never evaluates one. The arena
-            got this by folding at parse time; the tree folds it here. */
-            if info.is_const
-                && let Some(t) = lParse.expr_tree.as_ref().or(lowered.as_ref().ok())
-                && let Some(crate::eval::value::ColumnarValue::Scalar(v)) = t.fold()
-            {
-                node.value.data = crate::eval::bridge::node_value_of(&v);
-            }
-            lParse.result = node;
+        node.value.nelem = info.nelem;
+        node.value.naxis = info.naxis;
+        node.value.naxes = info.naxes;
+        /* A constant's value has to be there before any row is evaluated: a
+        caller writing it to a keyword never evaluates one. The arena got this
+        by folding at parse time; the tree folds it here. */
+        if info.is_const
+            && let Some(crate::eval::value::ColumnarValue::Scalar(v)) = lowered.fold()
+        {
+            node.value.data = crate::eval::bridge::node_value_of(&v);
         }
-        lParse.expr_tree = lowered
-            .ok()
-            /* A bit-string *result* is never retrievable -- the engine reports
-            432 for a row-varying one and 433 for a constant -- so leave those
-            with the arena rather than reproduce the error. Bit-valued
-            subexpressions are fine; only the top-level sort matters. */
-;
+        lParse.result = node;
     }
+    lParse.expr_tree = Some(lowered);
 
-    status
+    0
 }
