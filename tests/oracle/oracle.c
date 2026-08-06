@@ -94,7 +94,14 @@ static void probe(fitsfile *f, const char *expr, char *out, size_t outsz)
 
 	fits_test_expr(f, (char *)expr, 5, &dt, &nelem, &naxis, naxes, &status);
 	if (status) {
-		snprintf(out, outsz, "ERR %d", status);
+		char m[81];
+		p += snprintf(p, (size_t)(end - p), "ERR %d", status);
+		/* ORACLE_MSGS=1 appends CFITSIO's own error text, which is what
+		   a library consumer reads back with fits_read_errmsg. Off by
+		   default so the output still matches the golden file. */
+		while (fits_read_errmsg(m))
+			if (getenv("ORACLE_MSGS"))
+				p += snprintf(p, (size_t)(end - p), " |%s", m);
 		fits_clear_errmsg();
 		return;
 	}

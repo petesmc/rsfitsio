@@ -10,6 +10,25 @@ and a **built** CFITSIO source tree, none of which CI is guaranteed to have.
 The corpus itself *is* run by `cargo test`, against the checked-in golden file;
 these tools are what validate that golden against upstream.
 
+### Seeing CFITSIO's error messages
+
+```text
+ORACLE_MSGS=1 ./oracle < ../fixtures/eval_corpus.txt
+```
+
+appends the text CFITSIO pushed onto its error stack -- what a library consumer
+reads back with `fits_read_errmsg` -- to each `ERR` line. Off by default so the
+output still matches the golden file.
+
+Worth knowing before changing any parser error message: **CFITSIO answers
+"syntax error" to 840 of the corpus's rejections.** Its grammar is
+type-stratified, so `1 && 2`, `'ab' > 1`, `STRCOL[1]` and
+`T ? b1010 : b0101` are not type errors it diagnoses -- they simply match no
+production, and bison supplies its own text. The specific messages
+(`Function(bool) not supported`, `Index value must be an integer type`,
+`Array sizes/dims do not match for binary operator`) come from semantic actions
+and are a much smaller set.
+
 ---
 
 ## Why this exists
