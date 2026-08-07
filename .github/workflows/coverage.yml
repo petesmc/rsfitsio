@@ -28,6 +28,14 @@ jobs:
           cargo llvm-cov run --example iter_a --no-report
           cargo llvm-cov run --example iter_b --no-report
           cargo llvm-cov run --example iter_c --no-report
+          # fitsverify exits with the number of errors + warnings it found, so
+          # a non-zero status here is a normal result, not a failure.
+          cargo llvm-cov run --bin fitsverify --no-report -- testprog.fit || true
+          cargo llvm-cov run --bin fitsverify --no-report -- -l testprog.fit || true
+          cargo llvm-cov run --bin fitsverify --no-report -- -q -e testprog.fit || true
+          cargo llvm-cov run --bin fitsverify --no-report -- -H testprog.fit || true
+          cargo llvm-cov run --bin fitsverify --no-report -- examples/iter_a/iter_a.fit examples/iter_b/iter_b.fit examples/iter_c/iter_c.fit || true
+          cargo llvm-cov run --bin fitsverify --no-report -- -l examples/iter_var/vari.fits || true
           cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
