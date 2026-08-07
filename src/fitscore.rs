@@ -464,7 +464,9 @@ pub fn ffgerr_safe(
 
 #[derive(Debug, Clone)]
 struct ErrorMessage {
-    content: String,
+    /// Raw bytes: the C's ffpmsg() stores whatever it is handed, and FITS
+    /// diagnostics routinely echo card bytes that are not valid UTF-8.
+    content: Vec<u8>,
     is_marker: bool,
 }
 
@@ -479,7 +481,7 @@ impl ErrorStack {
         }
     }
 
-    fn push_message(&mut self, message: &str) {
+    fn push_message(&mut self, message: &[u8]) {
         let mut remaining = message;
 
         while !remaining.is_empty() {
@@ -491,7 +493,7 @@ impl ErrorStack {
             }
 
             self.messages.push_back(ErrorMessage {
-                content: chunk.to_string(),
+                content: chunk.to_vec(),
                 is_marker: false,
             });
             remaining = &remaining[chunk_size..];
@@ -504,12 +506,12 @@ impl ErrorStack {
         }
 
         self.messages.push_back(ErrorMessage {
-            content: String::new(),
+            content: Vec::new(),
             is_marker: true,
         });
     }
 
-    fn pop_message(&mut self) -> Option<String> {
+    fn pop_message(&mut self) -> Option<Vec<u8>> {
         while let Some(msg) = self.messages.pop_front() {
             if !msg.is_marker {
                 return Some(msg.content);
@@ -545,35 +547,30 @@ pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
 /*--------------------------------------------------------------------------*/
 /// put message on to error stack
 pub fn ffpmsg_safe(err_message: &[c_char]) {
-    // Convert c_char slice to string and use the new safe implementation
-    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message))
-        && let Ok(message) = c_str.to_str()
-    {
-        let mut stack = ERROR_STACK.lock().unwrap();
-        stack.push_message(message);
-    }
+    let mut stack = ERROR_STACK.lock().unwrap();
+    stack.push_message(cstr_bytes(err_message));
 }
 
 pub fn ffpmsg_cstr(err_message: &CStr) {
-    if let Ok(message) = err_message.to_str() {
-        let mut stack = ERROR_STACK.lock().unwrap();
-        stack.push_message(message);
-    }
+    let mut stack = ERROR_STACK.lock().unwrap();
+    stack.push_message(err_message.to_bytes());
 }
 
 pub(crate) fn ffpmsg_slice(err_message: &[c_char]) {
-    // Convert c_char slice to string
-    if let Ok(c_str) = CStr::from_bytes_until_nul(cast_slice(err_message))
-        && let Ok(message) = c_str.to_str()
-    {
-        let mut stack = ERROR_STACK.lock().unwrap();
-        stack.push_message(message);
-    }
+    let mut stack = ERROR_STACK.lock().unwrap();
+    stack.push_message(cstr_bytes(err_message));
+}
+
+/// The bytes of `s` up to its first NUL, or all of `s` if it has none.
+fn cstr_bytes(s: &[c_char]) -> &[u8] {
+    let b: &[u8] = cast_slice(s);
+    let n = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+    &b[..n]
 }
 
 pub(crate) fn ffpmsg_str(err_message: &str) {
     let mut stack = ERROR_STACK.lock().unwrap();
-    stack.push_message(err_message);
+    stack.push_message(err_message.as_bytes());
 }
 
 /*--------------------------------------------------------------------------*/
@@ -615,7 +612,7 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
 
     if let Some(message) = stack.pop_message() {
         // Copy message to buffer
-        let message_bytes = message.as_bytes();
+        let message_bytes = &message[..];
         let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
         for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
@@ -691,7 +688,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
             if let Some(err_message) = errmsg {
                 if let Some(message) = stack.pop_message() {
                     // Copy message to buffer
-                    let message_bytes = message.as_bytes();
+                    let message_bytes = &message[..];
                     let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
@@ -740,7 +737,7 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
             if let Some(message) = stack.pop_message() {
                 // Safely copy to the provided buffer
                 if !errmsg.is_null() {
-                    let message_bytes = message.as_bytes();
+                    let message_bytes = &message[..];
                     let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     unsafe {
@@ -762,9 +759,7 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
             if !errmsg.is_null() {
                 // Convert raw pointer to safe string
                 let c_str = unsafe { CStr::from_ptr(errmsg) };
-                if let Ok(message) = c_str.to_str() {
-                    stack.push_message(message);
-                }
+                stack.push_message(c_str.to_bytes());
             }
         }
         PUT_MARK => {
@@ -11912,11 +11907,10 @@ pub(crate) fn ffc2ii(
     }
 
     let cval: &[u8] = cast_slice(cval);
-    let tmp_str = CStr::from_bytes_until_nul(cval)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .trim();
+    // A malformed card can leave arbitrary/unterminated bytes here; treat those
+    // as an unparseable value (BAD_C2I) rather than panicking.
+    let tmp_str = slice_to_str!(cval);
+    let tmp_str = tmp_str.trim();
     let tmp = atoi::<c_long>(tmp_str);
 
     match tmp {
@@ -11962,11 +11956,10 @@ pub(crate) fn ffc2jj(
     }
 
     let cval: &[u8] = cast_slice(cval);
-    let tmp_str = CStr::from_bytes_until_nul(cval)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .trim();
+    // A malformed card can leave arbitrary/unterminated bytes here; treat those
+    // as an unparseable value (BAD_C2I) rather than panicking.
+    let tmp_str = slice_to_str!(cval);
+    let tmp_str = tmp_str.trim();
     let tmp = atoi::<LONGLONG>(tmp_str);
 
     match tmp {

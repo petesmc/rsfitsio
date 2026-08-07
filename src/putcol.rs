@@ -3692,7 +3692,10 @@ pub fn ffiter_safe(
                         /* are there any nulls in the data? */
                         if anynul != 0 {
                             if cols[jj].datatype == TSTRING {
-                                stringptr = &mut cols[jj].array.cast::<c_char>();
+                                /* cols[jj].array is the `char **' block; the null
+                                value goes into the string it points at, not over
+                                the pointer array itself. */
+                                stringptr = cols[jj].array.cast::<*mut c_char>();
                                 if let ColNullValue::StringNull(ptr) = col[jj].null {
                                     memcpy(
                                         (*stringptr).cast::<c_void>(),
