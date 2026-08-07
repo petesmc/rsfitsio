@@ -859,3 +859,209 @@ pub fn check_fixed_str(card: &[c_char], out: Out) -> c_int {
     1
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fvrf_misc::reset_err_wrn;
+
+    /* An 80-column card image, NUL-terminated as CFITSIO hands it over. */
+    fn card(s: &str) -> [c_char; FLEN_CARD] {
+        let mut b = [0 as c_char; FLEN_CARD];
+        for i in 0..80 {
+            b[i] = b' ' as c_char;
+        }
+        for (i, &c) in s.as_bytes().iter().enumerate() {
+            b[i] = c as c_char;
+        }
+        b[80] = 0;
+        b
+    }
+
+    fn parse(s: &str) -> (c_int, kwdtyp, String, String) {
+        reset_err_wrn();
+        let mut c = card(s);
+        let mut kname = [0 as c_char; FLEN_KEYWORD];
+        let mut ktype = kwdtyp::UNKNOWN;
+        let mut kvalue = [0 as c_char; FLEN_VALUE];
+        let mut kcomm = [0 as c_char; COMM_LEN];
+        /* Out::Null suppresses reporting so only the parse result is under test */
+        let r = fits_parse_card(
+            Out::Null, 1, &mut c, &mut kname, &mut ktype, &mut kvalue, &mut kcomm,
+        );
+        (
+            r,
+            ktype,
+            String::from_utf8_lossy(cbytes(&kname)).into_owned(),
+            String::from_utf8_lossy(cbytes(&kvalue)).into_owned(),
+        )
+    }
+
+    #[test]
+    fn test_parse_card_logical() {
+        let (r, t, n, v) = parse("SIMPLE  =                    T / conforms to FITS standard");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::LOG_KEY);
+        assert_eq!(n, "SIMPLE");
+        assert_eq!(v, "T");
+    }
+
+    #[test]
+    fn test_parse_card_integer() {
+        let (r, t, n, v) = parse("BITPIX  =                   16 / bits per data value");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::INT_KEY);
+        assert_eq!(n, "BITPIX");
+        assert_eq!(v, "16");
+
+        let (_, t, _, v) = parse("TZERO1  =                -32768");
+        assert_eq!(t, kwdtyp::INT_KEY);
+        assert_eq!(v, "-32768");
+    }
+
+    #[test]
+    fn test_parse_card_float() {
+        let (r, t, _, v) = parse("BSCALE  =                  1.5");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::FLT_KEY);
+        assert_eq!(v, "1.5");
+
+        /* upper-case exponent is legal */
+        let (r, t, _, v) = parse("CRVAL1  =              1.25E+02");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::FLT_KEY);
+        assert_eq!(v, "1.25E+02");
+
+        /* a lower-case exponent is flagged, so the card parse fails */
+        let (r, t, _, _) = parse("CRVAL1  =              1.25e+02");
+        assert_eq!(r, 1);
+        assert_eq!(t, kwdtyp::FLT_KEY);
+    }
+
+    #[test]
+    fn test_parse_card_string() {
+        /* get_str strips the quotes and the trailing blanks inside them */
+        let (r, t, n, v) = parse("EXTNAME = 'FOO     '           / name of this HDU");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::STR_KEY);
+        assert_eq!(n, "EXTNAME");
+        assert_eq!(v, "FOO");
+
+        /* '' is the escape for an embedded quote */
+        let (r, t, _, v) = parse("OBJECT  = 'a''b'");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::STR_KEY);
+        assert_eq!(v, "a''b");
+
+        /* missing closing quote is an error */
+        let (r, _, _, _) = parse("OBJECT  = 'unterminated");
+        assert_eq!(r, 1);
+    }
+
+    #[test]
+    fn test_parse_card_commentary() {
+        let (r, t, n, _) = parse("COMMENT   some free text");
+        assert_eq!(r, 0);
+        assert_eq!(t, kwdtyp::COM_KEY);
+        assert_eq!(n, "COMMENT");
+
+        let (r, t, n, _) = parse("HISTORY   processed");
+        assert_eq!((r, t), (0, kwdtyp::COM_KEY));
+        assert_eq!(n, "HISTORY");
+
+        /* no value indicator in columns 9-10 makes it commentary */
+        let (r, t, _, _) = parse("FOO       bar");
+        assert_eq!((r, t), (0, kwdtyp::COM_KEY));
+
+        let (r, t, n, _) = parse("END");
+        assert_eq!((r, t), (0, kwdtyp::COM_KEY));
+        assert_eq!(n, "END");
+    }
+
+    #[test]
+    fn test_parse_card_end_must_be_blank_filled() {
+        let mut c = card("END");
+        c[40] = b'X' as c_char;
+        reset_err_wrn();
+        let mut kname = [0 as c_char; FLEN_KEYWORD];
+        let mut ktype = kwdtyp::UNKNOWN;
+        let mut kvalue = [0 as c_char; FLEN_VALUE];
+        let mut kcomm = [0 as c_char; COMM_LEN];
+        let r = fits_parse_card(
+            Out::Null, 1, &mut c, &mut kname, &mut ktype, &mut kvalue, &mut kcomm,
+        );
+        assert_eq!(r, 1);
+    }
+
+    /* Fixed-format checks: the value has to end in column 30 for integers and
+       sit in column 30 for logicals. */
+    #[test]
+    fn test_check_fixed_int() {
+        reset_err_wrn();
+        let good = card(&format!("BITPIX  ={}16", " ".repeat(19)));
+        assert_eq!(check_fixed_int(&good, Out::Null), 1);
+
+        let bad = card("BITPIX  = 16");
+        assert_eq!(check_fixed_int(&bad, Out::Null), 0);
+
+        let signed = card(&format!("TZERO1  ={}-8", " ".repeat(19)));
+        assert_eq!(check_fixed_int(&signed, Out::Null), 1);
+    }
+
+    #[test]
+    fn test_check_fixed_log() {
+        reset_err_wrn();
+        let good = card(&format!("SIMPLE  ={}T", " ".repeat(20)));
+        assert_eq!(check_fixed_log(&good, Out::Null), 1);
+
+        /* right column, wrong value */
+        let notlog = card(&format!("SIMPLE  ={}X", " ".repeat(20)));
+        assert_eq!(check_fixed_log(&notlog, Out::Null), 0);
+
+        /* right value, wrong column */
+        let shifted = card("SIMPLE  = T");
+        assert_eq!(check_fixed_log(&shifted, Out::Null), 0);
+    }
+
+    #[test]
+    fn test_check_fixed_str() {
+        reset_err_wrn();
+        let good = card("XTENSION= 'IMAGE   '");
+        assert_eq!(check_fixed_str(&good, Out::Null), 1);
+
+        /* closing quote before column 20 */
+        let short = card("XTENSION= 'IM'");
+        assert_eq!(check_fixed_str(&short, Out::Null), 0);
+
+        /* does not start in column 11 */
+        let late = card("XTENSION=  'IMAGE  '");
+        assert_eq!(check_fixed_str(&late, Out::Null), 0);
+    }
+
+    /* The check_* helpers gate on the parsed keyword type. */
+    #[test]
+    fn test_check_type_helpers() {
+        reset_err_wrn();
+        let mut k = FitsKey { ktype: kwdtyp::INT_KEY, kindex: 1, ..Default::default() };
+        strcpy_c(&mut k.kname, cs!(c"NAXIS"));
+        strcpy_c(&mut k.kvalue, cs!(c"2"));
+        assert_eq!(check_int(&k, Out::Null), 1);
+        assert_eq!(check_flt(&k, Out::Null), 1); /* an integer is a valid float */
+        assert_eq!(check_str(&k, Out::Null), 0);
+        assert_eq!(check_log(&k, Out::Null), 0);
+
+        k.ktype = kwdtyp::STR_KEY;
+        assert_eq!(check_str(&k, Out::Null), 1);
+        assert_eq!(check_int(&k, Out::Null), 0);
+
+        k.ktype = kwdtyp::LOG_KEY;
+        assert_eq!(check_log(&k, Out::Null), 1);
+
+        k.ktype = kwdtyp::CMI_KEY;
+        assert_eq!(check_cmi(&k, Out::Null), 1);
+        assert_eq!(check_cmf(&k, Out::Null), 1);
+        k.ktype = kwdtyp::CMF_KEY;
+        assert_eq!(check_cmi(&k, Out::Null), 0);
+        assert_eq!(check_cmf(&k, Out::Null), 1);
+    }
+}

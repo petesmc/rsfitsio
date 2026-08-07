@@ -409,3 +409,50 @@ pub fn compstre(str1: &[c_char], str2: &[c_char]) -> c_int {
     strcmp_c(str1, str2)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kw(s: &str) -> [c_char; FLEN_KEYWORD_C] {
+        let mut b = [0 as c_char; FLEN_KEYWORD_C];
+        for (i, &c) in s.as_bytes().iter().enumerate() {
+            b[i] = c as c_char;
+        }
+        b
+    }
+
+    /* compstrp is the prefix comparator bsearch() uses for indexed keywords:
+       it reports equal when the pattern is a prefix of the array element. */
+    #[test]
+    fn test_compstrp() {
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX1")), 0);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX")), 0);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX12A")), 0);
+        /* element shorter than the pattern sorts before it: 'I' - '\0' */
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRP")), b'I' as c_int);
+        /* ordinary ordering either side */
+        assert!(compstrp(&kw("CRPIX"), &kw("CS")) < 0);
+        assert!(compstrp(&kw("CRPIX"), &kw("BITPIX")) > 0);
+    }
+
+    #[test]
+    fn test_compstre() {
+        assert_eq!(compstre(&kw("NAXIS"), &kw("NAXIS")), 0);
+        /* exact matching, so a longer element is not equal */
+        assert!(compstre(&kw("NAXIS"), &kw("NAXIS1")) < 0);
+        assert!(compstre(&kw("NAXIS1"), &kw("NAXIS")) > 0);
+    }
+
+    #[test]
+    fn test_compkey_and_compcol() {
+        let a = FitsKey { kname: kw("AAA"), ..Default::default() };
+        let b = FitsKey { kname: kw("AAB"), ..Default::default() };
+        assert!(compkey(&a, &b) < 0);
+        assert_eq!(compkey(&a, &a.clone()), 0);
+
+        let c1 = ColName { name: cvec(&kw("ALPHA")), index: 1 };
+        let c2 = ColName { name: cvec(&kw("BETA")), index: 2 };
+        assert!(compcol(&c1, &c2) < 0);
+    }
+}

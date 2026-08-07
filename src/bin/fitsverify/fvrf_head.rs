@@ -3471,3 +3471,93 @@ fn _unused_api() {
     let _ = NullValue::Int(0);
     let _ = cards_len();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kw(s: &str) -> [c_char; FLEN_KEYWORD] {
+        let mut b = [0 as c_char; FLEN_KEYWORD];
+        for (i, &c) in s.as_bytes().iter().enumerate() {
+            b[i] = c as c_char;
+        }
+        b
+    }
+
+    #[test]
+    fn test_key_match_exact() {
+        let strs = [kw("BITPIX"), kw("CRPIX1"), kw("CRPIX2"), kw("CRVAL1"), kw("NAXIS")];
+        let (mut k, mut n) = (0, 0);
+
+        key_match(&strs, 5, cs!(c"NAXIS"), 1, &mut k, &mut n);
+        assert_eq!((k, n), (4, 1));
+
+        key_match(&strs, 5, cs!(c"BITPIX"), 1, &mut k, &mut n);
+        assert_eq!((k, n), (0, 1));
+
+        /* not found: the C's sentinels, which the `for (j = k; j < k+n; j++)'
+           loops rely on to iterate zero times */
+        key_match(&strs, 5, cs!(c"THEAP"), 1, &mut k, &mut n);
+        assert_eq!((k, n), (-99, -999));
+        assert!(k + n < k);
+
+        /* exact matching must not match a longer keyword */
+        key_match(&strs, 5, cs!(c"CRPIX"), 1, &mut k, &mut n);
+        assert_eq!((k, n), (-99, -999));
+    }
+
+    #[test]
+    fn test_key_match_prefix() {
+        let strs = [kw("BITPIX"), kw("CRPIX1"), kw("CRPIX2"), kw("CRVAL1"), kw("NAXIS")];
+        let (mut k, mut n) = (0, 0);
+
+        key_match(&strs, 5, cs!(c"CRPIX"), 0, &mut k, &mut n);
+        assert_eq!((k, n), (1, 2));
+
+        key_match(&strs, 5, cs!(c"CR"), 0, &mut k, &mut n);
+        assert_eq!((k, n), (1, 3));
+
+        key_match(&strs, 5, cs!(c"TC"), 0, &mut k, &mut n);
+        assert_eq!((k, n), (-99, -999));
+    }
+
+    /* The C's backward scan is guarded by `i > 0', so a run of matches that
+       begins at index 0 is only partly reported when bsearch lands above it.
+       Locked in here because the port has to reproduce it. */
+    #[test]
+    fn test_key_match_index_zero_quirk() {
+        let strs = [kw("CRPIX1"), kw("CRPIX2"), kw("NAXIS")];
+        let (mut k, mut n) = (0, 0);
+        key_match(&strs, 3, cs!(c"CRPIX"), 0, &mut k, &mut n);
+        /* bsearch lands on index 1; index 0 is never revisited */
+        assert_eq!((k, n), (1, 1));
+    }
+
+    #[test]
+    fn test_parse_wcskey_suffix() {
+        let (mut axis, mut alt) = (0, 0);
+
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!((axis, alt), (1, 0));
+
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX12"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!((axis, alt), (12, 0));
+
+        /* alternate WCS description: trailing A-Z maps to 1-26 */
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1A"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!((axis, alt), (1, 1));
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX2Z"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!((axis, alt), (2, 26));
+
+        /* more than one trailing char, or a non A-Z one, is rejected */
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1AB"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1a"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
+
+        /* name shorter than the root */
+        assert_eq!(parse_wcskey_suffix(&kw("CR"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
+
+        /* no suffix at all leaves both at 0 */
+        assert_eq!(parse_wcskey_suffix(&kw("CRPIX"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!((axis, alt), (0, 0));
+    }
+}

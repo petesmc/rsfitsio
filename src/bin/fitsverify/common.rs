@@ -616,7 +616,10 @@ pub fn strtol_c(s: &[c_char]) -> (c_long, usize) {
     }
 
     let v = if neg { -acc } else { acc };
-    let v = if overflow || v > c_long::MAX as i128 {
+    /* C's strtol() saturates towards the sign of the value it was parsing. */
+    let v = if overflow {
+        if neg { c_long::MIN } else { c_long::MAX }
+    } else if v > c_long::MAX as i128 {
         c_long::MAX
     } else if v < c_long::MIN as i128 {
         c_long::MIN
@@ -674,4 +677,143 @@ pub fn strtod_c(s: &[c_char]) -> f64 {
         t = t.replace(['d', 'D'], "e");
     }
     t.parse::<f64>().unwrap_or(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn to_buf<const N: usize>(s: &str) -> [c_char; N] {
+        let mut b = [0 as c_char; N];
+        for (i, &c) in s.as_bytes().iter().enumerate() {
+            b[i] = c as c_char;
+        }
+        b
+    }
+
+    /* strtol() saturates at LONG_MAX/LONG_MIN on overflow, and fitsverify
+       tests its results against those to spot malformed TDISPn widths, so the
+       saturation has to survive the port. */
+    #[test]
+    fn test_strtol_c() {
+        assert_eq!(strtol_c(&to_buf::<32>("123abc")), (123, 3));
+        assert_eq!(strtol_c(&to_buf::<32>("  -45")), (-45, 5));
+        assert_eq!(strtol_c(&to_buf::<32>("+7")), (7, 2));
+        assert_eq!(strtol_c(&to_buf::<32>("0")), (0, 1));
+        /* no conversion: C leaves endptr == nptr and returns 0 */
+        assert_eq!(strtol_c(&to_buf::<32>("")), (0, 0));
+        assert_eq!(strtol_c(&to_buf::<32>("abc")), (0, 0));
+        assert_eq!(strtol_c(&to_buf::<32>("+")), (0, 0));
+        /* overflow saturates rather than wrapping */
+        assert_eq!(strtol_c(&to_buf::<32>("99999999999999999999")).0, c_long::MAX);
+        assert_eq!(strtol_c(&to_buf::<32>("-99999999999999999999")).0, c_long::MIN);
+        /* the endptr is what the PC/CD alt-suffix test keys off */
+        assert_eq!(strtol_c(&to_buf::<32>("12_3")), (12, 2));
+    }
+
+    #[test]
+    fn test_strtod_c() {
+        assert_eq!(strtod_c(&to_buf::<32>("1.5")), 1.5);
+        assert_eq!(strtod_c(&to_buf::<32>("-0.25")), -0.25);
+        assert_eq!(strtod_c(&to_buf::<32>("1.5E2")), 150.0);
+        /* FITS allows 'D' as the exponent marker */
+        assert_eq!(strtod_c(&to_buf::<32>("1.5D2")), 150.0);
+        assert_eq!(strtod_c(&to_buf::<32>("abc")), 0.0);
+        assert_eq!(strtod_c(&to_buf::<32>("")), 0.0);
+        /* a trailing exponent marker with no digits is not consumed */
+        assert_eq!(strtod_c(&to_buf::<32>("2.0E")), 2.0);
+    }
+
+    /* glibc's C locale reports false for every class on the negative values a
+       signed char can hold, and c_char is unsigned on some targets, so these
+       must not depend on the platform's char signedness. */
+    #[test]
+    fn test_ctype_helpers() {
+        assert!(!isprint_c(0x1f as c_char));
+        assert!(isprint_c(0x20 as c_char));
+        assert!(isprint_c(0x7e as c_char));
+        assert!(!isprint_c(0x7f as c_char));
+        assert!(!isprint_c(0x80u8 as c_char));
+        assert!(!isprint_c(0xffu8 as c_char));
+
+        assert!(isascii_c(0x7f as c_char));
+        assert!(!isascii_c(0x80u8 as c_char));
+
+        assert!(isspace_c(b' ' as c_char));
+        assert!(isspace_c(b'\t' as c_char));
+        assert!(!isspace_c(b'x' as c_char));
+        assert!(!isspace_c(0xa0u8 as c_char));
+
+        assert!(isdigit_c(b'0' as c_char));
+        assert!(isdigit_c(b'9' as c_char));
+        assert!(!isdigit_c(b'a' as c_char));
+
+        assert!(isupper_c(b'A' as c_char));
+        assert!(!isupper_c(b'a' as c_char));
+
+        assert_eq!(toupper_c(b'a' as c_char), b'A' as c_char);
+        assert_eq!(toupper_c(b'Z' as c_char), b'Z' as c_char);
+        assert_eq!(toupper_c(b'_' as c_char), b'_' as c_char);
+    }
+
+    #[test]
+    fn test_string_helpers() {
+        let mut d = [0 as c_char; 8];
+        strcpy_c(&mut d, &to_buf::<16>("abc"));
+        assert_eq!(cstrlen(&d), 3);
+        /* strcpy_c truncates where the C would overrun the destination */
+        strcpy_c(&mut d, &to_buf::<32>("abcdefghijkl"));
+        assert_eq!(cstrlen(&d), 7);
+
+        /* strncpy NUL-pads a short source */
+        let mut e = [b'x' as c_char; 8];
+        strncpy_c(&mut e, &to_buf::<16>("ab"), 5);
+        assert_eq!(&e[..5], &[b'a' as c_char, b'b' as c_char, 0, 0, 0]);
+        assert_eq!(e[5], b'x' as c_char);
+
+        assert_eq!(strcmp_c(&to_buf::<16>("abc"), &to_buf::<16>("abc")), 0);
+        assert!(strcmp_c(&to_buf::<16>("abc"), &to_buf::<16>("abd")) < 0);
+        assert!(strcmp_c(&to_buf::<16>("abd"), &to_buf::<16>("abc")) > 0);
+        assert_eq!(strncmp_c(&to_buf::<16>("abcZ"), &to_buf::<16>("abcY"), 3), 0);
+
+        /* strchr stops at the NUL, so bytes past it are not found */
+        let mut s = to_buf::<16>("abc");
+        s[5] = b'z' as c_char;
+        assert_eq!(chr_pos(&s, b'b'), Some(1));
+        assert_eq!(chr_pos(&s, b'z'), None);
+        assert!(chr_in(&s, b'c'));
+        assert!(!chr_in(&s, b'q'));
+
+        assert_eq!(cvec(&to_buf::<16>("hi")), vec![104, 105, 0]);
+    }
+
+    /* The message builder has to pass bytes through untouched: fitsverify
+       echoes malformed cards, which are routinely not valid UTF-8. */
+    #[test]
+    fn test_spf_is_byte_exact() {
+        let mut b = [0 as c_char; 64];
+        spf!(b; "n=", 42, " c=", CHR(0xfeu8 as c_char), "!");
+        assert_eq!(cbytes(&b), b"n=42 c=\xfe!");
+
+        /* %-4d / %-20s / %.8s style conversions */
+        let mut w = [0 as c_char; 64];
+        spf!(w; "[", DW(7, -4), "][", DW(7, 4), "]");
+        assert_eq!(cbytes(&w), b"[7   ][   7]");
+
+        let name = to_buf::<16>("ABCDEFGHIJ");
+        let mut p = [0 as c_char; 64];
+        spf!(p; CSW(&name, 0, Some(8)), "|", CSW(&name, -12, None), "|");
+        assert_eq!(cbytes(&p), b"ABCDEFGH|ABCDEFGHIJ  |");
+
+        /* sprintf into a fixed buffer truncates rather than overrunning it */
+        let mut t = [0 as c_char; 5];
+        spf!(t; "abcdefgh");
+        assert_eq!(cbytes(&t), b"abcd");
+
+        /* strcat */
+        let mut c = [0 as c_char; 16];
+        spf!(c; "ab");
+        scat!(c; "cd", 9);
+        assert_eq!(cbytes(&c), b"abcd9");
+    }
 }
