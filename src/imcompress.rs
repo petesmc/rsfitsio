@@ -13084,31 +13084,30 @@ fn fits_shuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
 }
 
 /*--------------------------------------------------------------------------*/
-/// unshuffle the bytes in an array of 2-byte integers
-fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
-    let length = length as usize;
-    let heap = cast_slice_mut(heap);
-
-    let mut p: Vec<u8> = vec![0; length * 2];
-
-    let ptr: usize = 0;
-    let mut heapptr: usize = (2 * length) - 1;
-    let mut cptr: usize = ptr + (2 * length) - 1;
-
-    for ii in 0..length {
-        p[cptr] = heap[heapptr];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - length];
-        /* advance cptr past the second byte too (matches the 4-/8-byte
-        variants); guard the final decrement so the last iteration does not
-        underflow the usize index. */
-        if ii + 1 < length {
-            cptr -= 1;
-        }
-        heapptr -= 1;
+/// Undo the byte shuffling of an array of `length` values of `NBYTES` bytes each.
+///
+/// The shuffled heap holds `NBYTES` planes of `length` bytes: every value's first
+/// byte, then every value's second byte, and so on.  Reassembling the values is
+/// simply the transpose of that layout.
+fn unshuffle_bytes<const NBYTES: usize>(heap: &mut [c_char], length: usize) {
+    if length == 0 {
+        return;
     }
 
-    heap[0..(length * 2)].copy_from_slice(&p[..(length * 2)]);
+    let heap: &mut [u8] = cast_slice_mut(&mut heap[..length * NBYTES]);
+
+    let planes = heap.to_vec();
+    for (byte_index, plane) in planes.chunks_exact(length).enumerate() {
+        for (value, &byte) in heap.chunks_exact_mut(NBYTES).zip(plane) {
+            value[byte_index] = byte;
+        }
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/// unshuffle the bytes in an array of 2-byte integers
+fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
+    unshuffle_bytes::<2>(heap, length as usize);
 
     *status
 }
@@ -13116,28 +13115,7 @@ fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
 /*--------------------------------------------------------------------------*/
 /// unshuffle the bytes in an array of 4-byte integers or floats
 fn fits_unshuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
-    let length = length as usize;
-    let heap = cast_slice_mut(heap);
-
-    let mut p: Vec<u8> = vec![0; length * 4];
-
-    let ptr: usize = 0;
-    let mut heapptr: usize = (4 * length) - 1;
-    let mut cptr: usize = ptr + (4 * length) - 1;
-
-    for _ii in 0..length {
-        p[cptr] = heap[heapptr];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - length];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (2 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (3 * length)];
-        cptr -= 1;
-        heapptr -= 1;
-    }
-
-    heap[0..(length * 4)].copy_from_slice(&p[..(length * 4)]);
+    unshuffle_bytes::<4>(heap, length as usize);
 
     *status
 }
@@ -13145,36 +13123,7 @@ fn fits_unshuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_i
 /*--------------------------------------------------------------------------*/
 /// unshuffle the bytes in an array of 8-byte integers or doubles
 fn fits_unshuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
-    let length = length as usize;
-    let heap = cast_slice_mut(heap);
-
-    let mut p: Vec<u8> = vec![0; length * 8];
-
-    let ptr: usize = 0;
-    let mut heapptr: usize = (8 * length) - 1;
-    let mut cptr: usize = ptr + (8 * length) - 1;
-
-    for _ii in 0..length {
-        p[cptr] = heap[heapptr];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - length];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (2 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (3 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (4 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (5 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (6 * length)];
-        cptr -= 1;
-        p[cptr] = heap[heapptr - (7 * length)];
-        cptr -= 1;
-        heapptr -= 1;
-    }
-
-    heap[0..(length * 8)].copy_from_slice(&p[..(length * 8)]);
+    unshuffle_bytes::<8>(heap, length as usize);
 
     *status
 }
@@ -14173,10 +14122,12 @@ mod ricecomp_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        fits_get_compression_type_safe, fits_get_dither_seed_safe, fits_get_noise_bits_safe,
-        fits_get_quantize_level_safe, fits_get_tile_dim_safer, fits_img_compress_safe,
-        fits_set_compression_type_safe, fits_set_dither_seed_safe, fits_set_noise_bits_safe,
-        fits_set_quantize_level_safe, fits_set_quantize_method_safe, fits_set_tile_dim_safe,
+        c_char, c_int, fits_get_compression_type_safe, fits_get_dither_seed_safe,
+        fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safer,
+        fits_img_compress_safe, fits_set_compression_type_safe, fits_set_dither_seed_safe,
+        fits_set_noise_bits_safe, fits_set_quantize_level_safe, fits_set_quantize_method_safe,
+        fits_set_tile_dim_safe, fits_shuffle_2bytes, fits_shuffle_4bytes, fits_shuffle_8bytes,
+        fits_unshuffle_2bytes, fits_unshuffle_4bytes, fits_unshuffle_8bytes,
     };
     use crate::c_types::c_long;
     use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
@@ -14631,5 +14582,93 @@ mod tests {
                 compress_roundtrip(filename, BYTE_IMG, TBYTE, RICE_1, 32, 32, &original);
             assert_eq!(decompressed, original);
         });
+    }
+
+    // Byte (un)shuffling helpers used by GZIP_2.  See
+    // https://github.com/cruzzil/rsfitsio/issues/89: the unshuffle functions
+    // used to run their destination cursor one step past the start of the
+    // buffer, which panicked on the usize underflow whenever overflow checks
+    // were on.
+
+    /// `length` values of `nbytes` bytes each, with recognisable byte values:
+    /// value `ii` holds the bytes `10 * ii + 1 ..= 10 * ii + nbytes`.
+    fn sample(length: usize, nbytes: usize) -> Vec<c_char> {
+        (0..length)
+            .flat_map(|ii| (1..=nbytes).map(move |b| (10 * ii + b) as u8))
+            .map(|b| b as c_char)
+            .collect()
+    }
+
+    #[test]
+    fn test_shuffle_4bytes_groups_bytes_into_planes() {
+        let mut heap = sample(3, 4);
+        let mut status: c_int = 0;
+        fits_shuffle_4bytes(&mut heap, 3, &mut status);
+
+        // all the first bytes, then all the second bytes, and so on
+        let expected: &[u8] = &[1, 11, 21, 2, 12, 22, 3, 13, 23, 4, 14, 24];
+        assert_eq!(cast_slice::<c_char, u8>(&heap), expected);
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn test_unshuffle_4bytes_restores_the_values() {
+        let shuffled: Vec<c_char> = [1u8, 11, 21, 2, 12, 22, 3, 13, 23, 4, 14, 24]
+            .iter()
+            .map(|&b| b as c_char)
+            .collect();
+        let mut heap = shuffled;
+        let mut status: c_int = 0;
+        fits_unshuffle_4bytes(&mut heap, 3, &mut status);
+
+        assert_eq!(heap, sample(3, 4));
+        assert_eq!(status, 0);
+    }
+
+    /// Unshuffling is the exact inverse of shuffling, for every width and for
+    /// the lengths that used to trip the cursor underflow.
+    #[test]
+    fn test_unshuffle_inverts_shuffle() {
+        for length in 0..8_usize {
+            for nbytes in [2_usize, 4, 8] {
+                let original = sample(length, nbytes);
+                let mut heap = original.clone();
+                let mut status: c_int = 0;
+
+                match nbytes {
+                    2 => {
+                        fits_shuffle_2bytes(&mut heap, length as i64, &mut status);
+                        fits_unshuffle_2bytes(&mut heap, length as i64, &mut status);
+                    }
+                    4 => {
+                        fits_shuffle_4bytes(&mut heap, length as i64, &mut status);
+                        fits_unshuffle_4bytes(&mut heap, length as i64, &mut status);
+                    }
+                    _ => {
+                        fits_shuffle_8bytes(&mut heap, length as i64, &mut status);
+                        fits_unshuffle_8bytes(&mut heap, length as i64, &mut status);
+                    }
+                }
+
+                assert_eq!(heap, original, "length {length}, {nbytes}-byte values");
+                assert_eq!(status, 0);
+            }
+        }
+    }
+
+    /// The heap buffer is usually larger than the shuffled data; nothing past
+    /// `length * nbytes` may be touched.
+    #[test]
+    fn test_unshuffle_leaves_trailing_bytes_alone() {
+        let mut heap = sample(2, 8);
+        heap.extend_from_slice(cast_slice_mut::<u8, c_char>(&mut [0xAA_u8; 5]));
+        let mut status: c_int = 0;
+
+        fits_shuffle_8bytes(&mut heap[..16], 2, &mut status);
+        fits_unshuffle_8bytes(&mut heap, 2, &mut status);
+
+        assert_eq!(heap[..16], sample(2, 8)[..]);
+        assert!(heap[16..].iter().all(|&b| b as u8 == 0xAA));
+        assert_eq!(status, 0);
     }
 }
