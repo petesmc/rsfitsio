@@ -3,6 +3,7 @@ use core::ffi::c_void;
 use crate::c_types::{c_char, c_int, c_long};
 
 use crate::eval_l::yyguts_t;
+/* Not sure why this is needed but it is */
 use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 
@@ -14,6 +15,7 @@ pub const P_ERROR: c_int = -1;
 pub const MAX_STRLEN: c_int = 256;
 pub const MAX_STRLEN_S: &str = "255";
 
+/* An opaque pointer. */
 pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
 #[derive(Debug)]
