@@ -144,6 +144,7 @@ pub(crate) struct yyguts_t {
     /* User-defined. Not touched by flex. */
     /* This is a shorthand accessor to get at the "extra" data inside the
     lexer, which in our case is the lParse (ParseData) structure */
+    /* How ParseData is accessed from the lexer, i.e. by yyextra */
     pub(crate) yyextra_r: *mut ParseData,
 
     /* The rest are the same as the globals declared in the non-reentrant scanner. */

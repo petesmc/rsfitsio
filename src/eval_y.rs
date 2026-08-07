@@ -147,6 +147,8 @@ use crate::fitsio::{LONG_MAX, LONG_MIN, LONGLONG, MEMORY_ALLOCATION, PARSE_SYNTA
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkyd_safe, ffgkyj_safe, ffgkys_safe};
 use crate::region::{MY_PI, SAORegion, WCSdata, fits_in_region, fits_read_rgnfile};
+/* All functions preceeded by fits_parser_yy for uniqueness             */
+
 /* Random number generators for various distributions */
 use crate::simplerng::{
     simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform, simplerng_srand,
@@ -2577,6 +2579,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
+                                /* Scalar RANDOM() */
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2603,6 +2606,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOMN(".as_ptr())
                             }) == 0
                             {
+                                /*Scalar RANDOMN()*/
                                 yyval.Node = New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
@@ -2738,6 +2742,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
                             }) == 0
                             {
+                                /* AXISELEM(V,n) */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -2803,6 +2808,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
+                                /* NAXES(V,n) */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -2816,6 +2822,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
+                                    /* if V is constant, return 1 in every case */
                                     let mut one_0: c_long = 1;
                                     yyval.Node = New_Const(
                                         lParse,
@@ -2825,6 +2832,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 13755523488868872559;
                                 } else {
+                                    /* determine now the dimension of the expression */
                                     let mut iaxis: c_long = 0;
                                     let mut naxis: c_int = 0;
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
@@ -2837,6 +2845,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             yyvs[yyvsp - 1].Node,
                                         );
                                     }
+                                    /* Since it is already constant, we can extract long value directly */
                                     iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
@@ -2844,14 +2853,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     naxis =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis == 0 {
-                                        iaxis = c_long::from(naxis);
+                                        iaxis = c_long::from(naxis); /* NAXIS(V,0) = NAXIS */
                                     } else if iaxis <= c_long::from(naxis) {
+                                        /* NAXIS(V,n) = NAXISn */
                                         iaxis = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
                                             .value
                                             .naxes
                                             [(iaxis - 1) as usize];
                                     } else {
-                                        iaxis = 1;
+                                        iaxis = 1; /* Out of bounds use 1 */
                                     }
                                     yyval.Node = New_Const(
                                         lParse,
@@ -2877,6 +2887,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
+                                /* NAXES(bexpr,n) */
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
@@ -3001,6 +3012,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
+                                /* Bit arrays do not have NULL */
                                 yyval.Node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -3050,7 +3062,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
                                     MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].Node,
@@ -3061,6 +3073,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
+                                /* Note: $2 is a vector so the result can never
+                                be a constant.  Therefore it will never be set
+                                inside New_Func(), and it is safe to set SIZE() */
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
                             } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
@@ -3105,7 +3120,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
                                     MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].Node,
@@ -3116,6 +3131,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                 );
+                                /* Note: $2 is a vector so the result can never
+                                be a constant.  Therefore it will never be set
+                                inside New_Func(), and it is safe to set SIZE() */
                                 (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
                             } else {
@@ -3449,7 +3467,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
                                     MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].Node,
@@ -3475,7 +3493,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval.Node = New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
                                     MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].Node,
@@ -3499,6 +3517,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
+                                /* Vector RANDOM() */
                                 yyval.Node = New_Func(
                                     lParse,
                                     0,
@@ -3608,9 +3627,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NAXIS(".as_ptr())
                             }) == 0
                             {
+                                /* NAXIS(V) */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     == CONST_OP
                                 {
+                                    /* if V is constant, return 1 in every case */
                                     let mut one_2: c_long = 1;
                                     yyval.Node = New_Const(
                                         lParse,
@@ -3636,6 +3657,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                 }
                             } else {
+                                /*  These all take DOUBLE arguments  */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     != fits_parser_yytokentype::DOUBLE as c_int
                                 {
@@ -4487,6 +4509,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 } else {
+                                    /* Make sure first arg is same type as second arg */
                                     if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
                                         != ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
                                     {
@@ -4524,6 +4547,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
                             }) == 0
                             {
+                                /* AXISELEM(V,n) */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -4589,6 +4613,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
+                                /* NAXES(V,n) */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
                                     != CONST_OP
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
@@ -4602,6 +4627,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
                                     == CONST_OP
                                 {
+                                    /* if V is constant, return 1 in every case */
                                     let mut one_4: c_long = 1;
                                     yyval.Node = New_Const(
                                         lParse,
@@ -4611,6 +4637,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 9966817879908499150;
                                 } else {
+                                    /* determine now the dimension of the expression */
                                     let mut iaxis_0: c_long = 0;
                                     let mut naxis_1: c_int = 0;
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
@@ -4623,6 +4650,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                             yyvs[yyvsp - 1].Node,
                                         );
                                     }
+                                    /* Since it is already constant, we can extract long value directly */
                                     iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
@@ -4630,14 +4658,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     naxis_1 =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis_0 == 0 {
-                                        iaxis_0 = c_long::from(naxis_1);
+                                        iaxis_0 = c_long::from(naxis_1); /* NAXIS(V,0) = NAXIS */
                                     } else if iaxis_0 <= c_long::from(naxis_1) {
+                                        /* NAXIS(V,n) = NAXISn */
                                         iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
                                             .value
                                             .naxes
                                             [(iaxis_0 - 1) as usize];
                                     } else {
-                                        iaxis_0 = 1;
+                                        iaxis_0 = 1; /* Out of bounds use 1 */
                                     }
                                     yyval.Node = New_Const(
                                         lParse,
@@ -4663,6 +4692,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
+                                /* NAXES(expr,n) */
                                 yyval.Node =
                                     New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
                                 if yyval.Node < 0 {
@@ -5688,6 +5718,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 if yyval.Node < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
+                                    /* Use expression's size, but return BOOLEAN */
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
                                     current_block = 17353983478346836848;
@@ -5730,6 +5761,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 if yyval.Node < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
+                                    /* Use expression's size, but return BOOLEAN */
                                     ((lParse.Nodes)[yyval.Node as usize]).ntype =
                                         fits_parser_yytokentype::BOOLEAN as c_int;
                                     current_block = 17353983478346836848;
@@ -6367,6 +6399,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 current_block = 17353983478346836848;
                             }
                         }
+                        /* GTIFIND('myfile.gti', TIME_EXPR, 'START', 'STOP') */
                         113 => {
                             /* bexpr: GTIFIND ')'  */
                             /* Use defaults for all elements */
@@ -10610,7 +10643,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 1039 => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0;
+                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0; /* Standard deviation of a constant = 0 */
                     current_block_139 = 7627602990488000394;
                 }
                 1037 => {
@@ -10820,6 +10853,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 15934000668868306918;
                 }
                 1023 => {
+                    /* No constant vectors! */
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -10963,6 +10997,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
+                /* String functions */
                 STRMID_FCT => {
                     let dest_str = ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
@@ -11062,6 +11097,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     1050 => {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
+                        /* This should be a constant long value */
                         let ipos: c_long = pVals[1].data.lng - 1;
                         let naxis: c_int = (lParse.Nodes[this_node_idx]).value.naxis;
                         let mut j: c_int = 0;
@@ -11237,8 +11273,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                                 as c_double,
                                         ));
                                 }
-                            }
-                        }
+                            } /* ! CONST_OP */
+                        } /* END LONG */
                     }
                     /* Non-Trig single-argument functions */
                     1002 => {
@@ -11254,6 +11290,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.data.lngptr)
                                     .offset(row as isize) = 0;
+                                /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
@@ -11297,6 +11334,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.data.lngptr)
                                     .offset(row as isize) = 0;
+                                /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
@@ -11332,6 +11370,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.data.dblptr)
                                     .offset(row as isize) = 0.0;
+                                /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
@@ -11792,7 +11831,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 break;
                             }
                             let mut nelem1_1: c_int = nelem as c_int;
-                            *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
+                            *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0; /* Initialize to 0 (defined) */
                             *((lParse.Nodes[this_node_idx]).value.data.lngptr)
                                 .offset(row as isize) = 0;
                             loop {
@@ -13755,9 +13794,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     _ => {}
-                }
-            }
-        }
+                } /* End switch(this->operation) */
+            } /* End if (!lParse->status) */
+        } /* End non-constant operations */
+
         i = (lParse.Nodes[this_node_idx]).nSubNodes;
         loop {
             let fresh198 = i;
@@ -13766,6 +13806,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 break;
             }
             if (lParse.Nodes[theParams[i as usize]]).operation > 0 {
+                /*  Currently only numeric params allowed  */
                 free((lParse.Nodes[theParams[i as usize]]).value.data.ptr);
             }
         }
@@ -14263,6 +14304,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                         if *fresh203 != 0 {
                             continue;
                         }
+                        /*  Before searching entire GTI, check the GTI found last time  */
                         if gti < 0
                             || *times.offset(elem as isize) < *start.offset(gti as isize)
                             || *times.offset(elem as isize) > *stop.offset(gti as isize)
@@ -14287,7 +14329,9 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(elem as isize) = if gti >= 0 { 1 } else { 0 };
                         }
                     }
+                /* nGTI == 0 */
                 } else if dorow != 0 {
+                    /* no good times so all values are undef */
                     loop {
                         let fresh204 = elem;
                         elem -= 1;
@@ -14297,6 +14341,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 1;
                     }
                 } else {
+                    /* no good times so all logicals are 0 */
                     loop {
                         let fresh205 = elem;
                         elem -= 1;
@@ -14331,13 +14376,13 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         let nextGTI: c_long = 0;
         let ordered: c_int = 0;
 
-        let theTimes = (lParse.Nodes[this_node_idx]).SubNodes[0];
-        let theStop = (lParse.Nodes[this_node_idx]).SubNodes[2];
-        let theStart = (lParse.Nodes[this_node_idx]).SubNodes[1];
+        let theTimes = (lParse.Nodes[this_node_idx]).SubNodes[0]; /* GTI times */
+        let theStop = (lParse.Nodes[this_node_idx]).SubNodes[2]; /* User start time */
+        let theStart = (lParse.Nodes[this_node_idx]).SubNodes[1]; /* User stop time */
 
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
-        gtiStart = (lParse.Nodes[theTimes]).value.data.dblptr;
-        gtiStop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize);
+        gtiStart = (lParse.Nodes[theTimes]).value.data.dblptr; /* GTI start */
+        gtiStop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize); /* GTI stop */
         if (lParse.Nodes[theStart]).operation == CONST_OP
             && (lParse.Nodes[theStop]).operation == CONST_OP
         {
@@ -14352,9 +14397,9 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             let mut undefStart: c_char = 0;
-            let mut undefStop: c_char = 0;
+            let mut undefStop: c_char = 0; /* Input values are undef? */
             let mut uStart: c_double = 0.0;
-            let mut uStop: c_double = 0.0;
+            let mut uStop: c_double = 0.0; /* User start/stop values */
             if (lParse.Nodes[theStart]).operation == CONST_OP {
                 uStart = (lParse.Nodes[theStart]).value.data.dbl;
             }
@@ -14394,23 +14439,30 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         } else {
                             0
                         };
+                        /* This works because at least one of the values is not const */
                         if *fresh207 != 0 {
                             continue;
                         }
+                        /*  Before searching entire GTI, check the GTI found last time  */
                         if gti < 0
                             || uStart < *gtiStart.offset(gti as isize)
                             || uStart > *gtiStop.offset(gti as isize)
                             || uStop < *gtiStart.offset(gti as isize)
                             || uStop > *gtiStop.offset(gti as isize)
                         {
+                            /* Nope, need to recalculate */
                             toverlap = GTI_Over(uStart, uStop, nGTI, gtiStart, gtiStop, &mut gti);
                         } else {
+                            /* We are in same GTI, the overlap is just stop-start of user range */
                             toverlap = uStop - uStart;
                         }
+
+                        /* This works because at least one of the values is not const */
                         *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
                             toverlap;
                     }
                 } else {
+                    /* nGTI == 0; there is no overlap so set all values to 0.0 */
                     loop {
                         let fresh208 = elem;
                         elem -= 1;
@@ -14449,23 +14501,39 @@ fn GTI_Over(
         let mut nMax: c_long = 0;
         let mut overlap: c_double = 0.0;
         *gtiout = -(1 as c_long);
+
+        /* Zero or negative bin size */
         if evtStop <= evtStart {
             return 0.0;
         }
+
+        /* Locate adjacent GTIs for evtStart and evtStop */
         gti1 = Search_GTI(evtStart, nGTI, start, stop, 1, &mut nextGTI1);
         gti2 = Search_GTI(evtStop, nGTI, start, stop, 1, &mut nextGTI2);
+
+        /* evtStart is in gti1, we return that for future processing */
         if gti1 >= 0 {
             *gtiout = gti1;
         }
+
+        /* Both evtStart/evtStop are beyond the last GTI */
         if nextGTI1 < 0 && nextGTI2 < 0 {
             return 0.0;
         }
+
+        /* Both evtStart/evtStop are in the same gap between GTIs */
         if gti1 < 0 && gti2 < 0 && nextGTI1 == nextGTI2 {
             return 0.0;
         }
+
+        /* Both evtStart/evtStop are in the same GTI */
         if gti1 >= 0 && gti1 == gti2 {
             return evtStop - evtStart;
         }
+
+        /* Count through the remaining GTIs; there will be at least one */
+        /* The largest GTI to consider is either nextGTI2-1, if it exists,
+        or nGTI-1 */
         if nextGTI2 < 0 {
             nMax = nGTI - 1;
         } else if gti2 >= 0 {
@@ -14477,6 +14545,8 @@ fn GTI_Over(
         while gti <= nMax {
             let mut starti: c_double = *start.offset(gti as isize);
             let mut stopi: c_double = *stop.offset(gti as isize);
+
+            /* Trim the GTI by actual evtStart/Stop times */
             if evtStart > starti {
                 starti = evtStart;
             }
@@ -14489,6 +14559,24 @@ fn GTI_Over(
         overlap
     }
 }
+/*
+ * Search_GTI - search GTI for requested evtTime
+ *
+ * double evtTime - requested event time
+ * long nGTI - number of entries in start[] and stop[]
+ * double start[], stop[] - start and stop of each GTI
+ * int ordered - set to 1 if time-ordered
+ * long *nextGTI0 - upon return, *nextGTI0 is either
+ *                   the GTI evtTime is inside
+ *                   the next GTI if evtTime is not inside
+ *                   -1L if there is no next GTI
+ *                   not set if nextGTI0 is a null pointer
+ *
+ * NOTE: for *nextGTI to be well-defined, the GTI must
+ *   be ordered.  This is true when called by Do_GTI.
+ *
+ * RETURNS: gti index that evtTime is located inside, or -1L
+ */
 fn Search_GTI(
     evtTime: c_double,
     nGTI: c_long,
@@ -14502,6 +14590,8 @@ fn Search_GTI(
         let mut nextGTI: c_long = -(1 as c_long);
         let mut step: c_long = 0;
         if ordered != 0 && nGTI > 15 as c_long {
+            /*  If time-ordered and lots of GTIs,   */
+            /*  use "FAST" Binary search algorithm  */
             if evtTime >= *start.offset(0) && evtTime <= *stop.offset((nGTI - 1) as isize) {
                 step = nGTI >> 1;
                 gti = step;
@@ -14537,6 +14627,9 @@ fn Search_GTI(
                 gti = -(1 as c_long);
             }
         } else {
+            /*  Use "SLOW" linear search.  Not required to be
+            ordered, so we have to search the whole table
+            no matter what.  */
             gti = nGTI;
             loop {
                 let fresh209 = gti;
@@ -14837,7 +14930,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                 offset += that_node.value.nelem;
                 node += 1;
             }
-        }
+        } /* not constant */
 
         node = 0;
         while node < (lParse.Nodes[this_node_idx]).nSubNodes {
@@ -14870,6 +14963,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
 
         Allocate_Ptrs(lParse, this_node_idx);
 
+        /* This is the item to be replicated */
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let (this_node, that_node) =
             get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
@@ -14901,6 +14995,9 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
             } else if (that_node).value.nelem > 1 {
+                /* array "REFORM" */
+                /* Note that dimensions change but total number of elements is same,
+                so we just do a straight copy */
                 idx = lParse.nRows * this_node.value.nelem;
                 loop {
                     let fresh215 = idx;
@@ -14927,6 +15024,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
             } else {
+                /* Any promotion of scalar to vector/array */
                 row = lParse.nRows;
                 idx = row * this_node.value.nelem - 1;
                 loop {
@@ -14979,6 +15077,10 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
 // One arm per comparison operator, mirroring the C's switch; match guards
 // would make the operator table harder to scan.
 #[allow(clippy::collapsible_match, clippy::collapsible_if)]
+/*****************************************************************************/
+/*  Utility routines which perform the calculations on bits and SAO regions  */
+/*****************************************************************************/
+
 fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_char {
     unsafe {
         let mut val1: c_int = 0;
@@ -15499,6 +15601,9 @@ fn ellipse(
 }
 
 /// Extract substring
+/*
+ * Extract substring
+ */
 fn cstrmid(
     lParse: &mut ParseData,
     dest_str: *mut c_char,
