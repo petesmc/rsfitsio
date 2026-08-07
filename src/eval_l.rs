@@ -1,3 +1,55 @@
+/************************************************************************/
+/*                                                                      */
+/*                       CFITSIO Lexical Parser                         */
+/*                                                                      */
+/* This specifies a thread-safe reentrant version of lex functions */
+/* This specifies CFITSIO-unique names for lexer functions */
+/* This facilitates calling between the Bison parser and this lexer */
+/* This file is one of 3 files containing code which parses an          */
+/* arithmetic expression and evaluates it in the context of an input    */
+/* FITS file table extension.  The CFITSIO lexical parser is divided    */
+/* into the following 3 parts/files: the CFITSIO "front-end",           */
+/* eval_f.c, contains the interface between the user/CFITSIO and the    */
+/* real core of the parser; the FLEX interpreter, eval_l.c, takes the   */
+/* input string and parses it into tokens and identifies the FITS       */
+/* information required to evaluate the expression (ie, keywords and    */
+/* columns); and, the BISON grammar and evaluation routines, eval_y.c,  */
+/* receives the FLEX output and determines and performs the actual      */
+/* operations.  The files eval_l.c and eval_y.c are produced from       */
+/* running flex and bison on the files eval.l and eval.y, respectively. */
+/* (flex and bison are available from any GNU archive: see www.gnu.org) */
+/*                                                                      */
+/* The grammar rules, rather than evaluating the expression in situ,    */
+/* builds a tree, or Nodal, structure mapping out the order of          */
+/* operations and expression dependencies.  This "compilation" process  */
+/* allows for much faster processing of multiple rows.  This technique  */
+/* was developed by Uwe Lammers of the XMM Science Analysis System,     */
+/* although the CFITSIO implementation is entirely code original.       */
+/*                                                                      */
+/*                                                                      */
+/* Modification History:                                                */
+/*                                                                      */
+/*   Kent Blackburn      c1992  Original parser code developed for the  */
+/*                              FTOOLS software package, in particular, */
+/*                              the fselect task.                       */
+/*   Kent Blackburn      c1995  BIT column support added                */
+/*   Peter D Wilson   Feb 1998  Vector column support added             */
+/*   Peter D Wilson   May 1998  Ported to CFITSIO library.  User        */
+/*                              interface routines written, in essence  */
+/*                              making fselect, fcalc, and maketime     */
+/*                              capabilities available to all tools     */
+/*                              via single function calls.              */
+/*   Peter D Wilson   Jun 1998  Major rewrite of parser core, so as to  */
+/*                              create a run-time evaluation tree,      */
+/*                              inspired by the work of Uwe Lammers,    */
+/*                              resulting in a speed increase of        */
+/*                              10-100 times.                           */
+/*   Peter D Wilson   Jul 1998  gtifilter(a,b,c,d) function added       */
+/*   Peter D Wilson   Aug 1998  regfilter(a,b,c,d) function added       */
+/*   Peter D Wilson   Jul 1999  Make parser fitsfile-independent,       */
+/*                              allowing a purely vector-based usage    */
+/*                                                                      */
+/************************************************************************/
 #![deny(dead_code)]
 
 use errno::{Errno, errno, set_errno};
@@ -21,6 +73,8 @@ use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
     wrappers::{strcpy, strlen, strncat, strncpy, toupper},
 };
+
+/*****  Definitions  *****/
 
 const OCT_0: &str = "000";
 const OCT_1: &str = "001";
@@ -88,6 +142,8 @@ pub type yy_size_t = size_t;
 #[derive(Default, Copy, Clone)]
 pub(crate) struct yyguts_t {
     /* User-defined. Not touched by flex. */
+    /* This is a shorthand accessor to get at the "extra" data inside the
+    lexer, which in our case is the lParse (ParseData) structure */
     pub(crate) yyextra_r: *mut ParseData,
 
     /* The rest are the same as the globals declared in the non-reentrant scanner. */
@@ -118,6 +174,11 @@ pub type YY_CHAR = flex_uint8_t;
 pub type uint = c_uint;
 
 pub(crate) fn fits_parser_yywrap() -> c_int {
+    /* MJT -- 13 June 1996
+       Supplied for compatibility with
+       pre-2.5.1 versions of flex which
+       do not recognize %option noyywrap
+    */
     1
 }
 
@@ -165,6 +226,8 @@ fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int
     buf[n as usize] = 0;
     n
 }
+
+/*****  Internal functions  *****/
 
 pub(crate) fn fits_parser_yyGetVariable(
     lParse: &mut ParseData,
@@ -1000,6 +1063,7 @@ pub(crate) fn fits_parser_yylex(
                                     || FSTRCMP(fname, cs!(c"NEAR(")) == 0
                                     || FSTRCMP(fname, cs!(c"ISNULL(")) == 0
                                 {
+                                    /* Return type is always boolean  */
                                     return fits_parser_yytokentype::BFUNCTION as c_int;
                                 } else if FSTRCMP(fname, cs!(c"GTIFILTER(")) == 0 {
                                     return fits_parser_yytokentype::GTIFILTER as c_int;
@@ -1049,29 +1113,58 @@ pub(crate) fn fits_parser_yylex(
                             }
                             32 => return 0,
                             31 => {
+                                /* Amount of text matched not including the EOB char. */
                                 yy_amount_of_matched_text =
                                     yy_cp.offset_from(yyscanner.yytext_r) as c_long as c_int - 1;
+
+                                /* Undo the effects of YY_DO_BEFORE_ACTION. */
                                 *yy_cp = yyscanner.yy_hold_char;
 
                                 let top_state = (*(yyscanner.yy_buffer_stack)
                                     .add(yyscanner.yy_buffer_stack_top))
                                 .as_deref_mut()
                                 .unwrap();
+                                /* We're scanning a new file or input source.  It's
+                                 * possible that this happened because the user
+                                 * just pointed yyin at a new source and called
+                                 * yylex().  If so, then we have to assure
+                                 * consistency between YY_CURRENT_BUFFER and our
+                                 * globals.  Here is the right place to do so, because
+                                 * this is the first action (other than possibly a
+                                 * back-up) that will match for the new input source.
+                                 */
                                 if top_state.yy_buffer_status == 0 {
                                     yyscanner.yy_n_chars = top_state.yy_n_chars;
                                     let fresh4 = &mut top_state.yy_input_file;
                                     *fresh4 = yyscanner.yyin_r;
                                     top_state.yy_buffer_status = 1;
                                 }
+                                /* Note that here we test for yy_c_buf_p "<=" to the position
+                                 * of the first EOB in the buffer, since yy_c_buf_p will
+                                 * already have been incremented past the NUL character
+                                 * (since all states make transitions on EOB to the
+                                 * end-of-buffer state).  Contrast this with the test
+                                 * in input().
+                                 */
                                 if yyscanner.yy_c_buf_p
                                     <= (top_state.yy_ch_buf).as_deref_mut().unwrap()
                                         [yyscanner.yy_n_chars as usize..]
                                         .as_mut_ptr()
                                 {
+                                    /* This was really a NUL. */
                                     yy_next_state = 0;
                                     yyscanner.yy_c_buf_p = (yyscanner.yytext_r)
                                         .offset(yy_amount_of_matched_text as isize);
                                     yy_current_state = yy_get_previous_state(yyscanner);
+
+                                    /* Okay, we're now positioned to make the NUL
+                                     * transition.  We couldn't have
+                                     * yy_get_previous_state() go ahead and do it
+                                     * for us because it doesn't know how to deal
+                                     * with the possibility of jamming (and we don't
+                                     * want to build jamming into it because then it
+                                     * will run more slowly).
+                                     */
                                     yy_next_state = yy_try_NUL_trans(yy_current_state, yyscanner);
                                     yy_bp = (yyscanner.yytext_r).offset(0);
                                     if yy_next_state != 0 {
@@ -1086,6 +1179,15 @@ pub(crate) fn fits_parser_yylex(
                                         1 => {
                                             yyscanner.yy_did_buffer_switch_on_eof = 0;
                                             if fits_parser_yywrap() != 0 {
+                                                /* Note: because we've taken care in
+                                                 * yy_get_next_buffer() to have set up
+                                                 * yytext, we can now set up
+                                                 * yy_c_buf_p so that if some total
+                                                 * hoser (like flex itself) wants to
+                                                 * call the scanner after we return the
+                                                 * YY_NULL, it'll still work - another
+                                                 * YY_NULL will get returned.
+                                                 */
                                                 yyscanner.yy_c_buf_p =
                                                     (yyscanner.yytext_r).offset(0);
                                                 yy_act =
@@ -1153,6 +1255,13 @@ pub(crate) fn fits_parser_yylex(
     }
 }
 
+/* yy_get_next_buffer - try to read in a new buffer
+ *
+ * Returns a code representing an action:
+ *	EOB_ACT_LAST_MATCH -
+ *	EOB_ACT_CONTINUE_SCAN - continue scanning from current position
+ *	EOB_ACT_END_OF_FILE - end of file
+ */
 fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
     unsafe {
         let mut source: *mut c_char = yyscanner.yytext_r;
@@ -1173,12 +1282,23 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
         }
 
         if top_state.yy_fill_buffer == 0 {
+            /* Don't try to fill the buffer, so this is an EOF. */
             if ((yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long) == 1 {
+                /* We matched a single character, the EOB, so
+                 * treat this as a final EOF.
+                 */
                 return 1;
             } else {
+                /* We matched some text prior to the EOB, first
+                 * process it.
+                 */
                 return 2;
             }
         }
+
+        /* Try to read more data. */
+
+        /* First move last chars to start of buffer. */
         number_to_move =
             ((yyscanner.yy_c_buf_p).offset_from(yyscanner.yytext_r) as c_long - 1) as c_int;
         i = 0;
@@ -1191,11 +1311,15 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             i += 1;
         }
         if top_state.yy_buffer_status == 2 {
+            /* don't do the read, it's not guaranteed to return an EOF,
+             * just force an EOF
+             */
             yyscanner.yy_n_chars = 0;
             top_state.yy_n_chars = yyscanner.yy_n_chars;
         } else {
             let mut num_to_read: c_int = top_state.yy_buf_size - number_to_move - 1;
             while num_to_read <= 0 {
+                /* Not enough room in the buffer - grow it. */
                 let yy_c_buf_p_offset: c_int = (yyscanner.yy_c_buf_p)
                     .offset_from((top_state).yy_ch_buf.as_deref().unwrap().as_ptr())
                     as c_long as c_int;
@@ -1207,6 +1331,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                         (top_state).yy_buf_size *= 2;
                     }
 
+                    /* Include room in for 2 EOB chars. */
                     let mut v = Vec::new();
                     let size = new_size as usize;
                     if v.try_reserve_exact(size).is_err() {
@@ -1221,6 +1346,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
 
                     (top_state).yy_ch_buf = Some(v.into_boxed_slice());
                 } else {
+                    /* Can't grow it, we don't own it. */
                     (top_state).yy_ch_buf = None;
                 }
 
@@ -1236,6 +1362,12 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             if num_to_read > 8192 as c_int {
                 num_to_read = 8192 as c_int;
             }
+            /* Read in more data. */
+            /*
+               MJT - 13 June 1996
+               read from buffer instead of stdin
+               (as per old ftools.skel)
+            */
             yyscanner.yy_n_chars = expr_read(
                 &mut *yyscanner.yyextra_r,
                 &mut (top_state.yy_ch_buf).as_deref_mut().unwrap()[number_to_move as usize..],
@@ -1264,6 +1396,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             .unwrap();
 
         if yyscanner.yy_n_chars + number_to_move > top_state.yy_buf_size {
+            /* Extend the array by 50%, plus the number we really need. */
             let new_size_0: c_int =
                 yyscanner.yy_n_chars + number_to_move + (yyscanner.yy_n_chars >> 1);
 
@@ -1281,6 +1414,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
 
             top_state.yy_ch_buf = Some(v.into_boxed_slice());
 
+            /* "- 2" to take care of EOB's */
             top_state.yy_buf_size = new_size_0 - 2;
         }
 
@@ -1293,6 +1427,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
     }
 }
 
+/* yy_get_previous_state - get the state just before the EOB char was reached */
 fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
     unsafe {
         let mut yy_current_state: yy_state_type = 0;
@@ -1330,6 +1465,11 @@ fn yy_get_previous_state(yyscanner: &mut yyguts_t) -> yy_state_type {
     }
 }
 
+/* yy_try_NUL_trans - try to make a transition on the NUL character
+ *
+ * synopsis
+ *	next_state = yy_try_NUL_trans( current_state );
+ */
 fn yy_try_NUL_trans(
     mut yy_current_state: yy_state_type,
     yyscanner: &mut yyguts_t,
@@ -1358,6 +1498,10 @@ fn yy_try_NUL_trans(
     if yy_is_jam != 0 { 0 } else { yy_current_state }
 }
 
+/// Immediately switch to a different input stream.
+/// @param input_file A readable stream.
+/// @param yyscanner The scanner object.
+/// @note This function does not reset the start condition to @c INITIAL .
 pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
         if yyscanner.yy_buffer_stack.is_null()
@@ -1455,6 +1599,9 @@ pub(crate) fn fits_parser_yy_create_buffer(
     b
 }
 
+/// Destroy the buffer.
+/// @param b a buffer created with yy_create_buffer()
+/// @param yyscanner The scanner object.
 pub(crate) fn fits_parser_yy_delete_buffer(
     b: Option<Box<yy_buffer_state>>,
     yyscanner: &mut yyguts_t,
@@ -1474,7 +1621,9 @@ pub(crate) fn fits_parser_yy_delete_buffer(
 
         let mut z = None;
 
-        if ptr::addr_eq(b.as_mut(), top_stack) {
+        if ptr::addr_eq(b.as_mut(), top_stack)
+        /* Not sure if we should pop here. */
+        {
             z = (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).take();
         }
 
@@ -1488,6 +1637,10 @@ pub(crate) fn fits_parser_yy_delete_buffer(
     }
 }
 
+/* Initializes or reinitializes a buffer.
+ * This function is sometimes called more than once on the same buffer,
+ * such as during a yyrestart() or at EOF.
+ */
 fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
         let oerrno = errno().0;
@@ -1503,6 +1656,10 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
             None => ptr::null_mut(),
         };
 
+        /* If b is the current buffer, then yy_init_buffer was _probably_
+         * called from yyrestart() or through yy_get_next_buffer.
+         * In that case, we don't want to reset the lineno or column.
+         */
         if !ptr::addr_eq(b, top_state) {
             b.yy_bs_lineno = 1;
             b.yy_bs_column = 0;
@@ -1516,9 +1673,17 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
     }
 }
 
+/// Discard all buffered characters. On the next scan, YY_INPUT will be called.
+/// @param b the buffer state to be flushed, usually @c YY_CURRENT_BUFFER.
+/// @param yyscanner The scanner object.
 pub(crate) fn fits_parser_yy_flush_buffer(b: &mut yy_buffer_state, yyscanner: &mut yyguts_t) {
     unsafe {
         b.yy_n_chars = 0;
+
+        /* We always need two end-of-buffer characters.  The first causes
+         * a transition to the end-of-buffer state.  The second causes
+         * a jam in that state.
+         */
         (b.yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
         (b.yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
         b.yy_buf_pos = 0; // Set index to start of buffer
@@ -1538,6 +1703,9 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: &mut yy_buffer_state, yyscanner: &m
     }
 }
 
+/// Removes and deletes the top of the stack, if present.
+///  The next element becomes the new top.
+///  @param yyscanner The scanner object.
 pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
     unsafe {
         if (yyscanner.yy_buffer_stack).is_null()
@@ -1561,12 +1729,19 @@ pub(crate) fn fits_parser_yypop_buffer_state(yyscanner: &mut yyguts_t) {
     }
 }
 
+/* Allocates the stack if it does not exist.
+ *  Guarantees space for at least one push.
+ */
 fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
     unsafe {
         let mut num_to_alloc: yy_size_t = 0;
 
         if (yyscanner.yy_buffer_stack).is_null() {
-            num_to_alloc = 1;
+            /* First allocation is just for 2 elements, since we don't know if this
+             * scanner will even need a stack. We use 2 instead of 1 to avoid an
+             * immediate realloc on the next call.
+             */
+            num_to_alloc = 1; /* After all that talk, this was set to 1 anyways... */
 
             let mut v = Vec::new();
             if v.try_reserve_exact(num_to_alloc).is_err() {
@@ -1585,7 +1760,9 @@ fn fits_parser_yyensure_buffer_stack(yyscanner: &mut yyguts_t) {
         if yyscanner.yy_buffer_stack_top
             >= (yyscanner.yy_buffer_stack_max).wrapping_sub(1 as c_int as size_t)
         {
-            let grow_size: yy_size_t = 8;
+            /* Increase the buffer to prepare for a possible push. */
+            let grow_size: yy_size_t = 8 /* arbitrary grow size */;
+
             num_to_alloc = (yyscanner.yy_buffer_stack_max) + (grow_size);
 
             let mut v = Vec::from_raw_parts(
@@ -1654,20 +1831,31 @@ pub(crate) fn fits_parser_yylex_init_extra(
 }
 
 fn yy_init_globals(yyscanner: &mut yyguts_t) -> c_int {
+    /* Initialization is the same as for the non-reentrant scanner.
+     * This function is called from yylex_destroy(), so don't allocate here.
+     */
     yyscanner.yy_buffer_stack = core::ptr::null_mut();
     yyscanner.yy_buffer_stack_top = 0;
     yyscanner.yy_buffer_stack_max = 0;
     yyscanner.yy_c_buf_p = core::ptr::null_mut::<c_char>();
     yyscanner.yy_init = 0;
     yyscanner.yy_start = 0;
+    /* Defined in main.c */
     yyscanner.yyin_r = core::ptr::null_mut::<FILE>();
     yyscanner.yyout_r = core::ptr::null_mut::<FILE>();
+
+    /* For future reference: Set errno on error, since we are called by
+     * yylex_init()
+     */
     0
 }
 
+/* yylex_destroy is for both reentrant and non-reentrant scanners. */
 pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
     unsafe {
         let yyg = yyscanner.as_mut();
+
+        /* Pop the buffer stack, destroying each element. */
         while !(yyscanner.yy_buffer_stack).is_null()
             && (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).is_some()
         {
@@ -1677,8 +1865,12 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
             (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)) = None;
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
+        /* Destroy the stack itself. */
         free(yyscanner.yy_buffer_stack.cast::<c_void>());
         yyscanner.yy_buffer_stack = core::ptr::null_mut();
+
+        /* Reset the globals. This is important in a non-reentrant scanner so the next time
+         * yylex() is called, initialization will occur. */
         yy_init_globals(&mut yyscanner);
 
         0
