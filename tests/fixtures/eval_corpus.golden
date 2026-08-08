@@ -1,0 +1,503 @@
+42	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [42.000000, 42.000000, 42.000000]
+0	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+13245	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [13245.000000, 13245.000000, 13245.000000]
+2.5	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.500000, 2.500000, 2.500000]
+.5	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.500000, 0.500000, 0.500000]
+1.	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+12.	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [12.000000, 12.000000, 12.000000]
+0.	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+1.5	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.500000, 1.500000, 1.500000]
+1.5e3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1500.000000, 1500.000000, 1500.000000]
+1.5E3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1500.000000, 1500.000000, 1500.000000]
+1.5e+3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1500.000000, 1500.000000, 1500.000000]
+1.5e-3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.001500, 0.001500, 0.001500]
+1.5d3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.500000, 1.500000, 1.500000]
+1.5D3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.500000, 1.500000, 1.500000]
+1.5d-3	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.500000, 1.500000, 1.500000]
+3.14159	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [3.141590, 3.141590, 3.141590]
+t	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+f	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+T	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+F	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+0b01001	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [9.000000, 9.000000, 9.000000]
+0b1011	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [11.000000, 11.000000, 11.000000]
+0o1373	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [763.000000, 763.000000, 763.000000]
+0o17	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [15.000000, 15.000000, 15.000000]
+0x12f3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4851.000000, 4851.000000, 4851.000000]
+0x10	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [16.000000, 16.000000, 16.000000]
+0x0	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+0x1f	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [31.000000, 31.000000, 31.000000]
+0x1F	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [31.000000, 31.000000, 31.000000]
+0xff	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [255.000000, 255.000000, 255.000000]
+0xFF	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [255.000000, 255.000000, 255.000000]
+0xFf	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [255.000000, 255.000000, 255.000000]
+0xa	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [10.000000, 10.000000, 10.000000]
+0xA	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [10.000000, 10.000000, 10.000000]
+0xabcdef	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [11259375.000000, 11259375.000000, 11259375.000000]
+0xABCDEF	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [11259375.000000, 11259375.000000, 11259375.000000]
+b101	OK dt=1 nelem=-3 naxis=1 naxes=[1] | EVALERR 432
+b11110000	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+b1111xxxx	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+bxxxx0000	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+B01x	OK dt=1 nelem=-3 naxis=1 naxes=[1] | EVALERR 432
+bx	OK dt=1 nelem=-1 naxis=1 naxes=[1] | EVALERR 432
+o360	OK dt=1 nelem=-9 naxis=1 naxes=[1] | EVALERR 433
+o17	OK dt=1 nelem=-6 naxis=1 naxes=[1] | EVALERR 433
+oxx	OK dt=1 nelem=-6 naxis=1 naxes=[1] | EVALERR 433
+h1f	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+hF0	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+hf0	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+hxx	OK dt=1 nelem=-8 naxis=1 naxes=[1] | EVALERR 433
+'abc'	OK dt=16 nelem=-3 naxis=1 naxes=[1]
+"abc"	OK dt=16 nelem=-3 naxis=1 naxes=[1]
+''	OK dt=16 nelem=0 naxis=1 naxes=[1]
+""	OK dt=16 nelem=0 naxis=1 naxes=[1]
+'a b c'	OK dt=16 nelem=-5 naxis=1 naxes=[1]
+#PI	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [3.141593, 3.141593, 3.141593]
+#pi	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [3.141593, 3.141593, 3.141593]
+#E	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.718282, 2.718282, 2.718282]
+#e	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.718282, 2.718282, 2.718282]
+#DEG	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.017453, 0.017453, 0.017453]
+#deg	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.017453, 0.017453, 0.017453]
+#ROW	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 2.000000, 3.000000]
+#row	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 2.000000, 3.000000]
+#NULL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000] (null)
+#SNULL	OK dt=16 nelem=1 naxis=1 naxes=[1]
+#INTKEY	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [42.000000, 42.000000, 42.000000]
+#DBLKEY	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.500000, 2.500000, 2.500000]
+#LOGKEY	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+#STRKEY	ERR 407
+#$INTKEY$	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [42.000000, 42.000000, 42.000000]
+#BADKEY	ERR 202
+b1x0y	ERR 202
+TT	ERR 202
+false	ERR 202
+.	ERR 431
+..	ERR 431
+1.2.3	ERR 431
+1..2	ERR 431
+.5.5	ERR 431
+1.e5	ERR 431
+.e5	ERR 431
+1.5e	ERR 431
+0x	ERR 431
+0b	ERR 431
+0o	ERR 431
+0b2	ERR 431
+0xg	ERR 431
+12abc	ERR 431
+oct123	ERR 202
+1e	ERR 431
+e5	ERR 202
+X(1)	ERR 202
+a (	ERR 202
+(int )x	ERR 431
+$MY COL$	ERR 202
+$a$b$	ERR 202
+a.Ne.b	ERR 202
+aNE.b	ERR 202
+not .a	ERR 202
+a***b	ERR 202
+1***2	ERR 431
+"unterminated	ERR 431
+INTCOL + .	ERR 431
+. + 1	ERR 431
+2+3*4	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [14.000000, 14.000000, 14.000000]
+2*3+4	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [10.000000, 10.000000, 10.000000]
+10-3-2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [5.000000, 5.000000, 5.000000]
+10/2/5	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+2**3**2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [512.000000, 512.000000, 512.000000]
+2^3^2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [512.000000, 512.000000, 512.000000]
+2**3*2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [16.000000, 16.000000, 16.000000]
+2*3**2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [18.000000, 18.000000, 18.000000]
+-2**2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+(-2)**2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+-2^2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
++2**2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+7%3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+-7%3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [-1.000000, -1.000000, -1.000000]
+7%3+1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+1+7%3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+1|2*3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [9.000000, 9.000000, 9.000000]
+2*3|1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [6.000000, 6.000000, 6.000000]
+1+2|4	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [7.000000, 7.000000, 7.000000]
+6|1+1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [8.000000, 8.000000, 8.000000]
+1&3+4	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [5.000000, 5.000000, 5.000000]
+5^^3+1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [7.000000, 7.000000, 7.000000]
+1|2&3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+1&2|3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+1^^2|3	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+1+2>2	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+1+2==3	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+1==2||1==1	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+1>0&&0>1||1>0	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+1<2==1	ERR 431
+(int)2.7*2	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+(int)(2.7*2)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [5.000000, 5.000000, 5.000000]
+(float)3/2	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.500000, 1.500000, 1.500000]
+(int)3.9+1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+INTCOL+1>5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+2*INTCOL>5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL>1&&INTCOL<10	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+1==1&&1==1	OK dt=14 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+0||1&&0	ERR 431
+1&&0||1	ERR 431
+-INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [-7.000000, 3.000000, -10.000000]
++INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+--INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+-(-INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+-INTCOL+1	OK dt=41 nelem=1 naxis=1 naxes=[1] | [-6.000000, 4.000000, -9.000000]
+-INTCOL*2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [-14.000000, 6.000000, -20.000000]
+(int)-2.7	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [-2.000000, -2.000000, -2.000000]
+(int)INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(INT)FLOATCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [2.000000, 4.000000, 0.000000]
+(float)INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(FLOAT)INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(double)INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(DOUBLE)INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(int)BOOLCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+(float)BOOLCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+!BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!BOOLCOL||BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!BOOLCOL&&BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+!BOOLCOL&&1>2	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+!(BOOLCOL&&1>2)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!(BOOLCOL||BOOLCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!BOOLCOL==BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+!BOOLCOL!=BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!INTCOL>5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!INTCOL>10	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!(INTCOL>5)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!INTCOL+1>5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!INTCOL>5||BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!INTCOL>5&&BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+.not.BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+NOT.BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+.NOT.BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+not.BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+.not. (INTCOL .gt. 5)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!(INTCOL > 5)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+!BITS	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+(!BITS) == b00001111	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+INTCOL .gt. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL .GT. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL gt. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL GT. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL .lt. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL .ge. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL .le. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL .eq. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+INTCOL .ne. 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+INTCOL >= 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL => 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL <= 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL =< 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL != 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+INTCOL == 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+BOOLCOL .and. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL .AND. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL and. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL .or. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+BOOLCOL .OR. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+BOOLCOL or. T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+INTCOL .xor. 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [4.000000, -2.000000, 9.000000]
+INTCOL .XOR. 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [4.000000, -2.000000, 9.000000]
+INTCOL ^^ 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [4.000000, -2.000000, 9.000000]
+INTCOL ~ 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+FLOATCOL ~ 1.5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+FLOATCOL ~ (1.5 + 1.0e-9)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+FLOATCOL ~ (1.5 + 1.0e-5)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+FLOATCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 4.000000, 0.500000]
+DBLCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.250000, -2.500000, 8.000000]
+BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+STRCOL	OK dt=16 nelem=10 naxis=1 naxes=[1]
+BITS	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+VECCOL	OK dt=82 nelem=3 naxis=1 naxes=[3] | [1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 7.000000, 8.000000, 9.000000]
+MATRIX	OK dt=82 nelem=6 naxis=2 naxes=[2, 3] | [1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 11.000000, 12.000000, 13.000000, 14.000000, 15.000000, 16.000000, 21.000000, 22.000000, 23.000000, 24.000000, 25.000000, 26.000000]
+(INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+(BOOLCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+(STRCOL)	OK dt=16 nelem=10 naxis=1 naxes=[1]
+(BITS)	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+INTCOL{1}	OK dt=41 nelem=1 naxis=1 naxes=[1] | [-3.000000, 10.000000, 0.000000] (null)
+INTCOL{-1}	OK dt=41 nelem=1 naxis=1 naxes=[1] | [0.000000, 7.000000, -3.000000] (null)
+INTCOL{2}	OK dt=41 nelem=1 naxis=1 naxes=[1] | [10.000000, 0.000000, 0.000000] (null)
+BOOLCOL{1}	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000] (null)
+STRCOL{1}	OK dt=16 nelem=10 naxis=1 naxes=[1]
+BITS{1}	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+DEFNULL(INTCOL{2}, -99)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [10.000000, -99.000000, -99.000000]
+DEFNULL(INTCOL{-1}, -99)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [-99.000000, 7.000000, -3.000000]
+INTCOL + 1	OK dt=41 nelem=1 naxis=1 naxes=[1] | [8.000000, -2.000000, 11.000000]
+INTCOL - 1	OK dt=41 nelem=1 naxis=1 naxes=[1] | [6.000000, -4.000000, 9.000000]
+INTCOL * 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [14.000000, -6.000000, 20.000000]
+INTCOL / 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [3.000000, -1.000000, 5.000000]
+INTCOL % 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, -1.000000, 0.000000]
+INTCOL ** 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [49.000000, 9.000000, 100.000000]
+INTCOL ^ 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [49.000000, 9.000000, 100.000000]
+INTCOL + FLOATCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [9.500000, 1.000000, 10.500000]
+FLOATCOL - INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [-4.500000, 7.000000, -9.500000]
+FLOATCOL / INTCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [0.357143, -1.333333, 0.050000]
+FLOATCOL * 2.5	OK dt=82 nelem=1 naxis=1 naxes=[1] | [6.250000, 10.000000, 1.250000]
+DBLCOL / 2	OK dt=82 nelem=1 naxis=1 naxes=[1] | [0.625000, -1.250000, 4.000000]
+INTCOL & 1	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 0.000000]
+INTCOL | 16	OK dt=41 nelem=1 naxis=1 naxes=[1] | [23.000000, -3.000000, 26.000000]
+INTCOL ^^ 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [4.000000, -2.000000, 9.000000]
+INTCOL & FLOATCOL	ERR 431
+INTCOL | FLOATCOL	ERR 431
+INTCOL ^^ FLOATCOL	ERR 431
+INTCOL > 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL < 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL >= 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+INTCOL <= 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL == 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+INTCOL != 5	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+FLOATCOL < 5.0	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+INTCOL = 3:7	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+INTCOL = 7:3	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+FLOATCOL = 2:8	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 0.000000]
+(INTCOL = 3:7)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+(INTCOL = 3:7) && BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+(FLOATCOL = INTCOL:INTCOL+1)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+INTCOL = 1:2:3	ERR 431
+1:2	ERR 431
+BOOLCOL && BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL || BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL == BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+BOOLCOL != BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+BOOLCOL == T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL != T	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+INTCOL > 3 && INTCOL < 8	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+INTCOL == 1 || INTCOL == 10	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 1.000000]
+STRCOL == 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+STRCOL != 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 1.000000]
+STRCOL > 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 1.000000]
+STRCOL >= 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+STRCOL < 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+STRCOL <= 'abc'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+STRCOL + '!'	OK dt=16 nelem=11 naxis=1 naxes=[1]
+'a' + 'b'	OK dt=16 nelem=-2 naxis=1 naxes=[1]
+(STRCOL + '!') == 'abc!'	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000]
+#SNULL	OK dt=16 nelem=1 naxis=1 naxes=[1]
+BITS == b11110000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS != b00001111	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 1.000000]
+BITS == b1111xxxx	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS == bxxxx0000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS == hf0	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS == hF0	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS == o360	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS > b00000000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 1.000000, 1.000000]
+BITS >= b11110000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+BITS < b11111111	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 1.000000, 1.000000]
+BITS <= b11111111	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 1.000000, 1.000000]
+BITS & b10000001	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+BITS | b00000001	OK dt=1 nelem=8 naxis=1 naxes=[8] | EVALERR 432
+BITS + BITS	OK dt=1 nelem=16 naxis=1 naxes=[8] | EVALERR 432
+(BITS & b10000001) == b10000000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 1.000000]
+(BITS | b00000001) == b11110001	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+(BITS + BITS) == b1111000011110000	OK dt=14 nelem=1 naxis=1 naxes=[8] | [1.000000, 0.000000, 0.000000]
+b101 & b110	OK dt=1 nelem=-3 naxis=1 naxes=[1] | EVALERR 432
+b101 | b110	OK dt=1 nelem=-3 naxis=1 naxes=[1] | EVALERR 432
+b101 + b110	OK dt=1 nelem=-6 naxis=1 naxes=[1] | EVALERR 433
+BOOLCOL ? 1 : 2	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 2.000000, 1.000000]
+BOOLCOL ? INTCOL : FLOATCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [7.000000, 4.000000, 10.000000]
+BOOLCOL ? BOOLCOL : 1	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+BOOLCOL ? 1 : BOOLCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL ? BOOLCOL : BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+BOOLCOL ? 'a' : 'b'	OK dt=16 nelem=1 naxis=1 naxes=[1]
+BOOLCOL ? STRCOL : 'zz'	OK dt=16 nelem=10 naxis=1 naxes=[1]
+BOOLCOL ? BITS : BITS	ERR 431
+BOOLCOL ? BOOLCOL ? 1 : 2 : 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 3.000000, 1.000000]
+INTCOL > 0 ? INTCOL > 5 ? 1 : 2 : 3	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 3.000000, 1.000000]
+BOOLCOL ? 1=2:3 : 4	OK dt=41 nelem=1 naxis=1 naxes=[1] | [0.000000, 4.000000, 0.000000]
+BOOLCOL ? INTCOL=1:2 : DBLCOL	OK dt=82 nelem=1 naxis=1 naxes=[1] | [0.000000, -2.500000, 0.000000]
+{1,2}	OK dt=41 nelem=2 naxis=1 naxes=[2] | [1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000]
+{1,2,3}	OK dt=41 nelem=3 naxis=1 naxes=[3] | [1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000]
+{1,2}+{3,4}	OK dt=41 nelem=2 naxis=1 naxes=[2] | [4.000000, 6.000000, 4.000000, 6.000000, 4.000000, 6.000000]
+{BOOLCOL,BOOLCOL}	OK dt=14 nelem=2 naxis=1 naxes=[2] | [1.000000, 1.000000, 0.000000, 0.000000, 1.000000, 1.000000]
+{1,BOOLCOL}	OK dt=41 nelem=2 naxis=1 naxes=[2] | [1.000000, 1.000000, 1.000000, 0.000000, 1.000000, 1.000000]
+{BOOLCOL,1}	OK dt=41 nelem=2 naxis=1 naxes=[2] | [1.000000, 1.000000, 0.000000, 1.000000, 1.000000, 1.000000]
+{1,2,3,4,5,6,7,8,9,10,11,12}	OK dt=41 nelem=12 naxis=1 naxes=[12] | [1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 7.000000, 8.000000, 9.000000, 10.000000, 11.000000, 12.000000, 1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 7.000000, 8.000000, 9.000000, 10.000000, 11.000000, 12.000000]
+{1.5,2,3}	OK dt=82 nelem=3 naxis=1 naxes=[3] | [1.500000, 2.000000, 3.000000, 1.500000, 2.000000, 3.000000, 1.500000, 2.000000, 3.000000]
+{1,2}[2]	OK dt=41 nelem=1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+{1,2,3}[1]	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+VECCOL[1]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.000000, 4.000000, 7.000000]
+VECCOL[2]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.000000, 5.000000, 8.000000]
+VECCOL[3]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [3.000000, 6.000000, 9.000000]
+VECCOL[1+1]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.000000, 5.000000, 8.000000]
+VECCOL[4]	OK dt=82 nelem=1 naxis=1 naxes=[1] | EVALERR 431
+VECCOL[0]	OK dt=82 nelem=1 naxis=1 naxes=[1] | EVALERR 431
+MATRIX[1,1]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.000000, 11.000000, 21.000000]
+MATRIX[2,3]	OK dt=82 nelem=1 naxis=1 naxes=[1] | [6.000000, 16.000000, 26.000000]
+MATRIX[1,1,1]	ERR 431
+INTCOL[1]	ERR 431
+STRCOL[1]	ERR 431
+BOOLCOL[1]	ERR 431
+BITS[1]	OK dt=1 nelem=1 naxis=1 naxes=[1] | EVALERR 432
+SUM(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [6.000000, 15.000000, 24.000000]
+SUM(BOOLCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+SUM(BITS)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [4.000000, 4.000000, 4.000000]
+AVERAGE(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.000000, 5.000000, 8.000000]
+STDDEV(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+MEDIAN(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.000000, 5.000000, 8.000000]
+NELEM(VECCOL)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+NELEM(STRCOL)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [10.000000, 10.000000, 10.000000]
+NELEM(BITS)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [8.000000, 8.000000, 8.000000]
+NELEM(BOOLCOL)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+NELEM('abc')	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+NVALID(VECCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+NVALID(STRCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+NVALID(BITS)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [8.000000, 8.000000, 8.000000]
+ACCUM(INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 4.000000, 14.000000]
+ACCUM(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 6.500000, 7.000000]
+SEQDIFF(INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -10.000000, 13.000000]
+SEQDIFF(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 1.500000, -3.500000]
+ABS(INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 3.000000, 10.000000]
+ABS(-INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 3.000000, 10.000000]
+ABS(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 4.000000, 0.500000]
+MIN(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [1.000000, 4.000000, 7.000000]
+MAX(VECCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [3.000000, 6.000000, 9.000000]
+MIN(BITS)	OK dt=1 nelem=1 naxis=1 naxes=[1] | EVALERR 432
+MAX(BITS)	OK dt=1 nelem=1 naxis=1 naxes=[1] | EVALERR 432
+MIN(INTCOL,3)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [3.000000, -3.000000, 3.000000]
+MAX(INTCOL,3)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 3.000000, 10.000000]
+MIN(INTCOL,FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, -3.000000, 0.500000]
+ELEMENTNUM(VECCOL)	OK dt=41 nelem=3 naxis=1 naxes=[3] | [1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000]
+ELEMENTNUM(MATRIX)	OK dt=41 nelem=6 naxis=2 naxes=[2, 3] | [1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000, 1.000000, 2.000000, 3.000000, 4.000000, 5.000000, 6.000000]
+NAXIS(VECCOL)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+NAXIS(MATRIX)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+NAXES(MATRIX,1)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+NAXES(MATRIX,2)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+NAXES(MATRIX,0)	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+AXISELEM(VECCOL,1)	OK dt=41 nelem=3 naxis=1 naxes=[3] | [1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000, 1.000000, 2.000000, 3.000000]
+AXISELEM(MATRIX,1)	OK dt=41 nelem=6 naxis=2 naxes=[2, 3] | [1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000, 1.000000, 2.000000]
+AXISELEM(MATRIX,2)	OK dt=41 nelem=6 naxis=2 naxes=[2, 3] | [1.000000, 1.000000, 2.000000, 2.000000, 3.000000, 3.000000, 1.000000, 1.000000, 2.000000, 2.000000, 3.000000, 3.000000, 1.000000, 1.000000, 2.000000, 2.000000, 3.000000, 3.000000]
+ARRAY(3,4)	OK dt=41 nelem=4 naxis=1 naxes=[4] | [3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000, 3.000000]
+ARRAY(INTCOL,3)	OK dt=41 nelem=3 naxis=1 naxes=[3] | [7.000000, 7.000000, 7.000000, -3.000000, -3.000000, -3.000000, 10.000000, 10.000000, 10.000000]
+ARRAY(0,{2,3,1})	OK dt=41 nelem=6 naxis=3 naxes=[2, 3, 1] | [0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000]
+SIN(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+COS(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+TAN(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+SIN(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [0.598472, -0.756802, 0.479426]
+COS(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [-0.801144, -0.653644, 0.877583]
+TAN(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [-0.747022, 1.157821, 0.546302]
+ARCSIN(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.570796, 1.570796, 1.570796]
+ASIN(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ARCCOS(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.570796, 1.570796, 1.570796]
+ACOS(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ARCTAN(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.785398, 0.785398, 0.785398]
+ATAN(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+SINH(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.175201, 1.175201, 1.175201]
+COSH(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+COSH(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.543081, 1.543081, 1.543081]
+TANH(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.761594, 0.761594, 0.761594]
+EXP(0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+EXP(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.718282, 2.718282, 2.718282]
+LOG(1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+LOG10(100)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+SQRT(4)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+SQRT(INTCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.645751, 0.000000, 3.162278] (null)
+ROUND(2.5)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [3.000000, 3.000000, 3.000000]
+ROUND(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [3.000000, 4.000000, 1.000000]
+FLOOR(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [2.000000, 4.000000, 0.000000]
+CEIL(FLOATCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [3.000000, 4.000000, 1.000000]
+ARCTAN2(1, 1)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.785398, 0.785398, 0.785398]
+ARCTAN2(FLOATCOL, INTCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1] | [0.343024, 2.214297, 0.049958]
+ANGSEP(0,0,0,90)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [90.000000, 90.000000, 90.000000]
+ANGSEP(0,0,90,0)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [90.000000, 90.000000, 90.000000]
+ANGSEP(10,20,10,20)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ANGSEP(0,60,1,60)	OK dt=82 nelem=-1 naxis=1 naxes=[1] | [0.499995, 0.499995, 0.499995]
+DEFNULL(INTCOL, 0)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+DEFNULL(BOOLCOL, T)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+DEFNULL(STRCOL, 'zz')	OK dt=16 nelem=10 naxis=1 naxes=[1]
+DEFNULL(BITS, BITS)	ERR 431
+SETNULL(3,INTCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+DEFNULL(SETNULL(3,INTCOL), -99)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+ISNULL(INTCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ISNULL(STRCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ISNULL(BOOLCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+ISNULL(BITS)	ERR 431
+ISNULL(SETNULL(3,INTCOL))	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+NEAR(INTCOL, FLOATCOL, 1)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+CIRCLE(0, 0, 5, INTCOL, FLOATCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+BOX(0, 0, 8, 8, 0, INTCOL, FLOATCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+ELLIPSE(0, 0, 5, 5, 0, INTCOL, FLOATCOL)	OK dt=14 nelem=1 naxis=1 naxes=[1] | [0.000000, 1.000000, 0.000000]
+STRSTR(STRCOL,'a')	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 0.000000] (null)
+STRSTR('abc','b')	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [2.000000, 2.000000, 2.000000]
+STRSTR('abc','z')	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [0.000000, 0.000000, 0.000000]
+DEFNULL(STRSTR(STRCOL,'a'), -1)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [1.000000, -1.000000, -1.000000]
+STRMID(STRCOL,1,3)	OK dt=16 nelem=3 naxis=1 naxes=[1]
+STRMID('abcdef',2,3)	OK dt=16 nelem=-3 naxis=1 naxes=[1]
+RANDOM()	OK dt=82 nelem=1 naxis=1 naxes=[1]
+RANDOMN()	OK dt=82 nelem=1 naxis=1 naxes=[1]
+RANDOM(INTCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1]
+RANDOMN(INTCOL)	OK dt=82 nelem=1 naxis=1 naxes=[1]
+RANDOMP(FLOATCOL)	OK dt=41 nelem=1 naxis=1 naxes=[1]
+SIN()	ERR 431
+NOSUCHFUNC(1)	ERR 431
+NELEM()	ERR 431
+ABS(1,2)	ERR 431
+MIN(1,2,3)	ERR 431
+GTIFILTER()	ERR 202
+GTIFILTER('nosuch.gti')	ERR 202
+GTIFILTER('nosuch.gti',INTCOL)	ERR 104
+GTIFILTER('nosuch.gti',INTCOL,'*START*','*STOP*')	ERR 104
+GTIFILTER(STRCOL)	ERR 431
+GTIFIND()	ERR 202
+GTIFIND('nosuch.gti')	ERR 202
+GTIFIND('nosuch.gti',INTCOL)	ERR 104
+GTIOVERLAP('nosuch.gti',INTCOL,FLOATCOL)	ERR 104
+REGFILTER('nosuch.reg')	ERR 202
+REGFILTER('nosuch.reg',INTCOL,FLOATCOL)	ERR 104
+REGFILTER(STRCOL)	ERR 431
+(INTCOL){1}	ERR 431
+(INTCOL+1){1}	ERR 431
+INTCOL{FLOATCOL}	ERR 431
+INTCOL{INTCOL}	ERR 431
+!INTCOL	ERR 431
+.not.INTCOL	ERR 431
+BOOLCOL ? BITS : BITS	ERR 431
+INTCOL + BOOLCOL	ERR 431
+BOOLCOL + BOOLCOL	ERR 431
+INTCOL - BOOLCOL	ERR 431
+INTCOL * BOOLCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 0.000000, 10.000000]
+BOOLCOL * INTCOL	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, 0.000000, 10.000000]
+ISNULL(BITS)	ERR 431
+DEFNULL(BITS,BITS)	ERR 431
+STRCOL[1]	ERR 431
+INTCOL = 1:2:3	ERR 431
+INTCOL +	ERR 431
++	ERR 431
+(INTCOL	ERR 431
+INTCOL)	ERR 431
+{1,2	ERR 431
+1,2}	ERR 431
+INTCOL[	ERR 431
+INTCOL[]	ERR 431
+NOSUCHCOL	ERR 202
+NOSUCHCOL + 1	ERR 202
+1 + NOSUCHCOL	ERR 431
+INTCOL <> 1	ERR 431
+INTCOL <=> 1	ERR 431
+&&	ERR 431
+||	ERR 431
+?:	ERR 431
+INTCOL ? 1 : 2	ERR 431
+STRCOL ? 1 : 2	ERR 431
+BITS ? 1 : 2	ERR 431
+STRCOL + 1	ERR 431
+1 + STRCOL	ERR 431
+STRCOL > 1	ERR 431
+BITS + 1	ERR 431
+BITS == 1	ERR 431
+BITS && BITS	ERR 431
+STRCOL && STRCOL	ERR 431
+((((((((((1))))))))))	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+((((((((((((((((((((1))))))))))))))))))))	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+!!!!BOOLCOL	OK dt=14 nelem=1 naxis=1 naxes=[1] | [1.000000, 0.000000, 1.000000]
+------1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [1.000000, 1.000000, 1.000000]
+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [20.000000, 20.000000, 20.000000]
+((1+2)*(3+4))-((5+6)*(7+8))	OK dt=41 nelem=-1 naxis=1 naxes=[1] | [-144.000000, -144.000000, -144.000000]
+SIN(COS(TAN(SQRT(ABS(FLOATCOL)))))	OK dt=82 nelem=1 naxis=1 naxes=[1] | [-0.690356, -0.544959, 0.610418]
+DEFNULL(DEFNULL(DEFNULL(INTCOL,1),2),3)	OK dt=41 nelem=1 naxis=1 naxes=[1] | [7.000000, -3.000000, 10.000000]
+{{1,2},{3,4}}	OK dt=41 nelem=4 naxis=1 naxes=[4] | [1.000000, 2.000000, 3.000000, 4.000000, 1.000000, 2.000000, 3.000000, 4.000000, 1.000000, 2.000000, 3.000000, 4.000000]
+VECCOL[VECCOL[1]]	ERR 431
