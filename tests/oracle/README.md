@@ -158,39 +158,14 @@ CORPUS_TRACE=1 cargo test --test test_eval_corpus -- --nocapture
 
 ## Known divergences from CFITSIO
 
-`make check` reports **200 lines**, in three groups. Thirteen are rsfitsio
-being deliberately correct where CFITSIO is not; the other 187 are an rsfitsio
-defect, recorded in [BUGS_TO_FIX.md](../../BUGS_TO_FIX.md) as Bug 3.
+`make check` reports **13 lines**, all of them rsfitsio being deliberately
+correct where CFITSIO is not.
 
-| lines | who is right | what |
-|---|---|---|
-| 5 | rsfitsio | `ANGSEP` with four constant arguments (below) |
-| 8 | rsfitsio | uppercase `0x` literals and a bare `.` (upstream cfitsio#153) |
-| 187 | **CFITSIO** | type-mismatched binary expressions that rsfitsio accepts |
-
-### Type-mismatched operands are accepted (rsfitsio defect)
-
-CFITSIO rejects an operator applied across incompatible operand sorts with
-`PARSE_SYNTAX_ERR` (431); rsfitsio parses it and quietly yields the *left*
-operand:
-
-```
-BOOLCOL + INTCOL   C: ERR 431   rsfitsio: OK dt=14 | [1, 0, 1]   (= BOOLCOL)
-STRCOL - INTCOL    C: ERR 431   rsfitsio: OK dt=16 nelem=10
-```
-
-187 corpus lines are affected, spanning every binary operator and the
-two-argument functions. By left operand: 59 `BOOLCOL`, 48 `STRCOL`, 40 `BITS`,
-16 numeric, 24 inside `DEFNULL`/`MIN`/`MAX`/`ARCTAN2`/`SETNULL`/`ARRAY`.
-
-This is not the bulk-run artifact described below -- it reproduces with a
-fresh table and a single call on both sides. `fits_test_expr` returns status
-0, so the failure is silent: callers get a well-formed result for an
-expression the C would have refused.
-
-The golden file records the current rsfitsio behaviour, defect included, so
-it stays a faithful regression baseline. Fixing Bug 3 will change those 187
-lines and the golden must be regenerated with them.
+| lines | what |
+|---|---|
+| 5 | `ANGSEP` with four constant arguments (below), upstream cfitsio#152 |
+| 5 | uppercase `0x` literals evaluate to garbage in the C, upstream cfitsio#153 |
+| 3 | a bare `.` lexes as `0.0` in the C, same PR |
 
 ### `ANGSEP` with four constant arguments
 
