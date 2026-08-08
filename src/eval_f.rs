@@ -4979,8 +4979,8 @@ mod tests {
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BINARY_TBL, BYTE_IMG, CASEINSEN, FLEN_VALUE, LONGLONG, NOT_BTABLE,
-        PARSE_BAD_TYPE, READONLY, READWRITE, TBYTE, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG,
-        TLONGLONG, TSHORT, fitsfile,
+        PARSE_BAD_TYPE, PARSE_SYNTAX_ERR, READONLY, READWRITE, TBYTE, TDOUBLE, TFLOAT, TINT,
+        TLOGICAL, TLONG, TLONGLONG, TSHORT, fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use libc::{c_char, c_int, c_long, c_void};
@@ -9135,6 +9135,83 @@ mod tests {
             assert_eq!(eval_lng::<1>(&mut f, "0b01001"), [0b01001]);
             /* usable in ordinary arithmetic */
             assert_eq!(eval_lng::<3>(&mut f, "INTCOL + 0x10"), [17, 18, 19]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_hex_constant_case() {
+        /* 0x literals must be case-insensitive.  The lexer used to convert
+        non-digits with (*p - 'a' + 10) without folding case, so uppercase
+        A-F produced negative digit values and 0x1F evaluated to -1. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for (expr, want) in [
+                ("0x1f", 31),
+                ("0x1F", 31),
+                ("0xff", 255),
+                ("0xFF", 255),
+                ("0xFf", 255),
+                ("0xa", 10),
+                ("0xA", 10),
+                ("0xabcdef", 11259375),
+                ("0xABCDEF", 11259375),
+                ("0x10", 16),
+                ("0x0", 0),
+            ] {
+                assert_eq!(eval_lng::<1>(&mut f, expr), [want], "expr: {expr}");
+            }
+
+            /* the other radix prefixes must keep working */
+            assert_eq!(eval_lng::<1>(&mut f, "0b1011"), [11]);
+            assert_eq!(eval_lng::<1>(&mut f, "0o17"), [15]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_bare_dot_rejected() {
+        /* A lone '.' must not lex as the double 0.0.  The {real} pattern's
+        third alternative used to allow zero digits before the point. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for expr in [".", "..", "INTCOL + .", ". + 1", ".e5"] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, PARSE_SYNTAX_ERR, "expr should be rejected: {expr}");
+            }
+
+            /* valid reals are unaffected */
+            for (expr, want) in [
+                ("1.", 1.0),
+                ("12.", 12.0),
+                (".5", 0.5),
+                ("1.5", 1.5),
+                ("1.5e3", 1500.0),
+                ("1.5E3", 1500.0),
+                ("0.", 0.0),
+            ] {
+                assert_eq!(eval_dbl::<1>(&mut f, expr), [want], "expr: {expr}");
+            }
 
             fits_close_file(f, &mut status);
         });
