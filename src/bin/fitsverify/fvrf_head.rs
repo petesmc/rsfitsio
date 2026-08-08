@@ -5,8 +5,8 @@
    `temp' / `ptemp' were only ever used to hand a pattern to key_match(), so
    the pattern is passed directly instead.  */
 
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::cell::{Cell, RefCell};
+use std::cmp::Ordering;
 
 use bytemuck::cast_slice;
 use rsfitsio::aliases::rust_api::{
@@ -45,11 +45,11 @@ thread_local! {
 }
 
 /* total number of the keywords */
-static NCARDS: AtomicI32 = AtomicI32::new(0);
-static CURHDU: AtomicI32 = AtomicI32::new(0); /* current HDU index */
-static CURTYPE: AtomicI32 = AtomicI32::new(0); /* current HDU type  */
+thread_local! { static NCARDS: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static CURHDU: Cell<c_int> = const { Cell::new(0) }; } /* current HDU index */
+thread_local! { static CURTYPE: Cell<c_int> = const { Cell::new(0) }; } /* current HDU type  */
 /* print_title's `static int oldhdu' */
-static OLDHDU: AtomicI32 = AtomicI32::new(0);
+thread_local! { static OLDHDU: Cell<c_int> = const { Cell::new(0) }; }
 
 fn cards_len() -> usize {
     CARDS.with(|c| c.borrow().len())
@@ -95,7 +95,7 @@ fn tunit_at(i: usize) -> Vec<c_char> {
 /* routine to verify individual fitsfile */
 /* NB: like the C, this strips trailing whitespace in the caller's buffer -- 
    ftverify_work() relies on that when it echoes the name fgets() read. */
-pub fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
+pub(crate) fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
     let rootnam: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME]; /* Input Fits file root name */
     let mut infits: Option<Box<fitsfile>> = None; /* input fits file pointer */
     let mut fitshdu = FitsHdu::default(); /* hdu information */
@@ -182,7 +182,7 @@ pub fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
                 None,
                 &mut status,
             );
-            if strcmp_c(&xtension, cs!(c"BINTABLE")) == 0 {
+            if ceq(&xtension, b"BINTABLE") {
                 print_title(out, i, BINARY_TBL);
             } else {
                 print_title(out, i, hdutype);
@@ -224,7 +224,7 @@ pub fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
     status
 }
 
-pub fn leave_early(out: Out) {
+pub(crate) fn leave_early(out: Out) {
     let mut comm: [c_char; COMM_LEN] = [0; COMM_LEN];
     spf!(comm; "**** Abort Verification: Fatal Error. ****");
     wrtout(out, &comm);
@@ -233,7 +233,7 @@ pub fn leave_early(out: Out) {
     crate::main_ftverify::update_parfile(1, 0);
 }
 
-pub fn close_err(out: Out) {
+fn close_err(out: Out) {
     let mut merr = 0;
     let mut mwrn = 0;
     num_err_wrn(&mut merr, &mut mwrn);
@@ -251,7 +251,7 @@ pub fn close_err(out: Out) {
 *
 *
 *************************************************************/
-pub fn init_hdu(
+fn init_hdu(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hdunum: c_int,         /* hdu index 	     */
@@ -278,8 +278,8 @@ pub fn init_hdu(
     hduptr.hdutype = hdutype;
 
     /* curhdu and curtype are shared with print_title */
-    CURHDU.store(hdunum, Ordering::Relaxed); /* set the current hdu number */
-    CURTYPE.store(hdutype, Ordering::Relaxed); /* set the current hdu number */
+    CURHDU.with(|c| c.set(hdunum)); /* set the current hdu number */
+    CURTYPE.with(|c| c.set(hdutype)); /* set the current hdu number */
 
     /* check the null character in the header.(only the first one will
        be recorded */
@@ -311,7 +311,7 @@ pub fn init_hdu(
 
     /* read all the keywords  */
     let ncards = hduptr.nkeys as usize;
-    NCARDS.store(ncards as c_int, Ordering::Relaxed);
+    NCARDS.with(|c| c.set(ncards as c_int));
     CARDS.with(|c| {
         let mut c = c.borrow_mut();
         c.clear();
@@ -330,7 +330,7 @@ pub fn init_hdu(
        make a fake END card, because CFITSIO blocks us from reading
        the real END card */
 
-    if strncmp_c(&card_at(ncards - 1), cs!(c"END     "), 8) != 0 {
+    if !cstarts(&card_at(ncards - 1), b"END     ") {
         let mut c: [c_char; FLEN_CARD] = [0; FLEN_CARD];
         strcpy_c(&mut c, cs!(c"END     "));
         CARDS.with(|cc| cc.borrow_mut()[ncards - 1] = c);
@@ -355,10 +355,10 @@ pub fn init_hdu(
     }
     if hdunum == 1 {
         /* SIMPLE should be logical T */
-        if strcmp_c(&tmpkey.kname, cs!(c"SIMPLE")) != 0 {
+        if !ceq(&tmpkey.kname, b"SIMPLE") {
             wrterr_str(out, "The 1st keyword of a primary array is not SIMPLE.", 1);
         }
-        if check_log(&tmpkey, out) == 0 || strcmp_c(&tmpkey.kvalue, cs!(c"T")) != 0 {
+        if check_log(&tmpkey, out) == 0 || !ceq(&tmpkey.kvalue, b"T") {
             wrtwrn_str(
                 out,
                 "SIMPLE != T indicates file may not conform to the FITS Standard.",
@@ -368,7 +368,7 @@ pub fn init_hdu(
 
         check_fixed_log(&card_at(0), out);
     } else {
-        if strcmp_c(&tmpkey.kname, cs!(c"XTENSION")) != 0 {
+        if !ceq(&tmpkey.kname, b"XTENSION") {
             wrterr_str(out, "The 1st keyword of a extension is not XTENSION.", 1);
         }
         check_str(&tmpkey, out);
@@ -382,13 +382,13 @@ pub fn init_hdu(
             p += 1;
         }
         p += 1; /* skip the  quote */
-        if strncmp_c(&c0[p..], cs!(c"TABLE   "), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"BINTABLE"), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"A3DTABLE"), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"IUEIMAGE"), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"FOREIGN "), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"DUMP    "), 8) != 0
-            && strncmp_c(&c0[p..], cs!(c"IMAGE   "), 8) != 0
+        if !cstarts(&c0[p..], b"TABLE   ")
+            && !cstarts(&c0[p..], b"BINTABLE")
+            && !cstarts(&c0[p..], b"A3DTABLE")
+            && !cstarts(&c0[p..], b"IUEIMAGE")
+            && !cstarts(&c0[p..], b"FOREIGN ")
+            && !cstarts(&c0[p..], b"DUMP    ")
+            && !cstarts(&c0[p..], b"IMAGE   ")
         {
             spf!(errmes;
                 "Unregistered XTENSION value \"", CSW(&c0[p..], 0, Some(8)), "\".");
@@ -403,7 +403,7 @@ pub fn init_hdu(
         /* test if this is a tile compressed image, stored in a binary table */
         /* If so then test the extension as binary table rather than an image */
 
-        if strncmp_c(&c0[p..], cs!(c"BINTABLE"), 8) == 0 && hduptr.hdutype == IMAGE_HDU {
+        if cstarts(&c0[p..], b"BINTABLE") && hduptr.hdutype == IMAGE_HDU {
             hduptr.hdutype = BINARY_TBL;
             hduptr.istilecompressed = 1;
         } else {
@@ -538,14 +538,14 @@ pub fn init_hdu(
         }
 
         /* only count the non-commentary keywords */
-        if strcmp_c(&hduptr.kwds[i].kname, cs!(c"CONTINUE")) == 0 {
+        if ceq(&hduptr.kwds[i].kname, b"CONTINUE") {
             hduptr.use_longstr = 1;
         }
-        if strcmp_c(&hduptr.kwds[i].kname, cs!(c"COMMENT")) != 0
-            && strcmp_c(&hduptr.kwds[i].kname, cs!(c"HISTORY")) != 0
-            && (strcmp_c(&hduptr.kwds[i].kname, cs!(c"HIERARCH")) != 0 || testhierarch() != 0)
-            && strcmp_c(&hduptr.kwds[i].kname, cs!(c"CONTINUE")) != 0
-            && strcmp_c(&hduptr.kwds[i].kname, cs!(c"")) != 0
+        if !ceq(&hduptr.kwds[i].kname, b"COMMENT")
+            && !ceq(&hduptr.kwds[i].kname, b"HISTORY")
+            && (!ceq(&hduptr.kwds[i].kname, b"HIERARCH") || testhierarch() != 0)
+            && !ceq(&hduptr.kwds[i].kname, b"CONTINUE")
+            && !ceq(&hduptr.kwds[i].kname, b"")
         {
             i += 1;
         }
@@ -568,7 +568,7 @@ pub fn init_hdu(
 
     /* sort the keyword in the ascending order of kname field*/
     /* glibc's qsort is a stable merge sort here, so use a stable sort. */
-    hduptr.kwds[..numusrkey].sort_by(|a, b| compkey(a, b).cmp(&0));
+    hduptr.kwds[..numusrkey].sort_by(compkey);
 
     /* store addresses of sorted keyword names in a working array */
     TMPKWDS.with(|t| {
@@ -612,7 +612,7 @@ pub fn init_hdu(
 *    This includes many tests of WCS keywords
 *
 *************************************************************/
-pub fn test_hdu(
+fn test_hdu(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,
@@ -1104,11 +1104,11 @@ pub fn test_hdu(
                 continue;
             }
 
-            if strcmp_c(&kvalue, cs!(c"ICRS")) != 0
-                && strcmp_c(&kvalue, cs!(c"FK5")) != 0
-                && strcmp_c(&kvalue, cs!(c"FK4")) != 0
-                && strcmp_c(&kvalue, cs!(c"FK4-NO-E")) != 0
-                && strcmp_c(&kvalue, cs!(c"GAPPT")) != 0
+            if !ceq(&kvalue, b"ICRS")
+                && !ceq(&kvalue, b"FK5")
+                && !ceq(&kvalue, b"FK4")
+                && !ceq(&kvalue, b"FK4-NO-E")
+                && !ceq(&kvalue, b"GAPPT")
             {
                 spf!(errmes;
                     "Keyword #", kindex, ", ", CS(&kname), " has non-allowed value: ",
@@ -1140,16 +1140,16 @@ pub fn test_hdu(
                 continue;
             }
 
-            if strcmp_c(&kvalue, cs!(c"TOPOCENT")) != 0
-                && strcmp_c(&kvalue, cs!(c"GEOCENTR")) != 0
-                && strcmp_c(&kvalue, cs!(c"BARYCENT")) != 0
-                && strcmp_c(&kvalue, cs!(c"HELIOCEN")) != 0
-                && strcmp_c(&kvalue, cs!(c"LSRK")) != 0
-                && strcmp_c(&kvalue, cs!(c"LSRD")) != 0
-                && strcmp_c(&kvalue, cs!(c"GALACTOC")) != 0
-                && strcmp_c(&kvalue, cs!(c"LOCALGRP")) != 0
-                && strcmp_c(&kvalue, cs!(c"CMBDIPOL")) != 0
-                && strcmp_c(&kvalue, cs!(c"SOURCE")) != 0
+            if !ceq(&kvalue, b"TOPOCENT")
+                && !ceq(&kvalue, b"GEOCENTR")
+                && !ceq(&kvalue, b"BARYCENT")
+                && !ceq(&kvalue, b"HELIOCEN")
+                && !ceq(&kvalue, b"LSRK")
+                && !ceq(&kvalue, b"LSRD")
+                && !ceq(&kvalue, b"GALACTOC")
+                && !ceq(&kvalue, b"LOCALGRP")
+                && !ceq(&kvalue, b"CMBDIPOL")
+                && !ceq(&kvalue, b"SOURCE")
             {
                 spf!(errmes;
                     "Keyword #", kindex, ", ", CS(&kname), " has non-allowed value: ",
@@ -1177,7 +1177,7 @@ pub fn test_hdu(
 *   Test the primary array header
 *
 *************************************************************/
-pub fn test_prm(
+fn test_prm(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* hdu information structure */
@@ -1402,7 +1402,7 @@ pub fn test_prm(
 *   Test the extension header
 *
 *************************************************************/
-pub fn test_ext(
+fn test_ext(
     _infits: &mut fitsfile, /* input fits file   */
     out: Out,               /* output ascii file */
     hduptr: &mut FitsHdu,   /* information about header */
@@ -1511,7 +1511,7 @@ pub fn test_ext(
 *   Test the image extension header
 *
 *************************************************************/
-pub fn test_img_ext(
+fn test_img_ext(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* information about header */
@@ -1544,7 +1544,7 @@ pub fn test_img_ext(
 * and image Extension.
 *
 *************************************************************/
-pub fn test_array(
+fn test_array(
     _infits: &mut fitsfile, /* input fits file   */
     out: Out,               /* output ascii file */
     hduptr: &mut FitsHdu,   /* information about header */
@@ -1682,7 +1682,7 @@ pub fn test_array(
 *   tunit.
 *
 *************************************************************/
-pub fn test_tbl(
+fn test_tbl(
     _infits: &mut fitsfile, /* input fits file   */
     out: Out,               /* output ascii file */
     hduptr: &mut FitsHdu,   /* information about header */
@@ -2183,7 +2183,7 @@ pub fn test_tbl(
 *   Test the ascii table extension header
 *
 *************************************************************/
-pub fn test_asc_ext(
+fn test_asc_ext(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* information about header */
@@ -2357,7 +2357,7 @@ pub fn test_asc_ext(
 *   Test the binary table extension header
 *
 *************************************************************/
-pub fn test_bin_ext(
+fn test_bin_ext(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* information about header */
@@ -2650,7 +2650,7 @@ pub fn test_bin_ext(
 *   Test the general keywords that can be in any header
 *
 *************************************************************/
-pub fn test_header(
+fn test_header(
     _infits: &mut fitsfile, /* input fits file   */
     out: Out,               /* output ascii file */
     hduptr: &mut FitsHdu,   /* information about header  */
@@ -2807,8 +2807,8 @@ pub fn test_header(
 
     /* Check the duplication of the keywords */
     for i in 0..(numusrkey - 1).max(0) as usize {
-        if strcmp_c(&tmpkwds[i], &tmpkwds[i + 1]) == 0
-            && strcmp_c(&hduptr.kwds[i].kname, cs!(c"HIERARCH")) != 0
+        if cbytes(&tmpkwds[i]) == cbytes(&tmpkwds[i + 1])
+            && !ceq(&hduptr.kwds[i].kname, b"HIERARCH")
         {
             spf!(errmes;
                 "Keyword ", CS(&hduptr.kwds[i].kname), " is duplicated in card #",
@@ -2992,7 +2992,7 @@ pub fn test_header(
 *   name is stored in a sorted array.
 *
 *************************************************************/
-pub fn key_match(
+fn key_match(
     strs: &[[c_char; FLEN_KEYWORD]], /* fits keyname  array */
     nstr: c_int,                     /* total number of keys */
     pattern: &[c_char],              /* wanted pattern  */
@@ -3007,7 +3007,7 @@ pub fn key_match(
                       return -999 if not found */
 ) {
     let mut i: c_int;
-    let fnpt: fn(&[c_char], &[c_char]) -> c_int = if exact != 0 { compstre } else { compstrp };
+    let fnpt: fn(&[c_char], &[c_char]) -> Ordering = if exact != 0 { compstre } else { compstrp };
     *mkey = -999;
     *ikey = -99;
 
@@ -3018,14 +3018,13 @@ pub fn key_match(
     let mut found: Option<c_int> = None;
     while l < u {
         let idx = (l + u) / 2;
-        let comparison = fnpt(pattern, &strs[idx as usize]);
-        if comparison < 0 {
-            u = idx;
-        } else if comparison > 0 {
-            l = idx + 1;
-        } else {
-            found = Some(idx);
-            break;
+        match fnpt(pattern, &strs[idx as usize]) {
+            Ordering::Less => u = idx,
+            Ordering::Greater => l = idx + 1,
+            Ordering::Equal => {
+                found = Some(idx);
+                break;
+            }
         }
     }
 
@@ -3034,7 +3033,9 @@ pub fn key_match(
         *ikey = pos;
         i = *ikey - 1;
         let mut p = pos - 1;
-        while i > 0 && fnpt(pattern, &strs[p as usize]) == 0 {
+        /* NB: `i > 0', not `i >= 0' -- the C never revisits index 0, so a run
+           of matches starting there is only partly reported.  Kept as-is. */
+        while i > 0 && fnpt(pattern, &strs[p as usize]) == Ordering::Equal {
             *mkey += 1;
             *ikey = i;
             i -= 1;
@@ -3042,7 +3043,7 @@ pub fn key_match(
         }
         i = *ikey + *mkey;
         let mut p = pos + 1;
-        while i < nstr && fnpt(pattern, &strs[p as usize]) == 0 {
+        while i < nstr && fnpt(pattern, &strs[p as usize]) == Ordering::Equal {
             *mkey += 1;
             i += 1;
             p += 1;
@@ -3057,7 +3058,7 @@ pub fn key_match(
 *   Test the whether the column name is unique.
 *
 *************************************************************/
-pub fn test_colnam(out: Out, hduptr: &FitsHdu) {
+fn test_colnam(out: Out, hduptr: &FitsHdu) {
     let n: c_int;
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
@@ -3121,7 +3122,7 @@ pub fn test_colnam(out: Out, hduptr: &FitsHdu) {
     }
 
     /* sort the column name in the ascending order of name field*/
-    cols.sort_by(|a, b| compcol(a, b).cmp(&0));
+    cols.sort_by(compcol);
 
     /* Check the duplication of the column name */
     for i in 0..(n - 1).max(0) as usize {
@@ -3129,7 +3130,7 @@ pub fn test_colnam(out: Out, hduptr: &FitsHdu) {
             continue;
         }
 
-        if strcmp_c(&cols[i].name, &cols[i + 1].name) == 0 {
+        if cbytes(&cols[i].name) == cbytes(&cols[i + 1].name) {
             spf!(errmes;
                 "Columns #", cols[i].index, ", ", CS(&ttype[(cols[i].index - 1) as usize]),
                 " and #", cols[i + 1].index, ", ",
@@ -3147,7 +3148,7 @@ pub fn test_colnam(out: Out, hduptr: &FitsHdu) {
 *   Parse the tform of the variable length vector.
 *
 *************************************************************/
-pub fn parse_vtform(
+pub(crate) fn parse_vtform(
     infits: &mut fitsfile,
     out: Out,
     _hduptr: &FitsHdu,
@@ -3215,7 +3216,7 @@ pub fn parse_vtform(
 *    expected format.
 *
 *************************************************************/
-pub fn parse_wcskey_suffix(
+fn parse_wcskey_suffix(
     fullname: &[c_char],
     rootname: &[c_char],
     axis: &mut c_int,
@@ -3261,16 +3262,16 @@ pub fn parse_wcskey_suffix(
 *  when verbose < 2, called by wrterr and wrtwrn.
 *
 *************************************************************/
-pub fn print_title(out: Out, hdunum: c_int, hdutype: c_int) {
+fn print_title(out: Out, hdunum: c_int, hdutype: c_int) {
     let mut hdutitle: [c_char; 64] = [0; 64];
 
     /* print out the title */
-    CURHDU.store(hdunum, Ordering::Relaxed);
-    CURTYPE.store(hdutype, Ordering::Relaxed);
+    CURHDU.with(|c| c.set(hdunum));
+    CURTYPE.with(|c| c.set(hdutype));
     let curhdu = hdunum;
     let curtype = hdutype;
 
-    if OLDHDU.load(Ordering::Relaxed) == curhdu {
+    if OLDHDU.with(Cell::get) == curhdu {
         return;
     } /* Do not print it twice */
     if curhdu == 1 {
@@ -3285,9 +3286,9 @@ pub fn print_title(out: Out, hdunum: c_int, hdutype: c_int) {
     }
     wrtsep(out, b'=' as c_char, &hdutitle, 60);
     wrtout_str(out, " ");
-    OLDHDU.store(curhdu, Ordering::Relaxed);
+    OLDHDU.with(|c| c.set(curhdu));
     if curhdu == totalhdu() {
-        OLDHDU.store(0, Ordering::Relaxed); /* reset the old hdu at the last hdu */
+        OLDHDU.with(|c| c.set(0)); /* reset the old hdu at the last hdu */
     }
 }
 
@@ -3298,9 +3299,9 @@ pub fn print_title(out: Out, hdunum: c_int, hdutype: c_int) {
 *  Print the header of the HDU.
 *
 *************************************************************/
-pub fn print_header(out: Out) {
+fn print_header(out: Out) {
     let mut htemp: [c_char; 100] = [0; 100];
-    let ncards = NCARDS.load(Ordering::Relaxed);
+    let ncards = NCARDS.with(Cell::get);
     for i in 1..=ncards {
         spf!(htemp; DW(i, 4), " | ", CS(&card_at(i as usize - 1)));
         wrtout(out, &htemp);
@@ -3315,7 +3316,7 @@ pub fn print_header(out: Out) {
 *  Print out the summary of this hdu.
 *
 **************************************************************/
-pub fn print_summary(
+fn print_summary(
     _infits: &mut fitsfile, /* input fits file   */
     out: Out,               /* output ascii file */
     hduptr: &FitsHdu,
@@ -3446,7 +3447,7 @@ fn bitpix_text(bitpix: c_int, temp: &mut [c_char]) {
 *  other temporary  spaces.
 *
 **************************************************************/
-pub fn close_hdu(hduptr: &mut FitsHdu) {
+fn close_hdu(hduptr: &mut FitsHdu) {
     /* The C free()s cards, hduptr->kwds, datamin/datamax/tnull, naxes and
        tmpkwds here; RAII does that for us.  (Note the C's
        `if(hdutype == ASCII_TBL && hdutype == BINARY_TBL)' guard around the
@@ -3559,5 +3560,400 @@ mod tests {
         /* no suffix at all leaves both at 0 */
         assert_eq!(parse_wcskey_suffix(&kw("CRPIX"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
         assert_eq!((axis, alt), (0, 0));
+    }
+}
+
+/* File-level tests.
+
+   Each fixture is a small hand-built FITS file that exercises one report path.
+   The expected (errors, warnings) pairs were read off the C fitsverify acting
+   as the oracle -- they are not recordings of what this implementation happens
+   to produce.  Every fixture here was also checked byte-for-byte (stdout,
+   stderr and exit status) against the C across all seven flag combinations. */
+#[cfg(test)]
+mod fits_tests {
+    use super::*;
+    use crate::fvrf_file::{get_total_err, get_total_warn};
+
+    fn card(s: &str) -> String {
+        format!("{s:<80.80}")
+    }
+
+    fn block(cards: &[&str]) -> String {
+        let mut h: String = cards.iter().map(|c| card(c)).collect();
+        h.push_str(&card("END"));
+        while h.len() % 2880 != 0 {
+            h.push(' ');
+        }
+        h
+    }
+
+    const PRIM: [&str; 3] = [
+        "SIMPLE  =                    T",
+        "BITPIX  =                    8",
+        "NAXIS   =                    0",
+    ];
+    const IMG: [&str; 5] = [
+        "SIMPLE  =                    T",
+        "BITPIX  =                  -32",
+        "NAXIS   =                    2",
+        "NAXIS1  =                    4",
+        "NAXIS2  =                    4",
+    ];
+    const PRIM_EXT: [&str; 4] = [
+        "SIMPLE  =                    T",
+        "BITPIX  =                    8",
+        "NAXIS   =                    0",
+        "EXTEND  =                    T",
+    ];
+
+    /* a primary header with no data, plus `extra' */
+    fn pw(extra: &[&str]) -> Vec<u8> {
+        let mut c: Vec<&str> = PRIM.to_vec();
+        c.extend_from_slice(extra);
+        block(&c).into_bytes()
+    }
+
+    /* a 4x4 float image, plus `extra' */
+    fn img(extra: &[&str]) -> Vec<u8> {
+        let mut c: Vec<&str> = IMG.to_vec();
+        c.extend_from_slice(extra);
+        let mut v = block(&c).into_bytes();
+        v.extend(std::iter::repeat_n(0u8, 2880));
+        v
+    }
+
+    /* a table extension carrying `data', plus `extra' header cards */
+    fn tbl(kind: &str, nax1: usize, nax2: usize, extra: &[&str], data: &[u8]) -> Vec<u8> {
+        let n1 = format!("NAXIS1  = {nax1:>20}");
+        let n2 = format!("NAXIS2  = {nax2:>20}");
+        let x = format!("XTENSION= '{kind}'");
+        let mut c: Vec<&str> = vec![
+            &x,
+            "BITPIX  =                    8",
+            "NAXIS   =                    2",
+            &n1,
+            &n2,
+            "PCOUNT  =                    0",
+            "GCOUNT  =                    1",
+        ];
+        c.extend_from_slice(extra);
+        let mut v = block(&PRIM_EXT).into_bytes();
+        v.extend(block(&c).into_bytes());
+        let mut d = data.to_vec();
+        d.resize(2880, 0);
+        v.extend(d);
+        v
+    }
+
+    /* Runs verify_fits over `bytes' and returns (errors, warnings).  Out::Null
+       suppresses all reporting, so only the counters are under test.  The
+       fitsverify counters are thread-locals, so these run in parallel safely. */
+    fn counts(bytes: &[u8]) -> (c_int, c_int) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.fits");
+        std::fs::write(&path, bytes).unwrap();
+
+        let mut buf = vec![0 as c_char; FLEN_FILENAME];
+        set_cstr(&mut buf, path.to_str().unwrap().as_bytes());
+        verify_fits(&mut buf, Out::Null);
+        (get_total_err(), get_total_warn())
+    }
+
+    /*--- clean input reports nothing -------------------------------------*/
+
+    #[test]
+    fn test_clean_primary_array() {
+        assert_eq!(counts(&pw(&[])), (0, 0));
+    }
+
+    /*--- warnings --------------------------------------------------------*/
+
+    #[test]
+    fn test_simple_false_warns() {
+        let mut c: Vec<&str> = PRIM.to_vec();
+        c[0] = "SIMPLE  =                    F";
+        assert_eq!(counts(&block(&c).into_bytes()), (0, 1));
+    }
+
+    #[test]
+    fn test_deprecated_keywords_warn() {
+        assert_eq!(counts(&pw(&["EPOCH   =               1950.0"])), (0, 1));
+        assert_eq!(counts(&pw(&["BLOCKED =                    T"])), (0, 1));
+    }
+
+    #[test]
+    fn test_duplicate_keyword_warns() {
+        assert_eq!(
+            counts(&pw(&[
+                "DUPKEY  =                    1",
+                "DUPKEY  =                    2",
+            ])),
+            (0, 1)
+        );
+    }
+
+    #[test]
+    fn test_y2k_date_warns() {
+        assert_eq!(counts(&pw(&["DATE    = '01/02/09'"])), (0, 1));
+        /* a four-digit year is fine */
+        assert_eq!(counts(&pw(&["DATE    = '2009-02-01'"])), (0, 0));
+    }
+
+    #[test]
+    fn test_long_string_convention_needs_longstrn() {
+        assert_eq!(
+            counts(&pw(&["LONGKEY = 'abcdefghij&'", "CONTINUE  'klmnop'"])),
+            (0, 1)
+        );
+        /* declaring the convention silences it */
+        assert_eq!(
+            counts(&pw(&[
+                "LONGSTRN= 'OGIP 1.0'",
+                "LONGKEY = 'abcdefghij&'",
+                "CONTINUE  'klmnop'",
+            ])),
+            (0, 0)
+        );
+    }
+
+    #[test]
+    fn test_null_keyword_value_warns() {
+        assert_eq!(counts(&pw(&["NULLKEY ="])), (0, 1));
+    }
+
+    #[test]
+    fn test_bscale_zero_warns() {
+        assert_eq!(counts(&img(&["BSCALE  =                  0.0"])), (0, 1));
+    }
+
+    /*--- keyword syntax errors -------------------------------------------*/
+
+    #[test]
+    fn test_lower_case_keyword_name_errors() {
+        assert_eq!(counts(&pw(&["lowerkey=                    1"])), (1, 0));
+    }
+
+    #[test]
+    fn test_unterminated_string_errors() {
+        assert_eq!(counts(&pw(&["OBJECT  = 'unterminated"])), (1, 0));
+    }
+
+    #[test]
+    fn test_lower_case_exponent_errors() {
+        assert_eq!(counts(&pw(&["VALUE   =              1.25e+02"])), (1, 0));
+        assert_eq!(counts(&pw(&["VALUE   =              1.25E+02"])), (0, 0));
+    }
+
+    /* The C dereferences a NULL pr_end here and dies with SIGSEGV; this port
+       reports the malformed value instead.  A deliberate divergence. */
+    #[test]
+    fn test_complex_without_comma_is_reported_not_fatal() {
+        let (e, _w) = counts(&pw(&["CPLX    = (1 2)"]));
+        assert!(e > 0, "a complex value with no comma must be reported");
+    }
+
+    /*--- keywords in the wrong kind of HDU -------------------------------*/
+
+    #[test]
+    fn test_xtension_in_primary_errors() {
+        assert_eq!(counts(&pw(&["XTENSION= 'IMAGE   '"])), (2, 0));
+    }
+
+    #[test]
+    fn test_pscal_outside_random_groups_errors() {
+        assert_eq!(counts(&pw(&["PSCAL1  =                  1.0"])), (1, 0));
+    }
+
+    #[test]
+    fn test_blank_with_floating_point_data_errors() {
+        assert_eq!(counts(&img(&["BLANK   =                   -1"])), (1, 0));
+    }
+
+    /*--- WCS -------------------------------------------------------------*/
+
+    #[test]
+    fn test_wcs_cdelt_zero_warns() {
+        assert_eq!(
+            counts(&img(&[
+                "CDELT1  =                  0.0",
+                "CDELT2  =                  1.0",
+            ])),
+            (0, 3)
+        );
+    }
+
+    #[test]
+    fn test_wcs_negative_crder_errors() {
+        assert_eq!(counts(&img(&["CRDER1  =                 -1.0"])), (1, 3));
+    }
+
+    #[test]
+    fn test_wcs_pc_and_cd_are_mutually_exclusive() {
+        assert_eq!(
+            counts(&img(&[
+                "PC1_1   =                  1.0",
+                "CD1_1   =                  1.0",
+            ])),
+            (1, 0)
+        );
+    }
+
+    #[test]
+    fn test_wcs_pc_and_crota2_are_mutually_exclusive() {
+        assert_eq!(
+            counts(&img(&[
+                "PC1_1   =                  1.0",
+                "CROTA2  =                  0.0",
+            ])),
+            (1, 3)
+        );
+    }
+
+    #[test]
+    fn test_wcs_non_allowed_frame_values_warn() {
+        assert_eq!(counts(&img(&["RADESYS = 'BOGUS   '"])), (0, 1));
+        assert_eq!(counts(&img(&["SPECSYS = 'NOPE    '"])), (0, 1));
+    }
+
+    /*--- tables ----------------------------------------------------------*/
+
+    #[test]
+    fn test_tdim_not_allowed_in_ascii_table() {
+        assert_eq!(
+            counts(&tbl(
+                "TABLE   ",
+                4,
+                1,
+                &[
+                    "TFIELDS =                    1",
+                    "TBCOL1  =                    1",
+                    "TFORM1  = 'I4      '",
+                    "TTYPE1  = 'C1      '",
+                    "TDIM1   = '(4)     '",
+                ],
+                b"1234",
+            )),
+            (2, 0)
+        );
+    }
+
+    #[test]
+    fn test_tbcol_not_allowed_in_binary_table() {
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                1,
+                &[
+                    "TFIELDS =                    1",
+                    "TFORM1  = '4A      '",
+                    "TTYPE1  = 'C1      '",
+                    "TBCOL1  =                    1",
+                ],
+                b"abcd",
+            )),
+            (1, 0)
+        );
+    }
+
+    #[test]
+    fn test_missing_column_name_warns() {
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                1,
+                &["TFIELDS =                    1", "TFORM1  = '4A      '"],
+                b"abcd",
+            )),
+            (0, 1)
+        );
+    }
+
+    #[test]
+    fn test_illegal_character_in_column_name_warns() {
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                1,
+                &[
+                    "TFIELDS =                    1",
+                    "TFORM1  = '4A      '",
+                    "TTYPE1  = 'a b     '",
+                ],
+                b"abcd",
+            )),
+            (0, 1)
+        );
+    }
+
+    #[test]
+    fn test_duplicate_column_names_warn() {
+        /* the comparison is case insensitive */
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                1,
+                &[
+                    "TFIELDS =                    2",
+                    "TFORM1  = '2A      '",
+                    "TFORM2  = '2A      '",
+                    "TTYPE1  = 'SAME    '",
+                    "TTYPE2  = 'same    '",
+                ],
+                b"abcd",
+            )),
+            (0, 1)
+        );
+    }
+
+    #[test]
+    fn test_tform_leading_space_errors() {
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                1,
+                &[
+                    "TFIELDS =                    1",
+                    "TFORM1  = ' 4A     '",
+                    "TTYPE1  = 'C1      '",
+                ],
+                b"abcd",
+            )),
+            (1, 0)
+        );
+    }
+
+    /* Every offending row is reported, not just the first: the C's `break'
+       leaves the inner character scan only, and the row loop carries on. */
+    #[test]
+    fn test_non_ascii_reported_for_every_bad_row() {
+        assert_eq!(
+            counts(&tbl(
+                "BINTABLE",
+                4,
+                3,
+                &[
+                    "TFIELDS =                    1",
+                    "TFORM1  = '4A      '",
+                    "TTYPE1  = 'TXT     '",
+                ],
+                b"a\xffbcabcd\xfeefg", /* rows 1 and 3 are bad, row 2 is clean */
+            )),
+            (2, 0)
+        );
+    }
+
+    /*--- file structure --------------------------------------------------*/
+
+    #[test]
+    fn test_extraneous_bytes_after_last_hdu_error() {
+        let mut v = pw(&[]);
+        v.extend_from_slice(b"junkjunk");
+        assert_eq!(counts(&v), (1, 0));
     }
 }

@@ -10,7 +10,8 @@
 *******************************************************************************/
 /* Transpiled from cfitsio/utilities/fvrf_misc.c */
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::cell::Cell;
+use std::cmp::Ordering;
 
 use rsfitsio::aliases::rust_api::{fits_clear_errmsg, fits_get_errstatus, fits_read_errmsg};
 use rsfitsio::c_types::{c_char, c_int};
@@ -21,22 +22,22 @@ use crate::common::*;
 use crate::fvrf_file::close_report;
 use crate::{pf, scat, spf};
 
-static NWRNS: AtomicI32 = AtomicI32::new(0);
-static NERRS: AtomicI32 = AtomicI32::new(0);
+thread_local! { static NWRNS: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static NERRS: Cell<c_int> = const { Cell::new(0) }; }
 /* static char temp[512]; -- a scratch buffer, made local at each use site */
 const TEMP_LEN: usize = 512;
 
-pub fn num_err_wrn(num_err: &mut c_int, num_wrn: &mut c_int) {
-    *num_wrn = NWRNS.load(Ordering::Relaxed);
-    *num_err = NERRS.load(Ordering::Relaxed);
+pub(crate) fn num_err_wrn(num_err: &mut c_int, num_wrn: &mut c_int) {
+    *num_wrn = NWRNS.with(Cell::get);
+    *num_err = NERRS.with(Cell::get);
 }
 
-pub fn reset_err_wrn() {
-    NWRNS.store(0, Ordering::Relaxed);
-    NERRS.store(0, Ordering::Relaxed);
+pub(crate) fn reset_err_wrn() {
+    NWRNS.with(|c| c.set(0));
+    NERRS.with(|c| c.set(0));
 }
 
-pub fn wrtout(out: Out, mess: &[c_char]) -> c_int {
+pub(crate) fn wrtout(out: Out, mess: &[c_char]) -> c_int {
     if out != Out::Null {
         pf!(out; CS(mess), "\n");
     }
@@ -47,7 +48,7 @@ pub fn wrtout(out: Out, mess: &[c_char]) -> c_int {
 }
 
 /* wrtout() for a plain Rust literal */
-pub fn wrtout_str(out: Out, mess: &str) -> c_int {
+pub(crate) fn wrtout_str(out: Out, mess: &str) -> c_int {
     if out != Out::Null {
         pf!(out; mess, "\n");
     }
@@ -57,7 +58,7 @@ pub fn wrtout_str(out: Out, mess: &str) -> c_int {
     0
 }
 
-pub fn wrtwrn(out: Out, mess: &[c_char], isheasarc: c_int) -> c_int {
+pub(crate) fn wrtwrn(out: Out, mess: &[c_char], isheasarc: c_int) -> c_int {
     if err_report() != 0 {
         return 0;
     } /* Don't print the warnings */
@@ -65,7 +66,7 @@ pub fn wrtwrn(out: Out, mess: &[c_char], isheasarc: c_int) -> c_int {
         return 0;
     } /* heasarc warnings  but with
       heasarc convention turns off */
-    let nwrns = NWRNS.fetch_add(1, Ordering::Relaxed) + 1;
+    let nwrns = NWRNS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Warning: ", CS(mess));
@@ -80,18 +81,18 @@ pub fn wrtwrn(out: Out, mess: &[c_char], isheasarc: c_int) -> c_int {
     nwrns
 }
 
-pub fn wrtwrn_str(out: Out, mess: &str, isheasarc: c_int) -> c_int {
+pub(crate) fn wrtwrn_str(out: Out, mess: &str, isheasarc: c_int) -> c_int {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; mess);
     wrtwrn(out, &b, isheasarc)
 }
 
-pub fn wrterr(out: Out, mess: &[c_char], severity: c_int) -> c_int {
+pub(crate) fn wrterr(out: Out, mess: &[c_char], severity: c_int) -> c_int {
     if severity < err_report() {
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.fetch_add(1, Ordering::Relaxed) + 1;
+    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess));
@@ -118,21 +119,21 @@ pub fn wrterr(out: Out, mess: &[c_char], severity: c_int) -> c_int {
     nerrs
 }
 
-pub fn wrterr_str(out: Out, mess: &str, severity: c_int) -> c_int {
+pub(crate) fn wrterr_str(out: Out, mess: &str, severity: c_int) -> c_int {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; mess);
     wrterr(out, &b, severity)
 }
 
 /* construct an error message: mess + cfitsio error */
-pub fn wrtferr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -> c_int {
+pub(crate) fn wrtferr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -> c_int {
     let mut ttemp: [c_char; 255] = [0; 255];
 
     if severity < err_report() {
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.fetch_add(1, Ordering::Relaxed) + 1;
+    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess));
@@ -158,14 +159,14 @@ pub fn wrtferr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -
     nerrs
 }
 
-pub fn wrtferr_str(out: Out, mess: &str, status: &mut c_int, severity: c_int) -> c_int {
+pub(crate) fn wrtferr_str(out: Out, mess: &str, status: &mut c_int, severity: c_int) -> c_int {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; mess);
     wrtferr(out, &b, status, severity)
 }
 
 /* dump the cfitsio stack */
-pub fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -> c_int {
+pub(crate) fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -> c_int {
     /* char* errfmt = "             %.67s\n"; */
     let mut i;
     /* C declares tmp[20][80] but then prints tmp[nstack] with nstack possibly
@@ -177,7 +178,7 @@ pub fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.fetch_add(1, Ordering::Relaxed) + 1;
+    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess), "(from CFITSIO error stack:)");
@@ -221,7 +222,7 @@ pub fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c_int) -
     nerrs
 }
 
-pub fn wrtserr_str(out: Out, mess: &str, status: &mut c_int, severity: c_int) -> c_int {
+pub(crate) fn wrtserr_str(out: Out, mess: &str, status: &mut c_int, severity: c_int) -> c_int {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; mess);
     wrtserr(out, &b, status, severity)
@@ -229,7 +230,7 @@ pub fn wrtserr_str(out: Out, mess: &str, status: &mut c_int, severity: c_int) ->
 
 /* Print output of messages in a 80 character record.
     Continue lines are aligned. */
-pub fn print_fmt(out: Out, temp: &[c_char], nprompt: c_int) {
+pub(crate) fn print_fmt(out: Out, temp: &[c_char], nprompt: c_int) {
     let mut j: usize;
     let clen: usize;
     let mut tmp: [c_char; 81] = [0; 81];
@@ -310,14 +311,14 @@ pub fn print_fmt(out: Out, temp: &[c_char], nprompt: c_int) {
     }
 }
 
-pub fn print_fmt_str(out: Out, s: &str, nprompt: c_int) {
+pub(crate) fn print_fmt_str(out: Out, s: &str, nprompt: c_int) {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; s);
     print_fmt(out, &b, nprompt);
 }
 
 /* print a line of char fill with string title in the middle */
-pub fn wrtsep(out: Out, fill: c_char, title: &[c_char], nchar: c_int) {
+pub(crate) fn wrtsep(out: Out, fill: c_char, title: &[c_char], nchar: c_int) {
     let ntitle: usize;
     let line: &mut Vec<c_char>;
     let mut p: usize;
@@ -371,51 +372,48 @@ pub fn wrtsep(out: Out, fill: c_char, title: &[c_char], nchar: c_int) {
     }
 }
 
-pub fn wrtsep_str(out: Out, fill: c_char, title: &str, nchar: c_int) {
+pub(crate) fn wrtsep_str(out: Out, fill: c_char, title: &str, nchar: c_int) {
     let mut b: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(b; title);
     wrtsep(out, fill, &b, nchar);
 }
 
 /* comparison function for the FitsKey structure array */
-pub fn compkey(key1: &FitsKey, key2: &FitsKey) -> c_int {
-    strncmp_c(&key1.kname, &key2.kname, FLEN_KEYWORD_C)
+pub(crate) fn compkey(key1: &FitsKey, key2: &FitsKey) -> Ordering {
+    ccmp(&key1.kname, &key2.kname)
 }
-
-const FLEN_KEYWORD_C: usize = rsfitsio::fitsio::FLEN_KEYWORD;
 
 /* comparison function for the colname structure array */
-pub fn compcol(col1: &ColName, col2: &ColName) -> c_int {
-    strcmp_c(&col1.name, &col2.name)
+pub(crate) fn compcol(col1: &ColName, col2: &ColName) -> Ordering {
+    ccmp(&col1.name, &col2.name)
 }
 
-/* comparison function for the string pattern maching*/
-pub fn compstrp(str1: &[c_char], str2: &[c_char]) -> c_int {
-    let mut p = 0usize;
-    let mut q = 0usize;
-    while str2[q] == str1[p] && str2[q] != 0 {
-        p += 1;
-        q += 1;
-        if str1[p] == 0 {
-            return 0; /* str2 is longer than str1, but
-                      matched */
-        }
+/* comparison function for the string pattern maching.
+   Equal when the pattern is a prefix of the candidate -- this is what lets
+   key_match() find every CRPIXn from the pattern "CRPIX". */
+pub(crate) fn compstrp(pattern: &[c_char], candidate: &[c_char]) -> Ordering {
+    let p = cbytes(pattern);
+    let q = cbytes(candidate);
+    if q.starts_with(p) {
+        Ordering::Equal
+    } else {
+        p.cmp(q)
     }
-    (str1[p] as u8) as c_int - (str2[q] as u8) as c_int
 }
 
 /* comparison function for the string exact maching*/
-pub fn compstre(str1: &[c_char], str2: &[c_char]) -> c_int {
-    strcmp_c(str1, str2)
+pub(crate) fn compstre(str1: &[c_char], str2: &[c_char]) -> Ordering {
+    ccmp(str1, str2)
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rsfitsio::fitsio::FLEN_KEYWORD;
 
-    fn kw(s: &str) -> [c_char; FLEN_KEYWORD_C] {
-        let mut b = [0 as c_char; FLEN_KEYWORD_C];
+    fn kw(s: &str) -> [c_char; FLEN_KEYWORD] {
+        let mut b = [0 as c_char; FLEN_KEYWORD];
         for (i, &c) in s.as_bytes().iter().enumerate() {
             b[i] = c as c_char;
         }
@@ -426,33 +424,33 @@ mod tests {
        it reports equal when the pattern is a prefix of the array element. */
     #[test]
     fn test_compstrp() {
-        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX1")), 0);
-        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX")), 0);
-        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX12A")), 0);
-        /* element shorter than the pattern sorts before it: 'I' - '\0' */
-        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRP")), b'I' as c_int);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX1")), Ordering::Equal);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX")), Ordering::Equal);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX12A")), Ordering::Equal);
+        /* candidate shorter than the pattern is not a match, and sorts before it */
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CRP")), Ordering::Greater);
         /* ordinary ordering either side */
-        assert!(compstrp(&kw("CRPIX"), &kw("CS")) < 0);
-        assert!(compstrp(&kw("CRPIX"), &kw("BITPIX")) > 0);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("CS")), Ordering::Less);
+        assert_eq!(compstrp(&kw("CRPIX"), &kw("BITPIX")), Ordering::Greater);
     }
 
     #[test]
     fn test_compstre() {
-        assert_eq!(compstre(&kw("NAXIS"), &kw("NAXIS")), 0);
+        assert_eq!(compstre(&kw("NAXIS"), &kw("NAXIS")), Ordering::Equal);
         /* exact matching, so a longer element is not equal */
-        assert!(compstre(&kw("NAXIS"), &kw("NAXIS1")) < 0);
-        assert!(compstre(&kw("NAXIS1"), &kw("NAXIS")) > 0);
+        assert_eq!(compstre(&kw("NAXIS"), &kw("NAXIS1")), Ordering::Less);
+        assert_eq!(compstre(&kw("NAXIS1"), &kw("NAXIS")), Ordering::Greater);
     }
 
     #[test]
     fn test_compkey_and_compcol() {
         let a = FitsKey { kname: kw("AAA"), ..Default::default() };
         let b = FitsKey { kname: kw("AAB"), ..Default::default() };
-        assert!(compkey(&a, &b) < 0);
-        assert_eq!(compkey(&a, &a.clone()), 0);
+        assert_eq!(compkey(&a, &b), Ordering::Less);
+        assert_eq!(compkey(&a, &a.clone()), Ordering::Equal);
 
         let c1 = ColName { name: cvec(&kw("ALPHA")), index: 1 };
         let c2 = ColName { name: cvec(&kw("BETA")), index: 2 };
-        assert!(compcol(&c1, &c2) < 0);
+        assert_eq!(compcol(&c1, &c2), Ordering::Less);
     }
 }

@@ -6,8 +6,6 @@
 
 use rsfitsio::c_types::{c_char, c_int, c_ulong};
 use rsfitsio::fitsio::{FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE};
-use bytemuck::cast_slice;
-use rsfitsio::cs;
 
 use crate::common::*;
 use crate::fvrf_misc::*;
@@ -16,7 +14,7 @@ use crate::{scat, spf};
 /* Ref: Defininition of the Flexible Image Transport System(FITS),
     Sec. 5.1 and 5.2.
 */
-pub fn fits_parse_card(
+pub(crate) fn fits_parse_card(
     out: Out,                          /* output file pointer */
     kpos: c_int,                       /* keyposition starting from 1 */
     card: &mut [c_char],               /* key card */
@@ -93,11 +91,11 @@ pub fn fits_parse_card(
     }
 
     /* COMMENT, HISTORY, HIERARCH and "" keywords */
-    if strcmp_c(kname, cs!(c"COMMENT")) == 0
-        || strcmp_c(kname, cs!(c"HISTORY")) == 0
-        || strcmp_c(kname, cs!(c"HIERARCH")) == 0
-        || strcmp_c(kname, cs!(c"CONTINUE")) == 0
-        || strcmp_c(kname, cs!(c"")) == 0
+    if ceq(kname, b"COMMENT")
+        || ceq(kname, b"HISTORY")
+        || ceq(kname, b"HIERARCH")
+        || ceq(kname, b"CONTINUE")
+        || ceq(kname, b"")
     {
         *ktype = kwdtyp::COM_KEY;
 
@@ -122,7 +120,7 @@ pub fn fits_parse_card(
     }
 
     /* End Keyword: 9-80 shall be filled with ASCII blanks \x20 */
-    if strcmp_c(kname, cs!(c"END")) == 0 {
+    if ceq(kname, b"END") {
         *ktype = kwdtyp::COM_KEY;
         if card[3] == 0 {
             return 0;
@@ -143,7 +141,7 @@ pub fn fits_parse_card(
     p = 8;
     strncpy_c(&mut vind, &card[p..], 2);
     vind[2] = 0;
-    if strcmp_c(&vind, cs!(c"= ")) != 0 && strcmp_c(&vind, cs!(c"=")) != 0 {
+    if !ceq(&vind, b"= ") && !ceq(&vind, b"=") {
         /* no value indicator, so this is a commentary keyword */
         *ktype = kwdtyp::COM_KEY;
         strcpy_c(kcomm, &card[p..]);
@@ -235,7 +233,7 @@ pub fn fits_parse_card(
 }
 
 /* parse And test the string keys */
-pub fn get_str(
+pub(crate) fn get_str(
     card: &[c_char],      /* card string from character 11*/
     pt: &mut usize,       /* cursor into card */
     kvalue: &mut [c_char], /* key value string */
@@ -291,7 +289,7 @@ pub fn get_str(
 }
 
 /* parse and test the logical keys */
-pub fn get_log(
+pub(crate) fn get_log(
     card: &[c_char],       /* card string */
     pt: &mut usize,        /* cursor into card */
     kvalue: &mut [c_char], /* key value string */
@@ -313,7 +311,7 @@ pub fn get_log(
 }
 
 /* parse and test the numerical keys */
-pub fn get_num(
+pub(crate) fn get_num(
     card: &[c_char],       /* card string */
     pt: &mut usize,        /* cursor into card */
     kvalue: &mut [c_char], /* comment string */
@@ -382,7 +380,7 @@ pub fn get_num(
 }
 
 /* parse and test the complex keys */
-pub fn get_cmp(
+pub(crate) fn get_cmp(
     incard: &[c_char],     /* card string */
     pt: &mut usize,        /* cursor into card */
     kvalue: &mut [c_char], /* comment string */
@@ -489,7 +487,7 @@ pub fn get_cmp(
 }
 
 /* parse and test the comment keys */
-pub fn get_comm(
+fn get_comm(
     card: &[c_char],      /* card string */
     pt: &mut usize,       /* cursor into card */
     kcomm: &mut [c_char], /* comment string */
@@ -517,7 +515,7 @@ pub fn get_comm(
 }
 
 /* parsing the unknown keyword */
-pub fn get_unknown(
+pub(crate) fn get_unknown(
     card: &[c_char],       /* card string */
     pt: &mut usize,        /* cursor into card */
     kvalue: &mut [c_char], /* comment string */
@@ -544,7 +542,7 @@ pub fn get_unknown(
 }
 
 /* routine to print out the error of keyword value/comment */
-pub fn pr_kval_err(
+pub(crate) fn pr_kval_err(
     out: Out,          /* output  FILE */
     kpos: c_int,       /* keyposition starting from 1 */
     kname: &[c_char],  /* keyword name */
@@ -637,7 +635,7 @@ pub fn pr_kval_err(
     }
 }
 
-pub fn check_str(pkey: &FitsKey, out: Out) -> c_int {
+pub(crate) fn check_str(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype == kwdtyp::UNKNOWN && pkey.kvalue[0] == 0 {
@@ -656,7 +654,7 @@ pub fn check_str(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_int(pkey: &FitsKey, out: Out) -> c_int {
+pub(crate) fn check_int(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype == kwdtyp::UNKNOWN && pkey.kvalue[0] == 0 {
@@ -678,7 +676,7 @@ pub fn check_int(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_flt(pkey: &FitsKey, out: Out) -> c_int {
+pub(crate) fn check_flt(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype == kwdtyp::UNKNOWN && pkey.kvalue[0] == 0 {
@@ -700,7 +698,7 @@ pub fn check_flt(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_cmi(pkey: &FitsKey, out: Out) -> c_int {
+fn check_cmi(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype != kwdtyp::CMI_KEY {
@@ -716,7 +714,7 @@ pub fn check_cmi(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_cmf(pkey: &FitsKey, out: Out) -> c_int {
+fn check_cmf(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype != kwdtyp::CMI_KEY && pkey.ktype != kwdtyp::CMF_KEY {
@@ -732,7 +730,7 @@ pub fn check_cmf(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_log(pkey: &FitsKey, out: Out) -> c_int {
+pub(crate) fn check_log(pkey: &FitsKey, out: Out) -> c_int {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     if pkey.ktype != kwdtyp::LOG_KEY {
@@ -748,7 +746,7 @@ pub fn check_log(pkey: &FitsKey, out: Out) -> c_int {
     1
 }
 
-pub fn check_fixed_int(card: &[c_char], out: Out) -> c_int {
+pub(crate) fn check_fixed_int(card: &[c_char], out: Out) -> c_int {
     let mut cptr: usize;
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
@@ -783,7 +781,7 @@ pub fn check_fixed_int(card: &[c_char], out: Out) -> c_int {
     1
 }
 
-pub fn check_fixed_log(card: &[c_char], out: Out) -> c_int {
+pub(crate) fn check_fixed_log(card: &[c_char], out: Out) -> c_int {
     let mut cptr: usize;
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
@@ -815,7 +813,7 @@ pub fn check_fixed_log(card: &[c_char], out: Out) -> c_int {
     1
 }
 
-pub fn check_fixed_str(card: &[c_char], out: Out) -> c_int {
+pub(crate) fn check_fixed_str(card: &[c_char], out: Out) -> c_int {
     let mut cptr: usize;
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
@@ -1043,8 +1041,8 @@ mod tests {
     fn test_check_type_helpers() {
         reset_err_wrn();
         let mut k = FitsKey { ktype: kwdtyp::INT_KEY, kindex: 1, ..Default::default() };
-        strcpy_c(&mut k.kname, cs!(c"NAXIS"));
-        strcpy_c(&mut k.kvalue, cs!(c"2"));
+        set_cstr(&mut k.kname, b"NAXIS");
+        set_cstr(&mut k.kvalue, b"2");
         assert_eq!(check_int(&k, Out::Null), 1);
         assert_eq!(check_flt(&k, Out::Null), 1); /* an integer is a valid float */
         assert_eq!(check_str(&k, Out::Null), 0);

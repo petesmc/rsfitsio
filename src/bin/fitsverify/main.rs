@@ -36,13 +36,11 @@ use crate::common::*;
 /*---------------------------------------------------------------------------*/
 /*  ftverify.c                                                               */
 /*---------------------------------------------------------------------------*/
-pub mod main_ftverify {
+pub(crate) mod main_ftverify {
     use std::io::BufRead;
 
-    use bytemuck::cast_slice;
     use rsfitsio::aliases::rust_api::fits_get_version;
     use rsfitsio::c_types::{c_char, c_int};
-    use rsfitsio::cs;
     use rsfitsio::fitsio::{FILE_NOT_CREATED, FILE_NOT_OPENED, FLEN_FILENAME};
 
     use crate::common::*;
@@ -53,13 +51,13 @@ pub mod main_ftverify {
 
     const MAXMSG: usize = 256;
 
-    pub const PIL_LINESIZE: usize = 1024;
+    const PIL_LINESIZE: usize = 1024;
 
     /*---------------------------------------------------------------------------*/
     /* call work function to verify that infile conforms to the FITS
            standard and write report to the output file */
     #[allow(clippy::too_many_arguments)]
-    pub fn ftverify_work(
+    pub(crate) fn ftverify_work(
         infile: &[c_char],  /* I - Input file name (Fits) */
         outfile: &[c_char], /* I - Output file name (ASCII) */
         _prehead: c_int,
@@ -116,8 +114,8 @@ pub mod main_ftverify {
         /* test if writing output log to a disk file */
         if prstat != 0
             && cstrlen(op) != 0
-            && strcmp_c(op, cs!(c"STDOUT")) != 0
-            && strcmp_c(op, cs!(c"STDERR")) != 0
+            && !ceq(op, b"STDOUT")
+            && !ceq(op, b"STDERR")
             && std::fs::File::open(cstr_to_os(op)).is_ok()
         {
             spf!(msg; "Clobber is not set. Cannot overwrite the file", CS(op));
@@ -127,9 +125,9 @@ pub mod main_ftverify {
             return status;
         }
 
-        if prstat != 0 && (cstrlen(op) == 0 || strcmp_c(op, cs!(c"STDOUT")) == 0) {
+        if prstat != 0 && (cstrlen(op) == 0 || ceq(op, b"STDOUT")) {
             outfptr = Out::Stdout;
-        } else if prstat != 0 && (cstrlen(op) == 0 || strcmp_c(op, cs!(c"STDERR")) == 0) {
+        } else if prstat != 0 && (cstrlen(op) == 0 || ceq(op, b"STDERR")) {
             outfptr = Out::Stderr;
         } else if prstat == 0 {
             outfptr = Out::Null;
@@ -280,7 +278,7 @@ pub mod main_ftverify {
     *      Update the numerrs and numwrns parameters in the parfile.
     *
     *******************************************************************************/
-    pub fn update_parfile(nerr: c_int, nwrn: c_int) {
+    pub(crate) fn update_parfile(nerr: c_int, nwrn: c_int) {
         let mut status: c_int;
         let mut parname: [c_char; 32] = [0; 32];
 
@@ -308,40 +306,40 @@ pub mod main_ftverify {
       only needed when ftverify is built in the HEADAS environment.
     --------------------------------------------------------------------*/
 
-    pub fn PILGetFname(_parname: &[c_char], _filename: &mut [c_char]) -> c_int {
+    fn PILGetFname(_parname: &[c_char], _filename: &mut [c_char]) -> c_int {
         0
     }
 
-    pub fn PILGetString(_parname: &[c_char], _stringname: &mut [c_char]) -> c_int {
+    fn PILGetString(_parname: &[c_char], _stringname: &mut [c_char]) -> c_int {
         0
     }
 
-    pub fn PILGetBool(_parname: &[c_char], _intvalue: &mut c_int) -> c_int {
+    fn PILGetBool(_parname: &[c_char], _intvalue: &mut c_int) -> c_int {
         0
     }
 
-    pub fn PILPutInt(_parname: &[c_char], _intvalue: c_int) -> c_int {
+    fn PILPutInt(_parname: &[c_char], _intvalue: c_int) -> c_int {
         0
     }
 
-    pub fn set_toolname(_taskname: &[c_char]) {}
+    fn set_toolname(_taskname: &[c_char]) {}
 
-    pub fn set_toolversion(_taskname: &[c_char]) {}
+    fn set_toolversion(_taskname: &[c_char]) {}
 
-    pub fn get_toolname(taskname: &mut [c_char]) {
+    fn get_toolname(taskname: &mut [c_char]) {
         spf!(taskname; "fitsverify");
     }
 
-    pub fn get_toolversion(taskvers: &mut [c_char]) {
+    fn get_toolversion(taskvers: &mut [c_char]) {
         spf!(taskvers; "4.22");
     }
 
-    pub fn headas_clobberfile(_filename: &[c_char]) {}
+    fn headas_clobberfile(_filename: &[c_char]) {}
 
-    pub fn HD_ERROR_THROW(_msg: &[c_char], _status: c_int) {}
+    fn HD_ERROR_THROW(_msg: &[c_char], _status: c_int) {}
 
     /* An OS path from a NUL-terminated c_char buffer. */
-    pub fn cstr_to_os(s: &[c_char]) -> std::ffi::OsString {
+    fn cstr_to_os(s: &[c_char]) -> std::ffi::OsString {
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStringExt;
@@ -359,7 +357,7 @@ use main_ftverify::ftverify_work;
 /*---------------------------------------------------------------------------*/
 /*  fitsverify.c                                                             */
 /*---------------------------------------------------------------------------*/
-pub fn main() -> ExitCode {
+pub(crate) fn main() -> ExitCode {
     let mut status: c_int_alias = 0;
     let mut invalid = 0;
     let mut file1 = 0usize;
@@ -374,7 +372,7 @@ pub fn main() -> ExitCode {
         .collect();
     let argc = argv.len();
 
-    if argc == 2 && strcmp_c(&argv[1], cs!(c"-h")) == 0 {
+    if argc == 2 && ceq(&argv[1], b"-h") {
         print!(
             "{}",
             "fitsverify -- Verify that the input files conform to the FITS Standard.\n\
@@ -493,19 +491,19 @@ pub fn main() -> ExitCode {
 
     /* check for flags on the command line */
     for ii in 1..argc {
-        if argv[ii][0] as u8 != b'-' || strcmp_c(&argv[ii], cs!(c"-")) == 0 {
+        if argv[ii][0] as u8 != b'-' || ceq(&argv[ii], b"-") {
             file1 = ii;
             break;
         }
 
-        if strcmp_c(&argv[ii], cs!(c"-l")) == 0 {
+        if ceq(&argv[ii], b"-l") {
             set_prhead(1);
-        } else if strcmp_c(&argv[ii], cs!(c"-H")) == 0 {
+        } else if ceq(&argv[ii], b"-H") {
             set_testhierarch(1);
-        } else if strcmp_c(&argv[ii], cs!(c"-e")) == 0 {
+        } else if ceq(&argv[ii], b"-e") {
             errormode[0] = b'e' as c_char;
             errormode[1] = 0;
-        } else if strcmp_c(&argv[ii], cs!(c"-q")) == 0 {
+        } else if ceq(&argv[ii], b"-q") {
             set_prstat(0);
         } else {
             invalid = 1;

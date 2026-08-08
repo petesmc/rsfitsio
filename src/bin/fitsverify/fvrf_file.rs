@@ -3,8 +3,7 @@
    `static HduName **hduname' becomes a thread-local Vec<HduName>; the C's
    malloc/calloc/free bookkeeping is dropped in favour of RAII.  */
 
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::cell::{Cell, RefCell};
 
 use bytemuck::cast_slice;
 use rsfitsio::aliases::rust_api::{
@@ -23,19 +22,19 @@ use crate::{scat, spf};
 thread_local! {
     static HDUNAME: RefCell<Vec<HduName>> = const { RefCell::new(Vec::new()) };
 }
-static TOTAL_ERR: AtomicI32 = AtomicI32::new(1); /* initialzed to 1 in case fail to open file */
-static TOTAL_WARN: AtomicI32 = AtomicI32::new(0);
+thread_local! { static TOTAL_ERR: Cell<c_int> = const { Cell::new(1) }; } /* initialzed to 1 in case fail to open file */
+thread_local! { static TOTAL_WARN: Cell<c_int> = const { Cell::new(0) }; }
 
-pub fn get_total_warn() -> c_int {
-    TOTAL_WARN.load(Ordering::Relaxed)
+pub(crate) fn get_total_warn() -> c_int {
+    TOTAL_WARN.with(Cell::get)
 }
 
-pub fn get_total_err() -> c_int {
-    TOTAL_ERR.load(Ordering::Relaxed)
+pub(crate) fn get_total_err() -> c_int {
+    TOTAL_ERR.with(Cell::get)
 }
 
 /* Get the total hdu number and allocate the memory for hdu array */
-pub fn init_hduname() {
+fn init_hduname() {
     /* allocate memories for the hdu structure array  */
     HDUNAME.with(|h| {
         let mut h = h.borrow_mut();
@@ -53,7 +52,7 @@ pub fn init_hduname() {
 }
 
 /* set the hduname memeber hdutype, extname, extver */
-pub fn set_hduname(
+pub(crate) fn set_hduname(
     hdunum: c_int,             /* hdu number */
     hdutype: c_int,            /* hdutype */
     extname: Option<&[c_char]>, /* extension name */
@@ -76,7 +75,7 @@ pub fn set_hduname(
 }
 
 /* get the total errors and total warnings in this hdu */
-pub fn set_hduerr(hdunum: c_int /* hdu number */) {
+pub(crate) fn set_hduerr(hdunum: c_int /* hdu number */) {
     let i = (hdunum - 1) as usize;
     let mut errnum = 0;
     let mut wrnno = 0;
@@ -90,14 +89,14 @@ pub fn set_hduerr(hdunum: c_int /* hdu number */) {
 }
 
 /* set the basic information for hduname structure */
-pub fn set_hdubasic(hdunum: c_int, hdutype: c_int) {
+pub(crate) fn set_hdubasic(hdunum: c_int, hdutype: c_int) {
     set_hduname(hdunum, hdutype, None, 0);
     set_hduerr(hdunum);
 }
 
 /* test to see whether the two extension having the same name */
 /* return 1: identical 0: different */
-pub fn test_hduname(
+pub(crate) fn test_hduname(
     hdunum1: c_int, /* index of first hdu */
     hdunum2: c_int, /* index of second hdu */
 ) -> c_int {
@@ -108,7 +107,7 @@ pub fn test_hduname(
         if cstrlen(&p1.extname) == 0 || cstrlen(&p2.extname) == 0 {
             return 0;
         }
-        if strcmp_c(&p1.extname, &p2.extname) == 0
+        if cbytes(&p1.extname) == cbytes(&p2.extname)
             && p1.hdutype == p2.hdutype
             && p2.extver == p1.extver
             && hdunum1 != hdunum2
@@ -120,7 +119,7 @@ pub fn test_hduname(
 }
 
 /* Added the error numbers */
-pub fn total_errors(toterr: &mut c_int, totwrn: &mut c_int) {
+fn total_errors(toterr: &mut c_int, totwrn: &mut c_int) {
     let mut ierr = 0;
     let mut iwrn = 0;
     *toterr = 0;
@@ -146,7 +145,7 @@ pub fn total_errors(toterr: &mut c_int, totwrn: &mut c_int) {
 }
 
 /* print the extname, exttype, extver, errnum and wrnno in a  table */
-pub fn hdus_summary(out: Out) {
+fn hdus_summary(out: Out) {
     let mut ierr = 0;
     let mut iwrn = 0;
     let mut temp: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -209,12 +208,12 @@ pub fn hdus_summary(out: Out) {
     wrtout_str(out, " ");
 }
 
-pub fn destroy_hduname() {
+fn destroy_hduname() {
     HDUNAME.with(|h| h.borrow_mut().clear());
 }
 
 /* Routine to test the extra bytes at the end of file */
-pub fn test_end(infits: &mut fitsfile, out: Out) {
+pub(crate) fn test_end(infits: &mut fitsfile, out: Out) {
     let mut status: c_int = 0;
     let mut headstart: LONGLONG = 0;
     let mut datastart: LONGLONG = 0;
@@ -281,7 +280,7 @@ pub fn test_end(infits: &mut fitsfile, out: Out) {
 *      Initialize the fverify report
 *
 *******************************************************************************/
-pub fn init_report(
+pub(crate) fn init_report(
     out: Out,               /* output file */
     _rootnam: &[c_char],    /* input file name */
 ) {
@@ -303,7 +302,7 @@ pub fn init_report(
 *      Close the fverify report
 *
 *******************************************************************************/
-pub fn close_report(out: Out /* output file */) {
+pub(crate) fn close_report(out: Out /* output file */) {
     let mut numerrs: c_int = 0; /* number of the errors         */
     let mut numwrns: c_int = 0; /* number of the warnings       */
     let mut comm: [c_char; COMM_LEN] = [0; COMM_LEN];
@@ -314,8 +313,8 @@ pub fn close_report(out: Out /* output file */) {
     }
     total_errors(&mut numerrs, &mut numwrns);
 
-    TOTAL_WARN.store(numwrns, Ordering::Relaxed);
-    TOTAL_ERR.store(numerrs, Ordering::Relaxed);
+    TOTAL_WARN.with(|c| c.set(numwrns));
+    TOTAL_ERR.with(|c| c.set(numerrs));
 
     /* get the total number of errors and warnnings */
     spf!(comm;

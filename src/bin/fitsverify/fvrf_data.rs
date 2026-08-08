@@ -5,8 +5,7 @@
    iterdata keep the C's pointer arithmetic inside small unsafe blocks.  All
    the other column reads use the typed safe wrappers.  */
 
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::cell::{Cell, RefCell};
 
 use bytemuck::cast_slice;
 use rsfitsio::aliases::rust_api::{
@@ -16,6 +15,8 @@ use rsfitsio::aliases::rust_api::{
     fits_verify_chksum,
 };
 use rsfitsio::buffers::ffgtbb_safe;
+use std::ffi::CStr;
+
 use rsfitsio::c_types::{c_char, c_int, c_long, c_uchar, c_void};
 use rsfitsio::cs;
 use rsfitsio::fitscore::{ffasfm_safe, ffcdfl_safe};
@@ -68,7 +69,7 @@ struct UserIter {
 *  this routine does not read the image pixels.
 *
 *************************************************************/
-pub fn test_data(
+pub(crate) fn test_data(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* fits hdu pointer  */
@@ -603,22 +604,22 @@ thread_local! {
     static REPEAT_V: RefCell<Vec<c_long>> = const { RefCell::new(Vec::new()) };
     static DATATYPE_V: RefCell<Vec<c_int>> = const { RefCell::new(Vec::new()) };
 }
-static IT_NNUM: AtomicI32 = AtomicI32::new(0);
-static IT_NTXT: AtomicI32 = AtomicI32::new(0);
-static IT_NCMP: AtomicI32 = AtomicI32::new(0);
-static IT_NFLOAT: AtomicI32 = AtomicI32::new(0);
-static FIND_BADBIT: AtomicI32 = AtomicI32::new(0);
-static FIND_BADDOT: AtomicI32 = AtomicI32::new(0);
-static FIND_BADSPACE: AtomicI32 = AtomicI32::new(0);
-static FIND_BADCHAR: AtomicI32 = AtomicI32::new(0);
-static FIND_BADLOG: AtomicI32 = AtomicI32::new(0);
+thread_local! { static IT_NNUM: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static IT_NTXT: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static IT_NCMP: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static IT_NFLOAT: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static FIND_BADBIT: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static FIND_BADDOT: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static FIND_BADSPACE: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static FIND_BADCHAR: Cell<c_int> = const { Cell::new(0) }; }
+thread_local! { static FIND_BADLOG: Cell<c_int> = const { Cell::new(0) }; }
 
 fn iterdata_reset() {
-    FIND_BADBIT.store(0, Ordering::Relaxed);
-    FIND_BADDOT.store(0, Ordering::Relaxed);
-    FIND_BADSPACE.store(0, Ordering::Relaxed);
-    FIND_BADCHAR.store(0, Ordering::Relaxed);
-    FIND_BADLOG.store(0, Ordering::Relaxed);
+    FIND_BADBIT.with(|c| c.set(0));
+    FIND_BADDOT.with(|c| c.set(0));
+    FIND_BADSPACE.with(|c| c.set(0));
+    FIND_BADCHAR.with(|c| c.set(0));
+    FIND_BADLOG.with(|c| c.set(0));
 }
 
 pub extern "C" fn iterdata(
@@ -646,10 +647,10 @@ pub extern "C" fn iterdata(
 
     if firstn == 1 {
         /* first time for this table, so initialize */
-        IT_NNUM.store(usrpt.nnum, Ordering::Relaxed);
-        IT_NCMP.store(usrpt.ncmp, Ordering::Relaxed);
-        IT_NTXT.store(usrpt.ntxt, Ordering::Relaxed);
-        IT_NFLOAT.store(usrpt.nfloat, Ordering::Relaxed);
+        IT_NNUM.with(|c| c.set(usrpt.nnum));
+        IT_NCMP.with(|c| c.set(usrpt.ncmp));
+        IT_NTXT.with(|c| c.set(usrpt.ntxt));
+        IT_NFLOAT.with(|c| c.set(usrpt.nfloat));
         REPEAT_V.with(|r| {
             let mut r = r.borrow_mut();
             r.clear();
@@ -667,10 +668,10 @@ pub extern "C" fn iterdata(
         iterdata_reset();
     }
 
-    let nnum = IT_NNUM.load(Ordering::Relaxed);
-    let ncmp = IT_NCMP.load(Ordering::Relaxed);
-    let ntxt = IT_NTXT.load(Ordering::Relaxed);
-    let nfloat = IT_NFLOAT.load(Ordering::Relaxed);
+    let nnum = IT_NNUM.with(Cell::get);
+    let ncmp = IT_NCMP.with(Cell::get);
+    let ntxt = IT_NTXT.with(Cell::get);
+    let nfloat = IT_NFLOAT.with(Cell::get);
     let repeat = REPEAT_V.with(|r| r.borrow().clone());
     let datatype = DATATYPE_V.with(|d| d.borrow().clone());
 
@@ -692,10 +693,10 @@ pub extern "C" fn iterdata(
             i += 1;
             continue;
         }
-        FIND_BADBIT.store(0, Ordering::Relaxed);
+        FIND_BADBIT.with(|c| c.set(0));
 
         /* check for the bit jurisfication  */
-        if FIND_BADBIT.load(Ordering::Relaxed) == 0 && usrpt.indatatyp[iu] == TBIT {
+        if FIND_BADBIT.with(Cell::get) == 0 && usrpt.indatatyp[iu] == TBIT {
             k = 0;
             while k < nrows {
                 j = (k + 1) * repeat[iu];
@@ -715,7 +716,7 @@ pub extern "C" fn iterdata(
                     wrterr(usrpt.out, &errmes, 2);
                     spf!(errmes; "             (Other rows may have errors).");
                     print_fmt(usrpt.out, &errmes, 13);
-                    FIND_BADBIT.store(1, Ordering::Relaxed);
+                    FIND_BADBIT.with(|c| c.set(1));
                     break;
                 }
                 k += 1;
@@ -735,32 +736,27 @@ pub extern "C" fn iterdata(
                 i += 1;
                 continue;
             }
-            // SAFETY: for a TSTRING column the iterator's array is a char*[nrows+1].
+            // SAFETY: a TSTRING iterator column's array is a char*[nrows+1];
+            // slot 0 is the null-value string, slots 1..=nrows the row values,
+            // all NUL-terminated and owned by the iterator for this call.
             let cdata: *const *const c_char = cols[iu].array.cast::<*const c_char>();
-            FIND_BADCHAR.store(0, Ordering::Relaxed);
+            let row = |n: c_long| -> &[u8] { unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes() };
+            FIND_BADCHAR.with(|c| c.set(0));
 
             /* test for illegal ASCII text characters > 126  or < 32 */
-            if FIND_BADCHAR.load(Ordering::Relaxed) == 0 {
+            if FIND_BADCHAR.with(Cell::get) == 0 {
                 k = 0;
-                'rows: while k < nrows {
-                    let ucdata = unsafe { *cdata.offset((k + 1) as isize) };
-                    j = 0;
-                    loop {
-                        let c = unsafe { *ucdata.offset(j as isize) } as u8;
-                        if c == 0 {
-                            break;
-                        }
-                        if c > 126 || c < 32 {
-                            spf!(errmes;
-                                "String in row #", (firstn + k) as i64, ", column #",
-                                cols[iu].colnum, " contains non-ASCII text.");
-                            wrterr(usrpt.out, &errmes, 1);
-                            spf!(errmes; "             (Other rows may have errors).");
-                            print_fmt(usrpt.out, &errmes, 13);
-                            FIND_BADCHAR.store(1, Ordering::Relaxed);
-                            break 'rows;
-                        }
-                        j += 1;
+                while k < nrows {
+                    /* NB: the C breaks out of the inner scan only, so the row
+                       loop carries on and every offending row is reported. */
+                    if row(k + 1).iter().any(|&c| !(32..=126).contains(&c)) {
+                        spf!(errmes;
+                            "String in row #", (firstn + k) as i64, ", column #",
+                            cols[iu].colnum, " contains non-ASCII text.");
+                        wrterr(usrpt.out, &errmes, 1);
+                        spf!(errmes; "             (Other rows may have errors).");
+                        print_fmt(usrpt.out, &errmes, 13);
+                        FIND_BADCHAR.with(|c| c.set(1));
                     }
                     k += 1;
                 }
@@ -778,7 +774,7 @@ pub extern "C" fn iterdata(
             /* test for illegal logical column values */
             /* The first element in the array gives the value that is used to
             represent nulls */
-            if FIND_BADLOG.load(Ordering::Relaxed) == 0 {
+            if FIND_BADLOG.with(Cell::get) == 0 {
                 j = 1;
                 while j <= nrows * repeat[iu] {
                     if unsafe { *ldata.offset(j as isize) } > 2 {
@@ -789,7 +785,7 @@ pub extern "C" fn iterdata(
                         wrterr(usrpt.out, &errmes, 1);
                         spf!(errmes; "             (Other rows may have similar errors).");
                         print_fmt(usrpt.out, &errmes, 13);
-                        FIND_BADLOG.store(1, Ordering::Relaxed);
+                        FIND_BADLOG.with(|c| c.set(1));
                         break;
                     }
                     j += 1;
@@ -808,36 +804,31 @@ pub extern "C" fn iterdata(
             continue;
         }
         // SAFETY: TSTRING iterator column, char*[nrows+1] as above.
-        let cdata: *mut *mut c_char = cols[iu].array.cast::<*mut c_char>();
-        FIND_BADDOT.store(0, Ordering::Relaxed);
-        FIND_BADSPACE.store(0, Ordering::Relaxed);
+        // SAFETY: as above -- a TSTRING iterator column.
+        let cdata: *const *const c_char = cols[iu].array.cast::<*const c_char>();
+        let row = |n: c_long| -> &[u8] { unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes() };
+        FIND_BADDOT.with(|c| c.set(0));
+        FIND_BADSPACE.with(|c| c.set(0));
 
         /* test for missing (implicit) decimal point in floating point numbers */
-        if FIND_BADDOT.load(Ordering::Relaxed) == 0 {
+        if FIND_BADDOT.with(Cell::get) == 0 {
             k = 0;
             while k < nrows {
-                let nullstr = unsafe { *cdata };
-                let mut floatvalue = unsafe { *cdata.offset((k + 1) as isize) };
-                if unsafe { cstrcmp(nullstr, floatvalue) } != 0
-                    && unsafe { cstrchr(floatvalue, b'.') }.is_null()
-                {
-                    while unsafe { *floatvalue } as u8 == b' ' {
-                        /* skip leading spaces */
-                        floatvalue = unsafe { floatvalue.add(1) };
-                    }
+                let floatvalue = row(k + 1);
+                if floatvalue != row(0) && !floatvalue.contains(&b'.') {
+                    let floatvalue = skip_spaces(floatvalue); /* skip leading spaces */
 
-                    if unsafe { cstrlen_raw(floatvalue) } != 0 {
+                    if !floatvalue.is_empty() {
                         /* ignore completely blank fields */
 
                         spf!(errmes;
                             "Number in row #", (firstn + k) as i64, ", column #",
                             cols[iu].colnum, " has no decimal point:");
                         wrterr(usrpt.out, &errmes, 1);
-                        let fv = unsafe { raw_to_vec(floatvalue) };
-                        spf!(errmes; CS(&fv));
+                        spf!(errmes; BS(floatvalue));
                         scat!(errmes; "  (Other rows may have similar errors).");
                         print_fmt(usrpt.out, &errmes, 13);
-                        FIND_BADDOT.store(1, Ordering::Relaxed);
+                        FIND_BADDOT.with(|c| c.set(1));
                         break;
                     }
                 }
@@ -845,36 +836,26 @@ pub extern "C" fn iterdata(
             }
         }
 
-        if FIND_BADSPACE.load(Ordering::Relaxed) == 0 {
+        if FIND_BADSPACE.with(Cell::get) == 0 {
             k = 0;
             while k < nrows {
-                let nullstr = unsafe { *cdata };
-                let mut floatvalue = unsafe { *cdata.offset((k + 1) as isize) };
+                let floatvalue = row(k + 1);
 
-                if unsafe { cstrcmp(nullstr, floatvalue) } != 0 {
+                if floatvalue != row(0) {
                     /* not a null value? */
-                    while unsafe { *floatvalue } as u8 == b' ' {
-                        /* skip leading spaces */
-                        floatvalue = unsafe { floatvalue.add(1) };
-                    }
+                    /* The C strips the trailing blanks in place; nothing reads
+                       the row again afterwards, so a trimmed view is equivalent. */
+                    let floatvalue = trim_end_spaces(skip_spaces(floatvalue));
 
-                    l = unsafe { cstrlen_raw(floatvalue) } as c_long - 1;
-                    while l > 0 && unsafe { *floatvalue.offset(l as isize) } as u8 == b' ' {
-                        /* remove trailing spaces */
-                        unsafe { *floatvalue.offset(l as isize) = 0 };
-                        l -= 1;
-                    }
-
-                    if !unsafe { cstrchr(floatvalue, b' ') }.is_null() {
+                    if floatvalue.contains(&b' ') {
                         spf!(errmes;
                             "Number in row #", (firstn + k) as i64, ", column #",
                             cols[iu].colnum, " has embedded space:");
                         wrterr(usrpt.out, &errmes, 1);
-                        let fv = unsafe { raw_to_vec(floatvalue) };
-                        spf!(errmes; CS(&fv));
+                        spf!(errmes; BS(floatvalue));
                         scat!(errmes; "  (Other rows may have similar errors).");
                         print_fmt(usrpt.out, &errmes, 13);
-                        FIND_BADSPACE.store(1, Ordering::Relaxed);
+                        FIND_BADSPACE.with(|c| c.set(1));
                         break;
                     }
                 }
@@ -899,7 +880,7 @@ pub extern "C" fn iterdata(
 *   Test the bytes between the ASCII table column.
 *
 *************************************************************/
-pub fn test_agap(
+fn test_agap(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
     hduptr: &mut FitsHdu,  /* fits hdu pointer  */
@@ -1031,7 +1012,7 @@ pub fn test_agap(
 *   Test the checksum of the hdu
 *
 *************************************************************/
-pub fn test_checksum(
+fn test_checksum(
     infits: &mut fitsfile, /* input fits file   */
     out: Out,              /* output ascii file */
 ) {
@@ -1063,63 +1044,6 @@ pub fn test_checksum(
             wrtwrn_str(out, "HDU checksum is not in agreement with CHECKSUM.", 0);
         }
     }
-}
-
-/*===========================================================================
- *  raw C-string helpers, only for the iterator's `char **' arrays
- *==========================================================================*/
-
-unsafe fn cstrlen_raw(s: *const c_char) -> usize {
-    let mut n = 0usize;
-    unsafe {
-        while *s.add(n) != 0 {
-            n += 1;
-        }
-    }
-    n
-}
-
-unsafe fn cstrcmp(a: *const c_char, b: *const c_char) -> c_int {
-    let mut i = 0usize;
-    unsafe {
-        loop {
-            let ca = *a.add(i) as u8;
-            let cb = *b.add(i) as u8;
-            if ca != cb {
-                return ca as c_int - cb as c_int;
-            }
-            if ca == 0 {
-                return 0;
-            }
-            i += 1;
-        }
-    }
-}
-
-unsafe fn cstrchr(s: *const c_char, c: u8) -> *const c_char {
-    let mut i = 0usize;
-    unsafe {
-        loop {
-            let v = *s.add(i) as u8;
-            if v == c {
-                return s.add(i);
-            }
-            if v == 0 {
-                return std::ptr::null();
-            }
-            i += 1;
-        }
-    }
-}
-
-unsafe fn raw_to_vec(s: *const c_char) -> Vec<c_char> {
-    let n = unsafe { cstrlen_raw(s) };
-    let mut v = Vec::with_capacity(n + 1);
-    for i in 0..n {
-        v.push(unsafe { *s.add(i) });
-    }
-    v.push(0);
-    v
 }
 
 #[allow(dead_code)]
