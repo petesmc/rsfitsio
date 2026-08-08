@@ -28,7 +28,7 @@ use crate::{int_snprintf, wrappers::*};
 pub(crate) const MY_PI: f64 = 3.141_592_653_589_793;
 const RAD_TO_DEG: f64 = 180.0 / MY_PI;
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub(crate) struct WCSdata {
     pub(crate) exists: bool,
     pub(crate) xrefval: f64,
@@ -70,7 +70,7 @@ enum CoordFmt {
     HHMMSS,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub(crate) struct RgnShape {
     sign: c_char,     /*  Include or exclude?        */
     shape: ShapeType, /*  Shape of this region       */
@@ -87,7 +87,7 @@ pub(crate) struct RgnShape {
     polyParams: RgnShapePolygon,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub(crate) struct RgnShapeGeneric {
     p: [f64; 11], /*  Region parameters       */
 
@@ -100,13 +100,13 @@ pub(crate) struct RgnShapeGeneric {
     b: f64,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 struct RgnShapePolygon {
     nPts: c_int,   /*  Number of Polygon pts   */
     Pts: Vec<f64>, /*  Polygon points          */
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub(crate) struct SAORegion {
     nShapes: c_int,
     Shapes: Vec<RgnShape>,
@@ -923,7 +923,7 @@ pub(crate) fn fits_read_ascii_region(
 /*---------------------------------------------------------------------------*/
 /// Test if the given point is within the region described by Rgn.  X and
 /// Y are in pixel coordinates.                                          
-pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
+pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &SAORegion) -> c_int {
     let mut x: f64;
     let mut y: f64;
     let mut dx: f64;
@@ -939,7 +939,7 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
     cur_comp = Rgn.Shapes[0].comp;
 
     let nShapes = Rgn.nShapes as usize;
-    for (i, Shapes) in Rgn.Shapes[..nShapes].iter_mut().enumerate() {
+    for (i, Shapes) in Rgn.Shapes[..nShapes].iter().enumerate() {
         /* if this region has a different component number to the last one  */
         /*	then replace the accumulated selection logical with the union of */
         /*	the current logical and the total logical. Reinitialize the      */
@@ -1138,8 +1138,7 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &mut SAORegion) -> c_int {
                         comp_result = false;
                     } else {
                         comp_result =
-                            Pt_in_Poly(X, Y, Shapes.polyParams.nPts, &mut Shapes.polyParams.Pts)
-                                != 0;
+                            Pt_in_Poly(X, Y, Shapes.polyParams.nPts, &Shapes.polyParams.Pts) != 0;
                     }
                 }
                 ShapeType::Panda => {
@@ -1311,7 +1310,7 @@ pub(crate) fn fits_free_region(Rgn: Box<SAORegion>) {
 /*---------------------------------------------------------------------------*/
 /// Internal routine for testing whether the coordinate x,y is within the
 /// polygon region traced out by the array Pts.
-fn Pt_in_Poly(x: f64, y: f64, nPts: c_int, Pts: &mut [f64]) -> c_int {
+fn Pt_in_Poly(x: f64, y: f64, nPts: c_int, Pts: &[f64]) -> c_int {
     let mut j: usize;
     let mut flag: c_int = 0;
     let mut prevX: f64;
@@ -2431,15 +2430,15 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Circle);
             assert!(rgn.Shapes[0].sign == 1);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // inside edge
-            assert!(fits_in_region(200.0, 100.0, &mut rgn) == 0); // outside
-            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 0); // far outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(140.0, 100.0, &rgn) == 1); // inside edge
+            assert!(fits_in_region(200.0, 100.0, &rgn) == 0); // outside
+            assert!(fits_in_region(0.0, 0.0, &rgn) == 0); // far outside
 
             fits_free_region(rgn);
         });
@@ -2452,13 +2451,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Annulus);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
-            assert!(fits_in_region(145.0, 100.0, &mut rgn) == 1); // in annulus
-            assert!(fits_in_region(200.0, 100.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center (hole)
+            assert!(fits_in_region(145.0, 100.0, &rgn) == 1); // in annulus
+            assert!(fits_in_region(200.0, 100.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2471,13 +2470,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Box);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(115.0, 125.0, &mut rgn) == 1); // corner inside
-            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(115.0, 125.0, &rgn) == 1); // corner inside
+            assert!(fits_in_region(150.0, 150.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2490,11 +2489,11 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Box); // rotbox is still box_rgn
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
 
             fits_free_region(rgn);
         });
@@ -2507,14 +2506,14 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Ellipse);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // along major axis
-            assert!(fits_in_region(100.0, 120.0, &mut rgn) == 1); // along minor axis
-            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(140.0, 100.0, &rgn) == 1); // along major axis
+            assert!(fits_in_region(100.0, 120.0, &rgn) == 1); // along minor axis
+            assert!(fits_in_region(200.0, 200.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2527,12 +2526,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::ElliptAnnulus);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
-            assert!(fits_in_region(130.0, 100.0, &mut rgn) == 1); // in annulus
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center (hole)
+            assert!(fits_in_region(130.0, 100.0, &rgn) == 1); // in annulus
 
             fits_free_region(rgn);
         });
@@ -2545,13 +2544,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Rectangle);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(60.0, 60.0, &mut rgn) == 1); // inside
-            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(60.0, 60.0, &rgn) == 1); // inside
+            assert!(fits_in_region(200.0, 200.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2564,12 +2563,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Diamond);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(200.0, 200.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2597,13 +2596,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Sector);
 
-            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 1); // first quadrant
-            assert!(fits_in_region(50.0, 150.0, &mut rgn) == 0); // second quadrant
-            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 0); // third quadrant
+            assert!(fits_in_region(150.0, 150.0, &rgn) == 1); // first quadrant
+            assert!(fits_in_region(50.0, 150.0, &rgn) == 0); // second quadrant
+            assert!(fits_in_region(50.0, 50.0, &rgn) == 0); // third quadrant
 
             fits_free_region(rgn);
         });
@@ -2631,12 +2630,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Point);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1);
-            assert!(fits_in_region(101.0, 100.0, &mut rgn) == 0);
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1);
+            assert!(fits_in_region(101.0, 100.0, &rgn) == 0);
 
             fits_free_region(rgn);
         });
@@ -2649,12 +2648,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Line);
 
-            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 1);
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1);
+            assert!(fits_in_region(50.0, 50.0, &rgn) == 1);
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1);
 
             fits_free_region(rgn);
         });
@@ -2667,14 +2666,14 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Poly);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
-            assert!(fits_in_region(60.0, 60.0, &mut rgn) == 1); // inside
-            assert!(fits_in_region(200.0, 200.0, &mut rgn) == 0); // outside
-            assert!(fits_in_region(30.0, 30.0, &mut rgn) == 0); // outside
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
+            assert!(fits_in_region(60.0, 60.0, &rgn) == 1); // inside
+            assert!(fits_in_region(200.0, 200.0, &rgn) == 0); // outside
+            assert!(fits_in_region(30.0, 30.0, &rgn) == 0); // outside
 
             fits_free_region(rgn);
         });
@@ -2687,12 +2686,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::Panda);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
-            assert!(fits_in_region(140.0, 140.0, &mut rgn) == 1); // in panda sector
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center (hole)
+            assert!(fits_in_region(140.0, 140.0, &rgn) == 1); // in panda sector
 
             fits_free_region(rgn);
         });
@@ -2735,12 +2734,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 1);
             assert!(rgn.Shapes[0].shape == ShapeType::BoxAnnulus);
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center (hole)
-            assert!(fits_in_region(115.0, 100.0, &mut rgn) == 1); // in annulus
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center (hole)
+            assert!(fits_in_region(115.0, 100.0, &rgn) == 1); // in annulus
 
             fits_free_region(rgn);
         });
@@ -2753,12 +2752,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 2);
             assert!(rgn.Shapes[1].sign == 0); // excluded
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
-            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // outer ring included
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded
+            assert!(fits_in_region(140.0, 100.0, &rgn) == 1); // outer ring included
 
             fits_free_region(rgn);
         });
@@ -2786,12 +2785,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.nShapes == 2);
 
-            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 1);
-            assert!(fits_in_region(150.0, 150.0, &mut rgn) == 1);
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // between regions
+            assert!(fits_in_region(50.0, 50.0, &rgn) == 1);
+            assert!(fits_in_region(150.0, 150.0, &rgn) == 1);
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // between regions
 
             fits_free_region(rgn);
         });
@@ -3155,13 +3154,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.Shapes[0].shape == ShapeType::Sector);
 
             // Point to the left (180 degrees) should be included
-            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1);
+            assert!(fits_in_region(50.0, 100.0, &rgn) == 1);
             // Point to the right should be excluded
-            assert!(fits_in_region(150.0, 100.0, &mut rgn) == 0);
+            assert!(fits_in_region(150.0, 100.0, &rgn) == 0);
 
             fits_free_region(rgn);
         });
@@ -3204,12 +3203,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
             assert!(rgn.Shapes[0].shape == ShapeType::Poly);
             assert!(rgn.Shapes[0].polyParams.nPts == 12);
 
-            assert!(fits_in_region(25.0, 75.0, &mut rgn) == 1); // inside L
-            assert!(fits_in_region(75.0, 25.0, &mut rgn) == 0); // corner outside L
+            assert!(fits_in_region(25.0, 75.0, &rgn) == 1); // inside L
+            assert!(fits_in_region(75.0, 25.0, &rgn) == 0); // corner outside L
 
             fits_free_region(rgn);
         });
@@ -3395,9 +3394,9 @@ mod tests {
             let path = write_region_file(filename, "circle(0,0,10)\n");
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 1);
+            assert!(fits_in_region(0.0, 0.0, &rgn) == 1);
 
             fits_free_region(rgn);
         });
@@ -3413,12 +3412,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
             // Point in outer polygon but outside inner (excluded)
-            assert!(fits_in_region(10.0, 10.0, &mut rgn) == 1);
+            assert!(fits_in_region(10.0, 10.0, &rgn) == 1);
             // Point in inner excluded polygon
-            assert!(fits_in_region(50.0, 50.0, &mut rgn) == 0);
+            assert!(fits_in_region(50.0, 50.0, &rgn) == 0);
 
             fits_free_region(rgn);
         });
@@ -3434,11 +3433,11 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // excluded center
-            assert!(fits_in_region(120.0, 100.0, &mut rgn) == 0); // excluded offset
-            assert!(fits_in_region(80.0, 100.0, &mut rgn) == 1); // included area
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // excluded center
+            assert!(fits_in_region(120.0, 100.0, &rgn) == 0); // excluded offset
+            assert!(fits_in_region(80.0, 100.0, &rgn) == 1); // included area
 
             fits_free_region(rgn);
         });
@@ -3451,10 +3450,10 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
-            assert!(fits_in_region(140.0, 100.0, &mut rgn) == 1); // in panda ring
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded
+            assert!(fits_in_region(140.0, 100.0, &rgn) == 1); // in panda ring
 
             fits_free_region(rgn);
         });
@@ -3467,11 +3466,11 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
-            assert!(fits_in_region(125.0, 100.0, &mut rgn) == 1); // in correct angle/radius
-            assert!(fits_in_region(100.0, 125.0, &mut rgn) == 0); // outside angle range
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded
+            assert!(fits_in_region(125.0, 100.0, &rgn) == 1); // in correct angle/radius
+            assert!(fits_in_region(100.0, 125.0, &rgn) == 0); // outside angle range
 
             fits_free_region(rgn);
         });
@@ -3484,10 +3483,10 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded
-            assert!(fits_in_region(120.0, 100.0, &mut rgn) == 1); // in correct angle/radius
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded
+            assert!(fits_in_region(120.0, 100.0, &rgn) == 1); // in correct angle/radius
 
             fits_free_region(rgn);
         });
@@ -3609,13 +3608,13 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
             // Points exactly on edges should be included
-            assert!(fits_in_region(50.0, 0.0, &mut rgn) == 1); // bottom edge
-            assert!(fits_in_region(0.0, 50.0, &mut rgn) == 1); // left edge
-            assert!(fits_in_region(100.0, 50.0, &mut rgn) == 1); // right edge
-            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1); // top edge
+            assert!(fits_in_region(50.0, 0.0, &rgn) == 1); // bottom edge
+            assert!(fits_in_region(0.0, 50.0, &rgn) == 1); // left edge
+            assert!(fits_in_region(100.0, 50.0, &rgn) == 1); // right edge
+            assert!(fits_in_region(50.0, 100.0, &rgn) == 1); // top edge
 
             fits_free_region(rgn);
         });
@@ -3628,12 +3627,12 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
             // Points at vertices should be included
-            assert!(fits_in_region(0.0, 0.0, &mut rgn) == 1);
-            assert!(fits_in_region(100.0, 0.0, &mut rgn) == 1);
-            assert!(fits_in_region(50.0, 100.0, &mut rgn) == 1);
+            assert!(fits_in_region(0.0, 0.0, &rgn) == 1);
+            assert!(fits_in_region(100.0, 0.0, &rgn) == 1);
+            assert!(fits_in_region(50.0, 100.0, &rgn) == 1);
 
             fits_free_region(rgn);
         });
@@ -3646,9 +3645,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
 
             fits_free_region(rgn);
         });
@@ -3661,9 +3660,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
 
             fits_free_region(rgn);
         });
@@ -3676,9 +3675,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
 
             fits_free_region(rgn);
         });
@@ -3691,9 +3690,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 1); // center
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 1); // center
 
             fits_free_region(rgn);
         });
@@ -3706,9 +3705,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded (hole)
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded (hole)
 
             fits_free_region(rgn);
         });
@@ -3721,9 +3720,9 @@ mod tests {
             let (rgn, status) = read_ascii(&path);
             assert!(status == 0);
             assert!(rgn.is_some());
-            let mut rgn = rgn.unwrap();
+            let rgn = rgn.unwrap();
 
-            assert!(fits_in_region(100.0, 100.0, &mut rgn) == 0); // center excluded (hole)
+            assert!(fits_in_region(100.0, 100.0, &rgn) == 0); // center excluded (hole)
 
             fits_free_region(rgn);
         });

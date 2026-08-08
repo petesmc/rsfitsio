@@ -14595,7 +14595,7 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
             (lParse.Nodes[this_node_idx]).value.data.log = if fits_in_region(
                 Xval,
                 Yval,
-                &mut *(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
+                &*(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
             ) != 0
             {
                 1
@@ -14649,7 +14649,7 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                             if fits_in_region(
                                 Xval,
                                 Yval,
-                                &mut *(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
+                                &*(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
                             ) != 0
                             {
                                 1
