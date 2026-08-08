@@ -125,9 +125,10 @@ those patterns, regenerate it — the header comment in `lexdump.l` says how.
 
 ## Regenerating the golden file
 
-`../fixtures/eval_corpus.golden` is the contract for the Rust parser. It was
-captured from rsfitsio's own flex/bison parser immediately before that parser
-was deleted, so it encodes the behaviour we promised to preserve.
+`../fixtures/eval_corpus.golden` is the contract for the Rust parser. It began
+as a capture of rsfitsio's own flex/bison parser, taken immediately before that
+parser was deleted, and every line has since been checked against CFITSIO with
+`make check` — so a difference is a bug in one of the two, not noise.
 
 **Do not regenerate it to make a failing test pass.** Regenerate only when you
 have *deliberately* changed the language, and say so in the commit message:
@@ -137,53 +138,98 @@ UPDATE_EVAL_GOLDEN=1 cargo test --test test_eval_corpus
 git diff tests/fixtures/eval_corpus.golden   # review every line
 ```
 
-To add coverage, append expressions to `../fixtures/eval_corpus.txt`, then
-regenerate and check the new lines against `./oracle` output by hand.
+To add coverage, append expressions to `../fixtures/eval_corpus.txt`, then:
+
+```sh
+UPDATE_EVAL_GOLDEN=1 cargo test --test test_eval_corpus   # generate
+make CFITSIO=... check                                    # validate vs CFITSIO
+```
+
+The second step is the one that matters: the golden is produced by the parser
+under test, so it proves nothing on its own.
+
+If the evaluation engine crashes while generating, find the culprit with:
+
+```sh
+CORPUS_TRACE=1 cargo test --test test_eval_corpus -- --nocapture
+```
 
 ---
 
 ## Known divergences from CFITSIO
 
-`make check` currently reports two, both **pre-existing and deliberate** —
-they predate the `nom` migration and live in the evaluation engine and the
-keyword lookup, not the parser.
+`make check` reports **200 lines**, in three groups. Thirteen are rsfitsio
+being deliberately correct where CFITSIO is not; the other 187 are an rsfitsio
+defect, recorded in [BUGS_TO_FIX.md](../../BUGS_TO_FIX.md) as Bug 3.
+
+| lines | who is right | what |
+|---|---|---|
+| 5 | rsfitsio | `ANGSEP` with four constant arguments (below) |
+| 8 | rsfitsio | uppercase `0x` literals and a bare `.` (upstream cfitsio#153) |
+| 187 | **CFITSIO** | type-mismatched binary expressions that rsfitsio accepts |
+
+### Type-mismatched operands are accepted (rsfitsio defect)
+
+CFITSIO rejects an operator applied across incompatible operand sorts with
+`PARSE_SYNTAX_ERR` (431); rsfitsio parses it and quietly yields the *left*
+operand:
+
+```
+BOOLCOL + INTCOL   C: ERR 431   rsfitsio: OK dt=14 | [1, 0, 1]   (= BOOLCOL)
+STRCOL - INTCOL    C: ERR 431   rsfitsio: OK dt=16 nelem=10
+```
+
+187 corpus lines are affected, spanning every binary operator and the
+two-argument functions. By left operand: 59 `BOOLCOL`, 48 `STRCOL`, 40 `BITS`,
+16 numeric, 24 inside `DEFNULL`/`MIN`/`MAX`/`ARCTAN2`/`SETNULL`/`ARRAY`.
+
+This is not the bulk-run artifact described below -- it reproduces with a
+fresh table and a single call on both sides. `fits_test_expr` returns status
+0, so the failure is silent: callers get a well-formed result for an
+expression the C would have refused.
+
+The golden file records the current rsfitsio behaviour, defect included, so
+it stays a faithful regression baseline. Fixing Bug 3 will change those 187
+lines and the golden must be regenerated with them.
 
 ### `ANGSEP` with four constant arguments
 
 ```
-ANGSEP(0,0,0,90)    C: 0.0        rsfitsio: 90.0
+ANGSEP(0,0,0,90)     C: 0.0     rsfitsio: 90.0
+ANGSEP(0,0,90,0)     C: 0.0     rsfitsio: 90.0
+ANGSEP(10,20,10,20)  C: 10.0    rsfitsio: 0.0
+ANGSEP(0,60,1,60)    C: 0.0     rsfitsio: 0.499995
+ANGSEP(1,1,1,1)      C: 1.0     rsfitsio: 0.0
 ```
 
 When all four arguments are constants the call is folded at parse time. In
 CFITSIO 4.7.0 `case angsep_fct:` in `New_Func` is missing its `break;` and
 falls through into `case min1_fct:`, so the folded form returns its first
 argument instead of the separation. With a non-constant argument
-(`ANGSEP(0.0*INTCOL,0.0,0.0,90.0)`) both agree on 90.
+(`ANGSEP(0.0*INTCOL,0.0,0.0,90.0)`) both agree.
 
 rsfitsio fixes this; see `test_ffcrow_angsep_constant_arguments` in
 `src/eval_f.rs`. Fix submitted upstream.
 
-### `#STRKEY` — a string-valued header keyword
+### A caution about bulk runs
 
+The oracle reuses one `fitsfile` for every line, and CFITSIO leaks parser
+state between `fits_test_expr` calls: a few malformed expressions answer
+differently in a long run than they do alone, because bison's
+`line: error '\n'` recovery leaves `resultNode` pointing at whatever node
+index 0 happens to hold. Before concluding anything from a diverging line,
+re-run it on its own:
+
+```sh
+printf '%s\n' '+BOOLCOL' | ./oracle
 ```
-#STRKEY             C: OK, TSTRING     rsfitsio: ERR 407 (BAD_C2I)
-```
-
-CFITSIO resolves a `#KEYWORD` reference whose value is a quoted string to a
-string constant. rsfitsio's `find_keywd` (in `src/eval_f.rs`) reports
-`BAD_C2I`. **This one looks like an rsfitsio bug rather than a deliberate
-deviation** — it is recorded here because the golden file captured it, so the
-Rust parser reproduces it faithfully and no test flags it. Worth investigating:
-the divergence is in `find_keywd`'s use of `fits_get_keytype`, which the parser
-migration did not touch.
-
----
 
 ## If you are here because a corpus test failed
 
 1. `make CFITSIO=... check` — does the C agree with the golden? If yes, the
    regression is in `src/parser/`.
 2. If the C also disagrees, the golden encodes an rsfitsio-specific behaviour.
-   Check the two entries above, then `git log -p tests/fixtures/eval_corpus.golden`.
+   Check "Known divergences" above, re-run the single line on its own, then
+   `git log -p tests/fixtures/eval_corpus.golden`.
 3. For a lexing question, reach for `lexdump` before `oracle`: it isolates
    tokenization from everything else, and most surprises live there.
