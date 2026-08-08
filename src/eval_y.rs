@@ -10315,211 +10315,77 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
  * http://ndevilla.free.fr/median/median/src/quickselect.c
  */
 
-/*
- * qselect_median_lng - select the median value of a long array
- *
- * This routine selects the median value of the long integer array
- * arr[].  If there are an even number of elements, the "lower median"
- * is selected.
- *
- * The array arr[] is scrambled, so users must operate on a scratch
- * array if they wish the values to be preserved.
- *
- * long arr[] - array of values
- * int n - number of elements in arr
- *
- * RETURNS: the lower median value of arr[]
- *
- */
-pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
-        loop {
-            if high <= low {
-                /* One element only */
-                return *arr.offset(median as isize);
-            }
-            if high == low + 1 {
-                /* Two elements only */
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_long = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
-            }
-            /* Find median of low, middle and high items; swap into position low */
-            /* Find median of low, middle and high items; swap into position low */
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
-            }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_long = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            /* Swap low item (now in position middle) into position (low+1) */
-            let t_3: c_long = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
+/// Quickselect: partially sorts `arr` in place and returns its median.
+///
+/// This is the median-of-three partition from Numerical Recipes that CFITSIO
+/// uses for `MEDIAN()`. For an even number of elements it returns the lower of
+/// the two middle values, which is what the C returned.
+///
+/// Comparisons use `>` exactly as the C did, so for floating point a NaN never
+/// compares greater and is treated as already in place.
+pub(crate) fn qselect_median<T: PartialOrd + Copy>(arr: &mut [T]) -> T {
+    assert!(!arr.is_empty(), "qselect_median needs at least one element");
 
-            /* Nibble from each end towards middle, swapping items when stuck */
-            ll = low + 1;
-            hh = high;
-            loop {
-                loop {
-                    ll += 1;
-                    if *arr.offset(low as isize) <= *arr.offset(ll as isize) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if *arr.offset(hh as isize) <= *arr.offset(low as isize) {
-                        break;
-                    }
-                }
-                if hh < ll {
-                    break;
-                }
-                let t_4: c_long = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
-            }
-            /* Swap middle item (in position low) back into correct position */
-            let t_5: c_long = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            /* Re-set active partition */
-            if hh <= median {
-                low = ll;
-            }
-            if hh >= median {
-                high = hh - 1;
-            }
+    let mut low = 0usize;
+    let mut high = arr.len() - 1;
+    let median = (low + high) / 2;
+
+    loop {
+        if high <= low {
+            /* One element only */
+            return arr[median];
         }
-    }
-}
+        if high == low + 1 {
+            /* Two elements only */
+            if arr[low] > arr[high] {
+                arr.swap(low, high);
+            }
+            return arr[median];
+        }
 
-// The `!(a > b)` partition tests below are transcribed from the C and their
-// NaN behaviour is load-bearing: `>` is false for NaN, so the negation breaks
-// the loop rather than running off the end of the array. Rewriting them via
-// partial_cmp would change that, and this quickselect has already been the
-// source of one reproducibility bug, so leave the comparisons exactly as the
-// C has them.
-#[allow(clippy::neg_cmp_op_on_partial_ord)]
-/*
- * qselect_median_dbl - select the median value of a double array
- *
- * This routine selects the median value of the double array
- * arr[].  If there are an even number of elements, the "lower median"
- * is selected.
- *
- * The array arr[] is scrambled, so users must operate on a scratch
- * array if they wish the values to be preserved.
- *
- * double arr[] - array of values
- * int n - number of elements in arr
- *
- * RETURNS: the lower median value of arr[]
- *
- */
-pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
+        /* Find median of low, middle and high items; swap into position low */
+        let middle = (low + high) / 2;
+        if arr[middle] > arr[high] {
+            arr.swap(middle, high);
+        }
+        if arr[low] > arr[high] {
+            arr.swap(low, high);
+        }
+        if arr[middle] > arr[low] {
+            arr.swap(middle, low);
+        }
+        /* Swap low item (now in position middle) into position (low+1) */
+        arr.swap(middle, low + 1);
+
+        /* Nibble from each end towards middle, swapping items when stuck */
+        let mut ll = low + 1;
+        let mut hh = high;
         loop {
-            if high <= low {
-                /* One element only */
-                return *arr.offset(median as isize);
+            /* scan up for an element not below the pivot, and down for one not
+            above it. A NaN compares false either way and so stops the scan,
+            which is what the C's `>` did. */
+            ll += 1;
+            while arr[low] > arr[ll] {
+                ll += 1;
             }
-            if high == low + 1 {
-                /* Two elements only */
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_double = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
+            hh -= 1;
+            while arr[hh] > arr[low] {
+                hh -= 1;
             }
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
+            if hh < ll {
+                break;
             }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_double = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            /* Swap low item (now in position middle) into position (low+1) */
-            let t_3: c_double = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
+            arr.swap(ll, hh);
+        }
+        /* Swap middle item (in position low) back into correct position */
+        arr.swap(low, hh);
 
-            /* Nibble from each end towards middle, swapping items when stuck */
-            ll = low + 1;
-            hh = high;
-            loop {
-                loop {
-                    ll += 1;
-                    if !(*arr.offset(low as isize) > *arr.offset(ll as isize)) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if !(*arr.offset(hh as isize) > *arr.offset(low as isize)) {
-                        break;
-                    }
-                }
-                if hh < ll {
-                    break;
-                }
-                let t_4: c_double = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
-            }
-            /* Swap middle item (in position low) back into correct position */
-            let t_5: c_double = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            /* Re-set active partition */
-            if hh <= median {
-                low = ll;
-            }
-            if hh >= median {
-                high = hh - 1;
-            }
+        /* Re-set active partition */
+        if hh <= median {
+            low = ll;
+        }
+        if hh >= median {
+            high = hh - 1;
         }
     }
 }
@@ -11746,8 +11612,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(irow as isize) =
-                                            qselect_median_lng(mptr, nelem1);
+                                            .offset(irow as isize) = qselect_median(
+                                            slice::from_raw_parts_mut(mptr, nelem1 as usize),
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 1;
@@ -11802,8 +11669,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(irow_0 as isize) =
-                                            qselect_median_dbl(mptr_0, nelem1_0);
+                                            .offset(irow_0 as isize) = qselect_median(
+                                            slice::from_raw_parts_mut(mptr_0, nelem1_0 as usize),
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 1;
@@ -15693,4 +15561,120 @@ fn fits_parser_yyerror(lParse: &mut ParseData, s: &[c_char]) {
     msg[79] = 0;
 
     ffpmsg_slice(&msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the algorithm is specified to return: the lower of the two middle
+    /// elements of the sorted array.
+    fn expected_lng(v: &[c_long]) -> c_long {
+        let mut sorted = v.to_vec();
+        sorted.sort_unstable();
+        sorted[(sorted.len() - 1) / 2]
+    }
+
+    fn expected_dbl(v: &[f64]) -> f64 {
+        let mut sorted = v.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted[(sorted.len() - 1) / 2]
+    }
+
+    #[test]
+    fn qselect_median_matches_a_full_sort() {
+        let cases: &[&[c_long]] = &[
+            &[1],
+            &[2, 1],
+            &[1, 2],
+            &[3, 1, 2],
+            &[1, 2, 3, 4],
+            &[4, 3, 2, 1],
+            &[5, 1, 4, 2, 3],
+            &[1, 1, 1, 1, 1],
+            &[7, 7, 3, 3, 9, 9],
+            &[0, -1, -2, -3, 5, 4, 3],
+            &[c_long::MIN, 0, c_long::MAX],
+            &[10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+        ];
+        for case in cases {
+            let mut v = case.to_vec();
+            assert_eq!(
+                qselect_median(&mut v),
+                expected_lng(case),
+                "input: {case:?}"
+            );
+            /* the input is permuted, never lost */
+            let (mut a, mut b) = (v.clone(), case.to_vec());
+            a.sort_unstable();
+            b.sort_unstable();
+            assert_eq!(a, b, "input: {case:?}");
+        }
+    }
+
+    #[test]
+    fn qselect_median_doubles() {
+        let cases: &[&[f64]] = &[
+            &[1.5],
+            &[2.5, -1.5],
+            &[3.0, 1.0, 2.0],
+            &[1.0, 2.0, 3.0, 4.0],
+            &[0.5, 0.25, 0.75, 0.125, 1.0],
+            &[-1.0, -2.0, -3.0],
+        ];
+        for case in cases {
+            let mut v = case.to_vec();
+            assert_eq!(
+                qselect_median(&mut v),
+                expected_dbl(case),
+                "input: {case:?}"
+            );
+        }
+    }
+
+    /// Exhaustive over every permutation of 1..=n for small n: quickselect is
+    /// exactly the kind of code where one ordering out of many misbehaves.
+    #[test]
+    fn qselect_median_over_all_permutations() {
+        fn permute(v: &mut Vec<c_long>, k: usize, out: &mut Vec<Vec<c_long>>) {
+            if k == v.len() {
+                out.push(v.clone());
+                return;
+            }
+            for i in k..v.len() {
+                v.swap(k, i);
+                permute(v, k + 1, out);
+                v.swap(k, i);
+            }
+        }
+        for n in 1..=7usize {
+            let mut base: Vec<c_long> = (1..=n as c_long).collect();
+            let want = base[(n - 1) / 2];
+            let mut perms = Vec::new();
+            permute(&mut base, 0, &mut perms);
+            for p in perms {
+                let mut v = p.clone();
+                assert_eq!(qselect_median(&mut v), want, "permutation: {p:?}");
+            }
+        }
+    }
+
+    /// Duplicates stress the partition loop, which advances past equal keys.
+    #[test]
+    fn qselect_median_with_many_duplicates() {
+        for n in 1..=40usize {
+            for m in 1..=4 as c_long {
+                let v: Vec<c_long> = (0..n).map(|i| (i as c_long) % m).collect();
+                let mut a = v.clone();
+                assert_eq!(qselect_median(&mut a), expected_lng(&v), "n={n} m={m}");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one element")]
+    fn qselect_median_rejects_an_empty_slice() {
+        let mut empty: [c_long; 0] = [];
+        qselect_median(&mut empty);
+    }
 }
