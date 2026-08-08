@@ -16,12 +16,23 @@
 //! ```text
 //! UPDATE_EVAL_GOLDEN=1 cargo test --test test_eval_corpus
 //! ```
+//!
+//! and then check the result against the real CFITSIO parser — see
+//! `tests/oracle/README.md`.  To find which expression is responsible when the
+//! evaluation engine crashes:
+//!
+//! ```text
+//! CORPUS_TRACE=1 cargo test --test test_eval_corpus -- --nocapture
+//! ```
 
 #[cfg(test)]
 mod tests {
     use rsfitsio::aliases::rust_api::*;
     use rsfitsio::c_types::{c_char, c_int, c_long};
-    use rsfitsio::fitsio::{BINARY_TBL, BYTE_IMG, LONGLONG, TDOUBLE, TSTRING, fitsfile};
+    use rsfitsio::fitsio::{
+        BINARY_TBL, BYTE_IMG, LONGLONG, TBYTE, TDOUBLE, TINT, TLOGICAL, TLONG, TLONGLONG, TSHORT,
+        TSTRING, fitsfile,
+    };
     use std::fmt::Write as _;
 
     const CORPUS: &str = include_str!("fixtures/eval_corpus.txt");
@@ -125,6 +136,11 @@ mod tests {
 
     /// Render one corpus line's behaviour as a single deterministic string.
     fn probe(f: &mut fitsfile, expr: &str) -> String {
+        /* CORPUS_TRACE=1 ... -- --nocapture names each expression before it is
+        evaluated, so a crash inside the engine can be pinned to a line. */
+        if std::env::var_os("CORPUS_TRACE").is_some() {
+            eprintln!("PROBE {expr}");
+        }
         let mut datatype = 0;
         let mut nelem: c_long = 0;
         let mut naxis = 0;
@@ -159,33 +175,59 @@ mod tests {
         }
 
         let n = nelem.clamp(1, MAX_ELEM);
-        let mut results = vec![0.0f64; (n * NROWS) as usize];
         let mut anynul = 0;
         let mut st = 0;
-        fits_calc_rows(
-            f,
-            TDOUBLE,
-            &cc(expr),
-            1,
-            n * NROWS,
-            core::ptr::null(),
-            as_bytes_mut(&mut results),
-            &mut anynul,
-            &mut st,
+
+        /* Integer-valued expressions are read back as LONGLONG so that large
+        magnitudes stay exact; f64 cannot distinguish i64::MAX from 2^63. */
+        let integral = matches!(
+            datatype,
+            TLOGICAL | TBYTE | TSHORT | TINT | TLONG | TLONGLONG
         );
+        let rendered = if integral {
+            let mut results = vec![0 as LONGLONG; (n * NROWS) as usize];
+            fits_calc_rows(
+                f,
+                TLONGLONG,
+                &cc(expr),
+                1,
+                n * NROWS,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut st,
+            );
+            results
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            let mut results = vec![0.0f64; (n * NROWS) as usize];
+            fits_calc_rows(
+                f,
+                TDOUBLE,
+                &cc(expr),
+                1,
+                n * NROWS,
+                core::ptr::null(),
+                as_bytes_mut(&mut results),
+                &mut anynul,
+                &mut st,
+            );
+            results
+                .iter()
+                .map(|v| format!("{v:.6}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
         if st != 0 {
             fits_clear_errmsg();
             let _ = write!(out, " | EVALERR {st}");
             return out;
         }
-        out.push_str(" | [");
-        for (i, v) in results.iter().enumerate() {
-            if i > 0 {
-                out.push_str(", ");
-            }
-            let _ = write!(out, "{v:.6}");
-        }
-        out.push(']');
+        let _ = write!(out, " | [{rendered}]");
         if anynul != 0 {
             out.push_str(" (null)");
         }
@@ -212,7 +254,7 @@ mod tests {
     /// caught by the golden being longer — but if both files shrank together
     /// (a bad merge, a stray editor save) it would pass while testing far less
     /// than it claims. Raise this when the corpus grows meaningfully.
-    const MIN_CORPUS: usize = 500;
+    const MIN_CORPUS: usize = 1800;
 
     /// Whether a golden line records an answer a narrower C `long` cannot hold.
     ///
@@ -318,6 +360,20 @@ mod tests {
         ] {
             assert!(!records_value_outside(g, 32), "should not skip: {g}");
         }
+    }
+
+    /// Single-expression probe, run in isolation: one fresh table, one call.
+    /// Guards against the bulk-run state leakage the oracle README describes.
+    #[test]
+    fn single_expression_isolated_probe() {
+        let want = std::env::var("PROBE_ONE").unwrap_or_default();
+        if want.is_empty() {
+            return;
+        }
+        let mut status = 0;
+        let mut f = create_corpus_table();
+        eprintln!("ISOLATED {want}\t{}", probe(&mut f, &want));
+        fits_close_file(f, &mut status);
     }
 
     #[test]
