@@ -636,11 +636,17 @@ fn Alloc_Node(lParse: &mut ParseData) -> c_int {
     // If number of nodes == number allocated, then realloc
     if lParse.nNodes == lParse.nNodesAlloc {
         if lParse.nNodesAlloc == 0 {
+            /* The C null-checks this malloc just as it does the realloc below,
+            so the failure has to be reported the same way rather than
+            aborting the process, which Vec::with_capacity would do. */
+            let mut newNodes: Vec<Node> = Vec::new();
+            if newNodes.try_reserve_exact(100).is_err() {
+                lParse.status = MEMORY_ALLOCATION;
+                return -(1);
+            }
             lParse.nNodesAlloc = 100;
-            lParse.Nodes = Vec::with_capacity(lParse.nNodesAlloc as usize);
-            lParse
-                .Nodes
-                .resize(lParse.nNodesAlloc as usize, Node::default());
+            newNodes.resize(lParse.nNodesAlloc as usize, Node::default());
+            lParse.Nodes = newNodes;
         } else if lParse
             .Nodes
             .try_reserve_exact(lParse.nNodesAlloc as usize)
@@ -7546,7 +7552,7 @@ fn New_GTI(
                 )
                 .cast::<c_double>();
                 if ((lParse.Nodes[that0_idx]).value.data.dblptr).is_null() {
-                    lParse.status = 113 as c_int;
+                    lParse.status = MEMORY_ALLOCATION;
                     return -(1);
                 }
                 startptr = (lParse.Nodes[that0_idx]).value.data.dblptr;
@@ -15130,13 +15136,11 @@ fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_cha
         l1 = strlen(bits1) as c_int;
         l2 = strlen(bits2) as c_int;
         length = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((length + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
+        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
+        does not check this allocation, so there is no failure path to
+        replicate -- but there is also no null to dereference. */
+        let mut stream_vec: Vec<c_char> = vec![0; (length + 1) as usize];
+        stream = stream_vec.as_mut_ptr();
         if l1 < l2 {
             ldiff = l2 - l1;
             i = 0;
@@ -15241,7 +15245,7 @@ fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_cha
             }
             _ => {}
         }
-        free(stream.cast::<c_void>());
+        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
         result
     }
 }
@@ -15258,13 +15262,11 @@ fn bitand(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut
         l1 = strlen(bitstrm1) as c_int;
         l2 = strlen(bitstrm2) as c_int;
         largestStream = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((largestStream + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
+        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
+        does not check this allocation, so there is no failure path to
+        replicate -- but there is also no null to dereference. */
+        let mut stream_vec: Vec<c_char> = vec![0; (largestStream + 1) as usize];
+        stream = stream_vec.as_mut_ptr();
         if l1 < l2 {
             ldiff = l2 - l1;
             i = 0;
@@ -15339,7 +15341,7 @@ fn bitand(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut
             }
             result = result.offset(1);
         }
-        free(stream.cast::<c_void>());
+        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
         *result = 0;
     }
 }
@@ -15356,13 +15358,11 @@ fn bitor(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut 
         l1 = strlen(bitstrm1) as c_int;
         l2 = strlen(bitstrm2) as c_int;
         largestStream = if l1 > l2 { l1 } else { l2 };
-        stream = malloc(
-            (::core::mem::size_of::<c_char>() as c_ulong)
-                .wrapping_mul((largestStream + 1) as c_ulong)
-                .try_into()
-                .unwrap(),
-        )
-        .cast::<c_char>();
+        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
+        does not check this allocation, so there is no failure path to
+        replicate -- but there is also no null to dereference. */
+        let mut stream_vec: Vec<c_char> = vec![0; (largestStream + 1) as usize];
+        stream = stream_vec.as_mut_ptr();
         if l1 < l2 {
             ldiff = l2 - l1;
             i = 0;
@@ -15437,7 +15437,7 @@ fn bitor(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut 
             }
             result = result.offset(1);
         }
-        free(stream.cast::<c_void>());
+        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
         *result = 0;
     }
 }
