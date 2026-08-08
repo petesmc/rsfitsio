@@ -3,11 +3,13 @@
 //! Each line of `fixtures/eval_corpus.txt` is parsed with `fits_test_expr` and,
 //! when it parses and is deterministic, evaluated with `fits_calc_rows`. The
 //! resulting one-line summary is compared against `fixtures/eval_corpus.golden`,
-//! which was generated from the flex/bison parser before the `nom` rewrite.
+//! which was generated from the flex/bison parser and checked line by line
+//! against CFITSIO itself with `tests/oracle`.
 //!
-//! This is the acceptance test for the parser migration: the new front end must
-//! reproduce the old one's accept/reject decision, inferred type and shape, and
-//! evaluated values, for every line.
+//! It pins the language down as a whole: any change to the front end has to
+//! reproduce the recorded accept/reject decision, inferred type and shape, and
+//! evaluated values, for every line -- or say explicitly, by regenerating the
+//! golden, that it meant to change them.
 //!
 //! Regenerate the golden file after an *intentional* language change with:
 //!
@@ -204,12 +206,133 @@ mod tests {
             .collect()
     }
 
+    /// Floor on the corpus size.
+    ///
+    /// The test reports a diff per line, so a *truncated* corpus would still be
+    /// caught by the golden being longer — but if both files shrank together
+    /// (a bad merge, a stray editor save) it would pass while testing far less
+    /// than it claims. Raise this when the corpus grows meaningfully.
+    const MIN_CORPUS: usize = 500;
+
+    /// Whether a golden line records an answer a narrower C `long` cannot hold.
+    ///
+    /// Integer results travel through `c_long`, which is 64 bits on LP64 and 32
+    /// on LLP64 (Windows). The golden was captured on LP64, so any line whose
+    /// recorded value is outside the 32-bit range describes something Windows
+    /// cannot reproduce -- correctly so, since C's `long` is genuinely narrower
+    /// there. Those lines are skipped where a long is narrow and checked
+    /// everywhere else.
+    ///
+    /// The test is on the *recorded value*, not on the expression, because the
+    /// dependency does not have to come from a literal. `INTCOL ** INTCOL` is
+    /// `10000000000` with no large literal anywhere in it, and
+    /// `0o777777777777777777777` is a literal but not a decimal one -- an
+    /// earlier version of this guard scanned the source text and missed both.
+    fn depends_on_long_width(golden_line: &str) -> bool {
+        size_of::<c_long>() < 8 && records_value_outside(golden_line, 32)
+    }
+
+    /// Whether the values a golden line records include an integer that does
+    /// not fit in a signed integer of `bits` bits.
+    ///
+    /// Only the value section after `|` is considered: the metadata before it
+    /// carries datatype and shape numbers that are the same on every platform.
+    /// Anything with a decimal point is a double and travels in an `f64`
+    /// regardless, so only bare integers count.
+    fn records_value_outside(golden_line: &str, bits: u32) -> bool {
+        let Some(values) = golden_line.split_once('|').map(|(_, v)| v) else {
+            return false;
+        };
+        let lo = -(1i128 << (bits - 1));
+        let hi = (1i128 << (bits - 1)) - 1;
+
+        let b: Vec<char> = values.chars().collect();
+        let mut i = 0;
+        while i < b.len() {
+            if !b[i].is_ascii_digit() {
+                i += 1;
+                continue;
+            }
+            let start = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            /* a decimal point on either side makes this a double's digits */
+            let is_float = b.get(i) == Some(&'.') || (start > 0 && b[start - 1] == '.');
+            let negative = start > 0 && b[start - 1] == '-';
+            if is_float {
+                continue;
+            }
+            let text: String = b[start..i].iter().collect();
+            /* parse into i128 so a value far past i64 cannot wrap the check */
+            match text.parse::<i128>() {
+                Ok(v) => {
+                    let v = if negative { -v } else { v };
+                    if v < lo || v > hi {
+                        return true;
+                    }
+                }
+                /* longer than i128 can hold, so certainly outside */
+                Err(_) => return true,
+            }
+        }
+        false
+    }
+
+    /// The 32-bit-long skip list, checked here because CI's LLP64 machines are
+    /// the ones that need it and this machine cannot run them.
+    ///
+    /// The positive cases are the golden lines Windows actually reported, not
+    /// invented ones: two of them have no large literal in the expression at
+    /// all, which is why the guard reads the recorded value instead.
+    #[test]
+    fn the_long_width_guard_picks_out_the_right_lines() {
+        for g in [
+            /* a literal past the range, saturated by atol */
+            "9223372036854775807\tOK dt=41 nelem=-1 naxis=1 naxes=[1] | [9223372036854775807]",
+            /* an octal literal, truncated by the cast in radix_const */
+            "0o777777777777777777777\tOK dt=41 | [9223372036854775807, 9223372036854775807]",
+            /* and a computed result, with no large literal anywhere */
+            "INTCOL ** INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [823543, 0, 10000000000]",
+            "INTCOL ^ INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [823543, 0, 10000000000]",
+            "-9223372036854775807\tOK dt=41 | [-9223372036854775807]",
+            /* longer than any integer type, so certainly outside */
+            "big\tOK dt=41 | [123456789012345678901234567890123456789012]",
+        ] {
+            assert!(records_value_outside(g, 32), "should skip: {g}");
+        }
+
+        for g in [
+            /* the boundary itself fits */
+            "2147483647\tOK dt=41 nelem=-1 naxis=1 naxes=[1] | [2147483647, 2147483647]",
+            "-2147483648\tOK dt=41 | [-2147483648]",
+            "INTCOL\tOK dt=41 nelem=1 naxis=1 naxes=[1] | [7, -3, 10]",
+            /* doubles travel in an f64 whatever a long is */
+            "1e308\tOK dt=82 nelem=-1 naxis=1 naxes=[1] | [100000000000000000000.000000]",
+            "FLOATCOL\tOK dt=82 nelem=1 naxis=1 naxes=[1] | [2.500000, 4.000000, 0.500000]",
+            /* a parse error records no values at all */
+            "INTCOL{'a'}\tERR 431",
+            /* and a big number in the expression does not matter if the
+            recorded answer is small */
+            "9223372036854775807 > 0\tOK dt=14 nelem=-1 naxis=1 naxes=[1] | [1, 1, 1]",
+        ] {
+            assert!(!records_value_outside(g, 32), "should not skip: {g}");
+        }
+    }
+
     #[test]
     fn eval_corpus_matches_golden() {
+        let exprs = corpus_lines();
+        assert!(
+            exprs.len() >= MIN_CORPUS,
+            "corpus has shrunk to {} expressions, expected at least {MIN_CORPUS}",
+            exprs.len()
+        );
+
         let mut status = 0;
         let mut f = create_corpus_table();
         let mut actual = String::new();
-        for expr in corpus_lines() {
+        for expr in exprs {
             let _ = writeln!(actual, "{expr}\t{}", probe(&mut f, expr));
         }
         fits_close_file(f, &mut status);
@@ -229,16 +352,28 @@ mod tests {
             let a: Vec<&str> = actual.lines().collect();
             let g: Vec<&str> = GOLDEN.lines().collect();
             let mut diffs = 0;
+            let mut skipped = 0;
             let mut msg = String::new();
             for i in 0..a.len().max(g.len()) {
                 let x = a.get(i).copied().unwrap_or("<missing>");
                 let y = g.get(i).copied().unwrap_or("<missing>");
+                if depends_on_long_width(y) {
+                    skipped += 1;
+                    continue;
+                }
                 if x != y {
                     diffs += 1;
                     if diffs <= 40 {
-                        let _ = writeln!(msg, "  line {}:\n    golden: {y}\n    actual: {x}", i + 1);
+                        let _ =
+                            writeln!(msg, "  line {}:\n    golden: {y}\n    actual: {x}", i + 1);
                     }
                 }
+            }
+            if diffs == 0 {
+                /* only the lines whose answer depends on the width of a long,
+                which this platform cannot be held to */
+                eprintln!("{skipped} corpus line(s) skipped: a C long is 32 bits here");
+                return;
             }
             panic!("{diffs} corpus line(s) diverge from the golden file:\n{msg}");
         }
