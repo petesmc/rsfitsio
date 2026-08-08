@@ -132,7 +132,42 @@ pub struct yy_buffer_state {
     pub yy_buffer_status: c_int,
 }
 
+/* Return values from yy_get_next_buffer(). */
+const EOB_ACT_CONTINUE_SCAN: c_int = 0;
+const EOB_ACT_END_OF_FILE: c_int = 1;
+const EOB_ACT_LAST_MATCH: c_int = 2;
+
+/* yy_buffer_status values. */
+const YY_BUFFER_NEW: c_int = 0;
+const YY_BUFFER_NORMAL: c_int = 1;
+/* When an EOF's been seen but there's still some text to process
+ * then we mark the buffer as YY_EOF_PENDING, to indicate that we
+ * shouldn't try reading from the input source any more.  We might
+ * still have a bunch of tokens to match, though, because of
+ * possible backing-up.
+ *
+ * When we actually see the EOF, we change the status to "new"
+ * (via yyrestart()), so that the user can continue scanning by
+ * just pointing yyin at a new input file.
+ */
+const YY_BUFFER_EOF_PENDING: c_int = 2;
+
+const YY_END_OF_BUFFER_CHAR: c_char = 0;
+
 const YY_BUF_SIZE: usize = 16384;
+
+/* Size of default input buffer. */
+const YY_READ_BUF_SIZE: c_int = 8192;
+
+/* The action number that stands for "end of buffer".
+ * YY_STATE_EOF(state) is YY_END_OF_BUFFER + state + 1; INITIAL is start
+ * condition 0, so its EOF action is YY_END_OF_BUFFER + 1.
+ */
+const YY_END_OF_BUFFER: c_int = 31;
+const INITIAL: c_int = 0;
+
+/* yyterminate() returns YY_NULL. */
+const YY_NULL: c_int = 0;
 
 pub type YY_BUFFER_STATE = *mut yy_buffer_state;
 
@@ -244,7 +279,7 @@ pub(crate) fn fits_parser_yyGetVariable(
             dtype = (lParse.getData).expect("non-null function pointer")(lParse, varName, thelval);
         } else {
             dtype = -1;
-            lParse.status = 431 as c_int;
+            lParse.status = PARSE_SYNTAX_ERR;
             strcpy_safe(&mut errMsg, cs!(c"Unable to find data: "));
             strncat_safe(&mut errMsg, varName, MAXVARNAME);
             ffpmsg_slice(&errMsg);
@@ -642,7 +677,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_1 = strlen(yyscanner.yytext_r) as c_int;
                                 if len_1 >= 256 as c_int {
                                     let mut errMsg_0: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = 431 as c_int;
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg_0,
                                         cs!(c"Hex string exceeds maximum length: '"),
@@ -962,7 +997,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_3 = (strlen(yyscanner.yytext_r)).wrapping_sub(2) as c_int;
                                 if len_3 >= 256 as c_int {
                                     let mut errMsg_1: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = 431 as c_int;
+                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg_1,
                                         cs!(c"String exceeds maximum length: '"),
@@ -1112,8 +1147,8 @@ pub(crate) fn fits_parser_yylex(
                                 );
                                 break '_yy_match;
                             }
-                            32 => return 0,
-                            31 => {
+                            x if x == YY_END_OF_BUFFER + INITIAL + 1 => return YY_NULL,
+                            x if x == YY_END_OF_BUFFER => {
                                 /* Amount of text matched not including the EOB char. */
                                 yy_amount_of_matched_text =
                                     yy_cp.offset_from(yyscanner.yytext_r) as c_long as c_int - 1;
@@ -1134,11 +1169,11 @@ pub(crate) fn fits_parser_yylex(
                                  * this is the first action (other than possibly a
                                  * back-up) that will match for the new input source.
                                  */
-                                if top_state.yy_buffer_status == 0 {
+                                if top_state.yy_buffer_status == YY_BUFFER_NEW {
                                     yyscanner.yy_n_chars = top_state.yy_n_chars;
                                     let fresh4 = &mut top_state.yy_input_file;
                                     *fresh4 = yyscanner.yyin_r;
-                                    top_state.yy_buffer_status = 1;
+                                    top_state.yy_buffer_status = YY_BUFFER_NORMAL;
                                 }
                                 /* Note that here we test for yy_c_buf_p "<=" to the position
                                  * of the first EOB in the buffer, since yy_c_buf_p will
@@ -1177,7 +1212,7 @@ pub(crate) fn fits_parser_yylex(
                                     }
                                 } else {
                                     match yy_get_next_buffer(yyscanner) {
-                                        1 => {
+                                        EOB_ACT_END_OF_FILE => {
                                             yyscanner.yy_did_buffer_switch_on_eof = 0;
                                             if fits_parser_yywrap() != 0 {
                                                 /* Note: because we've taken care in
@@ -1191,8 +1226,10 @@ pub(crate) fn fits_parser_yylex(
                                                  */
                                                 yyscanner.yy_c_buf_p =
                                                     (yyscanner.yytext_r).offset(0);
-                                                yy_act =
-                                                    31 as c_int + (yyscanner.yy_start - 1) / 2 + 1;
+                                                /* YY_STATE_EOF(YY_START) */
+                                                yy_act = YY_END_OF_BUFFER
+                                                    + (yyscanner.yy_start - 1) / 2
+                                                    + 1;
                                             } else {
                                                 if yyscanner.yy_did_buffer_switch_on_eof == 0 {
                                                     fits_parser_yyrestart(
@@ -1203,7 +1240,7 @@ pub(crate) fn fits_parser_yylex(
                                                 break '_yy_match;
                                             }
                                         }
-                                        0 => {
+                                        EOB_ACT_CONTINUE_SCAN => {
                                             yyscanner.yy_c_buf_p = (yyscanner.yytext_r)
                                                 .offset(yy_amount_of_matched_text as isize);
                                             yy_current_state = yy_get_previous_state(yyscanner);
@@ -1211,7 +1248,7 @@ pub(crate) fn fits_parser_yylex(
                                             yy_bp = (yyscanner.yytext_r).offset(0);
                                             break '_yy_find_action;
                                         }
-                                        2 => {
+                                        EOB_ACT_LAST_MATCH => {
                                             let top_state = (*(yyscanner.yy_buffer_stack)
                                                 .add(yyscanner.yy_buffer_stack_top))
                                             .as_deref_mut()
@@ -1288,12 +1325,12 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                 /* We matched a single character, the EOB, so
                  * treat this as a final EOF.
                  */
-                return 1;
+                return EOB_ACT_END_OF_FILE;
             } else {
                 /* We matched some text prior to the EOB, first
                  * process it.
                  */
-                return 2;
+                return EOB_ACT_LAST_MATCH;
             }
         }
 
@@ -1311,7 +1348,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             *fresh6 = *fresh5;
             i += 1;
         }
-        if top_state.yy_buffer_status == 2 {
+        if top_state.yy_buffer_status == YY_BUFFER_EOF_PENDING {
             /* don't do the read, it's not guaranteed to return an EOF,
              * just force an EOF
              */
@@ -1360,8 +1397,8 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                     .as_mut_ptr();
                 num_to_read = top_state.yy_buf_size - number_to_move - 1;
             }
-            if num_to_read > 8192 as c_int {
-                num_to_read = 8192 as c_int;
+            if num_to_read > YY_READ_BUF_SIZE {
+                num_to_read = YY_READ_BUF_SIZE;
             }
             /* Read in more data. */
             /*
@@ -1382,14 +1419,14 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
 
         if yyscanner.yy_n_chars == 0 {
             if number_to_move == 0 {
-                ret_val = 1;
+                ret_val = EOB_ACT_END_OF_FILE;
                 fits_parser_yyrestart(yyscanner.yyin_r, yyscanner);
             } else {
-                ret_val = 2;
-                top_state.yy_buffer_status = 2;
+                ret_val = EOB_ACT_LAST_MATCH;
+                top_state.yy_buffer_status = YY_BUFFER_EOF_PENDING;
             }
         } else {
-            ret_val = 0;
+            ret_val = EOB_ACT_CONTINUE_SCAN;
         }
 
         let top_state = (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
@@ -1421,8 +1458,10 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
 
         yyscanner.yy_n_chars += number_to_move;
 
-        (top_state.yy_ch_buf).as_deref_mut().unwrap()[yyscanner.yy_n_chars as usize] = 0;
-        (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] = 0;
+        (top_state.yy_ch_buf).as_deref_mut().unwrap()[yyscanner.yy_n_chars as usize] =
+            YY_END_OF_BUFFER_CHAR;
+        (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] =
+            YY_END_OF_BUFFER_CHAR;
         yyscanner.yytext_r = &mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         ret_val
     }
@@ -1685,11 +1724,11 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: &mut yy_buffer_state, yyscanner: &m
          * a transition to the end-of-buffer state.  The second causes
          * a jam in that state.
          */
-        (b.yy_ch_buf).as_deref_mut().unwrap()[0] = 0;
-        (b.yy_ch_buf).as_deref_mut().unwrap()[1] = 0;
+        (b.yy_ch_buf).as_deref_mut().unwrap()[0] = YY_END_OF_BUFFER_CHAR;
+        (b.yy_ch_buf).as_deref_mut().unwrap()[1] = YY_END_OF_BUFFER_CHAR;
         b.yy_buf_pos = 0; // Set index to start of buffer
         b.yy_at_bol = 1;
-        b.yy_buffer_status = 0;
+        b.yy_buffer_status = YY_BUFFER_NEW;
 
         let top_state = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
             .as_deref_mut()
