@@ -4466,7 +4466,13 @@ fn find_column(
                 return P_ERROR;
             }
 
-            let mut tstatus = 0;
+            /* The C passes &lParse->status straight in, so a status already
+            set stays set: allocateCol only ever writes MEMORY_ALLOCATION on
+            failure, never clears. Seeding the temporary from lParse.status
+            reproduces that aliasing -- writing back a fresh 0 would discard a
+            pending error, which is how a syntax error raised earlier in the
+            parse used to be lost. */
+            let mut tstatus = lParse.status;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
@@ -4548,7 +4554,13 @@ fn find_column(
                 return P_ERROR;
             }
 
-            let mut tstatus = 0;
+            /* The C passes &lParse->status straight in, so a status already
+            set stays set: allocateCol only ever writes MEMORY_ALLOCATION on
+            failure, never clears. Seeding the temporary from lParse.status
+            reproduces that aliasing -- writing back a fresh 0 would discard a
+            pending error, which is how a syntax error raised earlier in the
+            parse used to be lost. */
+            let mut tstatus = lParse.status;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
@@ -9135,6 +9147,76 @@ mod tests {
             assert_eq!(eval_lng::<1>(&mut f, "0b01001"), [0b01001]);
             /* usable in ordinary arithmetic */
             assert_eq!(eval_lng::<3>(&mut f, "INTCOL + 0x10"), [17, 18, 19]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_rejects_mismatched_operand_types() {
+        /* An operator applied across incompatible operand sorts is a syntax
+        error: the grammar has no production for it, so bison reports one and
+        recovers through `line: error '\n'`.
+
+        The recovery is what made this fragile. Resolving a column name during
+        recovery runs find_column, which calls fits_parser_allocateCol; that
+        used to be handed a fresh `tstatus = 0` whose value was written back
+        over lParse.status, discarding the syntax error and leaving the parse
+        looking successful. fits_test_expr then returned 0 and handed back the
+        *left* operand -- BOOLCOL + INTCOL evaluated to BOOLCOL. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for expr in [
+                "BOOLCOL + INTCOL",
+                "BOOLCOL - FLOATCOL",
+                "BOOLCOL && INTCOL",
+                "STRCOL - INTCOL",
+                "STRCOL > INTCOL",
+            ] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, PARSE_SYNTAX_ERR, "expr should be rejected: {expr}");
+                fits_clear_errmsg();
+            }
+
+            /* the compatible forms still parse */
+            for expr in [
+                "INTCOL + FLOATCOL",
+                "BOOLCOL && BOOLCOL",
+                "INTCOL > FLOATCOL",
+            ] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, 0, "expr should parse: {expr}");
+            }
 
             fits_close_file(f, &mut status);
         });
