@@ -138,7 +138,9 @@ use crate::c_types::{
     c_char, c_double, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_void,
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
-use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
+use crate::eval_defs::{
+    BufferKind, CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeValue, ParseData, lval, yyscan_t,
+};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
@@ -682,16 +684,35 @@ fn New_Const(
         let mut n: c_int = 0;
         n = Alloc_Node(lParse);
         if n >= 0 {
+            /* The C did `memcpy( &(this->value.data), value, len )`, which
+            worked because a union puts its payload at offset 0. A tagged value
+            has the discriminant there instead, so copying over it would set a
+            garbage tag and land the payload at the wrong offset -- reading that
+            back as a Buffer gives a wild pointer. The arm comes from
+            returnType, and the bytes are read through it. */
+            let data = if returnType == fits_parser_yytokentype::LONG as c_int {
+                NodeValue::Long(*(value.cast::<c_long>()))
+            } else if returnType == fits_parser_yytokentype::DOUBLE as c_int {
+                NodeValue::Double(*(value.cast::<c_double>()))
+            } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
+                NodeValue::Logical(*(value.cast::<c_char>()))
+            } else if returnType == fits_parser_yytokentype::STRING as c_int
+                || returnType == fits_parser_yytokentype::BITSTR as c_int
+            {
+                let mut text = [0 as c_char; MAX_STRLEN as usize];
+                let take = cmp::min(len as usize, text.len());
+                ptr::copy_nonoverlapping(value.cast::<c_char>(), text.as_mut_ptr(), take);
+                NodeValue::Text(text)
+            } else {
+                NodeValue::Empty
+            };
+
             let this_node = &mut lParse.Nodes[n as usize];
             this_node.operation = CONST_OP; /* Flag a constant */
             this_node.DoOp = None;
             this_node.nSubNodes = 0;
             this_node.ntype = returnType;
-            memcpy(
-                &mut this_node.value.data as *const _ as *mut c_void,
-                value,
-                (len as c_ulong).try_into().unwrap(),
-            );
+            this_node.value.data = data;
             this_node.value.undef = ptr::null_mut();
             this_node.value.nelem = 1;
             this_node.value.naxis = 1;
@@ -2887,7 +2908,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
-                                        .lng;
+                                        .lng();
                                     naxis =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis == 0 {
@@ -4692,7 +4713,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                         .value
                                         .data
-                                        .lng;
+                                        .lng();
                                     naxis_1 =
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
                                     if iaxis_0 == 0 {
@@ -6917,7 +6938,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         len = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
                                             .value
                                             .data
-                                            .lng
+                                            .lng()
                                             as c_int;
                                     } else {
                                         /* Variable value: use the maximum possible (from $2) */
@@ -7528,7 +7549,7 @@ fn New_GTI(
             let that0_idx = Node0 as usize;
             (lParse.Nodes[that0_idx]).operation = CONST_OP;
             (lParse.Nodes[that0_idx]).DoOp = None;
-            (lParse.Nodes[that0_idx]).value.data.ptr = core::ptr::null_mut::<c_void>();
+            (lParse.Nodes[that0_idx]).value.data = NodeValue::Empty;
 
             /*  Read in START/STOP times  */
 
@@ -7544,19 +7565,21 @@ fn New_GTI(
                 /* We are allocating storage for both START and STOP with one pointer
                 and stop is stored at dblptr+nrows, we will use aliases below to
                 make this easier to read */
-                (lParse.Nodes[that0_idx]).value.data.dblptr = malloc(
-                    ((2 as c_long * nrows) as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                )
-                .cast::<c_double>();
-                if ((lParse.Nodes[that0_idx]).value.data.dblptr).is_null() {
+                (lParse.Nodes[that0_idx]).value.data.set_buffer(
+                    BufferKind::Double,
+                    malloc(
+                        ((2 as c_long * nrows) as c_ulong)
+                            .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
+                            .try_into()
+                            .unwrap(),
+                    ),
+                );
+                if ((lParse.Nodes[that0_idx]).value.data.dbl_buf()).is_null() {
                     lParse.status = MEMORY_ALLOCATION;
                     return -(1);
                 }
-                startptr = (lParse.Nodes[that0_idx]).value.data.dblptr;
-                stopptr = ((lParse.Nodes[that0_idx]).value.data.dblptr).offset(nrows as isize);
+                startptr = (lParse.Nodes[that0_idx]).value.data.dbl_buf();
+                stopptr = ((lParse.Nodes[that0_idx]).value.data.dbl_buf()).offset(nrows as isize);
                 ffgcvd_safe(
                     fptr,
                     startCol,
@@ -7580,7 +7603,13 @@ fn New_GTI(
                     &mut lParse.status,
                 );
                 if lParse.status != 0 {
-                    free((lParse.Nodes[that0_idx]).value.data.dblptr.cast::<c_void>());
+                    free(
+                        (lParse.Nodes[that0_idx])
+                            .value
+                            .data
+                            .dbl_buf()
+                            .cast::<c_void>(),
+                    );
                     return -(1);
                 }
 
@@ -7869,7 +7898,10 @@ fn New_REG(
                 Some(rgn) => Box::into_raw(rgn),
                 None => ptr::null_mut(),
             };
-            (lParse.Nodes[that0_idx]).value.data.ptr = Rgn.cast::<c_void>();
+            (lParse.Nodes[that0_idx])
+                .value
+                .data
+                .set_buffer(BufferKind::Opaque, Rgn.cast::<c_void>());
             if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
                 && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
             {
@@ -7937,132 +7969,130 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
 }
 
 fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_int {
-    unsafe {
-        let mut naxis: c_long = 0;
-        let mut nelem: c_long = 0;
-        let mut naxes: [c_long; 5] = [0; 5];
-        let this_node_idx: usize;
-        let mut n: c_int = 0;
-        let mut i: c_int = 0;
-        if valueNode < 0 || dimNode < 0 {
+    let mut naxis: c_long = 0;
+    let mut nelem: c_long = 0;
+    let mut naxes: [c_long; 5] = [0; 5];
+    let this_node_idx: usize;
+    let mut n: c_int = 0;
+    let mut i: c_int = 0;
+    if valueNode < 0 || dimNode < 0 {
+        return -(1);
+    }
+
+    /* Check that dimensions are {a,b,c,d}
+         - vector
+     - every element is constant integer
+     - 5 or fewer dimensions
+    */
+
+    let dims: usize = dimNode as usize;
+    i = 0;
+    while i < MAXDIMS as c_int {
+        naxes[i as usize] = 1;
+        i += 1;
+    }
+
+    if ((lParse.Nodes)[dimNode as usize]).operation == CONST_OP {
+        /* ARRAY(V,n) is a constant integer */
+
+        if ((lParse.Nodes)[dimNode as usize]).ntype != fits_parser_yytokentype::LONG as c_int {
+            dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
+        }
+        if dimNode < 0 {
             return -(1);
         }
+        naxis = 1;
+        naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng();
+    } else if ((lParse.Nodes)[dimNode as usize]).operation == '{' as i32 {
+        /* ARRAY(V,{a,b,c,d,e}) up to 5 dimensions */
 
-        /* Check that dimensions are {a,b,c,d}
-             - vector
-         - every element is constant integer
-         - 5 or fewer dimensions
-        */
-
-        let dims: usize = dimNode as usize;
-        i = 0;
-        while i < MAXDIMS as c_int {
-            naxes[i as usize] = 1;
-            i += 1;
-        }
-
-        if ((lParse.Nodes)[dimNode as usize]).operation == CONST_OP {
-            /* ARRAY(V,n) is a constant integer */
-
-            if ((lParse.Nodes)[dimNode as usize]).ntype != fits_parser_yytokentype::LONG as c_int {
-                dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
-            }
-            if dimNode < 0 {
-                return -(1);
-            }
-            naxis = 1;
-            naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng;
-        } else if ((lParse.Nodes)[dimNode as usize]).operation == '{' as i32 {
-            /* ARRAY(V,{a,b,c,d,e}) up to 5 dimensions */
-
-            if (lParse.Nodes[dims]).nSubNodes > 5 as c_int {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,{...}) number of dimensions must not exceed 5"),
-                );
-                return -(1);
-            }
-            naxis = c_long::from((lParse.Nodes[dims]).nSubNodes);
-            i = 0;
-            while i < (lParse.Nodes[dims]).nSubNodes {
-                if ((lParse.Nodes)[(lParse.Nodes[dims]).SubNodes[i as usize] as usize]).ntype
-                    != fits_parser_yytokentype::LONG as c_int
-                {
-                    (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
-                        lParse,
-                        fits_parser_yytokentype::LONG as c_int,
-                        0,
-                        (lParse.Nodes[dims]).SubNodes[i as usize] as c_int,
-                    )
-                    .try_into()
-                    .unwrap();
-
-                    /*
-                    if (lParse.Nodes[dims]).SubNodes[i as usize] < 0 {
-                        return -(1);
-                    }
-                    */
-                }
-                naxes[i as usize] = ((lParse.Nodes)
-                    [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
-                    .value
-                    .data
-                    .lng;
-                i += 1;
-            }
-        } else {
+        if (lParse.Nodes[dims]).nSubNodes > 5 as c_int {
             fits_parser_yyerror(
                 lParse,
-                cs!(c"ARRAY(V,dims) dims must be either integer or const vector"),
+                cs!(c"ARRAY(V,{...}) number of dimensions must not exceed 5"),
             );
             return -(1);
         }
-
-        nelem = 1;
+        naxis = c_long::from((lParse.Nodes[dims]).nSubNodes);
         i = 0;
-        while c_long::from(i) < naxis {
-            if naxes[i as usize] <= 0 {
-                fits_parser_yyerror(lParse, cs!(c"ARRAY(V,dims) must have positive dimensions"));
-                return -(1);
+        while i < (lParse.Nodes[dims]).nSubNodes {
+            if ((lParse.Nodes)[(lParse.Nodes[dims]).SubNodes[i as usize] as usize]).ntype
+                != fits_parser_yytokentype::LONG as c_int
+            {
+                (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
+                    lParse,
+                    fits_parser_yytokentype::LONG as c_int,
+                    0,
+                    (lParse.Nodes[dims]).SubNodes[i as usize] as c_int,
+                )
+                .try_into()
+                .unwrap();
+
+                /*
+                if (lParse.Nodes[dims]).SubNodes[i as usize] < 0 {
+                    return -(1);
+                }
+                */
             }
-            nelem *= naxes[i as usize];
+            naxes[i as usize] = ((lParse.Nodes)
+                [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
+                .value
+                .data
+                .lng();
             i += 1;
         }
-
-        if !((((lParse.Nodes)[valueNode as usize]).value).nelem == nelem && nelem > 1) {
-            /* "reform" operation - do nothing */
-            if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 && nelem > 1 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,d) mismatch between number of elements in V and d"),
-                );
-                return -(1);
-            } else if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,n) value V must have vector dimension of 1"),
-                );
-                return -(1);
-            }
-        }
-        n = Alloc_Node(lParse);
-        if n >= 0 {
-            this_node_idx = n as usize;
-            (lParse.Nodes[this_node_idx]).operation = ARRAY_FCT as c_int;
-            (lParse.Nodes[this_node_idx]).nSubNodes = 1;
-            (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
-            (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
-            (lParse.Nodes[this_node_idx]).value.nelem = nelem;
-            (lParse.Nodes[this_node_idx]).value.naxis = naxis as c_int;
-            i = 0;
-            while c_long::from(i) < naxis {
-                (lParse.Nodes[this_node_idx]).value.naxes[i as usize] = naxes[i as usize];
-                i += 1;
-            }
-            (lParse.Nodes[this_node_idx]).DoOp = Some(Do_Array);
-        }
-        n
+    } else {
+        fits_parser_yyerror(
+            lParse,
+            cs!(c"ARRAY(V,dims) dims must be either integer or const vector"),
+        );
+        return -(1);
     }
+
+    nelem = 1;
+    i = 0;
+    while c_long::from(i) < naxis {
+        if naxes[i as usize] <= 0 {
+            fits_parser_yyerror(lParse, cs!(c"ARRAY(V,dims) must have positive dimensions"));
+            return -(1);
+        }
+        nelem *= naxes[i as usize];
+        i += 1;
+    }
+
+    if !((((lParse.Nodes)[valueNode as usize]).value).nelem == nelem && nelem > 1) {
+        /* "reform" operation - do nothing */
+        if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 && nelem > 1 {
+            fits_parser_yyerror(
+                lParse,
+                cs!(c"ARRAY(V,d) mismatch between number of elements in V and d"),
+            );
+            return -(1);
+        } else if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 {
+            fits_parser_yyerror(
+                lParse,
+                cs!(c"ARRAY(V,n) value V must have vector dimension of 1"),
+            );
+            return -(1);
+        }
+    }
+    n = Alloc_Node(lParse);
+    if n >= 0 {
+        this_node_idx = n as usize;
+        (lParse.Nodes[this_node_idx]).operation = ARRAY_FCT as c_int;
+        (lParse.Nodes[this_node_idx]).nSubNodes = 1;
+        (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
+        (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
+        (lParse.Nodes[this_node_idx]).value.nelem = nelem;
+        (lParse.Nodes[this_node_idx]).value.naxis = naxis as c_int;
+        i = 0;
+        while c_long::from(i) < naxis {
+            (lParse.Nodes[this_node_idx]).value.naxes[i as usize] = naxes[i as usize];
+            i += 1;
+        }
+        (lParse.Nodes[this_node_idx]).DoOp = Some(Do_Array);
+    }
+    n
 }
 
 /*  Locate the TABLE column number of any columns in "this" calculation.  */
@@ -8205,20 +8235,26 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
 
                 match ((lParse.Nodes)[i as usize]).ntype.into() {
                     fits_parser_yytokentype::BITSTR => {
-                        let fresh12 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh12 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Text,
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast(),
+                        );
                         let fresh13 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh13 = ptr::null_mut();
                     }
                     fits_parser_yytokentype::STRING => {
-                        let fresh14 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh14 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Text,
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast(),
+                        );
                         let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh15 = (((lParse.varData)[column as usize]).undef)
                             .as_deref_mut()
@@ -8226,22 +8262,28 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                             .as_mut_ptr();
                     }
                     fits_parser_yytokentype::BOOLEAN => {
-                        let fresh16 = &mut (((lParse.Nodes)[i as usize]).value).data.logptr;
-                        *fresh16 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_char)
-                            .offset(offset as isize);
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Logical,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
                     fits_parser_yytokentype::LONG => {
-                        let fresh17 = &mut (((lParse.Nodes)[i as usize]).value).data.lngptr;
-                        *fresh17 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_long)
-                            .offset(offset as isize);
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Long,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
                     fits_parser_yytokentype::DOUBLE => {
-                        let fresh18 = &mut (((lParse.Nodes)[i as usize]).value).data.dblptr;
-                        *fresh18 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_double)
-                            .offset(offset as isize);
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Double,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
                     _ => {}
                 }
@@ -8298,15 +8340,17 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
         if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
             || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
         {
-            (lParse.Nodes[this_node_idx]).value.data.strptr = malloc(
-                (lParse.nRows as c_ulong)
-                    .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
-                    .try_into()
-                    .unwrap(),
-            )
-            .cast::<*mut c_char>();
-            if !((lParse.Nodes[this_node_idx]).value.data.strptr).is_null() {
-                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0);
+            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
+                BufferKind::Text,
+                malloc(
+                    (lParse.nRows as c_ulong)
+                        .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
+                        .try_into()
+                        .unwrap(),
+                ),
+            );
+            if !((lParse.Nodes[this_node_idx]).value.data.str_buf()).is_null() {
+                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0);
                 *fresh20 = malloc(
                     ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
                         as c_ulong)
@@ -8315,16 +8359,16 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         .unwrap(),
                 )
                 .cast::<c_char>();
-                if !(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0)).is_null() {
+                if !(*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0)).is_null() {
                     row = 0;
                     loop {
                         row += 1;
                         if row >= lParse.nRows {
                             break;
                         }
-                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(row as isize);
-                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset((row - 1) as isize))
                         .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
                         .offset(1);
@@ -8333,7 +8377,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         == fits_parser_yytokentype::STRING as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.undef =
-                            (*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset((row - 1) as isize))
                             .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
                             .offset(1);
@@ -8346,7 +8390,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         (lParse.Nodes[this_node_idx])
                             .value
                             .data
-                            .strptr
+                            .str_buf()
                             .cast::<c_void>(),
                     );
                 }
@@ -8355,31 +8399,41 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
             }
         } else {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
+            /* The C only needed the element size; the tagged value also has to
+            record which arm the buffer is, so the two are chosen together. */
+            let kind: BufferKind;
             match (lParse.Nodes[this_node_idx]).ntype.into() {
                 fits_parser_yytokentype::DOUBLE => {
                     size = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
+                    kind = BufferKind::Double;
                 }
                 fits_parser_yytokentype::LONG => {
                     size = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
+                    kind = BufferKind::Long;
                 }
                 fits_parser_yytokentype::BOOLEAN => {
                     size = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
+                    kind = BufferKind::Logical;
                 }
                 _ => {
                     size = 1;
+                    kind = BufferKind::Logical;
                 }
             }
-            (lParse.Nodes[this_node_idx]).value.data.ptr = calloc(
-                ((size + 1) as c_ulong).try_into().unwrap(),
-                (elem as c_ulong).try_into().unwrap(),
+            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
+                kind,
+                calloc(
+                    ((size + 1) as c_ulong).try_into().unwrap(),
+                    (elem as c_ulong).try_into().unwrap(),
+                ),
             );
-            if ((lParse.Nodes[this_node_idx]).value.data.ptr).is_null() {
+            if ((lParse.Nodes[this_node_idx]).value.data.raw()).is_null() {
                 lParse.status = MEMORY_ALLOCATION;
             } else {
                 (lParse.Nodes[this_node_idx]).value.undef = (lParse.Nodes[this_node_idx])
                     .value
                     .data
-                    .ptr
+                    .raw()
                     .cast::<c_char>()
                     .offset((elem * size) as isize);
             }
@@ -8392,16 +8446,15 @@ unsafe fn free_node_buffer(node: &mut Node) {
         if node.ntype == fits_parser_yytokentype::BITSTR as c_int
             || node.ntype == fits_parser_yytokentype::STRING as c_int
         {
-            if !node.value.data.strptr.is_null() {
-                if !(*node.value.data.strptr).is_null() {
-                    free((*node.value.data.strptr) as *mut c_void);
+            if !node.value.data.str_buf().is_null() {
+                /* the row pointers all point into one block, allocated at [0] */
+                if !(*node.value.data.str_buf()).is_null() {
+                    free((*node.value.data.str_buf()) as *mut c_void);
                 }
-                free(node.value.data.strptr as *mut c_void);
-                node.value.data.strptr = ptr::null_mut();
+                node.value.data.free_buffer();
             }
-        } else if !node.value.data.ptr.is_null() {
-            free(node.value.data.ptr);
-            node.value.data.ptr = ptr::null_mut();
+        } else {
+            node.value.data.free_buffer();
         }
 
         node.value.undef = ptr::null_mut();
@@ -8424,55 +8477,68 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     || x == fits_parser_yytokentype::FLTCAST as c_int =>
                 {
                     if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.dbl = that_node.value.data.lng as c_double;
+                        (this_node).value.data =
+                            NodeValue::Double(that_node.value.data.lng() as c_double);
                     } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.dbl = if c_int::from(that_node.value.data.log) != 0 {
-                            1.0
-                        } else {
-                            0.0
-                        };
+                        (this_node).value.data =
+                            NodeValue::Double(if c_int::from(that_node.value.data.log()) != 0 {
+                                1.0
+                            } else {
+                                0.0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::LONG as c_int
                     || x == fits_parser_yytokentype::INTCAST as c_int =>
                 {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.lng = that_node.value.data.dbl as c_long;
+                        (this_node).value.data =
+                            NodeValue::Long(that_node.value.data.dbl() as c_long);
                     } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.lng = if c_int::from(that_node.value.data.log) != 0 {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            NodeValue::Long(if c_int::from(that_node.value.data.log()) != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.log = if that_node.value.data.dbl != 0.0 {
-                            1
-                        } else {
-                            0
-                        };
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.dbl() != 0.0 {
+                                1
+                            } else {
+                                0
+                            });
                     } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.log =
-                            if that_node.value.data.lng != 0 { 1 } else { 0 };
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.lng() != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
                 x if x == fits_parser_yytokentype::UMINUS as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.dbl = -that_node.value.data.dbl;
+                        (this_node).value.data = NodeValue::Double(-that_node.value.data.dbl());
                     } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.lng = -that_node.value.data.lng;
+                        (this_node).value.data = NodeValue::Long(-that_node.value.data.lng());
                     }
                 }
                 x if x == fits_parser_yytokentype::NOT as c_int => {
                     if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.log =
-                            if that_node.value.data.log == 0 { 1 } else { 0 };
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.log() == 0 {
+                                1
+                            } else {
+                                0
+                            });
                     } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
                         bitnot(
-                            ((this_node).value.data.astr).as_mut_ptr(),
-                            (that_node.value.data.astr).as_mut_ptr(),
+                            (this_node).value.data.text_mut_ptr(),
+                            that_node.value.data.text_mut_ptr(),
                         );
                     }
                 }
@@ -8510,8 +8576,10 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh23 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) =
-                                    if *(that_node.value.data.dblptr).offset(elem as isize) != 0.0 {
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    if *(that_node.value.data.dbl_buf()).offset(elem as isize)
+                                        != 0.0
+                                    {
                                         1
                                     } else {
                                         0
@@ -8524,8 +8592,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh24 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) =
-                                    if *(that_node.value.data.lngptr).offset(elem as isize) != 0 {
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    if *(that_node.value.data.lng_buf()).offset(elem as isize) != 0
+                                    {
                                         1
                                     } else {
                                         0
@@ -8541,8 +8610,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh25 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
-                                    *(that_node.value.data.lngptr).offset(elem as isize)
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
+                                    *(that_node.value.data.lng_buf()).offset(elem as isize)
                                         as c_double;
                             }
                         } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
@@ -8552,9 +8621,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh26 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
                                     if c_int::from(
-                                        *(that_node.value.data.logptr).offset(elem as isize),
+                                        *(that_node.value.data.log_buf()).offset(elem as isize),
                                     ) != 0
                                     {
                                         1.0
@@ -8572,8 +8641,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh27 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
-                                    *(that_node.value.data.dblptr).offset(elem as isize) as c_long;
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
+                                    *(that_node.value.data.dbl_buf()).offset(elem as isize)
+                                        as c_long;
                             }
                         } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
                             loop {
@@ -8582,9 +8652,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh28 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
                                     if c_int::from(
-                                        *(that_node.value.data.logptr).offset(elem as isize),
+                                        *(that_node.value.data.log_buf()).offset(elem as isize),
                                     ) != 0
                                     {
                                         1
@@ -8602,8 +8672,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh29 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
-                                    -*(that_node.value.data.dblptr).offset(elem as isize);
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
+                                    -*(that_node.value.data.dbl_buf()).offset(elem as isize);
                             }
                         } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
                             loop {
@@ -8612,8 +8682,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh30 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
-                                    -*(that_node.value.data.lngptr).offset(elem as isize);
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
+                                    -*(that_node.value.data.lng_buf()).offset(elem as isize);
                             }
                         }
                     }
@@ -8625,10 +8695,11 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh31 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) = c_int::from(
-                                    *(that_node.value.data.logptr).offset(elem as isize) == 0,
-                                )
-                                    as c_char;
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    c_int::from(
+                                        *(that_node.value.data.log_buf()).offset(elem as isize)
+                                            == 0,
+                                    ) as c_char;
                             }
                         } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
                             elem = lParse.nRows;
@@ -8639,8 +8710,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 bitnot(
-                                    *((this_node).value.data.strptr).offset(elem as isize),
-                                    *(that_node.value.data.strptr).offset(elem as isize),
+                                    *((this_node).value.data.str_buf()).offset(elem as isize),
+                                    *(that_node.value.data.str_buf()).offset(elem as isize),
                                 );
                             }
                         }
@@ -8653,7 +8724,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
 
         if (lParse.Nodes[that_idx]).operation > 0 {
-            free((lParse.Nodes[that_idx]).value.data.ptr);
+            free((lParse.Nodes[that_idx]).value.data.raw());
         }
     }
 }
@@ -8674,7 +8745,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         let rowOffset = ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[1]])
             .value
             .data
-            .lng;
+            .lng();
 
         Allocate_Ptrs(lParse, this_node_idx);
 
@@ -8718,15 +8789,16 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             while fRow < 1 && nRowReload > 0 {
                 if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
-                    *(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(offset as isize))
-                        .offset(nelem as isize) = 0;
+                    *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                        .offset(offset as isize))
+                    .offset(nelem as isize) = 0;
                     loop {
                         let fresh33 = nelem;
                         nelem -= 1;
                         if fresh33 == 0 {
                             break;
                         }
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(offset as isize))
                         .offset(nelem as isize) = b'0' as c_char;
                     }
@@ -8791,15 +8863,16 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                     elem -= 1;
-                    *(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(elem as isize))
-                        .offset(nelem as isize) = 0;
+                    *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                        .offset(elem as isize))
+                    .offset(nelem as isize) = 0;
                     loop {
                         let fresh36 = nelem;
                         nelem -= 1;
                         if fresh36 == 0 {
                             break;
                         }
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(elem as isize))
                         .offset(nelem as isize) = b'0' as c_char;
                     }
@@ -8830,7 +8903,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
@@ -8842,7 +8915,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.log_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
@@ -8854,7 +8927,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
@@ -8866,7 +8939,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
@@ -8907,33 +8980,36 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 match (lParse.Nodes[this_node_idx]).ntype.into() {
                     fits_parser_yytokentype::BITSTR => {
                         strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.strptr)
+                            *((lParse.Nodes[col_idx]).value.data.str_buf())
                                 .offset((elem + offset) as isize),
                         );
                     }
                     fits_parser_yytokentype::STRING => {
                         strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.strptr)
+                            *((lParse.Nodes[col_idx]).value.data.str_buf())
                                 .offset((elem + offset) as isize),
                         );
                     }
                     fits_parser_yytokentype::BOOLEAN => {
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.logptr)
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.log_buf())
                                 .offset((elem + offset) as isize);
                     }
                     fits_parser_yytokentype::LONG => {
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.lngptr)
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.lng_buf())
                                 .offset((elem + offset) as isize);
                     }
                     fits_parser_yytokentype::DOUBLE => {
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.dblptr)
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.dbl_buf())
                                 .offset((elem + offset) as isize);
                     }
                     _ => {}
@@ -8959,12 +9035,12 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
         const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
         const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
         sptr1 = if const1 != 0 {
-            ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
-            ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
@@ -8972,47 +9048,52 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             match (lParse.Nodes[this_node_idx]).operation {
                 /*  BITSTR comparisons  */
                 NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 });
                 }
                 EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = bitcmp(sptr1, sptr2);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(bitcmp(sptr1, sptr2));
                 }
                 GT | LT | LTE | GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bitlgte(
+                        sptr1,
+                        (lParse.Nodes[this_node_idx]).operation,
+                        sptr2,
+                    ));
                 }
                 /*  BITSTR AND/ORs ...  no UNDEFS in or out */
                 CHAR_PIPE => {
                     bitor(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
                 CHAR_AMPERSAND => {
                     bitand(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
                 CHAR_PLUS => {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                     );
                     strcat(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr2,
                     );
                 }
                 /* Accumulate 1 bits */
                 ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
-                            (lParse.Nodes[this_node_idx]).value.data.lng += 1;
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Long((lParse.Nodes[this_node_idx]).value.data.lng() + 1);
                         }
                         sptr1 = sptr1.offset(1);
                     }
@@ -9032,25 +9113,25 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         match (lParse.Nodes[this_node_idx]).operation {
                             NE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
                             }
                             EQ => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) = bitcmp(sptr1, sptr2);
                             }
                             GT | LT | LTE | GTE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
                             }
@@ -9065,35 +9146,35 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if (lParse.Nodes[this_node_idx]).operation == '|' as i32 {
                             bitor(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                                 sptr2,
                             );
                         } else if (lParse.Nodes[this_node_idx]).operation == '&' as i32 {
                             bitand(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                                 sptr2,
                             );
                         } else {
                             strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                             );
                             strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr2,
                             );
@@ -9103,11 +9184,11 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                         let mut i: c_long = 0;
                         let mut previous: c_long = 0;
                         let mut curr: c_long = 0;
-                        previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                        previous = (lParse.Nodes[that2_idx]).value.data.lng();
                         i = 0;
                         while i < rows {
-                            sptr1 =
-                                *((lParse.Nodes[that1_idx]).value.data.strptr).offset(i as isize);
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
+                                .offset(i as isize);
                             curr = 0;
                             while *sptr1 != 0 {
                                 if c_int::from(*sptr1) == '1' as i32 {
@@ -9116,25 +9197,37 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                                 sptr1 = sptr1.offset(1);
                             }
                             previous += curr;
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                             i += 1;
                         }
                         /* Store final cumulant for next pass */
-                        (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                        (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
                     }
                     _ => {}
                 }
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that1_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that2_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
     }
 }
@@ -9158,12 +9251,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
         const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
         sptr1 = if const1 != 0 {
-            ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
-            ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
@@ -9180,17 +9273,18 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             strcmp(sptr1, sptr2)
                         }) == 0,
                     );
-                    (lParse.Nodes[this_node_idx]).value.data.log = (if (lParse.Nodes[this_node_idx])
-                        .operation
-                        == fits_parser_yytokentype::EQ as c_int
-                    {
-                        val
-                    } else {
-                        c_int::from(val == 0)
-                    }) as c_char;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                        (if (lParse.Nodes[this_node_idx]).operation
+                            == fits_parser_yytokentype::EQ as c_int
+                        {
+                            val
+                        } else {
+                            c_int::from(val == 0)
+                        }) as c_char,
+                    );
                 }
                 GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9202,10 +9296,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9217,10 +9312,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9232,10 +9328,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9247,16 +9344,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 /*  Concat Strings  */
                 CHAR_PLUS => {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                     );
                     strcat(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr2,
                     );
                 }
@@ -9290,11 +9388,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = c_int::from(
@@ -9308,7 +9406,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                                     strcmp(sptr1, sptr2)
                                 }) == 0,
                             );
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::EQ as c_int
                             {
@@ -9338,11 +9436,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
@@ -9353,7 +9451,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 strcmp(sptr1, sptr2)
                             };
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::GT as c_int
                             {
@@ -9383,11 +9481,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
@@ -9398,7 +9496,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 strcmp(sptr1, sptr2)
                             };
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::GTE as c_int
                             {
@@ -9429,20 +9527,20 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                             );
                             strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr2,
                             );
@@ -9453,12 +9551,24 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that1_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that2_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
     }
 }
@@ -9482,49 +9592,51 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.log;
+            val1 = (lParse.Nodes[that1_idx]).value.data.log();
         }
         vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.log;
+            val2 = (lParse.Nodes[that2_idx]).value.data.log();
         }
         if vector1 == 0 && vector2 == 0 {
             match (lParse.Nodes[this_node_idx]).operation {
                 OR => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
                 AND => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
                 EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = c_int::from(
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(c_int::from(
                         c_int::from(val1) != 0 && c_int::from(val2) != 0 || val1 == 0 && val2 == 0,
-                    ) as c_char;
+                    )
+                        as c_char);
                 }
                 NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if c_int::from(val1) != 0
-                        && val2 == 0
-                        || val1 == 0 && c_int::from(val2) != 0
-                    {
-                        1
-                    } else {
-                        0
-                    };
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                        if c_int::from(val1) != 0 && val2 == 0
+                            || val1 == 0 && c_int::from(val2) != 0
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    );
                 }
                 ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = c_long::from(val1);
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(val1));
                 }
                 _ => {}
             }
@@ -9539,22 +9651,22 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                previous = (lParse.Nodes[that2_idx]).value.data.lng();
                 i = 0;
                 while i < elem {
                     if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
                         curr = c_long::from(
-                            *((lParse.Nodes[that1_idx]).value.data.logptr).offset(i as isize),
+                            *((lParse.Nodes[that1_idx]).value.data.log_buf()).offset(i as isize),
                         );
                         previous += curr;
                     }
-                    *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
+                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf()).offset(i as isize) =
                         previous;
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                     i += 1;
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
             }
         } else {
             rows = lParse.nRows;
@@ -9568,21 +9680,22 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                     let mut i_0: c_long = 0;
                     let mut previous_0: c_long = 0;
                     let mut curr_0: c_long = 0;
-                    previous_0 = (lParse.Nodes[that2_idx]).value.data.lng;
+                    previous_0 = (lParse.Nodes[that2_idx]).value.data.lng();
                     i_0 = 0;
                     while i_0 < elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i_0 as isize) == 0 {
                             curr_0 = c_long::from(
-                                *((lParse.Nodes[that1_idx]).value.data.logptr).offset(i_0 as isize),
+                                *((lParse.Nodes[that1_idx]).value.data.log_buf())
+                                    .offset(i_0 as isize),
                             );
                             previous_0 += curr_0;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i_0 as isize) =
-                            previous_0;
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(i_0 as isize) = previous_0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i_0 as isize) = 0;
                         i_0 += 1;
                     }
-                    (lParse.Nodes[that2_idx]).value.data.lng = previous_0;
+                    (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous_0);
                 }
                 loop {
                     let fresh46 = rows;
@@ -9598,20 +9711,20 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         elem -= 1;
                         if vector1 > 1 {
-                            val1 = *((lParse.Nodes[that1_idx]).value.data.logptr)
+                            val1 = *((lParse.Nodes[that1_idx]).value.data.log_buf())
                                 .offset(elem as isize);
                             null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                         } else if vector1 != 0 {
-                            val1 = *((lParse.Nodes[that1_idx]).value.data.logptr)
+                            val1 = *((lParse.Nodes[that1_idx]).value.data.log_buf())
                                 .offset(rows as isize);
                             null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                         }
                         if vector2 > 1 {
-                            val2 = *((lParse.Nodes[that2_idx]).value.data.logptr)
+                            val2 = *((lParse.Nodes[that2_idx]).value.data.log_buf())
                                 .offset(elem as isize);
                             null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                         } else if vector2 != 0 {
-                            val2 = *((lParse.Nodes[that2_idx]).value.data.logptr)
+                            val2 = *((lParse.Nodes[that2_idx]).value.data.log_buf())
                                 .offset(rows as isize);
                             null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                         }
@@ -9626,7 +9739,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && TRUE  */
                                 if null1 == 0 && null2 == 0 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) =
                                         if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                                             1
@@ -9640,7 +9753,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                         && c_int::from(null2) != 0
                                         && c_int::from(val1) != 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) = 1;
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
@@ -9650,7 +9763,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && FALSE */
                                 if null1 == 0 && null2 == 0 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) =
                                         if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                                             1
@@ -9660,14 +9773,14 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else if c_int::from(null1) != 0 && null2 == 0 && val2 == 0
                                     || null1 == 0 && c_int::from(null2) != 0 && val1 == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                 }
                             }
                             EQ => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && c_int::from(val2) != 0
                                         || val1 == 0 && val2 == 0,
@@ -9675,7 +9788,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                     as c_char;
                             }
                             NE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && val2 == 0
                                         || val1 == 0 && c_int::from(val2) != 0,
@@ -9690,10 +9803,10 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
@@ -9717,14 +9830,14 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.lng;
+            val1 = (lParse.Nodes[that1_idx]).value.data.lng();
         }
 
         vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.lng;
+            val2 = (lParse.Nodes[that2_idx]).value.data.lng();
         }
 
         if vector1 == 0 && vector2 == 0 {
@@ -9733,40 +9846,46 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             match (lParse.Nodes[this_node_idx]).operation {
                 /* Treat as == for LONGS */
                 CHAR_TILDE | EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
                 NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
                 GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
                 LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
                 LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
                 GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
                 CHAR_PLUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 + val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 + val2);
                 }
                 CHAR_MINUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 - val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 - val2);
                 }
                 CHAR_STAR => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 * val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 * val2);
                 }
                 CHAR_AMPERSAND => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 & val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 & val2);
                 }
                 CHAR_PIPE => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 | val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 | val2);
                 }
                 CHAR_CARET => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 ^ val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 ^ val2);
                 }
                 CHAR_PERCENT => {
                     if val2 != 0 {
@@ -9774,10 +9893,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lng_buf()
                                 .offset(elem as isize) = 0;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 % val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
@@ -9789,24 +9908,24 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lng_buf()
                                 .offset(elem as isize) = LONG_MAX;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 / val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 POWER => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng =
-                        pow(val1 as c_double, val2 as c_double) as c_long;
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Long(pow(val1 as c_double, val2 as c_double) as c_long);
                 }
                 ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1);
                 }
                 DIFF => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                 }
                 _ => {}
             }
@@ -9823,7 +9942,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                previous = (lParse.Nodes[that2_idx]).value.data.lng();
                 /* the C stores this flag *in* the undef pointer field of the
                 constant node ("XXX evil, but no harm here"), so read the
                 pointer value back rather than dereferencing it */
@@ -9834,11 +9953,11 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     i = 0;
                     while i < elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
-                            curr =
-                                *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(i as isize);
+                            curr = *((lParse.Nodes[that1_idx]).value.data.lng_buf())
+                                .offset(i as isize);
                             previous += curr;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf()).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         i += 1;
@@ -9847,19 +9966,19 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Sequential difference for this chunk */
                     i = 0;
                     while i < elem {
-                        curr = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(i as isize);
+                        curr = *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(i as isize);
                         if c_int::from(*((lParse.Nodes[that1_idx]).value.undef).offset(i as isize))
                             != 0
                             || undef != 0
                         {
                             /* Either this, or previous, value was undefined */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                0;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = 0;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 1;
                         } else {
                             /* Both defined, we are okay! */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                curr - previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = curr - previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         }
                         previous = curr;
@@ -9870,7 +9989,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -9893,17 +10012,21 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     elem -= 1;
 
                     if vector1 > 1 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(elem as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(elem as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                     } else if vector1 != 0 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(rows as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(rows as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                     }
                     if vector2 > 1 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.lngptr).offset(elem as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.lng_buf()).offset(elem as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                     } else if vector2 != 0 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.lngptr).offset(rows as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.lng_buf()).offset(rows as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                     }
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -9915,59 +10038,59 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     match (lParse.Nodes[this_node_idx]).operation {
                         /* Treat as == for LONGS */
                         CHAR_TILDE | EQ => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
                         NE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
                         GT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
                         LT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
                         LTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
                         GTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
                         CHAR_PLUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
                         CHAR_MINUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
                         CHAR_STAR => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
                         CHAR_AMPERSAND => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 & val2;
                         }
                         CHAR_PIPE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 | val2;
                         }
                         CHAR_CARET => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 ^ val2;
                         }
                         CHAR_PERCENT => {
                             if val2 != 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 % val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
@@ -9975,17 +10098,17 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         CHAR_SLASH => {
                             if val2 != 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 / val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
                         POWER => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
                                 pow(val1 as c_double, val2 as c_double) as c_long;
                         }
@@ -9996,16 +10119,16 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
 
 fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
-    let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
+    let data = (lParse.Nodes[node_idx]).value.data.dbl_buf();
     let undef = (lParse.Nodes[node_idx]).value.undef;
 
     if data.is_null()
@@ -10044,14 +10167,14 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.dbl;
+            val1 = (lParse.Nodes[that1_idx]).value.data.dbl();
         }
 
         vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
+            val2 = (lParse.Nodes[that2_idx]).value.data.dbl();
         }
 
         if vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0 {
@@ -10066,59 +10189,65 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             /*  Result is a constant  */
             match (lParse.Nodes[this_node_idx]).operation {
                 CHAR_TILDE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if fabs(val1 - val2) < APPROX { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if fabs(val1 - val2) < APPROX { 1 } else { 0 });
                 }
                 EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
                 NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
                 GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
                 LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
                 LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
                 GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
                 CHAR_PLUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 + val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 + val2);
                 }
                 CHAR_MINUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 - val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 - val2);
                 }
                 CHAR_STAR => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 * val2;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 * val2);
                 }
                 CHAR_PERCENT => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            val1 - val2 * c_double::from((val1 / val2) as c_int);
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(val1 - val2 * c_double::from((val1 / val2) as c_int));
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 CHAR_SLASH => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = val1 / val2;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 / val2);
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
                 POWER => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pow(val1, val2);
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(pow(val1, val2));
                 }
                 ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1);
                 }
                 DIFF => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0);
                 }
                 _ => {}
             }
@@ -10138,7 +10267,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
 
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.dbl;
+                previous = (lParse.Nodes[that2_idx]).value.data.dbl();
                 undef = (lParse.Nodes[that2_idx]).value.undef as c_long;
                 if (lParse.Nodes[this_node_idx]).operation
                     == fits_parser_yytokentype::ACCUM as c_int
@@ -10146,11 +10275,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Cumulative sum of this chunk */
                     for i in 0..elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
-                            curr =
-                                *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(i as isize);
+                            curr = *((lParse.Nodes[that1_idx]).value.data.dbl_buf())
+                                .offset(i as isize);
                             previous += curr;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf()).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                     }
@@ -10158,19 +10287,19 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Sequential difference for this chunk */
                     i = 0;
                     while i < elem {
-                        curr = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(i as isize);
+                        curr = *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(i as isize);
                         if c_int::from(*((lParse.Nodes[that1_idx]).value.undef).offset(i as isize))
                             != 0
                             || undef != 0
                         {
                             /* Either this, or previous, value was undefined */
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
-                                0.0;
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                .offset(i as isize) = 0.0;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 1;
                         } else {
                             /* Both defined, we are okay! */
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
-                                curr - previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                .offset(i as isize) = curr - previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         }
                         previous = curr;
@@ -10181,7 +10310,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.dbl = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Double(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -10204,17 +10333,21 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     elem -= 1;
 
                     if vector1 > 1 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(elem as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(elem as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                     } else if vector1 != 0 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(rows as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(rows as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                     }
                     if vector2 > 1 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.dblptr).offset(elem as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.dbl_buf()).offset(elem as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                     } else if vector2 != 0 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.dblptr).offset(rows as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.dbl_buf()).offset(rows as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                     }
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -10225,53 +10358,53 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         };
                     match (lParse.Nodes[this_node_idx]).operation {
                         CHAR_TILDE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) =
                                 if fabs(val1 - val2) < APPROX { 1 } else { 0 };
                         }
                         EQ => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
                         NE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
                         GT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
                         LT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
                         LTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
                         GTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
                         CHAR_PLUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
                         CHAR_MINUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
                         CHAR_STAR => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
                         CHAR_PERCENT => {
                             if val2 != 0. {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
                                     val1 - val2 * c_double::from((val1 / val2) as c_int);
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
@@ -10279,17 +10412,17 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         CHAR_SLASH => {
                             if val2 != 0. {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = val1 / val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
                         POWER => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = pow(val1, val2);
                         }
                         _ => {}
@@ -10299,10 +10432,10 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
         if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
@@ -10440,7 +10573,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             naxis: 0,
             naxes: [0; 5],
             undef: core::ptr::null_mut::<c_char>(),
-            data: data_union { dbl: 0. },
+            data: NodeValue::Empty,
         }; 10];
         let mut pNull: [c_char; 10] = [0; 10];
         let mut ival: c_long = 0;
@@ -10468,22 +10601,25 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::DOUBLE as c_int
                 {
-                    pVals[i as usize].data.dbl =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.dbl;
+                    pVals[i as usize].data =
+                        NodeValue::Double((lParse.Nodes[theParams[i as usize]]).value.data.dbl());
                 } else if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::LONG as c_int
                 {
-                    pVals[i as usize].data.lng =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.lng;
+                    pVals[i as usize].data =
+                        NodeValue::Long((lParse.Nodes[theParams[i as usize]]).value.data.lng());
                 } else if (lParse.Nodes[theParams[i as usize]]).ntype
                     == fits_parser_yytokentype::BOOLEAN as c_int
                 {
-                    pVals[i as usize].data.log =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.log;
+                    pVals[i as usize].data =
+                        NodeValue::Logical((lParse.Nodes[theParams[i as usize]]).value.data.log());
                 } else {
                     strcpy(
-                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                        ((lParse.Nodes[theParams[i as usize]]).value.data.astr).as_mut_ptr(),
+                        pVals[i as usize].data.text_mut_ptr(),
+                        (lParse.Nodes[theParams[i as usize]])
+                            .value
+                            .data
+                            .text_mut_ptr(),
                     );
                 }
                 pNull[i as usize] = 0;
@@ -10510,26 +10646,29 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
+                            },
+                        ));
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BITSTR as c_int
                     {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -10537,35 +10676,39 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 AVERAGE_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            pVals[0].data.lng as c_double;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.lng() as c_double);
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 STDDEV_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0; /* Standard deviation of a constant = 0 */
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0); /* Standard deviation of a constant = 0 */
                     current_block_139 = 7627602990488000394;
                 }
                 MEDIAN_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
+                            },
+                        ));
                     } else if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10573,11 +10716,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.dbl()),
+                        ));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.lng as c_double));
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.lng() as c_double),
+                        ));
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10585,45 +10730,48 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        dval = pVals[0].data.dbl;
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if dval > 0.0 { dval } else { -dval };
+                        dval = pVals[0].data.dbl();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if dval > 0.0 { dval } else { -dval });
                     } else {
-                        ival = pVals[0].data.lng;
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if ival > 0 { ival } else { -ival };
+                        ival = pVals[0].data.lng();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if ival > 0 { ival } else { -ival });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Special Null-Handling Functions */
                 NONNULL_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 1; /* Constants are always 1-element and defined */
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(1); /* Constants are always 1-element and defined */
                     current_block_139 = 7627602990488000394;
                 }
                 ISNULL_FCT => {
                     /* Constants are always defined */
-                    (lParse.Nodes[this_node_idx]).value.data.log = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(0);
                     current_block_139 = 7627602990488000394;
                 }
                 DEFNULL_FCT => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.log = pVals[0].data.log;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Logical(pVals[0].data.log());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::STRING as c_int
                     {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -10632,118 +10780,131 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Only defined for numeric expressions */
                     if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Math functions with 1 double argument */
                 SIN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sin(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(sin(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 COS_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cos(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(cos(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 TAN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(tan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 ASIN_FCT => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = asin(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(asin(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 ACOS_FCT => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = acos(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(acos(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 ATAN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = atan(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(atan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 SINH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sinh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(sinh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 COSH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cosh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(cosh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 TANH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tanh(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(tanh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 EXP_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = exp(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(exp(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 LOG_FCT => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(log(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 LOG10_FCT => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log10(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(log10(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 SQRT_FCT => {
-                    dval = pVals[0].data.dbl;
+                    dval = pVals[0].data.dbl();
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = sqrt(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(sqrt(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 CEIL_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = ceil(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(ceil(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 FLOOR_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(floor(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 ROUND_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl + 0.5);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(floor(pVals[0].data.dbl() + 0.5));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Two-argument Trig Functions */
                 ATAN2_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl =
-                        atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(atan2(pVals[0].data.dbl(), pVals[1].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Four-argument ANGSEP function */
                 ANGSEP_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = angsep_calc(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(angsep_calc(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                    ));
                     /* DEVIATION from CFITSIO 4.7.0: "case angsep_fct:" there
                     is missing its "break;" and falls through into
                     "case min1_fct:", which overwrites the separation just
@@ -10761,21 +10922,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
+                                pVals[1].data.dbl()
+                            });
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng < pVals[1].data.lng {
-                                pVals[0].data.lng
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if pVals[0].data.lng() < pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10783,17 +10944,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BITSTR as c_int
                     {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
@@ -10802,98 +10965,102 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
+                                pVals[1].data.dbl()
+                            });
                     } else if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::LONG as c_int
                     {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng > pVals[1].data.lng {
-                                pVals[0].data.lng
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if pVals[0].data.lng() > pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Boolean SAO region Functions... scalar or vector dbls */
                 NEAR_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bnear(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 CIRCLE_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = circle(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(circle(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 BOX_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = saobox(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(saobox(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 ELPS_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = ellipse(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(ellipse(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 /* C Conditional expression:  bool ? expr : expr */
                 IFTHENELSE_FCT => {
                     match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
-                            (lParse.Nodes[this_node_idx]).value.data.log =
-                                (if c_int::from(pVals[2].data.log) != 0 {
-                                    c_int::from(pVals[0].data.log)
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                                (if c_int::from(pVals[2].data.log()) != 0 {
+                                    c_int::from(pVals[0].data.log())
                                 } else {
-                                    c_int::from(pVals[1].data.log)
-                                }) as c_char;
+                                    c_int::from(pVals[1].data.log())
+                                }) as c_char,
+                            );
                         }
                         fits_parser_yytokentype::LONG => {
-                            (lParse.Nodes[this_node_idx]).value.data.lng =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.lng
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Long(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.lng()
                                 } else {
-                                    pVals[1].data.lng
-                                };
+                                    pVals[1].data.lng()
+                                });
                         }
                         fits_parser_yytokentype::DOUBLE => {
-                            (lParse.Nodes[this_node_idx]).value.data.dbl =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.dbl
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Double(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.dbl()
                                 } else {
-                                    pVals[1].data.dbl
-                                };
+                                    pVals[1].data.dbl()
+                                });
                         }
                         fits_parser_yytokentype::STRING => {
                             strcpy(
-                                ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    (pVals[0].data.astr).as_mut_ptr()
+                                (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                                if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.text_mut_ptr()
                                 } else {
-                                    (pVals[1].data.astr).as_mut_ptr()
+                                    pVals[1].data.text_mut_ptr()
                                 },
                             );
                         }
@@ -10903,28 +11070,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 /* String functions */
                 STRMID_FCT => {
-                    let dest_str = ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr();
+                    let dest_str = (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                     cstrmid(
                         lParse,
                         dest_str,
                         dest_len,
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        pVals[0].data.text_mut_ptr(),
                         pVals[0].nelem as c_int,
-                        pVals[1].data.lng as c_int,
+                        pVals[1].data.lng() as c_int,
                     );
                     current_block_139 = 7627602990488000394;
                 }
                 STRPOS_FCT => {
-                    let res: *mut c_char = strstr(
-                        (pVals[0].data.astr).as_mut_ptr(),
-                        (pVals[1].data.astr).as_mut_ptr(),
-                    );
+                    let res: *mut c_char =
+                        strstr(pVals[0].data.text_mut_ptr(), pVals[1].data.text_mut_ptr());
                     if res.is_null() {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            res.offset_from((pVals[0].data.astr).as_mut_ptr()) as c_long + 1;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(
+                            res.offset_from(pVals[0].data.text_mut_ptr()) as c_long + 1,
+                        );
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -10934,17 +11100,18 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             }
             if current_block_139 == 15934000668868306918 {
                 if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(pVals[0].data.dbl());
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::LONG as c_int
                 {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(pVals[0].data.lng());
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                 {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                        pVals[0].data.text_mut_ptr(),
                     );
                 }
             }
@@ -10962,8 +11129,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh53 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(row as isize) =
-                            lParse.firstRow + row;
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(row as isize) = lParse.firstRow + row;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
                     },
                     NULL_FCT => {
@@ -10976,7 +11143,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh54 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
@@ -10990,7 +11157,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh55 == 0 {
                                     break;
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11002,7 +11169,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
                         /* This should be a constant long value */
-                        let ipos: c_long = pVals[1].data.lng - 1;
+                        let ipos: c_long = pVals[1].data.lng() - 1;
                         let naxis: c_int = (lParse.Nodes[this_node_idx]).value.naxis;
                         let mut j: c_int = 0;
                         if ipos < 0 || ipos >= 5 as c_long {
@@ -11010,11 +11177,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 lParse,
                                 cs!(c"AXISELEM(V,n) n value exceeded maximum dimension"),
                             );
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            free((lParse.Nodes[this_node_idx]).value.data.raw());
                         } else {
                             ielem = 0;
                             while ielem < elem {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(ielem as isize) = iaxis[ipos as usize];
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(ielem as isize) = 0;
@@ -11042,7 +11209,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         let j_0: c_int = 0;
                         ielem_0 = 0;
                         while ielem_0 < elem {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(ielem_0 as isize) = elemnum;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(ielem_0 as isize) =
                                 0;
@@ -11059,8 +11226,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh56 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            simplerng_getuniform();
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = simplerng_getuniform();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
                     GASRND_FCT => loop {
@@ -11069,8 +11236,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh57 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            simplerng_getnorm();
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = simplerng_getnorm();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
                     POIRND_FCT => {
@@ -11086,14 +11253,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) =
-                                        if pVals[0].data.dbl < 0.0 { 1 } else { 0 };
+                                        if pVals[0].data.dbl() < 0.0 { 1 } else { 0 };
                                     if *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl()));
                                     }
                                 }
                             } else {
@@ -11107,7 +11274,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize) =
                                         *((lParse.Nodes[theParams[0]]).value.undef)
                                             .offset(elem as isize);
-                                    if *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    if *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                         .offset(elem as isize)
                                         < 0.0
                                     {
@@ -11118,11 +11285,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
                                             c_long::from(simplerng_getpoisson(
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize),
+                                                *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
                                             ));
                                     }
                                 }
@@ -11136,14 +11306,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
-                                    if pVals[0].data.lng < 0 { 1 } else { 0 };
+                                    if pVals[0].data.lng() < 0 { 1 } else { 0 };
                                 if *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize)
                                     == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(elem as isize) = c_long::from(
-                                        simplerng_getpoisson(pVals[0].data.lng as c_double),
+                                        simplerng_getpoisson(pVals[0].data.lng() as c_double),
                                     );
                                 }
                             }
@@ -11158,7 +11328,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) =
                                     *((lParse.Nodes[theParams[0]]).value.undef)
                                         .offset(elem as isize);
-                                if *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                if *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize)
                                     < 0
                                 {
@@ -11169,10 +11339,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize)
                                     == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(elem as isize) =
                                         c_long::from(simplerng_getpoisson(
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize)
                                                 as c_double,
                                         ));
@@ -11192,7 +11362,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh62 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11210,11 +11380,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize) += c_long::from(
                                             if c_int::from(
-                                                *((lParse.Nodes[theParams[0]]).value.data.logptr)
-                                                    .offset(elem as isize),
+                                                *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .log_buf())
+                                                .offset(elem as isize),
                                             ) != 0
                                             {
                                                 1
@@ -11236,7 +11409,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh64 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11254,9 +11427,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize);
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(row as isize) = 0;
@@ -11272,7 +11445,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh66 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11290,9 +11463,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                 .offset(elem as isize);
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(row as isize) = 0;
@@ -11308,17 +11481,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     0;
                                 while *sptr1 != 0 {
                                     if c_int::from(*sptr1) == '1' as i32 {
-                                        let fresh69 =
-                                            &mut *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                                .offset(row as isize);
+                                        let fresh69 = &mut *((lParse.Nodes[this_node_idx])
+                                            .value
+                                            .data
+                                            .lng_buf())
+                                        .offset(row as isize);
                                         *fresh69 += 1;
                                     }
                                     sptr1 = sptr1.offset(1);
@@ -11338,7 +11513,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut count: c_int = 0;
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                                 loop {
@@ -11354,9 +11529,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize)
                                                 as c_double;
                                         count += 1;
@@ -11368,7 +11543,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) /= c_double::from(count);
                                 }
                             }
@@ -11382,7 +11557,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut count_0: c_int = 0;
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                                 loop {
@@ -11398,9 +11573,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                 .offset(elem as isize);
                                         count_0 += 1;
                                     }
@@ -11411,7 +11586,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) /= c_double::from(count_0);
                                 }
                             }
@@ -11446,7 +11621,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        sum += *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                        sum += *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                             .offset(elem as isize)
                                             as c_double;
                                         count_1 += 1;
@@ -11471,23 +11646,25 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                                 .offset(elem as isize),
                                         ) == 0
                                         {
-                                            let dx: c_double =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
-                                                    as c_double
-                                                    - sum;
+                                            let dx: c_double = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize)
+                                                as c_double
+                                                - sum;
                                             sum2 += dx * dx;
                                         }
                                     }
                                     sum2 /= c_double::from(count_1) - c_double::from(1);
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0; /* STDDEV => 0 */
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = sqrt(sum2);
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = 0.0;
                                 }
                             }
@@ -11518,8 +11695,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        sum_0 += *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                        sum_0 +=
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
+                                                .offset(elem as isize);
                                         count_2 += 1;
                                     }
                                 }
@@ -11542,22 +11720,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                                 .offset(elem as isize),
                                         ) == 0
                                         {
-                                            let dx_0: c_double =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
-                                                    - sum_0;
+                                            let dx_0: c_double = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize)
+                                                - sum_0;
                                             sum2_0 += dx_0 * dx_0;
                                         }
                                     }
                                     sum2_0 /= c_double::from(count_2) - c_double::from(1);
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0; /* STDDEV => 0 */
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = sqrt(sum2_0);
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = 0.0;
                                 }
                             }
@@ -11570,7 +11750,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             == fits_parser_yytokentype::LONG as c_int
                         {
                             let mut dptr: *mut c_long =
-                                (lParse.Nodes[theParams[0]]).value.data.lngptr;
+                                (lParse.Nodes[theParams[0]]).value.data.lng_buf();
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mptr: *mut c_long = malloc(
                                 (::core::mem::size_of::<c_long>() as c_ulong)
@@ -11587,7 +11767,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
                                 irow = 0;
                                 while c_long::from(irow) < row {
@@ -11611,14 +11791,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if nelem1 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(irow as isize) = qselect_median(
                                             slice::from_raw_parts_mut(mptr, nelem1 as usize),
                                         );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(irow as isize) = 0;
                                     }
                                     irow += 1;
@@ -11627,7 +11807,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         } else {
                             let mut dptr_0: *mut c_double =
-                                (lParse.Nodes[theParams[0]]).value.data.dblptr;
+                                (lParse.Nodes[theParams[0]]).value.data.dbl_buf();
                             let mut uptr_0: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mptr_0: *mut c_double = malloc(
                                 (::core::mem::size_of::<c_double>() as c_ulong)
@@ -11644,7 +11824,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
                                 irow_0 = 0;
                                 while c_long::from(irow_0) < row {
@@ -11668,14 +11848,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if nelem1_0 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(irow_0 as isize) = qselect_median(
                                             slice::from_raw_parts_mut(mptr_0, nelem1_0 as usize),
                                         );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(irow_0 as isize) = 0.0;
                                     }
                                     irow_0 += 1;
@@ -11694,9 +11874,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh84 == 0 {
                                     break;
                                 }
-                                dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = if dval > 0.0 { dval } else { -dval };
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -11710,9 +11890,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh85 == 0 {
                                     break;
                                 }
-                                ival = *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                ival = *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = if ival > 0 { ival } else { -ival };
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -11738,7 +11918,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let mut nelem1_1: c_int = nelem as c_int;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0; /* Initialize to 0 (defined) */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) = 0;
                             loop {
                                 let fresh87 = nelem1_1;
@@ -11754,7 +11934,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 ) == 0
                                 {
                                     let fresh88 =
-                                        &mut *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        &mut *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize);
                                     *fresh88 += 1;
                                 }
@@ -11773,7 +11953,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if fresh89 == 0 {
                                 break;
                             }
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) =
                                 *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
@@ -11806,34 +11986,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                        .offset(elem as isize) = pVals[1].data.log;
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                        .offset(elem as isize) = pVals[1].data.log();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                        .offset(elem as isize) = pVals[0].data.log;
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                        .offset(elem as isize) = pVals[0].data.log();
                                 }
                             }
                         },
@@ -11863,34 +12045,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                        .offset(elem as isize) = pVals[1].data.lng;
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                        .offset(elem as isize) = pVals[1].data.lng();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                        .offset(elem as isize) = pVals[0].data.lng;
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                        .offset(elem as isize) = pVals[0].data.lng();
                                 }
                             }
                         },
@@ -11920,34 +12104,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(elem as isize) = pVals[1].data.dbl;
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                        .offset(elem as isize) = pVals[1].data.dbl();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(elem as isize) = pVals[0].data.dbl;
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                        .offset(elem as isize) = pVals[0].data.dbl();
                                 }
                             }
                         },
@@ -11969,9 +12155,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.strptr)
-                                            .offset(row as isize),
+                                        pVals[i as usize].data.text_mut_ptr(),
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .str_buf())
+                                        .offset(row as isize),
                                     );
                                 }
                             }
@@ -11979,17 +12168,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     pNull[1];
                                 strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
-                                    (pVals[1].data.astr).as_mut_ptr(),
+                                    pVals[1].data.text_mut_ptr(),
                                 );
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 0;
                                 strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
-                                    (pVals[0].data.astr).as_mut_ptr(),
+                                    pVals[0].data.text_mut_ptr(),
                                 );
                             }
                         },
@@ -12002,18 +12191,18 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if fresh101 == 0 {
                                 break;
                             }
-                            if (lParse.Nodes[theParams[1]]).value.data.lng
-                                == *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                            if (lParse.Nodes[theParams[1]]).value.data.lng()
+                                == *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize)
                             {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) =
-                                    *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                         .offset(elem as isize);
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -12027,18 +12216,18 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if fresh102 == 0 {
                                 break;
                             }
-                            if (lParse.Nodes[theParams[1]]).value.data.dbl
-                                == *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            if (lParse.Nodes[theParams[1]]).value.data.dbl()
+                                == *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize)
                             {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
-                                    *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                         .offset(elem as isize);
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -12060,9 +12249,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh104 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh104 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                sin(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                sin(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
@@ -12077,9 +12266,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh106 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh106 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                cos(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                cos(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
@@ -12094,9 +12283,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh108 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh108 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                tan(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                tan(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
@@ -12111,15 +12300,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh110 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh110 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < -1.0 || dval > 1.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = asin(dval);
                             }
                         }
@@ -12135,15 +12324,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh112 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh112 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < -1.0 || dval > 1.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = acos(dval);
                             }
                         }
@@ -12159,9 +12348,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh114 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh114 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = atan(dval);
                         }
                     },
@@ -12176,9 +12365,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh116 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh116 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = sinh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
@@ -12194,9 +12383,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh118 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh118 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = cosh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
@@ -12212,9 +12401,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh120 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh120 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = tanh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
@@ -12230,9 +12419,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh122 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh122 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = exp(dval);
                         }
                     },
@@ -12247,15 +12436,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh124 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh124 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval <= 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = log(dval);
                             }
                         }
@@ -12271,15 +12460,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh126 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh126 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval <= 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = log10(dval);
                             }
                         }
@@ -12295,15 +12484,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh128 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh128 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = sqrt(dval);
                             }
                         }
@@ -12319,9 +12508,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh130 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh130 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = ceil(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
@@ -12337,9 +12526,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh132 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh132 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
@@ -12355,9 +12544,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh134 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh134 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize)
                                     + 0.5,
                             );
@@ -12387,16 +12576,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12411,9 +12608,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 0
                             };
                             if *fresh138 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
-                                    atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                                    atan2(pVals[0].data.dbl(), pVals[1].data.dbl());
                             }
                         }
                     },
@@ -12440,16 +12637,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12464,12 +12669,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[3]) != 0,
                             ) as c_char;
                             if *fresh142 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = angsep_calc(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
                                 );
                             }
                         }
@@ -12504,17 +12709,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            minVal =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize);
+                                            minVal = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             minVal = if minVal
-                                                < *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
+                                                < *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize)
                                             {
                                                 minVal
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12522,7 +12732,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = minVal;
                             }
                         } else if (lParse.Nodes[this_node_idx]).ntype
@@ -12552,17 +12762,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            minVal_0 =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize);
+                                            minVal_0 = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             minVal_0 = if minVal_0
-                                                < *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
+                                                < *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize)
                                             {
                                                 minVal_0
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12570,7 +12785,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = minVal_0;
                             }
                         } else if (lParse.Nodes[this_node_idx]).ntype
@@ -12584,7 +12799,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1_0: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
                                 minVal_1 = b'1' as c_char;
                                 while *sptr1_0 != 0 {
@@ -12593,10 +12808,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     sptr1_0 = sptr1_0.offset(1);
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = minVal_1;
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(1) = 0;
                             }
@@ -12628,24 +12843,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12656,27 +12873,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) = 0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng < pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() < pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
@@ -12706,24 +12923,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12734,27 +12953,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) = 0.0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
@@ -12790,17 +13009,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            maxVal =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize);
+                                            maxVal = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             maxVal = if maxVal
-                                                > *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
+                                                > *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize)
                                             {
                                                 maxVal
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12808,7 +13032,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = maxVal;
                             }
                         } else if (lParse.Nodes[this_node_idx]).ntype
@@ -12838,17 +13062,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            maxVal_0 =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize);
+                                            maxVal_0 = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             maxVal_0 = if maxVal_0
-                                                > *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
+                                                > *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize)
                                             {
                                                 maxVal_0
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12856,7 +13085,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = maxVal_0;
                             }
                         } else if (lParse.Nodes[this_node_idx]).ntype
@@ -12870,7 +13099,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1_1: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
                                 maxVal_1 = b'0' as c_char;
                                 while *sptr1_1 != 0 {
@@ -12879,10 +13108,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     sptr1_1 = sptr1_1.offset(1);
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = maxVal_1;
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(1) = 0;
                             }
@@ -12914,24 +13143,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12942,27 +13173,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) = 0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng > pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() > pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
@@ -12992,24 +13223,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -13020,27 +13253,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) = 0.0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
@@ -13070,16 +13303,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13093,9 +13334,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[2]) != 0,
                             ) as c_char;
                             if *fresh168 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                    .offset(elem as isize) =
-                                    bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                    .offset(elem as isize) = bnear(
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                );
                             }
                         }
                     },
@@ -13121,16 +13365,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13146,13 +13398,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[4]) != 0,
                             ) as c_char;
                             if *fresh172 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = circle(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
                                 );
                             }
                         }
@@ -13179,16 +13431,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13206,15 +13466,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[6]) != 0,
                             ) as c_char;
                             if *fresh176 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = saobox(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
@@ -13241,16 +13501,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13268,15 +13536,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[6]) != 0,
                             ) as c_char;
                             if *fresh180 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = ellipse(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
@@ -13298,15 +13566,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13318,22 +13588,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13343,14 +13615,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh184 = pNull[2];
                                 if *fresh184 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                            .offset(elem as isize) = pVals[0].data.log;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                            .offset(elem as isize) = pVals[0].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                            .offset(elem as isize) = pVals[1].data.log;
+                                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                            .offset(elem as isize) = pVals[1].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -13372,15 +13644,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13392,22 +13666,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13417,14 +13693,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh188 = pNull[2];
                                 if *fresh188 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -13446,15 +13722,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13466,22 +13744,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13491,14 +13771,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh192 = pNull[2];
                                 if *fresh192 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
@@ -13512,9 +13792,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 break;
                             }
                             if vector[2] != 0 {
-                                pVals[2].data.log =
-                                    *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                        .offset(row as isize);
+                                pVals[2].data = NodeValue::Logical(
+                                    *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                        .offset(row as isize),
+                                );
                                 pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                     .offset(row as isize);
                             }
@@ -13527,9 +13808,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 if vector[i as usize] != 0 {
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.strptr)
-                                            .offset(row as isize),
+                                        pVals[i as usize].data.text_mut_ptr(),
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .str_buf())
+                                        .offset(row as isize),
                                     );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
@@ -13540,25 +13824,25 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(row as isize);
                             *fresh195 = pNull[2];
                             if *fresh195 == 0 {
-                                if pVals[2].data.log != 0 {
+                                if pVals[2].data.log() != 0 {
                                     strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                             .offset(row as isize),
-                                        (pVals[0].data.astr).as_mut_ptr(),
+                                        pVals[0].data.text_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[0];
                                 } else {
                                     strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                             .offset(row as isize),
-                                        (pVals[1].data.astr).as_mut_ptr(),
+                                        pVals[1].data.text_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[1];
                                 }
                             } else {
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = 0;
                             }
@@ -13585,9 +13869,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut str: *mut c_char = ptr::null_mut();
                             let mut undef: c_int = 0;
                             if posconst != 0 {
-                                pos = (lParse.Nodes[theParams[1]]).value.data.lng as c_int;
+                                pos = (lParse.Nodes[theParams[1]]).value.data.lng() as c_int;
                             } else {
-                                pos = *((lParse.Nodes[theParams[1]]).value.data.lngptr)
+                                pos = *((lParse.Nodes[theParams[1]]).value.data.lng_buf())
                                     .offset(row as isize)
                                     as c_int;
                                 if *((lParse.Nodes[theParams[1]]).value.undef).offset(row as isize)
@@ -13597,12 +13881,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if strconst != 0 {
-                                str = ((lParse.Nodes[theParams[0]]).value.data.astr).as_mut_ptr();
+                                str = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
                                 if src_len == 0 {
                                     src_len = strlen(str) as c_int;
                                 }
                             } else {
-                                str = *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                str = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
@@ -13613,7 +13897,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if lenconst != 0 {
                                 len = dest_len;
                             } else {
-                                len = *((lParse.Nodes[theParams[2]]).value.data.lngptr)
+                                len = *((lParse.Nodes[theParams[2]]).value.data.lng_buf())
                                     .offset(row as isize)
                                     as c_int;
                                 if *((lParse.Nodes[theParams[2]]).value.undef).offset(row as isize)
@@ -13622,7 +13906,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     undef = 1;
                                 }
                             }
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(0) = 0;
                             if pos == 0 {
@@ -13631,7 +13915,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if undef == 0
                                 && cstrmid(
                                     lParse,
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
                                     len,
                                     str,
@@ -13660,9 +13944,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut str2: *mut c_char = ptr::null_mut();
                             let mut undef_0: c_int = 0;
                             if const1 != 0 {
-                                str1 = ((lParse.Nodes[theParams[0]]).value.data.astr).as_mut_ptr();
+                                str1 = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
                             } else {
-                                str1 = *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                str1 = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
@@ -13671,9 +13955,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if const2 != 0 {
-                                str2 = ((lParse.Nodes[theParams[1]]).value.data.astr).as_mut_ptr();
+                                str2 = (lParse.Nodes[theParams[1]]).value.data.text_mut_ptr();
                             } else {
-                                str2 = *((lParse.Nodes[theParams[1]]).value.data.strptr)
+                                str2 = *((lParse.Nodes[theParams[1]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[1]]).value.undef).offset(row as isize)
                                     != 0
@@ -13681,16 +13965,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     undef_0 = 1;
                                 }
                             }
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) = 0;
                             if undef_0 == 0 {
                                 let res_0: *mut c_char = strstr(str1, str2);
                                 if res_0.is_null() {
                                     undef_0 = 1;
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(row as isize) = 0;
                                 } else {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(row as isize) =
                                         res_0.offset_from(str1) as c_long + 1;
                                 }
@@ -13713,7 +13997,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             }
             if (lParse.Nodes[theParams[i as usize]]).operation > 0 {
                 /*  Currently only numeric params allowed  */
-                free((lParse.Nodes[theParams[i as usize]]).value.data.ptr);
+                free((lParse.Nodes[theParams[i as usize]]).value.data.raw());
             }
         }
     }
@@ -13748,7 +14032,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             isConst[i as usize] =
                 c_int::from((lParse.Nodes[theDims[i as usize]]).operation == CONST_OP);
             if isConst[i as usize] != 0 {
-                dimVals[i as usize] = (lParse.Nodes[theDims[i as usize]]).value.data.lng;
+                dimVals[i as usize] = (lParse.Nodes[theDims[i as usize]]).value.data.lng();
             } else {
                 allConst = 0;
             }
@@ -13807,32 +14091,36 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.dblptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.dbl_buf())
+                                    .offset(elem as isize);
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.lngptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.lng_buf())
+                                    .offset(elem as isize);
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BOOLEAN as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.logptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.log_buf())
+                                    .offset(elem as isize);
                         } else {
                             /* XXX Note, the below expression uses knowledge of
                             the layout of the string format, namely (nelem+1)
                             characters per string, followed by (nelem+1)
                             "undef" values. */
 
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
-                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.strptr).offset(0))
-                                .offset((elem + row) as isize);
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.str_buf())
+                                .offset(0))
+                            .offset((elem + row) as isize);
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(1) = 0; /* Null terminate */
                         }
@@ -13841,8 +14129,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -13853,8 +14140,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                 } else if (lParse.Nodes[this_node_idx]).ntype
                     == fits_parser_yytokentype::BITSTR as c_int
                     || (lParse.Nodes[this_node_idx]).ntype
@@ -13868,7 +14154,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
                         }
                         memcpy(
-                            (*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0))
+                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0))
                                 .offset(
                                     (row as c_ulong)
                                         .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
@@ -13878,7 +14164,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                         ) as isize,
                                 )
                                 .cast::<c_void>(),
-                            (*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).offset(
+                            (*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).offset(
                                 (elem as c_ulong)
                                     .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
                                     as isize,
@@ -13888,7 +14174,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 .try_into()
                                 .unwrap(),
                         );
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(row as isize))
                         .offset((lParse.Nodes[this_node_idx]).value.nelem as isize) = 0; /* Null terminate */
                         elem += (lParse.Nodes[theVar]).value.nelem + 1;
@@ -13913,7 +14199,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .ptr
+                                .raw()
                                 .cast::<c_char>()
                                 .offset(
                                     (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -13923,7 +14209,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[theVar])
                                 .value
                                 .data
-                                .ptr
+                                .raw()
                                 .cast::<c_char>()
                                 .offset((elem * dsize) as isize)
                                 as *const c_void,
@@ -13950,12 +14236,11 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Null encountered as vector index"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                                (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                                (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                                 break;
                             } else {
                                 dimVals[i as usize] =
-                                    *((lParse.Nodes[theDims[i as usize]]).value.data.lngptr)
+                                    *((lParse.Nodes[theDims[i as usize]]).value.data.lng_buf())
                                         .offset(row as isize);
                             }
                         }
@@ -13998,38 +14283,41 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.dblptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.dbl_buf())
+                                    .offset(elem as isize);
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.lngptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.lng_buf())
+                                    .offset(elem as isize);
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BOOLEAN as c_int
                         {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.logptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.log_buf())
+                                    .offset(elem as isize);
                         } else {
                             /* XXX Note, the below expression uses knowledge of
                             the layout of the string format, namely (nelem+1)
                             characters per string, followed by (nelem+1)
                             "undef" values. */
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
-                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.strptr).offset(0))
-                                .offset((elem + row) as isize);
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.str_buf())
+                                .offset(0))
+                            .offset((elem + row) as isize);
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(1) = 0; /* Null terminate */
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                     }
                     row += 1;
                 }
@@ -14040,20 +14328,18 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Index cannot be a constant */
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                         break;
                     } else {
                         dimVals[0] =
-                            *((lParse.Nodes[theDims[0]]).value.data.lngptr).offset(row as isize);
+                            *((lParse.Nodes[theDims[0]]).value.data.lng_buf()).offset(row as isize);
                         if dimVals[0] < 1
                             || dimVals[0]
                                 > (lParse.Nodes[theVar]).value.naxes
                                     [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                            (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                            (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                         } else if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::BITSTR as c_int
                             || (lParse.Nodes[this_node_idx]).ntype
@@ -14066,7 +14352,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
                             }
                             memcpy(
-                                (*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0))
+                                (*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0))
                                     .offset(
                                         (row as c_ulong)
                                             .wrapping_mul(
@@ -14078,7 +14364,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                             ) as isize,
                                     )
                                     .cast::<c_void>(),
-                                (*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).offset(
+                                (*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).offset(
                                     (elem as c_ulong)
                                         .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
                                         as isize,
@@ -14088,7 +14374,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     .try_into()
                                     .unwrap(),
                             );
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset((lParse.Nodes[this_node_idx]).value.nelem as isize) = 0; /* Null terminate */
                         } else {
@@ -14111,7 +14397,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[this_node_idx])
                                     .value
                                     .data
-                                    .ptr
+                                    .raw()
                                     .cast::<c_char>()
                                     .offset(
                                         (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -14121,7 +14407,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[theVar])
                                     .value
                                     .data
-                                    .ptr
+                                    .raw()
                                     .cast::<c_char>()
                                     .offset((elem * dsize) as isize)
                                     as *const c_void,
@@ -14139,15 +14425,15 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             if (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::STRING as c_int
                 || (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::BITSTR as c_int
             {
-                free((*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).cast::<c_void>());
+                free((*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).cast::<c_void>());
             } else {
-                free((lParse.Nodes[theVar]).value.data.ptr);
+                free((lParse.Nodes[theVar]).value.data.raw());
             }
         }
         i = 0;
         while i < nDims {
             if (lParse.Nodes[theDims[i as usize]]).operation > 0 {
-                free((lParse.Nodes[theDims[i as usize]]).value.data.ptr);
+                free((lParse.Nodes[theDims[i as usize]]).value.data.raw());
             }
             i += 1;
         }
@@ -14172,12 +14458,12 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         let theExpr = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
-        start = (lParse.Nodes[theTimes]).value.data.dblptr;
-        stop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize);
+        start = (lParse.Nodes[theTimes]).value.data.dbl_buf();
+        stop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize);
         ordered = (lParse.Nodes[theTimes]).ntype;
         if (lParse.Nodes[theExpr]).operation == CONST_OP {
             gti = Search_GTI(
-                (lParse.Nodes[theExpr]).value.data.dbl,
+                (lParse.Nodes[theExpr]).value.data.dbl(),
                 nGTI,
                 start,
                 stop,
@@ -14185,15 +14471,16 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                 core::ptr::null_mut::<c_long>(),
             );
             if dorow != 0 {
-                (lParse.Nodes[this_node_idx]).value.data.lng =
-                    if gti >= 0 { gti + 1 } else { -(1) as c_long };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    NodeValue::Long(if gti >= 0 { gti + 1 } else { -(1) as c_long });
             } else {
-                (lParse.Nodes[this_node_idx]).value.data.log = if gti >= 0 { 1 } else { 0 };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    NodeValue::Logical(if gti >= 0 { 1 } else { 0 });
             }
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
-            times = (lParse.Nodes[theExpr]).value.data.dblptr;
+            times = (lParse.Nodes[theExpr]).value.data.dbl_buf();
             if lParse.status == 0 {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
@@ -14225,13 +14512,13 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                         if dorow != 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
                                 if gti >= 0 { gti + 1 } else { -(1) as c_long };
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
                                 (if gti >= 0 { 0 } else { 1 }) as c_char;
                         } else {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if gti >= 0 { 1 } else { 0 };
                         }
                     }
@@ -14254,15 +14541,15 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh205 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            0;
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) = 0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     }
                 }
             }
         }
         if (lParse.Nodes[theExpr]).operation > 0 {
-            free((lParse.Nodes[theExpr]).value.data.ptr);
+            free((lParse.Nodes[theExpr]).value.data.raw());
         }
     }
 }
@@ -14287,19 +14574,19 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         let theStart = (lParse.Nodes[this_node_idx]).SubNodes[1]; /* User stop time */
 
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
-        gtiStart = (lParse.Nodes[theTimes]).value.data.dblptr; /* GTI start */
-        gtiStop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize); /* GTI stop */
+        gtiStart = (lParse.Nodes[theTimes]).value.data.dbl_buf(); /* GTI start */
+        gtiStop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize); /* GTI stop */
         if (lParse.Nodes[theStart]).operation == CONST_OP
             && (lParse.Nodes[theStop]).operation == CONST_OP
         {
-            (lParse.Nodes[this_node_idx]).value.data.dbl = GTI_Over(
-                (lParse.Nodes[theStart]).value.data.dbl,
-                (lParse.Nodes[theStop]).value.data.dbl,
+            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(GTI_Over(
+                (lParse.Nodes[theStart]).value.data.dbl(),
+                (lParse.Nodes[theStop]).value.data.dbl(),
                 nGTI,
                 gtiStart,
                 gtiStop,
                 &mut gti,
-            );
+            ));
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             let mut undefStart: c_char = 0;
@@ -14307,16 +14594,16 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
             let mut uStart: c_double = 0.0;
             let mut uStop: c_double = 0.0; /* User start/stop values */
             if (lParse.Nodes[theStart]).operation == CONST_OP {
-                uStart = (lParse.Nodes[theStart]).value.data.dbl;
+                uStart = (lParse.Nodes[theStart]).value.data.dbl();
             }
             if (lParse.Nodes[theStop]).operation == CONST_OP {
-                uStop = (lParse.Nodes[theStop]).value.data.dbl;
+                uStop = (lParse.Nodes[theStop]).value.data.dbl();
             }
 
             Allocate_Ptrs(lParse, this_node_idx);
 
-            evtStart = (lParse.Nodes[theStart]).value.data.dblptr;
-            evtStop = (lParse.Nodes[theStop]).value.data.dblptr;
+            evtStart = (lParse.Nodes[theStart]).value.data.dbl_buf();
+            evtStop = (lParse.Nodes[theStop]).value.data.dbl_buf();
             if lParse.status == 0 {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
@@ -14364,8 +14651,8 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         }
 
                         /* This works because at least one of the values is not const */
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            toverlap;
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = toverlap;
                     }
                 } else {
                     /* nGTI == 0; there is no overlap so set all values to 0.0 */
@@ -14375,18 +14662,18 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh208 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            0.0;
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = 0.0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     }
                 }
             }
         }
         if (lParse.Nodes[theStart]).operation > 0 {
-            free((lParse.Nodes[theStart]).value.data.ptr);
+            free((lParse.Nodes[theStart]).value.data.raw());
         }
         if (lParse.Nodes[theStop]).operation > 0 {
-            free((lParse.Nodes[theStop]).value.data.ptr);
+            free((lParse.Nodes[theStop]).value.data.raw());
         }
     }
 }
@@ -14583,25 +14870,31 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
         if Xvector != 0 {
             Xvector = (lParse.Nodes[theX]).value.nelem as c_int;
         } else {
-            Xval = (lParse.Nodes[theX]).value.data.dbl;
+            Xval = (lParse.Nodes[theX]).value.data.dbl();
         }
         Yvector = c_int::from((lParse.Nodes[theY]).operation != CONST_OP);
         if Yvector != 0 {
             Yvector = (lParse.Nodes[theY]).value.nelem as c_int;
         } else {
-            Yval = (lParse.Nodes[theY]).value.data.dbl;
+            Yval = (lParse.Nodes[theY]).value.data.dbl();
         }
         if Xvector == 0 && Yvector == 0 {
-            (lParse.Nodes[this_node_idx]).value.data.log = if fits_in_region(
-                Xval,
-                Yval,
-                &*(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
-            ) != 0
-            {
-                1
-            } else {
-                0
-            };
+            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                if fits_in_region(
+                    Xval,
+                    Yval,
+                    &*(lParse.Nodes[theRegion])
+                        .value
+                        .data
+                        .raw()
+                        .cast::<SAORegion>(),
+                ) != 0
+                {
+                    1
+                } else {
+                    0
+                },
+            );
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
@@ -14623,17 +14916,21 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         elem -= 1;
                         if Xvector > 1 {
-                            Xval = *((lParse.Nodes[theX]).value.data.dblptr).offset(elem as isize);
+                            Xval =
+                                *((lParse.Nodes[theX]).value.data.dbl_buf()).offset(elem as isize);
                             Xnull = *((lParse.Nodes[theX]).value.undef).offset(elem as isize);
                         } else if Xvector != 0 {
-                            Xval = *((lParse.Nodes[theX]).value.data.dblptr).offset(rows as isize);
+                            Xval =
+                                *((lParse.Nodes[theX]).value.data.dbl_buf()).offset(rows as isize);
                             Xnull = *((lParse.Nodes[theX]).value.undef).offset(rows as isize);
                         }
                         if Yvector > 1 {
-                            Yval = *((lParse.Nodes[theY]).value.data.dblptr).offset(elem as isize);
+                            Yval =
+                                *((lParse.Nodes[theY]).value.data.dbl_buf()).offset(elem as isize);
                             Ynull = *((lParse.Nodes[theY]).value.undef).offset(elem as isize);
                         } else if Yvector != 0 {
-                            Yval = *((lParse.Nodes[theY]).value.data.dblptr).offset(rows as isize);
+                            Yval =
+                                *((lParse.Nodes[theY]).value.data.dbl_buf()).offset(rows as isize);
                             Ynull = *((lParse.Nodes[theY]).value.undef).offset(rows as isize);
                         }
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -14645,27 +14942,31 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) != 0 {
                             continue;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            if fits_in_region(
-                                Xval,
-                                Yval,
-                                &*(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
-                            ) != 0
-                            {
-                                1
-                            } else {
-                                0
-                            };
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) = if fits_in_region(
+                            Xval,
+                            Yval,
+                            &*(lParse.Nodes[theRegion])
+                                .value
+                                .data
+                                .raw()
+                                .cast::<SAORegion>(),
+                        ) != 0
+                        {
+                            1
+                        } else {
+                            0
+                        };
                     }
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                 }
             }
         }
         if (lParse.Nodes[theX]).operation > 0 {
-            free((lParse.Nodes[theX]).value.data.ptr);
+            free((lParse.Nodes[theX]).value.data.raw());
         }
         if (lParse.Nodes[theY]).operation > 0 {
-            free((lParse.Nodes[theY]).value.data.ptr);
+            free((lParse.Nodes[theY]).value.data.raw());
         }
     }
 }
@@ -14778,16 +15079,16 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                         *((this_node).value.undef).offset(idx as isize) = 0;
                         match (this_node).ntype.into() {
                             fits_parser_yytokentype::BOOLEAN => {
-                                *((this_node).value.data.logptr).offset(idx as isize) =
-                                    that_node.value.data.log;
+                                *((this_node).value.data.log_buf()).offset(idx as isize) =
+                                    that_node.value.data.log();
                             }
                             fits_parser_yytokentype::LONG => {
-                                *((this_node).value.data.lngptr).offset(idx as isize) =
-                                    that_node.value.data.lng;
+                                *((this_node).value.data.lng_buf()).offset(idx as isize) =
+                                    that_node.value.data.lng();
                             }
                             fits_parser_yytokentype::DOUBLE => {
-                                *((this_node).value.data.dblptr).offset(idx as isize) =
-                                    that_node.value.data.dbl;
+                                *((this_node).value.data.dbl_buf()).offset(idx as isize) =
+                                    that_node.value.data.dbl();
                             }
                             _ => {}
                         }
@@ -14814,19 +15115,19 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                                 *(that_node.value.undef).offset(idx as isize);
                             match (this_node).ntype.into() {
                                 fits_parser_yytokentype::BOOLEAN => {
-                                    *((this_node).value.data.logptr)
+                                    *((this_node).value.data.log_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.logptr).offset(idx as isize);
+                                        *(that_node.value.data.log_buf()).offset(idx as isize);
                                 }
                                 fits_parser_yytokentype::LONG => {
-                                    *((this_node).value.data.lngptr)
+                                    *((this_node).value.data.lng_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.lngptr).offset(idx as isize);
+                                        *(that_node.value.data.lng_buf()).offset(idx as isize);
                                 }
                                 fits_parser_yytokentype::DOUBLE => {
-                                    *((this_node).value.data.dblptr)
+                                    *((this_node).value.data.dbl_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.dblptr).offset(idx as isize);
+                                        *(that_node.value.data.dbl_buf()).offset(idx as isize);
                                 }
                                 _ => {}
                             }
@@ -14849,7 +15150,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                         [(lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize])
                         .value
                         .data
-                        .ptr,
+                        .raw(),
                 );
             }
             node += 1;
@@ -14886,16 +15187,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     *(this_node.value.undef).offset(idx as isize) = 0;
                     match this_node.ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
-                            *(this_node.value.data.logptr).offset(idx as isize) =
-                                (that_node).value.data.log;
+                            *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                (that_node).value.data.log();
                         }
                         fits_parser_yytokentype::LONG => {
-                            *(this_node.value.data.lngptr).offset(idx as isize) =
-                                (that_node).value.data.lng;
+                            *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                (that_node).value.data.lng();
                         }
                         fits_parser_yytokentype::DOUBLE => {
-                            *(this_node.value.data.dblptr).offset(idx as isize) =
-                                (that_node).value.data.dbl;
+                            *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                (that_node).value.data.dbl();
                         }
                         _ => {}
                     }
@@ -14915,16 +15216,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                         *((that_node).value.undef).offset(idx as isize);
                     match this_node.ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
-                            *(this_node.value.data.logptr).offset(idx as isize) =
-                                *((that_node).value.data.logptr).offset(idx as isize);
+                            *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                *((that_node).value.data.log_buf()).offset(idx as isize);
                         }
                         fits_parser_yytokentype::LONG => {
-                            *(this_node.value.data.lngptr).offset(idx as isize) =
-                                *((that_node).value.data.lngptr).offset(idx as isize);
+                            *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                *((that_node).value.data.lng_buf()).offset(idx as isize);
                         }
                         fits_parser_yytokentype::DOUBLE => {
-                            *(this_node.value.data.dblptr).offset(idx as isize) =
-                                *((that_node).value.data.dblptr).offset(idx as isize);
+                            *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                *((that_node).value.data.dbl_buf()).offset(idx as isize);
                         }
                         _ => {}
                     }
@@ -14950,16 +15251,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                             *((that_node).value.undef).offset(row as isize);
                         match this_node.ntype.into() {
                             fits_parser_yytokentype::BOOLEAN => {
-                                *(this_node.value.data.logptr).offset(idx as isize) =
-                                    *((that_node).value.data.logptr).offset(row as isize);
+                                *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.log_buf()).offset(row as isize);
                             }
                             fits_parser_yytokentype::LONG => {
-                                *(this_node.value.data.lngptr).offset(idx as isize) =
-                                    *((that_node).value.data.lngptr).offset(row as isize);
+                                *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.lng_buf()).offset(row as isize);
                             }
                             fits_parser_yytokentype::DOUBLE => {
-                                *(this_node.value.data.dblptr).offset(idx as isize) =
-                                    *((that_node).value.data.dblptr).offset(row as isize);
+                                *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.dbl_buf()).offset(row as isize);
                             }
                             _ => {}
                         }
@@ -14973,7 +15274,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]])
                         .value
                         .data
-                        .ptr,
+                        .raw(),
                 );
             }
         }
