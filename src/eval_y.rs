@@ -234,58 +234,140 @@ pub const YYSYMBOL_YYEOF: yysymbol_kind_t = 0;
 pub const YYSYMBOL_YYEMPTY: yysymbol_kind_t = -2;
 pub type yytype_int8 = c_schar;
 pub type yy_state_fast_t = c_int;
-pub type funcOp = c_uint;
-pub const ARRAY_FCT: funcOp = 1051;
-pub const AXISELEM_FCT: funcOp = 1050;
-pub const ELEMNUM_FCT: funcOp = 1049;
-pub const GTIFIND_FCT: funcOp = 1048;
-pub const GTIOVER_FCT: funcOp = 1047;
-pub const SETNULL_FCT: funcOp = 1046;
-pub const STRPOS_FCT: funcOp = 1045;
-pub const STRMID_FCT: funcOp = 1044;
-pub const POIRND_FCT: funcOp = 1043;
-pub const GASRND_FCT: funcOp = 1042;
-pub const ANGSEP_FCT: funcOp = 1041;
-pub const NONNULL_FCT: funcOp = 1040;
-pub const STDDEV_FCT: funcOp = 1039;
-pub const AVERAGE_FCT: funcOp = 1038;
-pub const MEDIAN_FCT: funcOp = 1037;
-pub const NULL_FCT: funcOp = 1036;
-pub const ROW_FCT: funcOp = 1035;
-pub const IFTHENELSE_FCT: funcOp = 1034;
-pub const REGFILT_FCT: funcOp = 1033;
-pub const GTIFILT_FCT: funcOp = 1032;
-pub const DEFNULL_FCT: funcOp = 1031;
-pub const ISNULL_FCT: funcOp = 1030;
-pub const ELPS_FCT: funcOp = 1029;
-pub const BOX_FCT: funcOp = 1028;
-pub const CIRCLE_FCT: funcOp = 1027;
-pub const NEAR_FCT: funcOp = 1026;
-pub const MAX2_FCT: funcOp = 1025;
-pub const MAX1_FCT: funcOp = 1024;
-pub const MIN2_FCT: funcOp = 1023;
-pub const MIN1_FCT: funcOp = 1022;
-pub const ROUND_FCT: funcOp = 1021;
-pub const FLOOR_FCT: funcOp = 1020;
-pub const CEIL_FCT: funcOp = 1019;
-pub const ATAN2_FCT: funcOp = 1018;
-pub const ABS_FCT: funcOp = 1017;
-pub const SQRT_FCT: funcOp = 1016;
-pub const LOG10_FCT: funcOp = 1015;
-pub const LOG_FCT: funcOp = 1014;
-pub const EXP_FCT: funcOp = 1013;
-pub const TANH_FCT: funcOp = 1012;
-pub const COSH_FCT: funcOp = 1011;
-pub const SINH_FCT: funcOp = 1010;
-pub const ATAN_FCT: funcOp = 1009;
-pub const ACOS_FCT: funcOp = 1008;
-pub const ASIN_FCT: funcOp = 1007;
-pub const TAN_FCT: funcOp = 1006;
-pub const COS_FCT: funcOp = 1005;
-pub const SIN_FCT: funcOp = 1004;
-pub const NELEM_FCT: funcOp = 1003;
-pub const SUM_FCT: funcOp = 1002;
-pub const RND_FCT: funcOp = 1001;
+
+/// The function a `Do_Func` node evaluates.
+///
+/// This was `typedef enum { rnd_fct = 1001, ... } funcOp` in eval_defs.h; the
+/// transpile flattened it to a `c_uint` alias with 51 loose constants, so any
+/// integer could be passed where a function code was wanted. The values are the
+/// C's, and they are contiguous from 1001, which [`funcOp::from_operation`]
+/// relies on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum funcOp {
+    RND_FCT = 1001,
+    SUM_FCT,
+    NELEM_FCT,
+    SIN_FCT,
+    COS_FCT,
+    TAN_FCT,
+    ASIN_FCT,
+    ACOS_FCT,
+    ATAN_FCT,
+    SINH_FCT,
+    COSH_FCT,
+    TANH_FCT,
+    EXP_FCT,
+    LOG_FCT,
+    LOG10_FCT,
+    SQRT_FCT,
+    ABS_FCT,
+    ATAN2_FCT,
+    CEIL_FCT,
+    FLOOR_FCT,
+    ROUND_FCT,
+    MIN1_FCT,
+    MIN2_FCT,
+    MAX1_FCT,
+    MAX2_FCT,
+    NEAR_FCT,
+    CIRCLE_FCT,
+    BOX_FCT,
+    ELPS_FCT,
+    ISNULL_FCT,
+    DEFNULL_FCT,
+    GTIFILT_FCT,
+    REGFILT_FCT,
+    IFTHENELSE_FCT,
+    ROW_FCT,
+    NULL_FCT,
+    MEDIAN_FCT,
+    AVERAGE_FCT,
+    STDDEV_FCT,
+    NONNULL_FCT,
+    ANGSEP_FCT,
+    GASRND_FCT,
+    POIRND_FCT,
+    STRMID_FCT,
+    STRPOS_FCT,
+    SETNULL_FCT,
+    GTIOVER_FCT,
+    GTIFIND_FCT,
+    ELEMNUM_FCT,
+    AXISELEM_FCT,
+    ARRAY_FCT,
+}
+
+impl funcOp {
+    /// Every variant, in discriminant order from `RND_FCT`.
+    const ALL: [funcOp; 51] = [
+        funcOp::RND_FCT,
+        funcOp::SUM_FCT,
+        funcOp::NELEM_FCT,
+        funcOp::SIN_FCT,
+        funcOp::COS_FCT,
+        funcOp::TAN_FCT,
+        funcOp::ASIN_FCT,
+        funcOp::ACOS_FCT,
+        funcOp::ATAN_FCT,
+        funcOp::SINH_FCT,
+        funcOp::COSH_FCT,
+        funcOp::TANH_FCT,
+        funcOp::EXP_FCT,
+        funcOp::LOG_FCT,
+        funcOp::LOG10_FCT,
+        funcOp::SQRT_FCT,
+        funcOp::ABS_FCT,
+        funcOp::ATAN2_FCT,
+        funcOp::CEIL_FCT,
+        funcOp::FLOOR_FCT,
+        funcOp::ROUND_FCT,
+        funcOp::MIN1_FCT,
+        funcOp::MIN2_FCT,
+        funcOp::MAX1_FCT,
+        funcOp::MAX2_FCT,
+        funcOp::NEAR_FCT,
+        funcOp::CIRCLE_FCT,
+        funcOp::BOX_FCT,
+        funcOp::ELPS_FCT,
+        funcOp::ISNULL_FCT,
+        funcOp::DEFNULL_FCT,
+        funcOp::GTIFILT_FCT,
+        funcOp::REGFILT_FCT,
+        funcOp::IFTHENELSE_FCT,
+        funcOp::ROW_FCT,
+        funcOp::NULL_FCT,
+        funcOp::MEDIAN_FCT,
+        funcOp::AVERAGE_FCT,
+        funcOp::STDDEV_FCT,
+        funcOp::NONNULL_FCT,
+        funcOp::ANGSEP_FCT,
+        funcOp::GASRND_FCT,
+        funcOp::POIRND_FCT,
+        funcOp::STRMID_FCT,
+        funcOp::STRPOS_FCT,
+        funcOp::SETNULL_FCT,
+        funcOp::GTIOVER_FCT,
+        funcOp::GTIFIND_FCT,
+        funcOp::ELEMNUM_FCT,
+        funcOp::AXISELEM_FCT,
+        funcOp::ARRAY_FCT,
+    ];
+
+    /// The function code stored in [`Node::operation`].
+    ///
+    /// `Do_Func` is only ever installed as a node's `DoOp` by `New_Func`, which
+    /// takes a `funcOp`, so a node reaching here always holds one. Anything
+    /// else is a bug in the node building rather than bad input.
+    pub(crate) fn from_operation(op: c_int) -> funcOp {
+        let idx = op - funcOp::RND_FCT as c_int;
+        assert!(
+            (0..funcOp::ALL.len() as c_int).contains(&idx),
+            "operation {op} is not a function code"
+        );
+        funcOp::ALL[idx as usize]
+    }
+}
 
 pub type shapeType = c_uint;
 pub const BPANDA_RGN: shapeType = 14;
@@ -1207,7 +1289,7 @@ fn New_FuncSize(
 
         i = constant; /* Functions with zero params are not const */
 
-        if Op as c_uint == POIRND_FCT as c_int as c_uint {
+        if Op as c_uint == funcOp::POIRND_FCT as c_int as c_uint {
             constant = 0; /* Nor is Poisson deviate */
         }
 
@@ -2095,7 +2177,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                ROW_FCT,
+                                funcOp::ROW_FCT,
                                 0,
                                 0,
                                 0,
@@ -2112,7 +2194,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                NULL_FCT,
+                                funcOp::NULL_FCT,
                                 0,
                                 0,
                                 0,
@@ -2485,7 +2567,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     yyvs[yyvsp].node(),
@@ -2560,7 +2642,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     yyvs[yyvsp].node(),
@@ -2635,7 +2717,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     yyvs[yyvsp].node(),
@@ -2697,7 +2779,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    RND_FCT,
+                                    funcOp::RND_FCT,
                                     0,
                                     0,
                                     0,
@@ -2724,7 +2806,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    GASRND_FCT,
+                                    funcOp::GASRND_FCT,
                                     0,
                                     0,
                                     0,
@@ -2767,7 +2849,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    SUM_FCT,
+                                    funcOp::SUM_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -2897,7 +2979,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        AXISELEM_FCT,
+                                        funcOp::AXISELEM_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -3079,7 +3161,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    NONNULL_FCT,
+                                    funcOp::NONNULL_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3169,7 +3251,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    SUM_FCT,
+                                    funcOp::SUM_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3195,7 +3277,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
-                                    MIN1_FCT,
+                                    funcOp::MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3253,7 +3335,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
-                                    MAX1_FCT,
+                                    funcOp::MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3300,7 +3382,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
-                                    SUM_FCT,
+                                    funcOp::SUM_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3326,7 +3408,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    AVERAGE_FCT,
+                                    funcOp::AVERAGE_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3352,7 +3434,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    STDDEV_FCT,
+                                    funcOp::STDDEV_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3378,7 +3460,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
-                                    MEDIAN_FCT,
+                                    funcOp::MEDIAN_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3427,7 +3509,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    NONNULL_FCT,
+                                    funcOp::NONNULL_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3576,7 +3658,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ABS_FCT,
+                                    funcOp::ABS_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3602,7 +3684,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
-                                    MIN1_FCT,
+                                    funcOp::MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3628,7 +3710,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
-                                    MAX1_FCT,
+                                    funcOp::MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3655,7 +3737,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    RND_FCT,
+                                    funcOp::RND_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3687,7 +3769,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    GASRND_FCT,
+                                    funcOp::GASRND_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -3731,7 +3813,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ELEMNUM_FCT,
+                                        funcOp::ELEMNUM_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3819,7 +3901,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SIN_FCT,
+                                        funcOp::SIN_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3845,7 +3927,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        COS_FCT,
+                                        funcOp::COS_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3871,7 +3953,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        TAN_FCT,
+                                        funcOp::TAN_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3908,7 +3990,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ASIN_FCT,
+                                        funcOp::ASIN_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3945,7 +4027,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ACOS_FCT,
+                                        funcOp::ACOS_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -3982,7 +4064,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ATAN_FCT,
+                                        funcOp::ATAN_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4008,7 +4090,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SINH_FCT,
+                                        funcOp::SINH_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4034,7 +4116,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        COSH_FCT,
+                                        funcOp::COSH_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4060,7 +4142,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        TANH_FCT,
+                                        funcOp::TANH_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4086,7 +4168,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        EXP_FCT,
+                                        funcOp::EXP_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4112,7 +4194,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        LOG_FCT,
+                                        funcOp::LOG_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4138,7 +4220,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        LOG10_FCT,
+                                        funcOp::LOG10_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4164,7 +4246,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SQRT_FCT,
+                                        funcOp::SQRT_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4190,7 +4272,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ROUND_FCT,
+                                        funcOp::ROUND_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4216,7 +4298,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        FLOOR_FCT,
+                                        funcOp::FLOOR_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4242,7 +4324,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        CEIL_FCT,
+                                        funcOp::CEIL_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4268,7 +4350,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        POIRND_FCT,
+                                        funcOp::POIRND_FCT,
                                         1,
                                         yyvs[yyvsp - 1].node(),
                                         0,
@@ -4317,7 +4399,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    STRPOS_FCT,
+                                    funcOp::STRPOS_FCT,
                                     2,
                                     yyvs[yyvsp - 3].node(),
                                     yyvs[yyvsp - 1].node(),
@@ -4391,7 +4473,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        DEFNULL_FCT,
+                                        funcOp::DEFNULL_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -4451,7 +4533,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ATAN2_FCT,
+                                        funcOp::ATAN2_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -4519,7 +4601,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        MIN2_FCT,
+                                        funcOp::MIN2_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -4587,7 +4669,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        MAX2_FCT,
+                                        funcOp::MAX2_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -4657,7 +4739,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SETNULL_FCT,
+                                        funcOp::SETNULL_FCT,
                                         2,
                                         yyvs[yyvsp - 1].node(),
                                         yyvs[yyvsp - 3].node(),
@@ -4720,7 +4802,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        AXISELEM_FCT,
+                                        funcOp::AXISELEM_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -4928,7 +5010,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ANGSEP_FCT,
+                                        funcOp::ANGSEP_FCT,
                                         4 as c_int,
                                         yyvs[yyvsp - 7].node(),
                                         yyvs[yyvsp - 5].node(),
@@ -4989,7 +5071,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIOVER_FCT,
+                                funcOp::GTIOVER_FCT,
                                 yyvs[yyvsp - 5].text_mut_ptr(),
                                 yyvs[yyvsp - 3].node(),
                                 yyvs[yyvsp - 1].node(),
@@ -5006,7 +5088,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIOVER_FCT,
+                                funcOp::GTIOVER_FCT,
                                 yyvs[yyvsp - 9].text_mut_ptr(),
                                 yyvs[yyvsp - 7].node(),
                                 yyvs[yyvsp - 5].node(),
@@ -5804,7 +5886,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     yyvs[yyvsp].node(),
@@ -5861,7 +5943,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -5904,7 +5986,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -5947,7 +6029,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
                                     0,
@@ -5999,7 +6081,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        DEFNULL_FCT,
+                                        funcOp::DEFNULL_FCT,
                                         2,
                                         yyvs[yyvsp - 3].node(),
                                         yyvs[yyvsp - 1].node(),
@@ -6089,7 +6171,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    NEAR_FCT,
+                                    funcOp::NEAR_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 5].node(),
                                     yyvs[yyvsp - 3].node(),
@@ -6224,7 +6306,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    CIRCLE_FCT,
+                                    funcOp::CIRCLE_FCT,
                                     5 as c_int,
                                     yyvs[yyvsp - 9].node(),
                                     yyvs[yyvsp - 7].node(),
@@ -6408,7 +6490,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
-                                        BOX_FCT,
+                                        funcOp::BOX_FCT,
                                         7 as c_int,
                                         yyvs[yyvsp - 13].node(),
                                         yyvs[yyvsp - 11].node(),
@@ -6434,7 +6516,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
-                                        ELPS_FCT,
+                                        funcOp::ELPS_FCT,
                                         7 as c_int,
                                         yyvs[yyvsp - 13].node(),
                                         yyvs[yyvsp - 11].node(),
@@ -6558,7 +6640,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all elements */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
+                                funcOp::GTIFILT_FCT,
                                 (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
                                 -99,
                                 -99,
@@ -6576,7 +6658,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all except filename */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
+                                funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
@@ -6593,7 +6675,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
+                                funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
                                 -99,
@@ -6610,7 +6692,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
+                                funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 7].text_mut_ptr(),
                                 yyvs[yyvsp - 5].node(),
                                 -99,
@@ -6629,7 +6711,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all elements */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
+                                funcOp::GTIFIND_FCT,
                                 (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
                                 -99,
                                 -99,
@@ -6646,7 +6728,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ')'  *//* Use defaults for all except filename */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
+                                funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
@@ -6663,7 +6745,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
+                                funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
                                 -99,
@@ -6680,7 +6762,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
+                                funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 7].text_mut_ptr(),
                                 yyvs[yyvsp - 5].node(),
                                 -99,
@@ -6909,7 +6991,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
-                                NULL_FCT,
+                                funcOp::NULL_FCT,
                                 0,
                                 0,
                                 0,
@@ -6989,7 +7071,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     yyvs[yyvsp].node(),
@@ -7049,7 +7131,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
                                     0,
-                                    DEFNULL_FCT,
+                                    funcOp::DEFNULL_FCT,
                                     2,
                                     yyvs[yyvsp - 3].node(),
                                     yyvs[yyvsp - 1].node(),
@@ -7142,7 +7224,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                             lParse,
                                             0,
-                                            STRMID_FCT,
+                                            funcOp::STRMID_FCT,
                                             3 as c_int,
                                             yyvs[yyvsp - 5].node(),
                                             yyvs[yyvsp - 3].node(),
@@ -7475,8 +7557,8 @@ fn New_GTI(
         let mut xexpr: [c_char; 20] = [0; 20];
         let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
 
-        if (Op as c_uint == GTIFILT_FCT as c_int as c_uint
-            || Op as c_uint == GTIFIND_FCT as c_int as c_uint)
+        if (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
+            || Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint)
             && Node1 == -99
         {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
@@ -7491,7 +7573,7 @@ fn New_GTI(
             }
         }
 
-        if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
+        if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
             if Node1 == -99 || Node2 == -99 {
                 fits_parser_yyerror(
                     lParse,
@@ -7693,11 +7775,11 @@ fn New_GTI(
             this_node_idx = n as usize;
             (lParse.Nodes[this_node_idx]).SubNodes[1] = Node1.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).operation = Op as c_int;
-            if Op as c_uint == GTIFILT_FCT as c_int as c_uint {
+            if Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
                 (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
-            } else if Op as c_uint == GTIFIND_FCT as c_int as c_uint {
+            } else if Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
                 (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::LONG as c_int;
@@ -7716,7 +7798,7 @@ fn New_GTI(
                     (lParse.Nodes[that1_idx]).value.naxes[i as usize];
                 i += 1;
             }
-            if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
+            if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).SubNodes[2] = Node2.try_into().unwrap();
                 let that2_idx = Node2 as usize;
                 if (lParse.Nodes[that1_idx]).value.nelem != (lParse.Nodes[that2_idx]).value.nelem {
@@ -7823,7 +7905,7 @@ fn New_GTI(
 
                 /* GTIOVERLAP() requires ordered GTI */
                 if (lParse.Nodes[that0_idx]).ntype != 1
-                    && Op as c_uint == GTIOVER_FCT as c_int as c_uint
+                    && Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint
                 {
                     let mut errmsg: [c_char; 120] = [0; 120];
                     int_snprintf!(
@@ -7855,7 +7937,7 @@ fn New_GTI(
             /* If Node1 is constant (gtifilt_fct) or
             Node1 and Node2 are constant (gtiover_fct), then evaluate now */
             if ((lParse.Nodes)[Node1 as usize]).operation == CONST_OP
-                && (Op as c_uint == GTIFILT_FCT as c_int as c_uint
+                && (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
                     || ((lParse.Nodes)[Node2 as usize]).operation == CONST_OP)
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
@@ -7942,7 +8024,7 @@ fn New_REG(
             (lParse.Nodes[this_node_idx]).SubNodes[0] = Node0.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[1] = NodeX.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[2] = NodeY.try_into().unwrap();
-            (lParse.Nodes[this_node_idx]).operation = REGFILT_FCT as c_int;
+            (lParse.Nodes[this_node_idx]).operation = funcOp::REGFILT_FCT as c_int;
             (lParse.Nodes[this_node_idx]).DoOp = Some(Do_REG);
             (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
@@ -8264,7 +8346,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
     n = Alloc_Node(lParse);
     if n >= 0 {
         this_node_idx = n as usize;
-        (lParse.Nodes[this_node_idx]).operation = ARRAY_FCT as c_int;
+        (lParse.Nodes[this_node_idx]).operation = funcOp::ARRAY_FCT as c_int;
         (lParse.Nodes[this_node_idx]).nSubNodes = 1;
         (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
         (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
@@ -10814,20 +10896,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             allConst = 0; /* These do produce scalars */
         }
         /* Random numbers are *never* constant !! */
-        if (lParse.Nodes[this_node_idx]).operation == POIRND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::POIRND_FCT as c_int {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == GASRND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::GASRND_FCT as c_int {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == RND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::RND_FCT as c_int {
             allConst = 0;
         }
         if allConst != 0 {
             let current_block_139: u64;
-            match (lParse.Nodes[this_node_idx]).operation as u32 {
+            match funcOp::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /* Non-Trig single-argument functions */
-                SUM_FCT => {
+                funcOp::SUM_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -10858,7 +10940,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                AVERAGE_FCT => {
+                funcOp::AVERAGE_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
                         (lParse.Nodes[this_node_idx]).value.data =
@@ -10871,11 +10953,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                STDDEV_FCT => {
+                funcOp::STDDEV_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0); /* Standard deviation of a constant = 0 */
                     current_block_139 = 7627602990488000394;
                 }
-                MEDIAN_FCT => {
+                funcOp::MEDIAN_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -10897,7 +10979,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                POIRND_FCT => {
+                funcOp::POIRND_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -10911,7 +10993,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ABS_FCT => {
+                funcOp::ABS_FCT => {
                     if (lParse.Nodes[theParams[0]]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -10926,16 +11008,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* Special Null-Handling Functions */
-                NONNULL_FCT => {
+                funcOp::NONNULL_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(1); /* Constants are always 1-element and defined */
                     current_block_139 = 7627602990488000394;
                 }
-                ISNULL_FCT => {
+                funcOp::ISNULL_FCT => {
                     /* Constants are always defined */
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(0);
                     current_block_139 = 7627602990488000394;
                 }
-                DEFNULL_FCT => {
+                funcOp::DEFNULL_FCT => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::BOOLEAN as c_int
                     {
@@ -10961,7 +11043,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                SETNULL_FCT => {
+                funcOp::SETNULL_FCT => {
                     /* Only defined for numeric expressions */
                     if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
                     {
@@ -10976,22 +11058,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* Math functions with 1 double argument */
-                SIN_FCT => {
+                funcOp::SIN_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(sin(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                COS_FCT => {
+                funcOp::COS_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(cos(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                TAN_FCT => {
+                funcOp::TAN_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(tan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                ASIN_FCT => {
+                funcOp::ASIN_FCT => {
                     dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
@@ -11000,7 +11082,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ACOS_FCT => {
+                funcOp::ACOS_FCT => {
                     dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
@@ -11009,32 +11091,32 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ATAN_FCT => {
+                funcOp::ATAN_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(atan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                SINH_FCT => {
+                funcOp::SINH_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(sinh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                COSH_FCT => {
+                funcOp::COSH_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(cosh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                TANH_FCT => {
+                funcOp::TANH_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(tanh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                EXP_FCT => {
+                funcOp::EXP_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(exp(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                LOG_FCT => {
+                funcOp::LOG_FCT => {
                     dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
@@ -11043,7 +11125,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                LOG10_FCT => {
+                funcOp::LOG10_FCT => {
                     dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
@@ -11052,7 +11134,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                SQRT_FCT => {
+                funcOp::SQRT_FCT => {
                     dval = pVals[0].data.dbl();
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
@@ -11061,29 +11143,29 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                CEIL_FCT => {
+                funcOp::CEIL_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(ceil(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                FLOOR_FCT => {
+                funcOp::FLOOR_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(floor(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                ROUND_FCT => {
+                funcOp::ROUND_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(floor(pVals[0].data.dbl() + 0.5));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Two-argument Trig Functions */
-                ATAN2_FCT => {
+                funcOp::ATAN2_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(atan2(pVals[0].data.dbl(), pVals[1].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Four-argument ANGSEP function */
-                ANGSEP_FCT => {
+                funcOp::ANGSEP_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(angsep_calc(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -11099,10 +11181,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /*  Min/Max functions taking 1 or 2 arguments  */
-                MIN1_FCT => {
+                funcOp::MIN1_FCT => {
                     current_block_139 = 15934000668868306918;
                 }
-                MIN2_FCT => {
+                funcOp::MIN2_FCT => {
                     /* No constant vectors! */
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
@@ -11125,7 +11207,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                MAX1_FCT => {
+                funcOp::MAX1_FCT => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -11146,7 +11228,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                MAX2_FCT => {
+                funcOp::MAX2_FCT => {
                     if (lParse.Nodes[this_node_idx]).ntype
                         == fits_parser_yytokentype::DOUBLE as c_int
                     {
@@ -11169,7 +11251,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* Boolean SAO region Functions... scalar or vector dbls */
-                NEAR_FCT => {
+                funcOp::NEAR_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bnear(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -11177,7 +11259,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                CIRCLE_FCT => {
+                funcOp::CIRCLE_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(circle(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -11187,7 +11269,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                BOX_FCT => {
+                funcOp::BOX_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(saobox(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -11199,7 +11281,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                     current_block_139 = 7627602990488000394;
                 }
-                ELPS_FCT => {
+                funcOp::ELPS_FCT => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(ellipse(
                         pVals[0].data.dbl(),
                         pVals[1].data.dbl(),
@@ -11212,7 +11294,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* C Conditional expression:  bool ? expr : expr */
-                IFTHENELSE_FCT => {
+                funcOp::IFTHENELSE_FCT => {
                     match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => {
                             (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
@@ -11254,7 +11336,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* String functions */
-                STRMID_FCT => {
+                funcOp::STRMID_FCT => {
                     let dest_str = (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                     cstrmid(
@@ -11267,7 +11349,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     );
                     current_block_139 = 7627602990488000394;
                 }
-                STRPOS_FCT => {
+                funcOp::STRPOS_FCT => {
                     let res: *mut c_char =
                         strstr(pVals[0].data.text_mut_ptr(), pVals[1].data.text_mut_ptr());
                     if res.is_null() {
@@ -11306,9 +11388,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             row = lParse.nRows;
             elem = row * (lParse.Nodes[this_node_idx]).value.nelem;
             if lParse.status == 0 {
-                match (lParse.Nodes[this_node_idx]).operation as u32 {
+                match funcOp::from_operation((lParse.Nodes[this_node_idx]).operation) {
                     /* Special functions with no arguments */
-                    ROW_FCT => loop {
+                    funcOp::ROW_FCT => loop {
                         let fresh53 = row;
                         row -= 1;
                         if fresh53 == 0 {
@@ -11318,7 +11400,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(row as isize) = lParse.firstRow + row;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
                     },
-                    NULL_FCT => {
+                    funcOp::NULL_FCT => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -11350,7 +11432,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    AXISELEM_FCT => {
+                    funcOp::AXISELEM_FCT => {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
                         /* This should be a constant long value */
@@ -11388,7 +11470,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    ELEMNUM_FCT => {
+                    funcOp::ELEMNUM_FCT => {
                         let mut ielem_0: c_long = 0;
                         let mut elemnum: c_long = 1;
                         let j_0: c_int = 0;
@@ -11405,7 +11487,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             ielem_0 += 1;
                         }
                     }
-                    RND_FCT => loop {
+                    funcOp::RND_FCT => loop {
                         let fresh56 = elem;
                         elem -= 1;
                         if fresh56 == 0 {
@@ -11415,7 +11497,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(elem as isize) = simplerng_getuniform();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    GASRND_FCT => loop {
+                    funcOp::GASRND_FCT => loop {
                         let fresh57 = elem;
                         elem -= 1;
                         if fresh57 == 0 {
@@ -11425,7 +11507,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             .offset(elem as isize) = simplerng_getnorm();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    POIRND_FCT => {
+                    funcOp::POIRND_FCT => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
@@ -11536,7 +11618,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         } /* END LONG */
                     }
                     /* Non-Trig single-argument functions */
-                    SUM_FCT => {
+                    funcOp::SUM_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::BOOLEAN as c_int
@@ -11686,7 +11768,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    AVERAGE_FCT => {
+                    funcOp::AVERAGE_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -11777,7 +11859,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    STDDEV_FCT => {
+                    funcOp::STDDEV_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -11928,7 +12010,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    MEDIAN_FCT => {
+                    funcOp::MEDIAN_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
@@ -12049,7 +12131,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    ABS_FCT => {
+                    funcOp::ABS_FCT => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::DOUBLE as c_int
                         {
@@ -12087,7 +12169,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     /* Special Null-Handling Functions */
-                    NONNULL_FCT => {
+                    funcOp::NONNULL_FCT => {
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::STRING as c_int
@@ -12126,7 +12208,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    ISNULL_FCT => {
+                    funcOp::ISNULL_FCT => {
                         if (lParse.Nodes[theParams[0]]).ntype
                             == fits_parser_yytokentype::STRING as c_int
                         {
@@ -12144,7 +12226,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                         }
                     }
-                    DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    funcOp::DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => loop {
                             let fresh90 = row;
                             row -= 1;
@@ -12369,7 +12451,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    funcOp::SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::LONG => loop {
                             let fresh101 = elem;
                             elem -= 1;
@@ -12423,7 +12505,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         _ => {}
                     },
                     /* Math functions with 1 double argument */
-                    SIN_FCT => loop {
+                    funcOp::SIN_FCT => loop {
                         let fresh103 = elem;
                         elem -= 1;
                         if fresh103 == 0 {
@@ -12440,7 +12522,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    COS_FCT => loop {
+                    funcOp::COS_FCT => loop {
                         let fresh105 = elem;
                         elem -= 1;
                         if fresh105 == 0 {
@@ -12457,7 +12539,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    TAN_FCT => loop {
+                    funcOp::TAN_FCT => loop {
                         let fresh107 = elem;
                         elem -= 1;
                         if fresh107 == 0 {
@@ -12474,7 +12556,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize));
                         }
                     },
-                    ASIN_FCT => loop {
+                    funcOp::ASIN_FCT => loop {
                         let fresh109 = elem;
                         elem -= 1;
                         if fresh109 == 0 {
@@ -12498,7 +12580,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    ACOS_FCT => loop {
+                    funcOp::ACOS_FCT => loop {
                         let fresh111 = elem;
                         elem -= 1;
                         if fresh111 == 0 {
@@ -12522,7 +12604,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    ATAN_FCT => loop {
+                    funcOp::ATAN_FCT => loop {
                         let fresh113 = elem;
                         elem -= 1;
                         if fresh113 == 0 {
@@ -12539,7 +12621,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(elem as isize) = atan(dval);
                         }
                     },
-                    SINH_FCT => loop {
+                    funcOp::SINH_FCT => loop {
                         let fresh115 = elem;
                         elem -= 1;
                         if fresh115 == 0 {
@@ -12557,7 +12639,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    COSH_FCT => loop {
+                    funcOp::COSH_FCT => loop {
                         let fresh117 = elem;
                         elem -= 1;
                         if fresh117 == 0 {
@@ -12575,7 +12657,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    TANH_FCT => loop {
+                    funcOp::TANH_FCT => loop {
                         let fresh119 = elem;
                         elem -= 1;
                         if fresh119 == 0 {
@@ -12593,7 +12675,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    EXP_FCT => loop {
+                    funcOp::EXP_FCT => loop {
                         let fresh121 = elem;
                         elem -= 1;
                         if fresh121 == 0 {
@@ -12610,7 +12692,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(elem as isize) = exp(dval);
                         }
                     },
-                    LOG_FCT => loop {
+                    funcOp::LOG_FCT => loop {
                         let fresh123 = elem;
                         elem -= 1;
                         if fresh123 == 0 {
@@ -12634,7 +12716,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    LOG10_FCT => loop {
+                    funcOp::LOG10_FCT => loop {
                         let fresh125 = elem;
                         elem -= 1;
                         if fresh125 == 0 {
@@ -12658,7 +12740,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    SQRT_FCT => loop {
+                    funcOp::SQRT_FCT => loop {
                         let fresh127 = elem;
                         elem -= 1;
                         if fresh127 == 0 {
@@ -12682,7 +12764,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    CEIL_FCT => loop {
+                    funcOp::CEIL_FCT => loop {
                         let fresh129 = elem;
                         elem -= 1;
                         if fresh129 == 0 {
@@ -12700,7 +12782,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    FLOOR_FCT => loop {
+                    funcOp::FLOOR_FCT => loop {
                         let fresh131 = elem;
                         elem -= 1;
                         if fresh131 == 0 {
@@ -12718,7 +12800,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    ROUND_FCT => loop {
+                    funcOp::ROUND_FCT => loop {
                         let fresh133 = elem;
                         elem -= 1;
                         if fresh133 == 0 {
@@ -12738,7 +12820,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /* Two-argument Trig Functions */
-                    ATAN2_FCT => loop {
+                    funcOp::ATAN2_FCT => loop {
                         let fresh135 = row;
                         row -= 1;
                         if fresh135 == 0 {
@@ -12800,7 +12882,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /* Four-argument ANGSEP Function */
-                    ANGSEP_FCT => loop {
+                    funcOp::ANGSEP_FCT => loop {
                         let fresh139 = row;
                         row -= 1;
                         if fresh139 == 0 {
@@ -12865,7 +12947,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /*  Min/Max functions taking 1 or 2 arguments  */
-                    MIN1_FCT => {
+                    funcOp::MIN1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -13002,7 +13084,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    MIN2_FCT => {
+                    funcOp::MIN2_FCT => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -13165,7 +13247,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    MAX1_FCT => {
+                    funcOp::MAX1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
@@ -13302,7 +13384,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    MAX2_FCT => {
+                    funcOp::MAX2_FCT => {
                         if (lParse.Nodes[this_node_idx]).ntype
                             == fits_parser_yytokentype::LONG as c_int
                         {
@@ -13466,7 +13548,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     /* Boolean SAO region Functions... scalar or vector dbls */
-                    NEAR_FCT => loop {
+                    funcOp::NEAR_FCT => loop {
                         let fresh165 = row;
                         row -= 1;
                         if fresh165 == 0 {
@@ -13528,7 +13610,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    CIRCLE_FCT => loop {
+                    funcOp::CIRCLE_FCT => loop {
                         let fresh169 = row;
                         row -= 1;
                         if fresh169 == 0 {
@@ -13594,7 +13676,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    BOX_FCT => loop {
+                    funcOp::BOX_FCT => loop {
                         let fresh173 = row;
                         row -= 1;
                         if fresh173 == 0 {
@@ -13664,7 +13746,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     },
-                    ELPS_FCT => loop {
+                    funcOp::ELPS_FCT => loop {
                         let fresh177 = row;
                         row -= 1;
                         if fresh177 == 0 {
@@ -13735,7 +13817,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /* C Conditional expression:  bool ? expr : expr */
-                    IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
+                    funcOp::IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
                         fits_parser_yytokentype::BOOLEAN => loop {
                             let fresh181 = row;
                             row -= 1;
@@ -14034,7 +14116,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    STRMID_FCT => {
+                    funcOp::STRMID_FCT => {
                         let strconst: c_int =
                             c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
                         let posconst: c_int =
@@ -14114,7 +14196,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 undef as c_char;
                         }
                     }
-                    STRPOS_FCT => {
+                    funcOp::STRPOS_FCT => {
                         let const1: c_int =
                             c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
                         let const2: c_int =
@@ -14637,7 +14719,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         let mut gti: c_long = 0;
         let mut ordered: c_int = 0;
         let dorow: c_int =
-            c_int::from((lParse.Nodes[this_node_idx]).operation == GTIFIND_FCT as c_int);
+            c_int::from((lParse.Nodes[this_node_idx]).operation == funcOp::GTIFIND_FCT as c_int);
 
         let theTimes = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let theExpr = (lParse.Nodes[this_node_idx]).SubNodes[1];
