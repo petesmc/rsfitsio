@@ -62,7 +62,7 @@ use bytemuck::cast_slice;
 use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
-use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData};
+use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData, ValueSort};
 use crate::fitsio::PARSE_SYNTAX_ERR;
 use crate::fitsio2::FSTRCMP;
 use crate::helpers::boxed::box_try_new;
@@ -286,17 +286,20 @@ pub(crate) fn fits_parser_yyGetVariable(
         }
     } else {
         /*  Convert variable type into expression type  */
-        match ((lParse.varData)[varNum as usize]).dtype.into() {
-            fits_parser_yytokentype::LONG | fits_parser_yytokentype::DOUBLE => {
+        /* ValueSort has no other variants, so this arm cannot be reached; it is
+        kept because it is the C's error path and the field may widen again. */
+        #[allow(unreachable_patterns)]
+        match ((lParse.varData)[varNum as usize]).dtype {
+            ValueSort::Long | ValueSort::Double => {
                 dtype = fits_parser_yytokentype::COLUMN as c_int;
             }
-            fits_parser_yytokentype::BOOLEAN => {
+            ValueSort::Boolean => {
                 dtype = fits_parser_yytokentype::BCOLUMN as c_int;
             }
-            fits_parser_yytokentype::STRING => {
+            ValueSort::String => {
                 dtype = fits_parser_yytokentype::SCOLUMN as c_int;
             }
-            fits_parser_yytokentype::BITSTR => {
+            ValueSort::Bits => {
                 dtype = fits_parser_yytokentype::BITCOL as c_int;
             }
             _ => {
