@@ -7593,6 +7593,101 @@ fn New_Deref(
     n
 }
 
+/// Read a GTI's START/STOP columns into storage of its own.
+///
+/// The C read them straight into the node's malloc'd buffer, tested the
+/// ordering through raw pointers into it, and applied TIMEZERO the same way.
+/// Here the intervals are a `Vec` that owns itself and the tests are indexed,
+/// so nothing in the reading depends on a node existing yet.
+///
+/// Returns the intervals -- starts then stops, the layout `Do_GTI` expects --
+/// and whether they are fully time-ordered, or `None` with `lParse.status` set.
+#[allow(clippy::too_many_arguments)]
+fn read_gti_intervals(
+    lParse: &mut ParseData,
+    fptr: &mut fitsfile,
+    startCol: c_int,
+    stopCol: c_int,
+    nrows: c_long,
+    timeZeroI: &[c_double; 2],
+    timeZeroF: &[c_double; 2],
+    must_be_ordered: bool,
+) -> Option<(Vec<c_double>, bool)> {
+    let n = nrows.max(0) as usize;
+    let mut times = vec![0.0 as c_double; 2 * n];
+    let mut anynul: c_int = 0;
+    let (starts, stops) = times.split_at_mut(n);
+    ffgcvd_safe(
+        fptr,
+        startCol,
+        1,
+        1,
+        nrows as LONGLONG,
+        0.0,
+        starts,
+        Some(&mut anynul),
+        &mut lParse.status,
+    );
+    ffgcvd_safe(
+        fptr,
+        stopCol,
+        1,
+        1,
+        nrows as LONGLONG,
+        0.0,
+        stops,
+        Some(&mut anynul),
+        &mut lParse.status,
+    );
+    if lParse.status != 0 {
+        return None;
+    }
+
+    /*  Test for fully time-ordered GTI... both START && STOP  */
+    let mut ordered = true;
+    let mut i = nrows as c_int;
+    loop {
+        /* C: while( --j ) -- the body never runs with j == 0, so times[n+j-1]
+        is always in bounds */
+        i -= 1;
+        if i == 0 {
+            break;
+        }
+        let j = i as usize;
+        /* one buffer, so START{j} is times[j] and STOP{j} is times[n + j] */
+        if times[j] > times[n + j] || times[j] < times[n + j - 1] {
+            ordered = false;
+            break;
+        }
+    }
+
+    /* GTIOVERLAP() requires ordered GTI */
+    if !ordered && must_be_ordered {
+        let mut errmsg: [c_char; 120] = [0; 120];
+        int_snprintf!(
+            &mut errmsg,
+            120,
+            "Input GTI must be time-ordered for GTIOVERLAP (row {})",
+            i + 1,
+        );
+        fits_parser_yyerror(lParse, &errmsg);
+        return None;
+    }
+
+    /*  Handle TIMEZERO offset, if any  */
+    let dt = timeZeroI[1] - timeZeroI[0] + (timeZeroF[1] - timeZeroF[0]);
+    let mut timeSpan = times[2 * n - 1] - times[0];
+    if timeSpan == 0.0 {
+        timeSpan = 1.0;
+    }
+    if fabs(dt / timeSpan) > 1e-12f64 {
+        for t in times.iter_mut() {
+            *t += dt;
+        }
+    }
+    Some((times, ordered))
+}
+
 fn New_GTI(
     lParse: &mut ParseData,
     Op: funcOp,
@@ -7622,8 +7717,6 @@ fn New_GTI(
         let mut nrows: c_long = 0;
         let mut timeZeroI: [c_double; 2] = [0.; 2];
         let mut timeZeroF: [c_double; 2] = [0.; 2];
-        let mut dt: c_double = 0.0;
-        let mut timeSpan: c_double = 0.0;
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
         let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
@@ -7897,112 +7990,43 @@ fn New_GTI(
 
             (lParse.Nodes[that0_idx]).value.nelem = nrows;
             if nrows != 0 {
-                let mut startptr: *mut c_double = core::ptr::null_mut::<c_double>();
-                let mut stopptr: *mut c_double = core::ptr::null_mut::<c_double>();
+                let Some((times, ordered)) = read_gti_intervals(
+                    lParse,
+                    fptr,
+                    startCol,
+                    stopCol,
+                    nrows,
+                    &timeZeroI,
+                    &timeZeroF,
+                    Op == funcOp::GTIOVER_FCT,
+                ) else {
+                    return -(1);
+                };
+                (lParse.Nodes[that0_idx]).gtiOrdered = ordered;
 
-                /* We are allocating storage for both START and STOP with one pointer
-                and stop is stored at dblptr+nrows, we will use aliases below to
-                make this easier to read */
-                (lParse.Nodes[that0_idx]).value.data.set_buffer(
-                    BufferKind::Double,
-                    malloc(
-                        ((2 as c_long * nrows) as c_ulong)
-                            .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
-                            .try_into()
-                            .unwrap(),
-                    ),
+                /* Hand the intervals to the node in the layout Do_GTI reads:
+                the starts, then the stops. The node's buffer is still a raw
+                allocation, so this is a copy out of the Vec rather than
+                giving it away. */
+                let gtibuf = malloc(
+                    ((2 as c_long * nrows) as c_ulong)
+                        .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
+                        .try_into()
+                        .unwrap(),
                 );
-                if ((lParse.Nodes[that0_idx]).value.data.dbl_buf()).is_null() {
+                if gtibuf.is_null() {
                     lParse.status = MEMORY_ALLOCATION;
                     return -(1);
                 }
-                startptr = (lParse.Nodes[that0_idx]).value.data.dbl_buf();
-                stopptr = ((lParse.Nodes[that0_idx]).value.data.dbl_buf()).offset(nrows as isize);
-                ffgcvd_safe(
-                    fptr,
-                    startCol,
-                    1,
-                    1,
-                    nrows as LONGLONG,
-                    0.0,
-                    core::slice::from_raw_parts_mut(startptr, nrows as usize),
-                    Some(&mut i),
-                    &mut lParse.status,
+                core::ptr::copy_nonoverlapping(
+                    times.as_ptr(),
+                    gtibuf.cast::<c_double>(),
+                    times.len(),
                 );
-                ffgcvd_safe(
-                    fptr,
-                    stopCol,
-                    1,
-                    1,
-                    nrows as LONGLONG,
-                    0.0,
-                    core::slice::from_raw_parts_mut(stopptr, nrows as usize),
-                    Some(&mut i),
-                    &mut lParse.status,
-                );
-                if lParse.status != 0 {
-                    free(
-                        (lParse.Nodes[that0_idx])
-                            .value
-                            .data
-                            .dbl_buf()
-                            .cast::<c_void>(),
-                    );
-                    return -(1);
-                }
-
-                /*  Test for fully time-ordered GTI... both START && STOP  */
-                (lParse.Nodes[that0_idx]).gtiOrdered = true; /*  Assume yes  */
-                i = nrows as c_int;
-                loop {
-                    /* the following are failure conditions for GTI ordering */
-
-                    /* C: while( --j ) - the body never runs with j == 0, so
-                    stopptr[j-1] is always in bounds */
-                    i -= 1;
-                    if i == 0 {
-                        break;
-                    }
-
-                    if !(*startptr.offset(i as isize) > *stopptr.offset(i as isize) /* START{j} > STOP{j} */
-                        || *startptr.offset(i as isize) < *stopptr.offset((i - 1) as isize))
-                    /* START{j} < STOP{j-1} */
-                    {
-                        continue;
-                    }
-                    (lParse.Nodes[that0_idx]).gtiOrdered = false;
-                    break;
-                }
-
-                /* GTIOVERLAP() requires ordered GTI */
-                if !(lParse.Nodes[that0_idx]).gtiOrdered
-                    && Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint
-                {
-                    let mut errmsg: [c_char; 120] = [0; 120];
-                    int_snprintf!(
-                        &mut errmsg,
-                        120,
-                        "Input GTI must be time-ordered for GTIOVERLAP (row {})",
-                        i + 1,
-                    );
-                    fits_parser_yyerror(lParse, &errmsg);
-                    return -(1);
-                }
-
-                /*  Handle TIMEZERO offset, if any  */
-                dt = timeZeroI[1] - timeZeroI[0] + (timeZeroF[1] - timeZeroF[0]);
-                timeSpan = *stopptr.offset((nrows - 1) as isize) - *startptr.offset(0);
-                if timeSpan == 0.0 {
-                    timeSpan = 1.0;
-                }
-                if fabs(dt / timeSpan) > 1e-12f64 {
-                    i = 0;
-                    while c_long::from(i) < nrows {
-                        *startptr.offset(i as isize) += dt;
-                        *stopptr.offset(i as isize) += dt;
-                        i += 1;
-                    }
-                }
+                (lParse.Nodes[that0_idx])
+                    .value
+                    .data
+                    .set_buffer(BufferKind::Double, gtibuf);
             }
 
             /* If Node1 is constant (gtifilt_fct) or
