@@ -139,7 +139,8 @@ use crate::c_types::{
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{
-    BufferKind, CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeValue, ParseData, lval, yyscan_t,
+    BufferKind, CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeValue, ParseData, ValueSort,
+    lval, yyscan_t,
 };
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
@@ -793,7 +794,8 @@ fn New_Const(
             this_node.operation = CONST_OP; /* Flag a constant */
             this_node.DoOp = None;
             this_node.nSubNodes = 0;
-            this_node.ntype = returnType;
+            this_node.ntype = ValueSort::from_code(returnType)
+                .expect("New_* was given a returnType that is not a value sort");
             this_node.value.data = data;
             this_node.value.undef = ptr::null_mut();
             this_node.value.nelem = 1;
@@ -882,21 +884,19 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
 
     if (Op == fits_parser_yytokentype::DOUBLE as c_int
         || Op == fits_parser_yytokentype::FLTCAST as c_int)
-        && that.ntype == fits_parser_yytokentype::DOUBLE as c_int
+        && that.ntype == ValueSort::Double
     {
         return Node1;
     }
 
     if (Op == fits_parser_yytokentype::LONG as c_int
         || Op == fits_parser_yytokentype::INTCAST as c_int)
-        && that.ntype == fits_parser_yytokentype::LONG as c_int
+        && that.ntype == ValueSort::Long
     {
         return Node1;
     }
 
-    if Op == fits_parser_yytokentype::BOOLEAN as c_int
-        && that.ntype == fits_parser_yytokentype::BOOLEAN as c_int
-    {
+    if Op == fits_parser_yytokentype::BOOLEAN as c_int && that.ntype == ValueSort::Boolean {
         return Node1;
     }
 
@@ -910,7 +910,8 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
         (this_node).DoOp = Some(Do_Unary);
         (this_node).nSubNodes = 1;
         (this_node).SubNodes[0] = Node1.try_into().unwrap();
-        (this_node).ntype = returnType;
+        (this_node).ntype = ValueSort::from_code(returnType)
+            .expect("New_* was given a returnType that is not a value sort");
 
         /* Reset in case .Nodes mv'd */
         (this_node).value.nelem = (that_node).value.nelem;
@@ -953,15 +954,16 @@ fn New_BinOp(
         (lParse.Nodes[this_node_idx]).nSubNodes = 2;
         (lParse.Nodes[this_node_idx]).SubNodes[0] = Node1.try_into().unwrap();
         (lParse.Nodes[this_node_idx]).SubNodes[1] = Node2.try_into().unwrap();
-        (lParse.Nodes[this_node_idx]).ntype = returnType;
+        (lParse.Nodes[this_node_idx]).ntype = ValueSort::from_code(returnType)
+            .expect("New_* was given a returnType that is not a value sort");
 
         constant = c_int::from(
             (lParse.Nodes[that1_idx]).operation == CONST_OP
                 && (lParse.Nodes[that2_idx]).operation == CONST_OP,
         );
 
-        if (lParse.Nodes[that1_idx]).ntype != fits_parser_yytokentype::STRING as c_int
-            && (lParse.Nodes[that1_idx]).ntype != fits_parser_yytokentype::BITSTR as c_int
+        if (lParse.Nodes[that1_idx]).ntype != ValueSort::String
+            && (lParse.Nodes[that1_idx]).ntype != ValueSort::Bits
             && Test_Dims(lParse, Node1, Node2) == 0
         {
             Free_Last_Node(lParse);
@@ -984,7 +986,7 @@ fn New_BinOp(
         }
 
         if Op == fits_parser_yytokentype::ACCUM as c_int
-            && (lParse.Nodes[that1_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
+            && (lParse.Nodes[that1_idx]).ntype == ValueSort::Bits
         {
             /* ACCUM is rank-reducing on bit strings */
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
@@ -993,23 +995,22 @@ fn New_BinOp(
         }
 
         /*  Both subnodes should be of same time  */
-        match (lParse.Nodes[that1_idx]).ntype.into() {
-            fits_parser_yytokentype::BITSTR => {
+        match (lParse.Nodes[that1_idx]).ntype {
+            ValueSort::Bits => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_bit);
             }
-            fits_parser_yytokentype::STRING => {
+            ValueSort::String => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_str);
             }
-            fits_parser_yytokentype::BOOLEAN => {
+            ValueSort::Boolean => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_log);
             }
-            fits_parser_yytokentype::LONG => {
+            ValueSort::Long => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_lng);
             }
-            fits_parser_yytokentype::DOUBLE => {
+            ValueSort::Double => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_dbl);
             }
-            _ => {}
         }
 
         if constant != 0 {
@@ -1308,7 +1309,8 @@ fn New_FuncSize(
         }
 
         if returnType != 0 {
-            (lParse.Nodes[n as usize]).ntype = returnType;
+            (lParse.Nodes[n as usize]).ntype = ValueSort::from_code(returnType)
+                .expect("New_* was given a returnType that is not a value sort");
             (lParse.Nodes[n as usize]).value.nelem = 1;
             (lParse.Nodes[n as usize]).value.naxis = 1;
             (lParse.Nodes[n as usize]).value.naxes[0] = 1;
@@ -1891,7 +1893,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         20 => {
                             /* bits: BITCOL '{' expr '}'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
@@ -2150,7 +2152,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         34 => {
                             /* expr: COLUMN '{' expr '}'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
@@ -2213,7 +2215,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2222,14 +2226,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '%' as i32,
                                 yyvs[yyvsp].node(),
@@ -2247,7 +2251,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2256,14 +2262,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '+' as i32,
                                 yyvs[yyvsp].node(),
@@ -2281,7 +2287,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2290,14 +2298,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '-' as i32,
                                 yyvs[yyvsp].node(),
@@ -2315,7 +2323,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2324,14 +2334,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
                                 yyvs[yyvsp].node(),
@@ -2349,7 +2359,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2358,14 +2370,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '/' as i32,
                                 yyvs[yyvsp].node(),
@@ -2379,16 +2391,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         42 => {
                             /* expr: expr '&' expr  */
                             if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     yyvs[yyvsp - 2].node(),
                                     '&' as i32,
                                     yyvs[yyvsp].node(),
@@ -2399,16 +2413,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         43 => {
                             /* expr: expr '|' expr  */
                             if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     yyvs[yyvsp - 2].node(),
                                     '|' as i32,
                                     yyvs[yyvsp].node(),
@@ -2419,16 +2435,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         44 => {
                             /* expr: expr XOR expr  */
                             if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     yyvs[yyvsp - 2].node(),
                                     '^' as i32,
                                     yyvs[yyvsp].node(),
@@ -2443,7 +2461,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2452,14 +2472,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::POWER as c_int,
                                 yyvs[yyvsp].node(),
@@ -2479,7 +2499,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: '-' expr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 fits_parser_yytokentype::UMINUS as c_int,
                                 yyvs[yyvsp].node(),
                             ));
@@ -2498,13 +2518,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '*' bexpr  */
                             yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 0,
                                 yyvs[yyvsp].node(),
                             ));
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
                                 yyvs[yyvsp].node(),
@@ -2519,13 +2539,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: bexpr '*' expr  */
                             yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 0,
                                 yyvs[yyvsp - 2].node(),
                             ));
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
                                 yyvs[yyvsp].node(),
@@ -2543,7 +2563,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2552,7 +2574,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -2598,7 +2620,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
+                                            ValueSort::Boolean;
                                         if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
                                             < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
@@ -2618,7 +2640,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2627,7 +2651,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -2673,7 +2697,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
+                                            ValueSort::Boolean;
                                         if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
                                             < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
@@ -2693,7 +2717,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -2702,7 +2728,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -2748,7 +2774,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
+                                            ValueSort::Boolean;
                                         if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
                                             < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
@@ -2967,7 +2993,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 13755523488868872559;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                        != ValueSort::Long
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
@@ -2993,7 +3019,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                            ValueSort::Long;
                                         current_block = 13755523488868872559;
                                     }
                                 }
@@ -3040,7 +3066,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     let mut iaxis: c_long = 0;
                                     let mut naxis: c_int = 0;
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                        != ValueSort::Long
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
@@ -3276,7 +3302,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
                                     funcOp::MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3334,7 +3362,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
                                     funcOp::MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3381,7 +3411,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(),
                                     funcOp::SUM_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3459,7 +3491,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(),
                                     funcOp::MEDIAN_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3532,7 +3566,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    == fits_parser_yytokentype::LONG as c_int
+                                    == ValueSort::Long
                             {
                                 let mut zero_1: c_long = 0;
 
@@ -3565,7 +3599,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    == fits_parser_yytokentype::DOUBLE as c_int
+                                    == ValueSort::Double
                             {
                                 let mut zero_2: c_double = 0.0;
                                 let new_node = New_Const(
@@ -3595,7 +3629,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    == fits_parser_yytokentype::LONG as c_int
+                                    == ValueSort::Long
                             {
                                 let mut zero_3: c_long = 0;
                                 let new_node = New_Const(
@@ -3625,7 +3659,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    == fits_parser_yytokentype::DOUBLE as c_int
+                                    == ValueSort::Double
                             {
                                 let mut zero_4: c_double = 0.0;
                                 let new_node = New_Const(
@@ -3683,7 +3717,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
                                     funcOp::MIN1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3709,7 +3745,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype, /* Force 1D result */
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
                                     funcOp::MAX1_FCT,
                                     1,
                                     yyvs[yyvsp - 1].node(),
@@ -3751,7 +3789,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 } else {
                                     ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                        fits_parser_yytokentype::DOUBLE as c_int;
+                                        ValueSort::Double;
                                     current_block = 7600445499126923600;
                                 }
                             } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
@@ -3783,7 +3821,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 } else {
                                     ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                        fits_parser_yytokentype::DOUBLE as c_int;
+                                        ValueSort::Double;
                                     current_block = 7600445499126923600;
                                 }
                             } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
@@ -3827,7 +3865,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                            ValueSort::Long;
                                         current_block = 7600445499126923600;
                                     }
                                 }
@@ -3877,7 +3915,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 /*  These all take DOUBLE arguments  */
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4360,8 +4398,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         0,
                                         0,
                                     ));
-                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                        fits_parser_yytokentype::LONG as c_int;
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype = ValueSort::Long;
                                     current_block = 7600445499126923600;
                                 } else {
                                     fits_parser_yyerror(
@@ -4455,7 +4492,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
                                             yyvs[yyvsp - 1].node(),
                                         ));
@@ -4465,7 +4504,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
                                             yyvs[yyvsp - 3].node(),
                                         ));
@@ -4508,7 +4549,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4518,7 +4559,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ));
                                 }
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4581,7 +4622,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
                                         yyvs[yyvsp - 1].node(),
                                     ));
@@ -4590,7 +4633,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
                                         yyvs[yyvsp - 3].node(),
                                     ));
@@ -4649,7 +4694,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
                                         yyvs[yyvsp - 1].node(),
                                     ));
@@ -4658,7 +4705,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
                                         yyvs[yyvsp - 3].node(),
                                     ));
@@ -4731,7 +4780,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
                                             yyvs[yyvsp - 3].node(),
                                         ));
@@ -4790,7 +4841,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 9966817879908499150;
                                 } else {
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                        != ValueSort::Long
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
@@ -4816,7 +4867,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         current_block = 4830776507462815627;
                                     } else {
                                         ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                            ValueSort::Long;
                                         current_block = 9966817879908499150;
                                     }
                                 }
@@ -4863,7 +4914,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     let mut iaxis_0: c_long = 0;
                                     let mut naxis_1: c_int = 0;
                                     if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                        != ValueSort::Long
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
@@ -4955,7 +5006,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4965,7 +5016,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ));
                                 }
                                 if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4975,7 +5026,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ));
                                 }
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -4985,7 +5036,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ));
                                 }
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                    != ValueSort::Double
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
@@ -5276,7 +5327,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         76 => {
                             /* bexpr: BCOLUMN '{' expr '}'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
@@ -5401,7 +5452,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5410,7 +5463,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5435,7 +5488,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5444,7 +5499,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5469,7 +5524,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5478,7 +5535,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5503,7 +5560,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5512,7 +5571,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5537,7 +5596,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5546,7 +5607,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5571,7 +5632,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5580,7 +5643,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5605,7 +5668,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5614,7 +5679,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5795,7 +5860,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5804,7 +5871,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp - 4].node(),
                                 ));
@@ -5814,7 +5883,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5823,7 +5894,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 4].node(),
                                 ));
@@ -5833,7 +5904,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
                                     yyvs[yyvsp].node(),
                                 ));
@@ -5842,7 +5915,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
                                 ));
@@ -5958,7 +6031,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else {
                                     /* Use expression's size, but return BOOLEAN */
                                     ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                        fits_parser_yytokentype::BOOLEAN as c_int;
+                                        ValueSort::Boolean;
                                     current_block = 17353983478346836848;
                                 }
                             } else {
@@ -6001,7 +6074,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else {
                                     /* Use expression's size, but return BOOLEAN */
                                     ((lParse.Nodes)[yyval.node() as usize]).ntype =
-                                        fits_parser_yytokentype::BOOLEAN as c_int;
+                                        ValueSort::Boolean;
                                     current_block = 17353983478346836848;
                                 }
                             } else {
@@ -6114,7 +6187,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         106 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ')'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6124,7 +6197,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6134,7 +6207,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6219,7 +6292,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         107 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ')'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6229,7 +6302,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6239,7 +6312,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6249,7 +6322,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6259,7 +6332,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6372,7 +6445,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         108 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ',' expr ',' expr ')'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 13] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6382,7 +6455,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 11] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6392,7 +6465,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6402,7 +6475,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6412,7 +6485,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6422,7 +6495,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6432,7 +6505,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 ));
                             }
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                                != ValueSort::Double
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
@@ -6964,7 +7037,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         129 => {
                             /* sexpr: SCOLUMN '{' expr '}'  */
                             if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
+                                != ValueSort::Long
                                 || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
@@ -7183,13 +7256,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 let mut len: c_int = 0;
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                                    != ValueSort::Long
                                     || ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                         .value
                                         .nelem
                                         != 1
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                        != ValueSort::Long
                                     || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
                                         .nelem
@@ -7472,9 +7545,7 @@ fn New_Deref(
                 Free_Last_Node(lParse);
                 fits_parser_yyerror(lParse, cs!(c"Cannot use an array as an index value"));
                 return -(1);
-            } else if (lParse.Nodes[theDim[idx as usize]]).ntype
-                != fits_parser_yytokentype::LONG as c_int
-            {
+            } else if (lParse.Nodes[theDim[idx as usize]]).ntype != ValueSort::Long {
                 Free_Last_Node(lParse);
                 fits_parser_yyerror(lParse, cs!(c"Index value must be an integer type"));
                 return -(1);
@@ -7778,15 +7849,15 @@ fn New_GTI(
             if Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Boolean;
             } else if Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::LONG as c_int;
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Long;
             } else {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 3 as c_int;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI_Over);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::DOUBLE as c_int;
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Double;
             }
 
             let that1_idx = Node1 as usize;
@@ -7881,7 +7952,7 @@ fn New_GTI(
                 }
 
                 /*  Test for fully time-ordered GTI... both START && STOP  */
-                (lParse.Nodes[that0_idx]).ntype = 1; /*  Assume yes  */
+                (lParse.Nodes[that0_idx]).gtiOrdered = true; /*  Assume yes  */
                 i = nrows as c_int;
                 loop {
                     /* the following are failure conditions for GTI ordering */
@@ -7899,12 +7970,12 @@ fn New_GTI(
                     {
                         continue;
                     }
-                    (lParse.Nodes[that0_idx]).ntype = 0;
+                    (lParse.Nodes[that0_idx]).gtiOrdered = false;
                     break;
                 }
 
                 /* GTIOVERLAP() requires ordered GTI */
-                if (lParse.Nodes[that0_idx]).ntype != 1
+                if !(lParse.Nodes[that0_idx]).gtiOrdered
                     && Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint
                 {
                     let mut errmsg: [c_char; 120] = [0; 120];
@@ -8026,7 +8097,7 @@ fn New_REG(
             (lParse.Nodes[this_node_idx]).SubNodes[2] = NodeY.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).operation = funcOp::REGFILT_FCT as c_int;
             (lParse.Nodes[this_node_idx]).DoOp = Some(Do_REG);
-            (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
+            (lParse.Nodes[this_node_idx]).ntype = ValueSort::Boolean;
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
             (lParse.Nodes[this_node_idx]).value.naxis = 1;
             (lParse.Nodes[this_node_idx]).value.naxes[0] = 1;
@@ -8211,7 +8282,7 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
 
             subnode = New_Unary(
                 lParse,
-                (lParse.Nodes[this_node_idx]).ntype,
+                (lParse.Nodes[this_node_idx]).ntype.code(),
                 0,
                 (lParse.Nodes[this_node_idx]).SubNodes[n as usize] as c_int,
             );
@@ -8262,7 +8333,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
     if ((lParse.Nodes)[dimNode as usize]).operation == CONST_OP {
         /* ARRAY(V,n) is a constant integer */
 
-        if ((lParse.Nodes)[dimNode as usize]).ntype != fits_parser_yytokentype::LONG as c_int {
+        if ((lParse.Nodes)[dimNode as usize]).ntype != ValueSort::Long {
             dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
         }
         if dimNode < 0 {
@@ -8284,7 +8355,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
         i = 0;
         while i < (lParse.Nodes[dims]).nSubNodes {
             if ((lParse.Nodes)[(lParse.Nodes[dims]).SubNodes[i as usize] as usize]).ntype
-                != fits_parser_yytokentype::LONG as c_int
+                != ValueSort::Long
             {
                 (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
                     lParse,
@@ -8500,8 +8571,8 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                         None => ptr::null_mut(),
                     };
 
-                match ((lParse.Nodes)[i as usize]).ntype.into() {
-                    fits_parser_yytokentype::BITSTR => {
+                match ((lParse.Nodes)[i as usize]).ntype {
+                    ValueSort::Bits => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Text,
                             ((lParse.varData)[column as usize])
@@ -8513,7 +8584,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                         let fresh13 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh13 = ptr::null_mut();
                     }
-                    fits_parser_yytokentype::STRING => {
+                    ValueSort::String => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Text,
                             ((lParse.varData)[column as usize])
@@ -8528,7 +8599,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                             .unwrap()[(rowOffset as usize)..]
                             .as_mut_ptr();
                     }
-                    fits_parser_yytokentype::BOOLEAN => {
+                    ValueSort::Boolean => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Logical,
                             (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
@@ -8536,7 +8607,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                                 .cast(),
                         );
                     }
-                    fits_parser_yytokentype::LONG => {
+                    ValueSort::Long => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Long,
                             (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
@@ -8544,7 +8615,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                                 .cast(),
                         );
                     }
-                    fits_parser_yytokentype::DOUBLE => {
+                    ValueSort::Double => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Double,
                             (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
@@ -8552,7 +8623,6 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                                 .cast(),
                         );
                     }
-                    _ => {}
                 }
             }
             i += 1;
@@ -8604,8 +8674,8 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
         let mut elem: c_long = 0;
         let mut row: c_long = 0;
         let mut size: c_long = 0;
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
-            || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
         {
             (lParse.Nodes[this_node_idx]).value.data.set_buffer(
                 BufferKind::Text,
@@ -8640,9 +8710,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
                         .offset(1);
                     }
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                         (lParse.Nodes[this_node_idx]).value.undef =
                             (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset((row - 1) as isize))
@@ -8669,16 +8737,16 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
             /* The C only needed the element size; the tagged value also has to
             record which arm the buffer is, so the two are chosen together. */
             let kind: BufferKind;
-            match (lParse.Nodes[this_node_idx]).ntype.into() {
-                fits_parser_yytokentype::DOUBLE => {
+            match (lParse.Nodes[this_node_idx]).ntype {
+                ValueSort::Double => {
                     size = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
                     kind = BufferKind::Double;
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     size = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
                     kind = BufferKind::Long;
                 }
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     size = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
                     kind = BufferKind::Logical;
                 }
@@ -8710,9 +8778,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
 
 unsafe fn free_node_buffer(node: &mut Node) {
     unsafe {
-        if node.ntype == fits_parser_yytokentype::BITSTR as c_int
-            || node.ntype == fits_parser_yytokentype::STRING as c_int
-        {
+        if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
             if !node.value.data.str_buf().is_null() {
                 /* the row pointers all point into one block, allocated at [0] */
                 if !(*node.value.data.str_buf()).is_null() {
@@ -8743,10 +8809,10 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                 x if x == fits_parser_yytokentype::DOUBLE as c_int
                     || x == fits_parser_yytokentype::FLTCAST as c_int =>
                 {
-                    if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                    if that_node.ntype == ValueSort::Long {
                         (this_node).value.data =
                             NodeValue::Double(that_node.value.data.lng() as c_double);
-                    } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                    } else if that_node.ntype == ValueSort::Boolean {
                         (this_node).value.data =
                             NodeValue::Double(if c_int::from(that_node.value.data.log()) != 0 {
                                 1.0
@@ -8758,10 +8824,10 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                 x if x == fits_parser_yytokentype::LONG as c_int
                     || x == fits_parser_yytokentype::INTCAST as c_int =>
                 {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                    if that_node.ntype == ValueSort::Double {
                         (this_node).value.data =
                             NodeValue::Long(that_node.value.data.dbl() as c_long);
-                    } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                    } else if that_node.ntype == ValueSort::Boolean {
                         (this_node).value.data =
                             NodeValue::Long(if c_int::from(that_node.value.data.log()) != 0 {
                                 1
@@ -8771,14 +8837,14 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                    if that_node.ntype == ValueSort::Double {
                         (this_node).value.data =
                             NodeValue::Logical(if that_node.value.data.dbl() != 0.0 {
                                 1
                             } else {
                                 0
                             });
-                    } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                    } else if that_node.ntype == ValueSort::Long {
                         (this_node).value.data =
                             NodeValue::Logical(if that_node.value.data.lng() != 0 {
                                 1
@@ -8788,21 +8854,21 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 x if x == fits_parser_yytokentype::UMINUS as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                    if that_node.ntype == ValueSort::Double {
                         (this_node).value.data = NodeValue::Double(-that_node.value.data.dbl());
-                    } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                    } else if that_node.ntype == ValueSort::Long {
                         (this_node).value.data = NodeValue::Long(-that_node.value.data.lng());
                     }
                 }
                 x if x == fits_parser_yytokentype::NOT as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                    if that_node.ntype == ValueSort::Boolean {
                         (this_node).value.data =
                             NodeValue::Logical(if that_node.value.data.log() == 0 {
                                 1
                             } else {
                                 0
                             });
-                    } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
+                    } else if that_node.ntype == ValueSort::Bits {
                         bitnot(
                             (this_node).value.data.text_mut_ptr(),
                             that_node.value.data.text_mut_ptr(),
@@ -8818,9 +8884,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                 get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
             if lParse.status == 0 {
-                if (this_node).ntype != fits_parser_yytokentype::BITSTR as c_int {
+                if (this_node).ntype != ValueSort::Bits {
                     elem = lParse.nRows;
-                    if (this_node).ntype != fits_parser_yytokentype::STRING as c_int {
+                    if (this_node).ntype != ValueSort::String {
                         elem *= (this_node).value.nelem;
                     }
                     loop {
@@ -8836,7 +8902,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                 elem = lParse.nRows * (this_node).value.nelem;
                 match (this_node).operation.into() {
                     fits_parser_yytokentype::BOOLEAN => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh23 = elem;
                                 elem -= 1;
@@ -8852,7 +8918,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                         0
                                     };
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                        } else if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh24 = elem;
                                 elem -= 1;
@@ -8870,7 +8936,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     fits_parser_yytokentype::DOUBLE | fits_parser_yytokentype::FLTCAST => {
-                        if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                        if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh25 = elem;
                                 elem -= 1;
@@ -8881,7 +8947,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                     *(that_node.value.data.lng_buf()).offset(elem as isize)
                                         as c_double;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        } else if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh26 = elem;
                                 elem -= 1;
@@ -8901,7 +8967,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     fits_parser_yytokentype::LONG | fits_parser_yytokentype::INTCAST => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh27 = elem;
                                 elem -= 1;
@@ -8912,7 +8978,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                     *(that_node.value.data.dbl_buf()).offset(elem as isize)
                                         as c_long;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        } else if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh28 = elem;
                                 elem -= 1;
@@ -8932,7 +8998,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     fits_parser_yytokentype::UMINUS => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh29 = elem;
                                 elem -= 1;
@@ -8942,7 +9008,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((this_node).value.data.dbl_buf()).offset(elem as isize) =
                                     -*(that_node.value.data.dbl_buf()).offset(elem as isize);
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                        } else if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh30 = elem;
                                 elem -= 1;
@@ -8955,7 +9021,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     fits_parser_yytokentype::NOT => {
-                        if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh31 = elem;
                                 elem -= 1;
@@ -8968,7 +9034,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                             == 0,
                                     ) as c_char;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
+                        } else if that_node.ntype == ValueSort::Bits {
                             elem = lParse.nRows;
                             loop {
                                 let fresh32 = elem;
@@ -9017,8 +9083,8 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         Allocate_Ptrs(lParse, this_node_idx);
 
         fRow = lParse.firstRow + rowOffset;
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
-            || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
+            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
         {
             nRealElem = 1;
         } else {
@@ -9054,7 +9120,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             /*  NULLify any values falling out of bounds  */
 
             while fRow < 1 && nRowReload > 0 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                     *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                         .offset(offset as isize))
@@ -9127,7 +9193,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
 
             elem = lParse.nRows * nelem;
             while fRow + nRowReload > lParse.totalRows && nRowReload > 0 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                     elem -= 1;
                     *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
@@ -9163,8 +9229,8 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             offset = 0;
         }
         if nRowReload > 0 {
-            match (lParse.Nodes[this_node_idx]).ntype.into() {
-                fits_parser_yytokentype::BITSTR | fits_parser_yytokentype::STRING => {
+            match (lParse.Nodes[this_node_idx]).ntype {
+                ValueSort::Bits | ValueSort::String => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
@@ -9176,7 +9242,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
@@ -9188,7 +9254,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
@@ -9200,7 +9266,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
@@ -9212,7 +9278,6 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                _ => {}
             }
         }
         /*  Now copy over the overlapping region, if any  */
@@ -9240,12 +9305,12 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 elem -= 1;
 
-                if (lParse.Nodes[this_node_idx]).ntype != fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
                         *((lParse.Nodes[col_idx]).value.undef).offset((elem + offset) as isize);
                 }
-                match (lParse.Nodes[this_node_idx]).ntype.into() {
-                    fits_parser_yytokentype::BITSTR => {
+                match (lParse.Nodes[this_node_idx]).ntype {
+                    ValueSort::Bits => {
                         strcpy(
                             *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
@@ -9253,7 +9318,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset((elem + offset) as isize),
                         );
                     }
-                    fits_parser_yytokentype::STRING => {
+                    ValueSort::String => {
                         strcpy(
                             *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
@@ -9261,25 +9326,24 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset((elem + offset) as isize),
                         );
                     }
-                    fits_parser_yytokentype::BOOLEAN => {
+                    ValueSort::Boolean => {
                         *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                             .offset(elem as isize) =
                             *((lParse.Nodes[col_idx]).value.data.log_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    fits_parser_yytokentype::LONG => {
+                    ValueSort::Long => {
                         *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                             .offset(elem as isize) =
                             *((lParse.Nodes[col_idx]).value.data.lng_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    fits_parser_yytokentype::DOUBLE => {
+                    ValueSort::Double => {
                         *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                             .offset(elem as isize) =
                             *((lParse.Nodes[col_idx]).value.data.dbl_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    _ => {}
                 }
             }
             nelem = nRealElem;
@@ -10865,19 +10929,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 allConst = 0;
                 vector[i as usize] = (lParse.Nodes[theParams[i as usize]]).value.nelem as c_int;
             } else {
-                if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::DOUBLE as c_int
-                {
+                if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Double {
                     pVals[i as usize].data =
                         NodeValue::Double((lParse.Nodes[theParams[i as usize]]).value.data.dbl());
-                } else if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::LONG as c_int
-                {
+                } else if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Long {
                     pVals[i as usize].data =
                         NodeValue::Long((lParse.Nodes[theParams[i as usize]]).value.data.lng());
-                } else if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::BOOLEAN as c_int
-                {
+                } else if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Boolean {
                     pVals[i as usize].data =
                         NodeValue::Logical((lParse.Nodes[theParams[i as usize]]).value.data.log());
                 } else {
@@ -10910,9 +10968,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             match funcOp::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /* Non-Trig single-argument functions */
                 funcOp::SUM_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
                         (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
                             if c_int::from(pVals[0].data.log()) != 0 {
                                 1
@@ -10920,19 +10976,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 0
                             },
                         ));
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BITSTR as c_int
-                    {
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Bits {
                         strcpy(
                             (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                             pVals[0].data.text_mut_ptr(),
@@ -10941,13 +10991,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::AVERAGE_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
-                    {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.lng() as c_double);
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
                     }
@@ -10958,9 +11005,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::MEDIAN_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
                         (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
                             if c_int::from(pVals[0].data.log()) != 0 {
                                 1
@@ -10968,9 +11013,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 0
                             },
                         ));
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
                     } else {
@@ -10980,9 +11023,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::POIRND_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
                             simplerng_getpoisson(pVals[0].data.dbl()),
                         ));
@@ -10994,9 +11035,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::ABS_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                         dval = pVals[0].data.dbl();
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(if dval > 0.0 { dval } else { -dval });
@@ -11018,24 +11057,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::DEFNULL_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Logical(pVals[0].data.log());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                         strcpy(
                             (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                             pVals[0].data.text_mut_ptr(),
@@ -11045,13 +11076,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 funcOp::SETNULL_FCT => {
                     /* Only defined for numeric expressions */
-                    if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
                     }
@@ -11186,18 +11214,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 funcOp::MIN2_FCT => {
                     /* No constant vectors! */
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(if pVals[0].data.dbl() < pVals[1].data.dbl() {
                                 pVals[0].data.dbl()
                             } else {
                                 pVals[1].data.dbl()
                             });
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(if pVals[0].data.lng() < pVals[1].data.lng() {
                                 pVals[0].data.lng()
@@ -11208,19 +11232,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::MAX1_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::BITSTR as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                         strcpy(
                             (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                             pVals[0].data.text_mut_ptr(),
@@ -11229,18 +11247,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::MAX2_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(if pVals[0].data.dbl() > pVals[1].data.dbl() {
                                 pVals[0].data.dbl()
                             } else {
                                 pVals[1].data.dbl()
                             });
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(if pVals[0].data.lng() > pVals[1].data.lng() {
                                 pVals[0].data.lng()
@@ -11295,8 +11309,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 /* C Conditional expression:  bool ? expr : expr */
                 funcOp::IFTHENELSE_FCT => {
-                    match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
+                    match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => {
                             (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                                 (if c_int::from(pVals[2].data.log()) != 0 {
                                     c_int::from(pVals[0].data.log())
@@ -11305,7 +11319,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }) as c_char,
                             );
                         }
-                        fits_parser_yytokentype::LONG => {
+                        ValueSort::Long => {
                             (lParse.Nodes[this_node_idx]).value.data =
                                 NodeValue::Long(if c_int::from(pVals[2].data.log()) != 0 {
                                     pVals[0].data.lng()
@@ -11313,7 +11327,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     pVals[1].data.lng()
                                 });
                         }
-                        fits_parser_yytokentype::DOUBLE => {
+                        ValueSort::Double => {
                             (lParse.Nodes[this_node_idx]).value.data =
                                 NodeValue::Double(if c_int::from(pVals[2].data.log()) != 0 {
                                     pVals[0].data.dbl()
@@ -11321,7 +11335,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     pVals[1].data.dbl()
                                 });
                         }
-                        fits_parser_yytokentype::STRING => {
+                        ValueSort::String => {
                             strcpy(
                                 (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                                 if c_int::from(pVals[2].data.log()) != 0 {
@@ -11366,16 +11380,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
             if current_block_139 == 15934000668868306918 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Double(pVals[0].data.dbl());
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::LONG as c_int
-                {
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(pVals[0].data.lng());
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::BITSTR as c_int
-                {
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     strcpy(
                         (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         pVals[0].data.text_mut_ptr(),
@@ -11401,9 +11411,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
                     },
                     funcOp::NULL_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh54 = row;
                                 row -= 1;
@@ -11415,9 +11423,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             loop {
                                 let fresh55 = row;
                                 row -= 1;
@@ -11508,9 +11514,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
                     funcOp::POIRND_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             if (lParse.Nodes[theParams[0]]).operation == CONST_OP {
                                 loop {
                                     let fresh58 = elem;
@@ -11620,9 +11624,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Non-Trig single-argument functions */
                     funcOp::SUM_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
                             loop {
                                 let fresh62 = row;
                                 row -= 1;
@@ -11667,9 +11669,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             loop {
                                 let fresh64 = row;
                                 row -= 1;
@@ -11703,9 +11703,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh66 = row;
                                 row -= 1;
@@ -11770,9 +11768,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     funcOp::AVERAGE_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             loop {
                                 let fresh70 = row;
                                 row -= 1;
@@ -11814,9 +11810,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(row as isize) /= c_double::from(count);
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh72 = row;
                                 row -= 1;
@@ -11861,9 +11855,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     funcOp::STDDEV_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             /* Compute the mean value */
                             loop {
                                 let fresh74 = row;
@@ -11935,9 +11927,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(row as isize) = 0.0;
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             /* Compute the mean value */
                             loop {
                                 let fresh77 = row;
@@ -12013,9 +12003,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     funcOp::MEDIAN_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             let mut dptr: *mut c_long =
                                 (lParse.Nodes[theParams[0]]).value.data.lng_buf();
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
@@ -12132,9 +12120,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     funcOp::ABS_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh84 = elem;
                                 elem -= 1;
@@ -12171,9 +12157,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Special Null-Handling Functions */
                     funcOp::NONNULL_FCT => {
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::String {
                             nelem = 1;
                         }
                         elem = row * nelem;
@@ -12209,9 +12193,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     funcOp::ISNULL_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::String {
                             elem = row;
                         }
                         loop {
@@ -12226,8 +12208,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                         }
                     }
-                    funcOp::DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => loop {
+                    funcOp::DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => loop {
                             let fresh90 = row;
                             row -= 1;
                             if fresh90 == 0 {
@@ -12286,7 +12268,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::LONG => loop {
+                        ValueSort::Long => loop {
                             let fresh93 = row;
                             row -= 1;
                             if fresh93 == 0 {
@@ -12345,7 +12327,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh96 = row;
                             row -= 1;
                             if fresh96 == 0 {
@@ -12404,7 +12386,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::STRING => loop {
+                        ValueSort::String => loop {
                             let fresh99 = row;
                             row -= 1;
                             if fresh99 == 0 {
@@ -12451,8 +12433,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                         _ => {}
                     },
-                    funcOp::SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::LONG => loop {
+                    funcOp::SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Long => loop {
                             let fresh101 = elem;
                             elem -= 1;
                             if fresh101 == 0 {
@@ -12477,7 +12459,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize);
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh102 = elem;
                             elem -= 1;
                             if fresh102 == 0 {
@@ -12949,9 +12931,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     /*  Min/Max functions taking 1 or 2 arguments  */
                     funcOp::MIN1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             let mut minVal: c_long = 0;
                             loop {
                                 let fresh143 = row;
@@ -13002,9 +12982,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = minVal;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             let mut minVal_0: c_double = 0.0;
                             loop {
                                 let fresh145 = row;
@@ -13055,9 +13033,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = minVal_0;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                             let mut minVal_1: c_char = 0;
                             loop {
                                 let fresh147 = row;
@@ -13085,9 +13061,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     funcOp::MIN2_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh148 = row;
                                 row -= 1;
@@ -13165,9 +13139,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             loop {
                                 let fresh151 = row;
                                 row -= 1;
@@ -13249,9 +13221,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     funcOp::MAX1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             let mut maxVal: c_long = 0;
                             loop {
                                 let fresh154 = row;
@@ -13302,9 +13272,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = maxVal;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             let mut maxVal_0: c_double = 0.0;
                             loop {
                                 let fresh156 = row;
@@ -13355,9 +13323,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = maxVal_0;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                             let mut maxVal_1: c_char = 0;
                             loop {
                                 let fresh158 = row;
@@ -13385,9 +13351,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     funcOp::MAX2_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh159 = row;
                                 row -= 1;
@@ -13465,9 +13429,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             loop {
                                 let fresh162 = row;
                                 row -= 1;
@@ -13817,8 +13779,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /* C Conditional expression:  bool ? expr : expr */
-                    funcOp::IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => loop {
+                    funcOp::IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => loop {
                             let fresh181 = row;
                             row -= 1;
                             if fresh181 == 0 {
@@ -13896,7 +13858,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::LONG => loop {
+                        ValueSort::Long => loop {
                             let fresh185 = row;
                             row -= 1;
                             if fresh185 == 0 {
@@ -13974,7 +13936,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh189 = row;
                             row -= 1;
                             if fresh189 == 0 {
@@ -14052,7 +14014,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                         },
-                        fits_parser_yytokentype::STRING => loop {
+                        ValueSort::String => loop {
                             let fresh193 = row;
                             row -= 1;
                             if fresh193 == 0 {
@@ -14305,11 +14267,11 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
 
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
             dsize = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
-        } else if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int {
+        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
             dsize = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
-        } else if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
             dsize = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
         } else {
             dsize = 0;
@@ -14343,35 +14305,25 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 if i < 0 {
                     row = 0;
                     while row < lParse.nRows {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            != fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(elem as isize);
                             /* Dummy - BITSTRs do not have undefs */
                         }
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.dbl_buf())
                                     .offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.lng_buf())
                                     .offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.log_buf())
@@ -14408,10 +14360,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                     (lParse.Nodes[this_node_idx]).value.data.free_buffer();
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::BITSTR as c_int
-                    || (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+                    || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                 {
                     elem = (lParse.Nodes[this_node_idx]).value.nelem * (dimVals[0] - 1);
                     row = 0;
@@ -14535,35 +14485,25 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     if i < 0 {
                         elem += row * (lParse.Nodes[theVar]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            != fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                             /* Dummy - BITSTRs do not have undefs */
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(elem as isize);
                         }
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.dbl_buf())
                                     .offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.lng_buf())
                                     .offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.data.log_buf())
@@ -14607,10 +14547,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
                             (lParse.Nodes[this_node_idx]).value.data.free_buffer();
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                            || (lParse.Nodes[this_node_idx]).ntype
-                                == fits_parser_yytokentype::STRING as c_int
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+                            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                         {
                             elem = (lParse.Nodes[this_node_idx]).value.nelem * (dimVals[0] - 1);
                             elem += row * ((lParse.Nodes[theVar]).value.nelem + 1);
@@ -14689,8 +14627,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theVar]).operation > 0 {
-            if (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::STRING as c_int
-                || (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::BITSTR as c_int
+            if (lParse.Nodes[theVar]).ntype == ValueSort::String
+                || (lParse.Nodes[theVar]).ntype == ValueSort::Bits
             {
                 free((*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).cast::<c_void>());
             } else {
@@ -14727,7 +14665,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
         start = (lParse.Nodes[theTimes]).value.data.dbl_buf();
         stop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize);
-        ordered = (lParse.Nodes[theTimes]).ntype;
+        ordered = c_int::from((lParse.Nodes[theTimes]).gtiOrdered);
         if (lParse.Nodes[theExpr]).operation == CONST_OP {
             gti = Search_GTI(
                 (lParse.Nodes[theExpr]).value.data.dbl(),
@@ -15344,16 +15282,16 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         *((this_node).value.undef).offset(idx as isize) = 0;
-                        match (this_node).ntype.into() {
-                            fits_parser_yytokentype::BOOLEAN => {
+                        match (this_node).ntype {
+                            ValueSort::Boolean => {
                                 *((this_node).value.data.log_buf()).offset(idx as isize) =
                                     that_node.value.data.log();
                             }
-                            fits_parser_yytokentype::LONG => {
+                            ValueSort::Long => {
                                 *((this_node).value.data.lng_buf()).offset(idx as isize) =
                                     that_node.value.data.lng();
                             }
-                            fits_parser_yytokentype::DOUBLE => {
+                            ValueSort::Double => {
                                 *((this_node).value.data.dbl_buf()).offset(idx as isize) =
                                     that_node.value.data.dbl();
                             }
@@ -15380,18 +15318,18 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                             idx -= 1;
                             *((this_node).value.undef).offset((jdx + elem) as isize) =
                                 *(that_node.value.undef).offset(idx as isize);
-                            match (this_node).ntype.into() {
-                                fits_parser_yytokentype::BOOLEAN => {
+                            match (this_node).ntype {
+                                ValueSort::Boolean => {
                                     *((this_node).value.data.log_buf())
                                         .offset((jdx + elem) as isize) =
                                         *(that_node.value.data.log_buf()).offset(idx as isize);
                                 }
-                                fits_parser_yytokentype::LONG => {
+                                ValueSort::Long => {
                                     *((this_node).value.data.lng_buf())
                                         .offset((jdx + elem) as isize) =
                                         *(that_node.value.data.lng_buf()).offset(idx as isize);
                                 }
-                                fits_parser_yytokentype::DOUBLE => {
+                                ValueSort::Double => {
                                     *((this_node).value.data.dbl_buf())
                                         .offset((jdx + elem) as isize) =
                                         *(that_node.value.data.dbl_buf()).offset(idx as isize);
@@ -15452,16 +15390,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                         break;
                     }
                     *(this_node.value.undef).offset(idx as isize) = 0;
-                    match this_node.ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
+                    match this_node.ntype {
+                        ValueSort::Boolean => {
                             *(this_node.value.data.log_buf()).offset(idx as isize) =
                                 (that_node).value.data.log();
                         }
-                        fits_parser_yytokentype::LONG => {
+                        ValueSort::Long => {
                             *(this_node.value.data.lng_buf()).offset(idx as isize) =
                                 (that_node).value.data.lng();
                         }
-                        fits_parser_yytokentype::DOUBLE => {
+                        ValueSort::Double => {
                             *(this_node.value.data.dbl_buf()).offset(idx as isize) =
                                 (that_node).value.data.dbl();
                         }
@@ -15481,16 +15419,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     *(this_node.value.undef).offset(idx as isize) =
                         *((that_node).value.undef).offset(idx as isize);
-                    match this_node.ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
+                    match this_node.ntype {
+                        ValueSort::Boolean => {
                             *(this_node.value.data.log_buf()).offset(idx as isize) =
                                 *((that_node).value.data.log_buf()).offset(idx as isize);
                         }
-                        fits_parser_yytokentype::LONG => {
+                        ValueSort::Long => {
                             *(this_node.value.data.lng_buf()).offset(idx as isize) =
                                 *((that_node).value.data.lng_buf()).offset(idx as isize);
                         }
-                        fits_parser_yytokentype::DOUBLE => {
+                        ValueSort::Double => {
                             *(this_node.value.data.dbl_buf()).offset(idx as isize) =
                                 *((that_node).value.data.dbl_buf()).offset(idx as isize);
                         }
@@ -15516,16 +15454,16 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         *(this_node.value.undef).offset(idx as isize) =
                             *((that_node).value.undef).offset(row as isize);
-                        match this_node.ntype.into() {
-                            fits_parser_yytokentype::BOOLEAN => {
+                        match this_node.ntype {
+                            ValueSort::Boolean => {
                                 *(this_node.value.data.log_buf()).offset(idx as isize) =
                                     *((that_node).value.data.log_buf()).offset(row as isize);
                             }
-                            fits_parser_yytokentype::LONG => {
+                            ValueSort::Long => {
                                 *(this_node.value.data.lng_buf()).offset(idx as isize) =
                                     *((that_node).value.data.lng_buf()).offset(row as isize);
                             }
-                            fits_parser_yytokentype::DOUBLE => {
+                            ValueSort::Double => {
                                 *(this_node.value.data.dbl_buf()).offset(idx as isize) =
                                     *((that_node).value.data.dbl_buf()).offset(row as isize);
                             }
